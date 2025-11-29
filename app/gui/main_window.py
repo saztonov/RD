@@ -229,8 +229,8 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         
-        # Группа: список блоков с группировкой по категориям
-        blocks_group = QGroupBox("Блоки страницы")
+        # Группа: список блоков со всех страниц
+        blocks_group = QGroupBox("Все блоки")
         blocks_layout = QVBoxLayout(blocks_group)
         
         self.blocks_tree = QTreeWidget()
@@ -340,7 +340,7 @@ class MainWindow(QMainWindow):
         self._render_current_page()
         self._update_ui()
     
-    def _render_current_page(self):
+    def _render_current_page(self, update_tree: bool = True):
         """Отрендерить текущую страницу"""
         if not self.pdf_document:
             return
@@ -360,7 +360,8 @@ class MainWindow(QMainWindow):
             self.page_viewer.set_blocks(current_page_data.blocks)
             
             # Обновляем дерево блоков
-            self._update_blocks_tree()
+            if update_tree:
+                self._update_blocks_tree()
     
     def _update_ui(self):
         """Обновить UI элементы"""
@@ -471,60 +472,104 @@ class MainWindow(QMainWindow):
             self._update_blocks_tree()
     
     def _update_blocks_tree(self):
-        """Обновить дерево блоков с группировкой по категориям"""
+        """Обновить дерево блоков со всех страниц, группировка по страницам"""
         self.blocks_tree.clear()
         
         if not self.annotation_document:
             return
         
-        current_page_data = self.annotation_document.pages[self.current_page]
-        
-        # Группируем блоки по категориям
-        categories = {}
-        for idx, block in enumerate(current_page_data.blocks):
-            cat = block.category if block.category else "(Без категории)"
-            if cat not in categories:
-                categories[cat] = []
-            categories[cat].append((idx, block))
-        
-        # Сортируем категории
-        for cat_name in sorted(categories.keys()):
-            cat_item = QTreeWidgetItem(self.blocks_tree)
-            cat_item.setText(0, cat_name)
-            cat_item.setData(0, Qt.UserRole, None)  # Категория, не блок
-            cat_item.setExpanded(True)
+        # Проходим по всем страницам
+        for page in self.annotation_document.pages:
+            page_num = page.page_number
+            if not page.blocks:
+                continue
             
-            for idx, block in categories[cat_name]:
-                block_item = QTreeWidgetItem(cat_item)
-                block_item.setText(0, f"Блок {idx + 1}")
-                block_item.setText(1, block.block_type.value)
-                block_item.setData(0, Qt.UserRole, idx)  # Индекс блока
+            # Создаём узел страницы
+            page_item = QTreeWidgetItem(self.blocks_tree)
+            page_item.setText(0, f"Страница {page_num + 1}")
+            page_item.setData(0, Qt.UserRole, {"type": "page", "page": page_num})
+            page_item.setExpanded(page_num == self.current_page)
+            
+            # Группируем блоки страницы по категориям
+            categories = {}
+            for idx, block in enumerate(page.blocks):
+                cat = block.category if block.category else "(Без категории)"
+                if cat not in categories:
+                    categories[cat] = []
+                categories[cat].append((idx, block))
+            
+            for cat_name in sorted(categories.keys()):
+                cat_item = QTreeWidgetItem(page_item)
+                cat_item.setText(0, cat_name)
+                cat_item.setData(0, Qt.UserRole, {"type": "category", "page": page_num})
+                cat_item.setExpanded(True)
+                
+                for idx, block in categories[cat_name]:
+                    block_item = QTreeWidgetItem(cat_item)
+                    block_item.setText(0, f"Блок {idx + 1}")
+                    block_item.setText(1, block.block_type.value)
+                    block_item.setData(0, Qt.UserRole, {"type": "block", "page": page_num, "idx": idx})
     
     def _on_tree_block_clicked(self, item: QTreeWidgetItem, column: int):
-        """Клик по блоку в дереве"""
-        block_idx = item.data(0, Qt.UserRole)
-        if block_idx is not None:
+        """Клик по блоку в дереве - переход на страницу и выделение"""
+        data = item.data(0, Qt.UserRole)
+        if not data or not isinstance(data, dict):
+            return
+        
+        if data.get("type") == "block":
+            page_num = data["page"]
+            block_idx = data["idx"]
+            
+            # Всегда обновляем страницу для синхронизации
+            self.current_page = page_num
+            
+            # Рендерим страницу (изображение из кеша если есть)
+            if self.current_page in self.page_images:
+                self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page)
+            else:
+                img = self.pdf_document.render_page(self.current_page)
+                if img:
+                    self.page_images[self.current_page] = img
+                    self.page_viewer.set_page_image(img, self.current_page)
+            
+            # Устанавливаем блоки текущей страницы
+            current_page_data = self.annotation_document.pages[self.current_page]
+            self.page_viewer.set_blocks(current_page_data.blocks)
+            
+            # Вписываем страницу в область просмотра
+            self.page_viewer.fit_to_view()
+            
+            # Выделяем нужный блок
             self.page_viewer.selected_block_idx = block_idx
             self.page_viewer._redraw_blocks()
+            
+            self._update_ui()
             self._on_block_selected(block_idx)
     
     def _on_tree_block_double_clicked(self, item: QTreeWidgetItem, column: int):
         """Двойной клик - редактирование категории"""
-        block_idx = item.data(0, Qt.UserRole)
-        if block_idx is not None:
+        data = item.data(0, Qt.UserRole)
+        if data and isinstance(data, dict) and data.get("type") == "block":
             self.category_edit.setFocus()
             self.category_edit.selectAll()
     
     def _select_block_in_tree(self, block_idx: int):
         """Выделить блок в дереве"""
-        # Ищем item с нужным индексом
+        # Ищем item с нужным индексом на текущей странице
         for i in range(self.blocks_tree.topLevelItemCount()):
-            cat_item = self.blocks_tree.topLevelItem(i)
-            for j in range(cat_item.childCount()):
-                child = cat_item.child(j)
-                if child.data(0, Qt.UserRole) == block_idx:
-                    self.blocks_tree.setCurrentItem(child)
-                    return
+            page_item = self.blocks_tree.topLevelItem(i)
+            page_data = page_item.data(0, Qt.UserRole)
+            if not page_data or page_data.get("page") != self.current_page:
+                continue
+            
+            for j in range(page_item.childCount()):
+                cat_item = page_item.child(j)
+                for k in range(cat_item.childCount()):
+                    block_item = cat_item.child(k)
+                    data = block_item.data(0, Qt.UserRole)
+                    if data and data.get("idx") == block_idx:
+                        self.blocks_tree.setCurrentItem(block_item)
+                        return
     
     def _delete_selected_block(self):
         """Удалить выбранный блок"""

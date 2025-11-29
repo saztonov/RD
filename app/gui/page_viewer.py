@@ -95,11 +95,13 @@ class PageViewer(QGraphicsView):
         self.image_item = self.scene.addPixmap(self.page_image)
         self.scene.setSceneRect(QRectF(self.page_image.rect()))
         
+        # Сбрасываем выбранный блок при смене страницы
+        self.selected_block_idx = None
+        self.block_items.clear()
+        
         # Сбрасываем масштаб
         self.resetTransform()
         self.zoom_factor = 1.0
-        
-        self._update_display()
     
     def set_blocks(self, blocks: List[Block]):
         """
