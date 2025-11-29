@@ -342,6 +342,29 @@ class MainWindow(QMainWindow):
         
         return panel
     
+    # ========== Вспомогательные методы ==========
+    
+    def _get_or_create_page(self, page_num: int) -> Page:
+        """Получить страницу или создать новую если её нет"""
+        if not self.annotation_document:
+            return None
+        
+        # Расширяем список страниц если нужно
+        while len(self.annotation_document.pages) <= page_num:
+            if self.pdf_document:
+                dims = self.pdf_document.get_page_dimensions(len(self.annotation_document.pages))
+                if dims:
+                    page = Page(page_number=len(self.annotation_document.pages), 
+                              width=dims[0], height=dims[1])
+                    self.annotation_document.pages.append(page)
+                else:
+                    # Если не удалось получить размеры, используем дефолтные
+                    page = Page(page_number=len(self.annotation_document.pages), 
+                              width=595, height=842)
+                    self.annotation_document.pages.append(page)
+        
+        return self.annotation_document.pages[page_num]
+    
     # ========== Обработчики событий ==========
     
     def _open_pdf(self):
@@ -393,8 +416,8 @@ class MainWindow(QMainWindow):
             self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page)
             
             # Устанавливаем блоки текущей страницы
-            current_page_data = self.annotation_document.pages[self.current_page]
-            self.page_viewer.set_blocks(current_page_data.blocks)
+            current_page_data = self._get_or_create_page(self.current_page)
+            self.page_viewer.set_blocks(current_page_data.blocks if current_page_data else [])
             
             # Обновляем дерево блоков
             if update_tree:
@@ -434,7 +457,9 @@ class MainWindow(QMainWindow):
         block_type = checked_action.data() if checked_action else BlockType.TEXT
         
         # Получаем размеры страницы
-        current_page_data = self.annotation_document.pages[self.current_page]
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
         page_width = current_page_data.width
         page_height = current_page_data.height
         
@@ -461,30 +486,35 @@ class MainWindow(QMainWindow):
         if not self.annotation_document:
             return
         
-        current_page_data = self.annotation_document.pages[self.current_page]
-        if 0 <= block_idx < len(current_page_data.blocks):
-            block = current_page_data.blocks[block_idx]
-            
-            # Обновляем UI свойств
-            self.block_type_combo.blockSignals(True)
-            self.block_type_combo.setCurrentText(block.block_type.value)
-            self.block_type_combo.blockSignals(False)
-            
-            self.category_edit.blockSignals(True)
-            self.category_edit.setText(block.category)
-            self.category_edit.blockSignals(False)
-            
-            self.block_ocr_text.setText(block.ocr_text or "")
-            
-            # Выделяем в дереве
-            self._select_block_in_tree(block_idx)
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data or not (0 <= block_idx < len(current_page_data.blocks)):
+            return
+        
+        block = current_page_data.blocks[block_idx]
+        
+        # Обновляем UI свойств
+        self.block_type_combo.blockSignals(True)
+        self.block_type_combo.setCurrentText(block.block_type.value)
+        self.block_type_combo.blockSignals(False)
+        
+        self.category_edit.blockSignals(True)
+        self.category_edit.setText(block.category)
+        self.category_edit.blockSignals(False)
+        
+        self.block_ocr_text.setText(block.ocr_text or "")
+        
+        # Выделяем в дереве
+        self._select_block_in_tree(block_idx)
     
     def _on_block_type_changed(self, new_type: str):
         """Изменение типа выбранного блока"""
         if not self.annotation_document:
             return
 
-        current_page_data = self.annotation_document.pages[self.current_page]
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
+        
         if self.page_viewer.selected_block_idx is not None and \
            0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[self.page_viewer.selected_block_idx]
@@ -506,7 +536,10 @@ class MainWindow(QMainWindow):
         if not self.annotation_document:
             return
         
-        current_page_data = self.annotation_document.pages[self.current_page]
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
+        
         if self.page_viewer.selected_block_idx is not None and \
            0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[self.page_viewer.selected_block_idx]
@@ -561,7 +594,10 @@ class MainWindow(QMainWindow):
         if not self.annotation_document:
             return
         
-        current_page_data = self.annotation_document.pages[self.current_page]
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
+        
         if self.page_viewer.selected_block_idx is not None and \
            0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[self.page_viewer.selected_block_idx]
@@ -687,8 +723,8 @@ class MainWindow(QMainWindow):
                     self.page_viewer.set_page_image(img, self.current_page)
             
             # Устанавливаем блоки текущей страницы
-            current_page_data = self.annotation_document.pages[self.current_page]
-            self.page_viewer.set_blocks(current_page_data.blocks)
+            current_page_data = self._get_or_create_page(self.current_page)
+            self.page_viewer.set_blocks(current_page_data.blocks if current_page_data else [])
             
             # Вписываем страницу в область просмотра
             self.page_viewer.fit_to_view()
@@ -745,7 +781,10 @@ class MainWindow(QMainWindow):
         if not self.annotation_document:
             return
         
-        current_page_data = self.annotation_document.pages[self.current_page]
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
+        
         if 0 <= block_idx < len(current_page_data.blocks):
             # Выбираем блок и фокусируемся на поле категории
             self.page_viewer.selected_block_idx = block_idx
@@ -758,7 +797,10 @@ class MainWindow(QMainWindow):
         if not self.annotation_document:
             return
         
-        current_page_data = self.annotation_document.pages[self.current_page]
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
+        
         if 0 <= block_idx < len(current_page_data.blocks):
             # Удаляем блок
             del current_page_data.blocks[block_idx]
@@ -778,7 +820,10 @@ class MainWindow(QMainWindow):
         if not self.annotation_document:
             return
         
-        current_page_data = self.annotation_document.pages[self.current_page]
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
+        
         if 0 <= block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[block_idx]
             # Обновляем координаты с пересчетом нормализованных
@@ -821,8 +866,8 @@ class MainWindow(QMainWindow):
                                     self.page_viewer.set_page_image(img, self.current_page)
                             
                             # Устанавливаем блоки текущей страницы
-                            current_page_data = self.annotation_document.pages[self.current_page]
-                            self.page_viewer.set_blocks(current_page_data.blocks)
+                            current_page_data = self._get_or_create_page(self.current_page)
+                            self.page_viewer.set_blocks(current_page_data.blocks if current_page_data else [])
                             
                             # Удаляем блок
                             self._on_block_deleted(block_idx)
@@ -962,7 +1007,9 @@ class MainWindow(QMainWindow):
         # Используем detect_blocks_from_image для обнаружения крупных областей
         detected_blocks = detect_blocks_from_image(page_img, self.current_page, min_area=5000)
         
-        current_page_data = self.annotation_document.pages[self.current_page]
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
         current_page_data.blocks.extend(detected_blocks)
         self.page_viewer.set_blocks(current_page_data.blocks)
         self._update_blocks_tree()
