@@ -244,16 +244,20 @@ class MainWindow(QMainWindow):
         self.blocks_tree = QTreeWidget()
         self.blocks_tree.setHeaderLabels(["Название", "Тип"])
         self.blocks_tree.setColumnWidth(0, 150)
+        self.blocks_tree.setSortingEnabled(True)
         self.blocks_tree.itemClicked.connect(self._on_tree_block_clicked)
         self.blocks_tree.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
+        self.blocks_tree.installEventFilter(self)
         self.blocks_tabs.addTab(self.blocks_tree, "Страница")
         
         # Вкладка 2: Категория → Блок → Страница
         self.blocks_tree_by_category = QTreeWidget()
         self.blocks_tree_by_category.setHeaderLabels(["Название", "Тип"])
         self.blocks_tree_by_category.setColumnWidth(0, 150)
+        self.blocks_tree_by_category.setSortingEnabled(True)
         self.blocks_tree_by_category.itemClicked.connect(self._on_tree_block_clicked)
         self.blocks_tree_by_category.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
+        self.blocks_tree_by_category.installEventFilter(self)
         self.blocks_tabs.addTab(self.blocks_tree_by_category, "Категория")
         
         blocks_layout.addWidget(self.blocks_tabs)
@@ -788,6 +792,45 @@ class MainWindow(QMainWindow):
             self.current_page = new_page
             self._render_current_page()
             self._update_ui()
+    
+    def eventFilter(self, obj, event):
+        """Обработка событий для деревьев блоков"""
+        from PySide6.QtCore import QEvent
+        from PySide6.QtGui import QKeyEvent
+        
+        if obj in (self.blocks_tree, self.blocks_tree_by_category):
+            if event.type() == QEvent.KeyPress and isinstance(event, QKeyEvent):
+                if event.key() == Qt.Key_Delete:
+                    current_item = obj.currentItem()
+                    if current_item:
+                        data = current_item.data(0, Qt.UserRole)
+                        if data and isinstance(data, dict) and data.get("type") == "block":
+                            page_num = data["page"]
+                            block_idx = data["idx"]
+                            
+                            # Переключаемся на нужную страницу
+                            self.current_page = page_num
+                            
+                            # Рендерим страницу
+                            if self.current_page in self.page_images:
+                                self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page)
+                            else:
+                                img = self.pdf_document.render_page(self.current_page)
+                                if img:
+                                    self.page_images[self.current_page] = img
+                                    self.page_viewer.set_page_image(img, self.current_page)
+                            
+                            # Устанавливаем блоки текущей страницы
+                            current_page_data = self.annotation_document.pages[self.current_page]
+                            self.page_viewer.set_blocks(current_page_data.blocks)
+                            
+                            # Удаляем блок
+                            self._on_block_deleted(block_idx)
+                            
+                            self._update_ui()
+                            return True
+        
+        return super().eventFilter(obj, event)
     
     def _zoom_in(self):
         """Увеличить масштаб"""
