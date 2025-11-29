@@ -5,11 +5,13 @@
 
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog, QSpinBox,
-                               QComboBox, QTextEdit, QGroupBox, QMessageBox)
+                               QComboBox, QTextEdit, QGroupBox, QMessageBox, QToolBar,
+                               QDialog, QDialogButtonBox, QLineEdit, QFormLayout)
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction, QKeySequence
 from pathlib import Path
 from typing import Optional
-from app.models import Document, Page, Block, BlockType
+from app.models import Document, Page, Block, BlockType, BlockSource
 from app.pdf_utils import PDFDocument
 from app.gui.page_viewer import PageViewer
 from app.annotation_io import AnnotationIO
@@ -39,9 +41,125 @@ class MainWindow(QMainWindow):
         self.auto_segmentation = AutoSegmentation()
         
         # Настройка UI
+        self._setup_menu()
+        self._setup_toolbar()
         self._setup_ui()
         self.setWindowTitle("PDF Annotation Tool")
         self.resize(1200, 800)
+    
+    def _setup_menu(self):
+        """Настройка меню"""
+        menubar = self.menuBar()
+        
+        # Меню "Файл"
+        file_menu = menubar.addMenu("&Файл")
+        
+        open_action = QAction("&Открыть PDF", self)
+        open_action.setShortcut(QKeySequence.Open)
+        open_action.triggered.connect(self._open_pdf)
+        file_menu.addAction(open_action)
+        
+        file_menu.addSeparator()
+        
+        save_action = QAction("&Сохранить разметку", self)
+        save_action.setShortcut(QKeySequence.Save)
+        save_action.triggered.connect(self._save_annotation)
+        file_menu.addAction(save_action)
+        
+        load_action = QAction("&Загрузить разметку", self)
+        load_action.setShortcut(QKeySequence("Ctrl+L"))
+        load_action.triggered.connect(self._load_annotation)
+        file_menu.addAction(load_action)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction("&Выход", self)
+        exit_action.setShortcut(QKeySequence.Quit)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # Меню "Инструменты"
+        tools_menu = menubar.addMenu("&Инструменты")
+        
+        auto_segment_action = QAction("&Авто-сегментация", self)
+        auto_segment_action.setShortcut(QKeySequence("Ctrl+A"))
+        auto_segment_action.triggered.connect(self._auto_segment_page)
+        tools_menu.addAction(auto_segment_action)
+        
+        run_ocr_action = QAction("Запустить &OCR", self)
+        run_ocr_action.setShortcut(QKeySequence("Ctrl+R"))
+        run_ocr_action.triggered.connect(self._run_ocr_all)
+        tools_menu.addAction(run_ocr_action)
+        
+        tools_menu.addSeparator()
+        
+        export_action = QAction("&Экспорт кропов", self)
+        export_action.triggered.connect(self._export_crops)
+        tools_menu.addAction(export_action)
+        
+        md_action = QAction("Генерация &Markdown", self)
+        md_action.triggered.connect(self._generate_markdown)
+        tools_menu.addAction(md_action)
+        
+        reapply_action = QAction("&Перенос разметки", self)
+        reapply_action.triggered.connect(self._reapply_annotation)
+        tools_menu.addAction(reapply_action)
+        
+        # Меню "Вид"
+        view_menu = menubar.addMenu("&Вид")
+        
+        zoom_in_action = QAction("Увеличить", self)
+        zoom_in_action.setShortcut(QKeySequence.ZoomIn)
+        zoom_in_action.triggered.connect(self._zoom_in)
+        view_menu.addAction(zoom_in_action)
+        
+        zoom_out_action = QAction("Уменьшить", self)
+        zoom_out_action.setShortcut(QKeySequence.ZoomOut)
+        zoom_out_action.triggered.connect(self._zoom_out)
+        view_menu.addAction(zoom_out_action)
+        
+        zoom_reset_action = QAction("Сбросить масштаб", self)
+        zoom_reset_action.setShortcut(QKeySequence("Ctrl+0"))
+        zoom_reset_action.triggered.connect(self._zoom_reset)
+        view_menu.addAction(zoom_reset_action)
+        
+        fit_action = QAction("Подогнать к окну", self)
+        fit_action.setShortcut(QKeySequence("Ctrl+F"))
+        fit_action.triggered.connect(self._fit_to_view)
+        view_menu.addAction(fit_action)
+    
+    def _setup_toolbar(self):
+        """Настройка панели инструментов"""
+        toolbar = QToolBar("Основная панель")
+        toolbar.setMovable(False)
+        self.addToolBar(toolbar)
+        
+        # Кнопки навигации
+        self.open_action = QAction("📂 Открыть", self)
+        self.open_action.triggered.connect(self._open_pdf)
+        toolbar.addAction(self.open_action)
+        
+        self.save_action = QAction("💾 Сохранить", self)
+        self.save_action.triggered.connect(self._save_annotation)
+        toolbar.addAction(self.save_action)
+        
+        self.load_action = QAction("📥 Загрузить", self)
+        self.load_action.triggered.connect(self._load_annotation)
+        toolbar.addAction(self.load_action)
+        
+        toolbar.addSeparator()
+        
+        # Навигация по страницам
+        self.prev_action = QAction("◀ Назад", self)
+        self.prev_action.triggered.connect(self._prev_page)
+        toolbar.addAction(self.prev_action)
+        
+        self.page_label = QLabel("Страница: 0 / 0")
+        toolbar.addWidget(self.page_label)
+        
+        self.next_action = QAction("Вперед ▶", self)
+        self.next_action.triggered.connect(self._next_page)
+        toolbar.addAction(self.next_action)
     
     def _setup_ui(self):
         """Настройка интерфейса"""
@@ -65,43 +183,13 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         
-        # Кнопки управления файлами
-        file_buttons = QHBoxLayout()
-        
-        self.open_btn = QPushButton("Открыть PDF")
-        self.open_btn.clicked.connect(self._open_pdf)
-        file_buttons.addWidget(self.open_btn)
-        
-        self.save_btn = QPushButton("Сохранить разметку")
-        self.save_btn.clicked.connect(self._save_annotation)
-        file_buttons.addWidget(self.save_btn)
-        
-        self.load_btn = QPushButton("Загрузить разметку")
-        self.load_btn.clicked.connect(self._load_annotation)
-        file_buttons.addWidget(self.load_btn)
-        
-        layout.addLayout(file_buttons)
-        
-        # Навигация по страницам
-        nav_layout = QHBoxLayout()
-        
-        self.prev_page_btn = QPushButton("◀ Пред.")
-        self.prev_page_btn.clicked.connect(self._prev_page)
-        nav_layout.addWidget(self.prev_page_btn)
-        
-        self.page_label = QLabel("Страница: 0 / 0")
-        nav_layout.addWidget(self.page_label)
-        
-        self.next_page_btn = QPushButton("След. ▶")
-        self.next_page_btn.clicked.connect(self._next_page)
-        nav_layout.addWidget(self.next_page_btn)
-        
-        layout.addLayout(nav_layout)
-        
         # Viewer для страниц
         self.page_viewer = PageViewer()
-        self.page_viewer.block_created.connect(self._on_block_created)
+        self.page_viewer.blockDrawn.connect(self._on_block_drawn)
         self.page_viewer.block_selected.connect(self._on_block_selected)
+        self.page_viewer.blockEditing.connect(self._on_block_editing)
+        self.page_viewer.blockDeleted.connect(self._on_block_deleted)
+        self.page_viewer.page_changed.connect(self._on_page_changed)
         layout.addWidget(self.page_viewer)
         
         return panel
@@ -210,7 +298,7 @@ class MainWindow(QMainWindow):
         
         # Отображаем
         if self.current_page in self.page_images:
-            self.page_viewer.set_page_image(self.page_images[self.current_page])
+            self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page)
             
             # Устанавливаем блоки текущей страницы
             current_page_data = self.annotation_document.pages[self.current_page]
@@ -237,14 +325,40 @@ class MainWindow(QMainWindow):
             self._render_current_page()
             self._update_ui()
     
-    def _on_block_created(self, block: Block):
-        """Обработка создания нового блока"""
+    def _on_block_drawn(self, x1: int, y1: int, x2: int, y2: int):
+        """
+        Обработка завершения рисования блока
+        Показываем диалог для ввода параметров блока
+        """
         if not self.annotation_document:
             return
         
-        current_page_data = self.annotation_document.pages[self.current_page]
-        current_page_data.blocks.append(block)
-        self.page_viewer.set_blocks(current_page_data.blocks)
+        # Показываем диалог для ввода параметров
+        dialog = BlockPropertiesDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            category, block_type = dialog.get_values()
+            
+            # Получаем размеры страницы
+            current_page_data = self.annotation_document.pages[self.current_page]
+            page_width = current_page_data.width
+            page_height = current_page_data.height
+            
+            # Создаём блок
+            block = Block.create(
+                page_index=self.current_page,
+                coords_px=(x1, y1, x2, y2),
+                page_width=page_width,
+                page_height=page_height,
+                category=category,
+                block_type=block_type,
+                source=BlockSource.USER
+            )
+            
+            # Добавляем блок на страницу
+            current_page_data.blocks.append(block)
+            
+            # Обновляем отображение
+            self.page_viewer.set_blocks(current_page_data.blocks)
     
     def _on_block_selected(self, block_idx: int):
         """Обработка выбора блока"""
@@ -257,8 +371,8 @@ class MainWindow(QMainWindow):
             
             # Обновляем UI
             self.block_type_combo.setCurrentText(block.block_type.value)
-            self.block_description.setText(block.description)
-            self.block_ocr_text.setText(block.ocr_text)
+            self.block_description.setText(block.category)
+            self.block_ocr_text.setText(block.ocr_text or "")
     
     def _on_block_type_changed(self, new_type: str):
         """Изменение типа выбранного блока"""
@@ -267,8 +381,85 @@ class MainWindow(QMainWindow):
     
     def _on_block_description_changed(self):
         """Изменение описания выбранного блока"""
-        # TODO: реализовать изменение описания
-        pass
+        if not self.annotation_document:
+            return
+        
+        current_page_data = self.annotation_document.pages[self.current_page]
+        if 0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
+            block = current_page_data.blocks[self.page_viewer.selected_block_idx]
+            block.category = self.block_description.toPlainText()
+    
+    def _on_block_editing(self, block_idx: int):
+        """Обработка двойного клика для редактирования блока"""
+        if not self.annotation_document:
+            return
+        
+        current_page_data = self.annotation_document.pages[self.current_page]
+        if 0 <= block_idx < len(current_page_data.blocks):
+            block = current_page_data.blocks[block_idx]
+            
+            # Показываем диалог редактирования с текущими значениями
+            dialog = BlockPropertiesDialog(self)
+            dialog.category_edit.setText(block.category)
+            dialog.type_combo.setCurrentText(block.block_type.value)
+            
+            if dialog.exec() == QDialog.Accepted:
+                category, block_type = dialog.get_values()
+                block.category = category
+                block.block_type = block_type
+                
+                # Обновляем отображение
+                self.page_viewer.set_blocks(current_page_data.blocks)
+                self._on_block_selected(block_idx)  # перерисовываем UI
+    
+    def _on_block_deleted(self, block_idx: int):
+        """Обработка удаления блока"""
+        if not self.annotation_document:
+            return
+        
+        current_page_data = self.annotation_document.pages[self.current_page]
+        if 0 <= block_idx < len(current_page_data.blocks):
+            # Удаляем блок
+            del current_page_data.blocks[block_idx]
+            
+            # Очищаем UI
+            self.block_description.setText("")
+            self.block_type_combo.setCurrentIndex(0)
+            self.block_ocr_text.setText("")
+            
+            # Обновляем отображение
+            self.page_viewer.set_blocks(current_page_data.blocks)
+            
+            QMessageBox.information(self, "Успех", "Блок удалён")
+    
+    def _on_page_changed(self, new_page: int):
+        """Обработка запроса смены страницы от viewer"""
+        if self.pdf_document and 0 <= new_page < self.pdf_document.page_count:
+            self.current_page = new_page
+            self._render_current_page()
+            self._update_ui()
+    
+    def _zoom_in(self):
+        """Увеличить масштаб"""
+        if hasattr(self.page_viewer, 'scale'):
+            self.page_viewer.scale(1.15, 1.15)
+            self.page_viewer.zoom_factor *= 1.15
+    
+    def _zoom_out(self):
+        """Уменьшить масштаб"""
+        if hasattr(self.page_viewer, 'scale'):
+            self.page_viewer.scale(1/1.15, 1/1.15)
+            self.page_viewer.zoom_factor /= 1.15
+    
+    def _zoom_reset(self):
+        """Сбросить масштаб"""
+        if hasattr(self.page_viewer, 'reset_zoom'):
+            self.page_viewer.reset_zoom()
+    
+    def _fit_to_view(self):
+        """Подогнать к окну"""
+        if hasattr(self.page_viewer, 'fit_to_view'):
+            self.page_viewer.fit_to_view()
     
     def _save_annotation(self):
         """Сохранить разметку в JSON"""
@@ -380,4 +571,50 @@ class MainWindow(QMainWindow):
                 self._render_current_page()
                 self._update_ui()
                 QMessageBox.information(self, "Успех", "Разметка перенесена")
+
+
+class BlockPropertiesDialog(QDialog):
+    """
+    Диалог для ввода свойств блока при ручной разметке или редактировании
+    """
+    
+    def __init__(self, parent=None, title: str = "Свойства блока"):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.setMinimumWidth(400)
+        
+        # Создаём форму
+        layout = QFormLayout(self)
+        
+        # Поле для category
+        self.category_edit = QLineEdit()
+        self.category_edit.setPlaceholderText("Например: Заголовок, Параметры, Спецификация")
+        layout.addRow("Категория (описание):", self.category_edit)
+        
+        # Выбор типа блока
+        self.type_combo = QComboBox()
+        self.type_combo.addItems([t.value for t in BlockType])
+        self.type_combo.setCurrentText(BlockType.TEXT.value)
+        layout.addRow("Тип блока:", self.type_combo)
+        
+        # Кнопки OK/Cancel
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+        
+        # Фокус на поле ввода
+        self.category_edit.setFocus()
+    
+    def get_values(self) -> tuple:
+        """
+        Получить введённые значения
+        
+        Returns:
+            (category: str, block_type: BlockType)
+        """
+        category = self.category_edit.text().strip()
+        block_type = BlockType(self.type_combo.currentText())
+        return category, block_type
 
