@@ -14,6 +14,16 @@ from app.models import Block, BlockType, BlockSource, Page
 
 logger = logging.getLogger(__name__)
 
+# Глобальный экземпляр для переиспользования моделей
+_MARKER_INSTANCE = None
+
+def get_marker_segmentation():
+    """Получить (или создать) глобальный экземпляр MarkerSegmentation"""
+    global _MARKER_INSTANCE
+    if _MARKER_INSTANCE is None:
+        _MARKER_INSTANCE = MarkerSegmentation()
+    return _MARKER_INSTANCE
+
 
 class MarkerSegmentation:
     """Разметка PDF с использованием Marker"""
@@ -29,9 +39,14 @@ class MarkerSegmentation:
             from marker.models import create_model_dict
             
             if self._converter is None:
-                logger.info("Инициализация Marker...")
+                logger.info("Инициализация Marker (загрузка моделей)...")
                 # Загружаем модели
                 models = create_model_dict()
+                
+                # Конфигурация для ускорения: отключаем OCR если возможно, но Marker
+                # рассчитан на полный пайплайн. Основное ускорение - кэширование моделей.
+                # Можно попробовать передать config, если библиотека это поддерживает в будущем.
+                
                 self._converter = PdfConverter(artifact_dict=models)
                 logger.info("Marker готов")
         except Exception as e:
@@ -82,6 +97,8 @@ class MarkerSegmentation:
             logger.info(f"Запуск Marker для {target_pdf_path}")
             
             # Используем build_document для получения Document с pages
+            # Marker кэширует результаты, но для временных файлов это не поможет.
+            # Сама обработка может занимать время.
             document = self._converter.build_document(target_pdf_path)
             
             logger.info(f"Marker обработал PDF, страниц: {len(document.pages)}")
@@ -96,7 +113,7 @@ class MarkerSegmentation:
                 else:
                     real_page_idx = i
                 
-                # Пропускаем, если вышли за границы исходного документа (на всякий случай)
+                # Пропускаем, если вышли за границы исходного документа
                 if real_page_idx >= len(pages):
                     continue
                 
@@ -139,7 +156,7 @@ class MarkerSegmentation:
                 except Exception as e:
                     logger.warning(f"Не удалось удалить временный файл {temp_pdf_path}: {e}")
     
-    # Типы блоков верхнего уровня (игнорируем Line, Span, Word и т.д.)
+    # Типы блоков верхнего уровня
     TOP_LEVEL_BLOCK_TYPES = {
         'Text', 'Table', 'Figure', 'Picture', 'Caption', 'Code', 
         'Equation', 'SectionHeader', 'ListItem', 'PageHeader', 
@@ -205,11 +222,6 @@ class MarkerSegmentation:
                         source=BlockSource.AUTO
                     )
                     
-                    # Текст НЕ извлекаем, как запрошено
-                    # structure = getattr(marker_block, 'structure', None)
-                    # if structure:
-                    #     block.ocr_text = str(structure)
-                    
                     blocks.append(block)
                     
                 except Exception as block_err:
@@ -265,7 +277,8 @@ def segment_with_marker(pdf_path: str, pages: List[Page],
         Обновленный список страниц или None при ошибке
     """
     try:
-        segmenter = MarkerSegmentation()
+        # Используем глобальный экземпляр
+        segmenter = get_marker_segmentation()
         return segmenter.segment_pdf(pdf_path, pages, page_images, page_range)
     except Exception as e:
         logger.error(f"Ошибка разметки Marker: {e}")

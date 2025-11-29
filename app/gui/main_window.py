@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog, QSpinBox,
                                QComboBox, QTextEdit, QGroupBox, QMessageBox, QToolBar,
                                QLineEdit, QTreeWidget, QTreeWidgetItem, QTabWidget,
-                               QListWidget, QInputDialog)
+                               QListWidget, QInputDialog, QMenu, QAbstractItemView)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QActionGroup
 from pathlib import Path
@@ -250,6 +250,9 @@ class MainWindow(QMainWindow):
         self.blocks_tree.setHeaderLabels(["Название", "Тип"])
         self.blocks_tree.setColumnWidth(0, 150)
         self.blocks_tree.setSortingEnabled(True)
+        self.blocks_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.blocks_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.blocks_tree.customContextMenuRequested.connect(self._on_tree_context_menu)
         self.blocks_tree.itemClicked.connect(self._on_tree_block_clicked)
         self.blocks_tree.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
         self.blocks_tree.installEventFilter(self)
@@ -260,6 +263,9 @@ class MainWindow(QMainWindow):
         self.blocks_tree_by_category.setHeaderLabels(["Название", "Тип"])
         self.blocks_tree_by_category.setColumnWidth(0, 150)
         self.blocks_tree_by_category.setSortingEnabled(True)
+        self.blocks_tree_by_category.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.blocks_tree_by_category.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.blocks_tree_by_category.customContextMenuRequested.connect(self._on_tree_context_menu)
         self.blocks_tree_by_category.itemClicked.connect(self._on_tree_block_clicked)
         self.blocks_tree_by_category.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
         self.blocks_tree_by_category.installEventFilter(self)
@@ -1186,4 +1192,90 @@ class MainWindow(QMainWindow):
                 self._render_current_page()
                 self._update_ui()
                 QMessageBox.information(self, "Успех", "Разметка перенесена")
+    
+    def _on_tree_context_menu(self, position):
+        """Контекстное меню для дерева блоков"""
+        tree = self.sender()
+        selected_items = tree.selectedItems()
+        
+        # Фильтруем только блоки
+        selected_blocks = []
+        for item in selected_items:
+            data = item.data(0, Qt.UserRole)
+            if data and isinstance(data, dict) and data.get("type") == "block":
+                selected_blocks.append(data)
+        
+        if not selected_blocks:
+            return
+        
+        menu = QMenu(self)
+        
+        # Применить тип
+        type_menu = menu.addMenu(f"Применить тип ({len(selected_blocks)} блоков)")
+        for block_type in BlockType:
+            action = type_menu.addAction(block_type.value)
+            action.triggered.connect(lambda checked, bt=block_type: self._apply_type_to_blocks(selected_blocks, bt))
+        
+        # Применить категорию
+        cat_menu = menu.addMenu(f"Применить категорию ({len(selected_blocks)} блоков)")
+        for cat in sorted(self.categories):
+            action = cat_menu.addAction(cat)
+            action.triggered.connect(lambda checked, c=cat: self._apply_category_to_blocks(selected_blocks, c))
+        
+        # Новая категория
+        new_cat_action = cat_menu.addAction("Новая категория...")
+        new_cat_action.triggered.connect(lambda: self._apply_new_category_to_blocks(selected_blocks))
+        
+        menu.exec_(tree.viewport().mapToGlobal(position))
+    
+    def _apply_type_to_blocks(self, blocks_data: list, block_type: BlockType):
+        """Применить тип к нескольким блокам"""
+        if not self.annotation_document:
+            return
+        
+        for data in blocks_data:
+            page_num = data["page"]
+            block_idx = data["idx"]
+            
+            if page_num < len(self.annotation_document.pages):
+                page = self.annotation_document.pages[page_num]
+                if block_idx < len(page.blocks):
+                    page.blocks[block_idx].block_type = block_type
+        
+        self._render_current_page()
+        self._update_blocks_tree()
+        QMessageBox.information(self, "Успех", f"Тип '{block_type.value}' применён к {len(blocks_data)} блокам")
+    
+    def _apply_category_to_blocks(self, blocks_data: list, category: str):
+        """Применить категорию к нескольким блокам"""
+        if not self.annotation_document:
+            return
+        
+        for data in blocks_data:
+            page_num = data["page"]
+            block_idx = data["idx"]
+            
+            if page_num < len(self.annotation_document.pages):
+                page = self.annotation_document.pages[page_num]
+                if block_idx < len(page.blocks):
+                    page.blocks[block_idx].category = category
+        
+        self._render_current_page()
+        self._update_blocks_tree()
+        QMessageBox.information(self, "Успех", f"Категория '{category}' применена к {len(blocks_data)} блокам")
+    
+    def _apply_new_category_to_blocks(self, blocks_data: list):
+        """Применить новую категорию к нескольким блокам"""
+        text, ok = QInputDialog.getText(self, "Новая категория", "Введите название категории:")
+        if not ok or not text.strip():
+            return
+        
+        category = text.strip()
+        
+        # Добавляем если ещё нет
+        if category and category not in self.categories:
+            self.categories.append(category)
+            self._update_categories_list()
+        
+        self._apply_category_to_blocks(blocks_data, category)
 
