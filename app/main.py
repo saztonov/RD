@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 from app.gui.main_window import MainWindow
 
 
-def setup_logging(log_level=logging.INFO):
+def setup_logging(log_level=logging.DEBUG):
     """
     Настройка логирования приложения
     
@@ -39,17 +39,22 @@ def setup_logging(log_level=logging.INFO):
             ),
             # Вывод в консоль
             logging.StreamHandler(sys.stdout)
-        ]
+        ],
+        force=True  # Принудительная перенастройка
     )
     
     # Устанавливаем уровни для отдельных модулей
     logging.getLogger('app.pdf_utils').setLevel(log_level)
     logging.getLogger('app.ocr').setLevel(log_level)
     logging.getLogger('app.auto_segmentation').setLevel(log_level)
+    logging.getLogger('app.pdf_structure').setLevel(log_level)
+    logging.getLogger('app.gui.stamp_remover_dialog').setLevel(log_level)
+    logging.getLogger('app.gui.main_window').setLevel(log_level)
     
     logger = logging.getLogger(__name__)
     logger.info("=" * 60)
     logger.info("PDF Annotation Tool - запуск приложения")
+    logger.info(f"Уровень логирования: {logging.getLevelName(log_level)}")
     logger.info("=" * 60)
 
 
@@ -59,7 +64,7 @@ def main():
     """
     # Настраиваем логирование
     # Для отладки используйте logging.DEBUG
-    setup_logging(log_level=logging.INFO)
+    setup_logging(log_level=logging.DEBUG)
     
     logger = logging.getLogger(__name__)
     

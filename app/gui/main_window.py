@@ -3,11 +3,12 @@
 Меню, панели инструментов, интеграция всех компонентов
 """
 
+import logging
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog, QSpinBox,
                                QComboBox, QTextEdit, QGroupBox, QMessageBox, QToolBar,
                                QLineEdit, QTreeWidget, QTreeWidgetItem, QTabWidget,
-                               QListWidget, QInputDialog, QMenu, QAbstractItemView, QProgressDialog)
+                               QListWidget, QInputDialog, QMenu, QAbstractItemView, QProgressDialog, QDialog)
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QAction, QKeySequence, QActionGroup
 from pathlib import Path
@@ -21,6 +22,8 @@ from app.ocr import create_ocr_engine
 from app.report_md import MarkdownReporter
 from app.auto_segmentation import AutoSegmentation, detect_blocks_from_image
 from app.reapply import AnnotationReapplier
+
+logger = logging.getLogger(__name__)
 
 
 class MarkerWorker(QThread):
@@ -105,6 +108,13 @@ class MainWindow(QMainWindow):
         
         # Меню "Инструменты"
         tools_menu = menubar.addMenu("&Инструменты")
+        
+        stamp_remove_action = QAction("🗑️ Удалить штампы", self)
+        stamp_remove_action.setShortcut(QKeySequence("Ctrl+D"))
+        stamp_remove_action.triggered.connect(self._remove_stamps)
+        tools_menu.addAction(stamp_remove_action)
+        
+        tools_menu.addSeparator()
         
         marker_all_action = QAction("&Marker (все стр.)", self)
         marker_all_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
@@ -351,6 +361,12 @@ class MainWindow(QMainWindow):
         actions_group = QGroupBox("Действия")
         actions_layout = QVBoxLayout(actions_group)
         
+        self.remove_stamps_btn = QPushButton("🗑️ Удалить штампы")
+        self.remove_stamps_btn.clicked.connect(self._remove_stamps)
+        actions_layout.addWidget(self.remove_stamps_btn)
+        
+        actions_layout.addWidget(QLabel(""))  # Разделитель
+        
         self.marker_all_btn = QPushButton("Marker (все стр.)")
         self.marker_all_btn.clicked.connect(self._marker_segment_all_pages)
         actions_layout.addWidget(self.marker_all_btn)
@@ -410,6 +426,11 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
         
+        # Открываем PDF напрямую (быстро)
+        self._load_cleaned_pdf(file_path)
+    
+    def _load_cleaned_pdf(self, file_path: str):
+        """Загрузить PDF (исходный или очищенный) в основное приложение"""
         # Закрываем старый PDF
         if self.pdf_document:
             self.pdf_document.close()
@@ -1213,6 +1234,55 @@ class MainWindow(QMainWindow):
                 self._render_current_page()
                 self._update_ui()
                 QMessageBox.information(self, "Успех", "Разметка перенесена")
+    
+    def _remove_stamps(self):
+        """Удаление электронных штампов из PDF"""
+        logger.info("=" * 60)
+        logger.info("[MainWindow] Запуск удаления штампов")
+        logger.info("=" * 60)
+        
+        if not self.pdf_document or not self.annotation_document:
+            logger.warning("[MainWindow] PDF не открыт")
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF")
+            return
+        
+        try:
+            logger.info("[MainWindow] Импорт StampRemoverDialog")
+            from app.gui.stamp_remover_dialog import StampRemoverDialog
+            
+            current_pdf_path = self.annotation_document.pdf_path
+            logger.info(f"[MainWindow] Текущий PDF: {current_pdf_path}")
+            
+            logger.info("[MainWindow] Создание диалога удаления штампов")
+            dialog = StampRemoverDialog(current_pdf_path, self)
+            
+            logger.info("[MainWindow] Открытие диалога")
+            if dialog.exec() == QDialog.Accepted:
+                logger.info("[MainWindow] Диалог принят")
+                # Получаем путь к очищенному PDF
+                if dialog.cleaned_pdf_path:
+                    logger.info(f"[MainWindow] Очищенный PDF: {dialog.cleaned_pdf_path}")
+                    # Перезагружаем PDF
+                    reply = QMessageBox.question(
+                        self,
+                        "Перезагрузить PDF",
+                        "Загрузить очищенный PDF?\n\n"
+                        "Все несохраненные изменения будут потеряны.",
+                        QMessageBox.Yes | QMessageBox.No
+                    )
+                    
+                    if reply == QMessageBox.Yes:
+                        logger.info("[MainWindow] Перезагрузка очищенного PDF")
+                        self._load_cleaned_pdf(dialog.cleaned_pdf_path)
+                else:
+                    logger.info("[MainWindow] Изменений не было")
+                    QMessageBox.information(self, "Информация", "Изменений не было")
+            else:
+                logger.info("[MainWindow] Диалог отменен")
+        
+        except Exception as e:
+            logger.error(f"[MainWindow] Критическая ошибка удаления штампов: {e}", exc_info=True)
+            QMessageBox.critical(self, "Ошибка", f"Ошибка удаления штампов:\n{e}")
     
     def _on_tree_context_menu(self, position):
         """Контекстное меню для дерева блоков"""
