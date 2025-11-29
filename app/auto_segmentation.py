@@ -95,14 +95,15 @@ class AutoSegmentation:
                 # Определяем тип блока по соотношению сторон (простая эвристика)
                 block_type = self._guess_block_type(w, h)
                 
-                block = Block(
-                    x=x,
-                    y=y,
-                    width=w,
-                    height=h,
+                # Создание блока
+                block = Block.create(
+                    page_index=0,  # Заглушка, так как класс не знает о странице
+                    coords_px=(x, y, x+w, y+h),
+                    page_width=page_image.width,
+                    page_height=page_image.height,
+                    category="Auto-detected",
                     block_type=block_type,
-                    description="Auto-detected",
-                    is_auto=True
+                    source=BlockSource.AUTO
                 )
                 blocks.append(block)
         

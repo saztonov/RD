@@ -80,7 +80,14 @@ def load_annotations(json_path: str, images: List[Image.Image]) -> List[PageMode
         pages = []
         
         for page_data in data.get("pages", []):
-            page_index = page_data["page_index"]
+            # Поддержка page_number из legacy модели
+            page_index = page_data.get("page_index")
+            if page_index is None:
+                page_index = page_data.get("page_number")
+                
+            if page_index is None:
+                logger.warning(f"Страница без индекса, пропускаем: {page_data.keys()}")
+                continue
             
             # Проверяем наличие соответствующего изображения
             if page_index >= len(images):

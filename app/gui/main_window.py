@@ -376,8 +376,18 @@ class MainWindow(QMainWindow):
     
     def _on_block_type_changed(self, new_type: str):
         """Изменение типа выбранного блока"""
-        # TODO: реализовать изменение типа выбранного блока
-        pass
+        if not self.annotation_document:
+            return
+
+        current_page_data = self.annotation_document.pages[self.current_page]
+        if 0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
+            block = current_page_data.blocks[self.page_viewer.selected_block_idx]
+            try:
+                block.block_type = BlockType(new_type)
+                # Перерисовываем Viewer чтобы обновить цвета
+                self.page_viewer.update()
+            except ValueError:
+                pass
     
     def _on_block_description_changed(self):
         """Изменение описания выбранного блока"""
@@ -505,7 +515,23 @@ class MainWindow(QMainWindow):
             return
         
         # TODO: добавить прогресс-бар
+        from PySide6.QtWidgets import QProgressDialog
+        
+        total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
+        if total_blocks == 0:
+            QMessageBox.information(self, "Информация", "Нет блоков для OCR")
+            return
+
+        progress = QProgressDialog("Распознавание текста...", "Отмена", 0, total_blocks, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+
+        processed_count = 0
+        
         for page in self.annotation_document.pages:
+            if progress.wasCanceled():
+                break
+                
             page_num = page.page_number
             if page_num not in self.page_images:
                 # Рендерим страницу если нужно
@@ -518,13 +544,22 @@ class MainWindow(QMainWindow):
                 continue
             
             for block in page.blocks:
+                if progress.wasCanceled():
+                    break
+                
                 # Обрезаем блок используя coords_px (x1, y1, x2, y2)
                 x1, y1, x2, y2 = block.coords_px
-                crop = page_img.crop((x1, y1, x2, y2))
-                # OCR
-                block.ocr_text = self.ocr_engine.recognize(crop)
+                # Проверяем валидность координат
+                if x1 < x2 and y1 < y2:
+                    crop = page_img.crop((x1, y1, x2, y2))
+                    # OCR
+                    block.ocr_text = self.ocr_engine.recognize(crop)
+                
+                processed_count += 1
+                progress.setValue(processed_count)
         
-        QMessageBox.information(self, "Успех", "OCR завершён")
+        progress.close()
+        QMessageBox.information(self, "Успех", f"OCR завершён. Обработано {processed_count} блоков.")
     
     def _export_crops(self):
         """Экспорт кропов блоков"""

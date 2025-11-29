@@ -134,8 +134,13 @@ def transfer_annotations_to_new_pdf(
     new_pages: list[PageModel] = []
     
     for page_data in old_data.get("pages", []):
-        page_index = page_data["page_index"]
+        page_index = page_data.get("page_index")
+        if page_index is None:
+            page_index = page_data.get("page_number")
         
+        if page_index is None:
+            continue
+            
         # Проверить, что страница существует в новом PDF
         if page_index >= len(new_doc):
             print(f"Предупреждение: страница {page_index} отсутствует в новом PDF, пропускается")

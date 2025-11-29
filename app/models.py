@@ -316,8 +316,13 @@ class Page:
     @classmethod
     def from_dict(cls, data: dict) -> 'Page':
         """Десериализация из словаря"""
+        # Поддержка page_index из новой модели
+        page_num = data.get("page_number")
+        if page_num is None:
+            page_num = data.get("page_index", 0)
+            
         return cls(
-            page_number=data["page_number"],
+            page_number=page_num,
             width=data["width"],
             height=data["height"],
             blocks=[Block.from_dict(b) for b in data.get("blocks", [])]

@@ -69,12 +69,14 @@ class TesseractOCRBackend:
             result = text.strip()
             logger.debug(f"OCR выполнен: {len(result)} символов распознано")
             return result
-        except pytesseract.TesseractNotFoundError as e:
-            logger.error(f"Tesseract не найден. Установите Tesseract и укажите путь: {e}")
-            return ""
+        except pytesseract.TesseractNotFoundError:
+            # Логируем ошибку один раз или более явно, возвращаем понятную строку
+            err_msg = "[Tesseract не найден]"
+            logger.error("Tesseract не найден. Установите Tesseract и добавьте путь в PATH или конфиг.")
+            return err_msg
         except Exception as e:
             logger.error(f"Ошибка OCR: {e}")
-            return ""
+            return f"[Ошибка OCR: {e}]"
 
 
 class DummyOCRBackend:
