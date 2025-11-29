@@ -219,6 +219,7 @@ class MainWindow(QMainWindow):
         self.page_viewer.block_selected.connect(self._on_block_selected)
         self.page_viewer.blockEditing.connect(self._on_block_editing)
         self.page_viewer.blockDeleted.connect(self._on_block_deleted)
+        self.page_viewer.blockMoved.connect(self._on_block_moved)
         self.page_viewer.page_changed.connect(self._on_page_changed)
         layout.addWidget(self.page_viewer)
         
@@ -608,6 +609,19 @@ class MainWindow(QMainWindow):
             # Обновляем отображение
             self.page_viewer.set_blocks(current_page_data.blocks)
             self._update_blocks_tree()
+    
+    def _on_block_moved(self, block_idx: int, x1: int, y1: int, x2: int, y2: int):
+        """Обработка перемещения/изменения размера блока"""
+        if not self.annotation_document:
+            return
+        
+        current_page_data = self.annotation_document.pages[self.current_page]
+        if 0 <= block_idx < len(current_page_data.blocks):
+            block = current_page_data.blocks[block_idx]
+            # Обновляем координаты с пересчетом нормализованных
+            block.update_coords_px((x1, y1, x2, y2), 
+                                 current_page_data.width, 
+                                 current_page_data.height)
     
     def _on_page_changed(self, new_page: int):
         """Обработка запроса смены страницы от viewer"""

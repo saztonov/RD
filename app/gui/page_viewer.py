@@ -28,6 +28,7 @@ class PageViewer(QGraphicsView):
     block_selected = Signal(int)
     blockEditing = Signal(int)  # индекс блока для редактирования
     blockDeleted = Signal(int)  # индекс блока, который удалили
+    blockMoved = Signal(int, int, int, int, int)  # индекс, x1, y1, x2, y2
     page_changed = Signal(int)
     
     def __init__(self, parent=None):
@@ -42,6 +43,7 @@ class PageViewer(QGraphicsView):
         self.image_item: Optional[QGraphicsPixmapItem] = None
         self.current_blocks: List[Block] = []
         self.block_items: Dict[str, QGraphicsRectItem] = {}  # id блока -> QGraphicsRectItem
+        self.resize_handles: List[QGraphicsRectItem] = []  # хэндлы изменения размера
         self.current_page: int = 0
         
         # Состояние рисования
@@ -49,6 +51,13 @@ class PageViewer(QGraphicsView):
         self.start_point: Optional[QPointF] = None
         self.rubber_band_item: Optional[QGraphicsRectItem] = None  # временный прямоугольник
         self.selected_block_idx: Optional[int] = None
+        
+        # Состояние перемещения/изменения размера
+        self.moving_block = False
+        self.resizing_block = False
+        self.resize_handle = None  # 'tl', 'tr', 'bl', 'br', 't', 'b', 'l', 'r'
+        self.move_start_pos: Optional[QPointF] = None
+        self.original_block_rect: Optional[QRectF] = None
         
         # Масштабирование
         self.zoom_factor = 1.0
@@ -119,6 +128,17 @@ class PageViewer(QGraphicsView):
         for item in self.block_items.values():
             self.scene.removeItem(item)
         self.block_items.clear()
+        self._clear_resize_handles()
+    
+    def _clear_resize_handles(self):
+        """Очистить все хэндлы изменения размера"""
+        for handle in self.resize_handles:
+            try:
+                if handle.scene() is not None:
+                    self.scene.removeItem(handle)
+            except RuntimeError:
+                pass
+        self.resize_handles.clear()
     
     def _draw_all_blocks(self):
         """Отрисовать все блоки как QGraphicsRectItem"""
@@ -162,6 +182,10 @@ class PageViewer(QGraphicsView):
         
         self.scene.addItem(rect_item)
         self.block_items[block.id] = rect_item
+        
+        # Рисуем хэндлы для выделенного блока
+        if idx == self.selected_block_idx:
+            self._draw_resize_handles(rect)
     
     def _get_block_color(self, block_type: BlockType) -> QColor:
         """Получить цвет для типа блока"""
@@ -200,6 +224,26 @@ class PageViewer(QGraphicsView):
             if clicked_block is not None:
                 self.selected_block_idx = clicked_block
                 self.block_selected.emit(clicked_block)
+                
+                # Определяем, куда кликнули: на хэндл изменения размера или в центр
+                block = self.current_blocks[clicked_block]
+                x1, y1, x2, y2 = block.coords_px
+                block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
+                
+                resize_handle = self._get_resize_handle(scene_pos, block_rect)
+                
+                if resize_handle:
+                    # Начинаем изменение размера
+                    self.resizing_block = True
+                    self.resize_handle = resize_handle
+                    self.move_start_pos = scene_pos
+                    self.original_block_rect = block_rect
+                else:
+                    # Начинаем перемещение
+                    self.moving_block = True
+                    self.move_start_pos = scene_pos
+                    self.original_block_rect = block_rect
+                
                 self._redraw_blocks()  # перерисовываем для выделения
             else:
                 # Начинаем рисовать новый блок (rubber band)
@@ -232,12 +276,36 @@ class PageViewer(QGraphicsView):
             super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event):
-        """Обработка движения мыши - рисование rubber band"""
+        """Обработка движения мыши - рисование rubber band, перемещение или изменение размера"""
+        scene_pos = self.mapToScene(event.pos())
+        
         if self.drawing and self.start_point and self.rubber_band_item:
-            scene_pos = self.mapToScene(event.pos())
+            # Рисование нового блока
             rect = QRectF(self.start_point, scene_pos).normalized()
             self.rubber_band_item.setRect(rect)
+        
+        elif self.moving_block and self.selected_block_idx is not None:
+            # Перемещение блока
+            delta = scene_pos - self.move_start_pos
+            new_rect = self.original_block_rect.translated(delta)
+            self._update_block_rect(self.selected_block_idx, new_rect)
+        
+        elif self.resizing_block and self.selected_block_idx is not None:
+            # Изменение размера блока
+            new_rect = self._calculate_resized_rect(scene_pos)
+            self._update_block_rect(self.selected_block_idx, new_rect)
+        
         else:
+            # Обновляем курсор при наведении на хэндлы
+            if self.selected_block_idx is not None:
+                block = self.current_blocks[self.selected_block_idx]
+                x1, y1, x2, y2 = block.coords_px
+                block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
+                resize_handle = self._get_resize_handle(scene_pos, block_rect)
+                self._set_cursor_for_handle(resize_handle)
+            else:
+                self.setCursor(Qt.ArrowCursor)
+            
             super().mouseMoveEvent(event)
     
     def mouseDoubleClickEvent(self, event):
@@ -251,27 +319,41 @@ class PageViewer(QGraphicsView):
     
     def mouseReleaseEvent(self, event):
         """Обработка отпускания мыши - финализация прямоугольника"""
-        if event.button() == Qt.LeftButton and self.drawing:
-            self.drawing = False
-            
-            if self.rubber_band_item:
-                rect = self.rubber_band_item.rect()
+        if event.button() == Qt.LeftButton:
+            if self.drawing:
+                self.drawing = False
                 
-                # Удаляем rubber band
-                self.scene.removeItem(self.rubber_band_item)
-                self.rubber_band_item = None
-                
-                # Проверяем минимальный размер
-                if rect.width() > 10 and rect.height() > 10:
-                    # Посылаем сигнал с координатами
-                    x1 = int(rect.x())
-                    y1 = int(rect.y())
-                    x2 = int(rect.x() + rect.width())
-                    y2 = int(rect.y() + rect.height())
+                if self.rubber_band_item:
+                    rect = self.rubber_band_item.rect()
                     
-                    self.blockDrawn.emit(x1, y1, x2, y2)
+                    # Удаляем rubber band
+                    self.scene.removeItem(self.rubber_band_item)
+                    self.rubber_band_item = None
+                    
+                    # Проверяем минимальный размер
+                    if rect.width() > 10 and rect.height() > 10:
+                        # Посылаем сигнал с координатами
+                        x1 = int(rect.x())
+                        y1 = int(rect.y())
+                        x2 = int(rect.x() + rect.width())
+                        y2 = int(rect.y() + rect.height())
+                        
+                        self.blockDrawn.emit(x1, y1, x2, y2)
+                
+                self.start_point = None
             
-            self.start_point = None
+            elif self.moving_block or self.resizing_block:
+                # Завершение перемещения или изменения размера
+                if self.selected_block_idx is not None:
+                    block = self.current_blocks[self.selected_block_idx]
+                    x1, y1, x2, y2 = block.coords_px
+                    self.blockMoved.emit(self.selected_block_idx, x1, y1, x2, y2)
+                
+                self.moving_block = False
+                self.resizing_block = False
+                self.resize_handle = None
+                self.move_start_pos = None
+                self.original_block_rect = None
         
         elif event.button() == Qt.MiddleButton:
             self.setDragMode(QGraphicsView.NoDrag)
@@ -331,6 +413,108 @@ class PageViewer(QGraphicsView):
         self._clear_block_items()
         self._draw_all_blocks()
     
+    def _get_resize_handle(self, pos: QPointF, rect: QRectF) -> Optional[str]:
+        """
+        Определить, попал ли клик на хэндл изменения размера
+        
+        Returns:
+            'tl', 'tr', 'bl', 'br', 't', 'b', 'l', 'r' или None
+        """
+        handle_size = 10 / self.zoom_factor  # размер хэндла с учетом масштаба
+        
+        x, y = pos.x(), pos.y()
+        left, top = rect.left(), rect.top()
+        right, bottom = rect.right(), rect.bottom()
+        
+        # Проверяем углы (приоритет над сторонами)
+        if abs(x - left) <= handle_size and abs(y - top) <= handle_size:
+            return 'tl'  # top-left
+        if abs(x - right) <= handle_size and abs(y - top) <= handle_size:
+            return 'tr'  # top-right
+        if abs(x - left) <= handle_size and abs(y - bottom) <= handle_size:
+            return 'bl'  # bottom-left
+        if abs(x - right) <= handle_size and abs(y - bottom) <= handle_size:
+            return 'br'  # bottom-right
+        
+        # Проверяем стороны
+        if abs(y - top) <= handle_size and left <= x <= right:
+            return 't'  # top
+        if abs(y - bottom) <= handle_size and left <= x <= right:
+            return 'b'  # bottom
+        if abs(x - left) <= handle_size and top <= y <= bottom:
+            return 'l'  # left
+        if abs(x - right) <= handle_size and top <= y <= bottom:
+            return 'r'  # right
+        
+        return None
+    
+    def _set_cursor_for_handle(self, handle: Optional[str]):
+        """Установить курсор в зависимости от хэндла"""
+        if handle in ['tl', 'br']:
+            self.setCursor(Qt.SizeFDiagCursor)
+        elif handle in ['tr', 'bl']:
+            self.setCursor(Qt.SizeBDiagCursor)
+        elif handle in ['t', 'b']:
+            self.setCursor(Qt.SizeVerCursor)
+        elif handle in ['l', 'r']:
+            self.setCursor(Qt.SizeHorCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+    
+    def _calculate_resized_rect(self, current_pos: QPointF) -> QRectF:
+        """Вычислить новый прямоугольник при изменении размера"""
+        if not self.original_block_rect or not self.move_start_pos:
+            return self.original_block_rect
+        
+        delta = current_pos - self.move_start_pos
+        rect = QRectF(self.original_block_rect)
+        
+        handle = self.resize_handle
+        
+        # Изменяем соответствующие стороны
+        if 'l' in handle:
+            rect.setLeft(rect.left() + delta.x())
+        if 'r' in handle:
+            rect.setRight(rect.right() + delta.x())
+        if 't' in handle:
+            rect.setTop(rect.top() + delta.y())
+        if 'b' in handle:
+            rect.setBottom(rect.bottom() + delta.y())
+        
+        # Минимальный размер
+        if rect.width() < 10:
+            if 'l' in handle:
+                rect.setLeft(rect.right() - 10)
+            else:
+                rect.setRight(rect.left() + 10)
+        
+        if rect.height() < 10:
+            if 't' in handle:
+                rect.setTop(rect.bottom() - 10)
+            else:
+                rect.setBottom(rect.top() + 10)
+        
+        return rect.normalized()
+    
+    def _update_block_rect(self, block_idx: int, new_rect: QRectF):
+        """Обновить координаты блока"""
+        if block_idx >= len(self.current_blocks):
+            return
+        
+        block = self.current_blocks[block_idx]
+        new_coords = (
+            int(new_rect.x()),
+            int(new_rect.y()),
+            int(new_rect.x() + new_rect.width()),
+            int(new_rect.y() + new_rect.height())
+        )
+        
+        # Обновляем координаты в блоке (временно, без пересчета нормализованных)
+        block.coords_px = new_coords
+        
+        # Перерисовываем блок
+        self._redraw_blocks()
+    
     def reset_zoom(self):
         """Сбросить масштаб к 100%"""
         self.resetTransform()
@@ -341,4 +525,29 @@ class PageViewer(QGraphicsView):
         if self.page_image:
             self.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
             self.zoom_factor = self.transform().m11()
+    
+    def _draw_resize_handles(self, rect: QRectF):
+        """Нарисовать хэндлы изменения размера на углах и сторонах прямоугольника"""
+        handle_size = 8 / self.zoom_factor
+        handle_color = QColor(255, 0, 0)
+        
+        positions = [
+            (rect.left(), rect.top()),          # top-left
+            (rect.right(), rect.top()),         # top-right
+            (rect.left(), rect.bottom()),       # bottom-left
+            (rect.right(), rect.bottom()),      # bottom-right
+            (rect.center().x(), rect.top()),    # top-center
+            (rect.center().x(), rect.bottom()), # bottom-center
+            (rect.left(), rect.center().y()),   # left-center
+            (rect.right(), rect.center().y()),  # right-center
+        ]
+        
+        for x, y in positions:
+            handle_rect = QRectF(x - handle_size/2, y - handle_size/2, 
+                               handle_size, handle_size)
+            handle = QGraphicsRectItem(handle_rect)
+            handle.setPen(QPen(handle_color, 1))
+            handle.setBrush(QBrush(QColor(255, 255, 255)))
+            self.scene.addItem(handle)
+            self.resize_handles.append(handle)
 
