@@ -89,6 +89,11 @@ class MainWindow(QMainWindow):
         auto_segment_action.triggered.connect(self._auto_segment_page)
         tools_menu.addAction(auto_segment_action)
         
+        marker_action = QAction("&Marker разметка", self)
+        marker_action.setShortcut(QKeySequence("Ctrl+M"))
+        marker_action.triggered.connect(self._marker_segment_pdf)
+        tools_menu.addAction(marker_action)
+        
         run_ocr_action = QAction("Запустить &OCR", self)
         run_ocr_action.setShortcut(QKeySequence("Ctrl+R"))
         run_ocr_action.triggered.connect(self._run_ocr_all)
@@ -321,6 +326,10 @@ class MainWindow(QMainWindow):
         self.auto_segment_btn = QPushButton("Авто-сегментация")
         self.auto_segment_btn.clicked.connect(self._auto_segment_page)
         actions_layout.addWidget(self.auto_segment_btn)
+        
+        self.marker_segment_btn = QPushButton("Marker разметка")
+        self.marker_segment_btn.clicked.connect(self._marker_segment_pdf)
+        actions_layout.addWidget(self.marker_segment_btn)
         
         self.run_ocr_btn = QPushButton("Запустить OCR")
         self.run_ocr_btn.clicked.connect(self._run_ocr_all)
@@ -1016,6 +1025,55 @@ class MainWindow(QMainWindow):
         self._update_blocks_tree()
         
         QMessageBox.information(self, "Успех", f"Найдено блоков: {len(detected_blocks)}")
+    
+    def _marker_segment_pdf(self):
+        """Разметка PDF с помощью Marker"""
+        if not self.annotation_document or not self.pdf_document:
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF")
+            return
+        
+        from PySide6.QtWidgets import QProgressDialog
+        
+        # Диалог прогресса
+        progress = QProgressDialog("Marker анализирует PDF...", "Отмена", 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setCancelButton(None)
+        progress.show()
+        
+        try:
+            from app.marker_integration import segment_with_marker
+            
+            # Рендерим все страницы если еще нет
+            for page_num in range(self.pdf_document.page_count):
+                if page_num not in self.page_images:
+                    img = self.pdf_document.render_page(page_num)
+                    if img:
+                        self.page_images[page_num] = img
+            
+            # Запускаем Marker
+            updated_pages = segment_with_marker(
+                self.pdf_document.pdf_path,
+                self.annotation_document.pages,
+                self.page_images
+            )
+            
+            if updated_pages:
+                self.annotation_document.pages = updated_pages
+                self._render_current_page()
+                self._update_blocks_tree()
+                self._extract_categories_from_document()
+                
+                total_blocks = sum(len(p.blocks) for p in updated_pages)
+                QMessageBox.information(self, "Успех", 
+                    f"Marker завершен. Всего блоков: {total_blocks}")
+            else:
+                QMessageBox.warning(self, "Ошибка", "Marker не смог обработать PDF")
+        
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Ошибка Marker: {e}")
+        
+        finally:
+            progress.close()
     
     def _run_ocr_all(self):
         """Запустить OCR для всех блоков"""

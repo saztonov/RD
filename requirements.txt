@@ -17,3 +17,9 @@ numpy>=1.24.0
 # Build
 pyinstaller>=6.0.0
 
+# PyTorch для CUDA 12.8 (RTX 5090) - установить отдельно:
+# pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# Marker - PDF to Markdown
+marker-pdf
+
