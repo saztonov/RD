@@ -84,13 +84,14 @@ class PageViewer(QGraphicsView):
         # Для запоминания позиции контекстного меню
         self.context_menu_pos: Optional[QPointF] = None
     
-    def set_page_image(self, pil_image: Image.Image, page_number: int = 0):
+    def set_page_image(self, pil_image: Image.Image, page_number: int = 0, reset_zoom: bool = True):
         """
         Установить изображение страницы
         
         Args:
             pil_image: изображение страницы из PIL
             page_number: номер страницы
+            reset_zoom: сбрасывать ли масштаб (по умолчанию True)
         """
         # Конвертация PIL в QPixmap
         img_bytes = pil_image.tobytes("raw", "RGB")
@@ -108,9 +109,10 @@ class PageViewer(QGraphicsView):
         self.selected_block_idx = None
         self.block_items.clear()
         
-        # Сбрасываем масштаб
-        self.resetTransform()
-        self.zoom_factor = 1.0
+        # Сбрасываем масштаб только если указано
+        if reset_zoom:
+            self.resetTransform()
+            self.zoom_factor = 1.0
     
     def set_blocks(self, blocks: List[Block]):
         """

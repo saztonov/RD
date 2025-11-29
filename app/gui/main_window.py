@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self.page_images: dict = {}  # кеш отрендеренных страниц
         self.categories: list = []  # список пользовательских категорий
         self.active_category: str = ""  # активная категория для новых блоков
+        self.page_zoom_states: dict = {}  # зум для каждой страницы
         
         # Компоненты
         self.ocr_engine = create_ocr_engine("dummy")  # замените на "tesseract" после установки
@@ -394,6 +395,7 @@ class MainWindow(QMainWindow):
         
         # Очищаем кеш
         self.page_images.clear()
+        self.page_zoom_states.clear()
         
         # Открываем PDF
         self.pdf_document = PDFDocument(file_path)
@@ -428,7 +430,24 @@ class MainWindow(QMainWindow):
         
         # Отображаем
         if self.current_page in self.page_images:
-            self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page)
+            self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page, reset_zoom=False)
+            
+            # Восстанавливаем зум для этой страницы
+            if self.current_page in self.page_zoom_states:
+                # Страница уже была посещена - восстанавливаем её зум
+                saved_transform, saved_zoom = self.page_zoom_states[self.current_page]
+                self.page_viewer.setTransform(saved_transform)
+                self.page_viewer.zoom_factor = saved_zoom
+            elif self.page_zoom_states:
+                # Новая страница - наследуем зум с последней посещенной
+                last_page = max(self.page_zoom_states.keys())
+                saved_transform, saved_zoom = self.page_zoom_states[last_page]
+                self.page_viewer.setTransform(saved_transform)
+                self.page_viewer.zoom_factor = saved_zoom
+            else:
+                # Первая страница - используем дефолтный зум
+                self.page_viewer.resetTransform()
+                self.page_viewer.zoom_factor = 1.0
             
             # Устанавливаем блоки текущей страницы
             current_page_data = self._get_or_create_page(self.current_page)
@@ -448,6 +467,12 @@ class MainWindow(QMainWindow):
     def _prev_page(self):
         """Предыдущая страница"""
         if self.current_page > 0:
+            # Сохраняем зум текущей страницы
+            self.page_zoom_states[self.current_page] = (
+                self.page_viewer.transform(),
+                self.page_viewer.zoom_factor
+            )
+            
             self.current_page -= 1
             self._render_current_page()
             self._update_ui()
@@ -455,6 +480,12 @@ class MainWindow(QMainWindow):
     def _next_page(self):
         """Следующая страница"""
         if self.pdf_document and self.current_page < self.pdf_document.page_count - 1:
+            # Сохраняем зум текущей страницы
+            self.page_zoom_states[self.current_page] = (
+                self.page_viewer.transform(),
+                self.page_viewer.zoom_factor
+            )
+            
             self.current_page += 1
             self._render_current_page()
             self._update_ui()
@@ -725,17 +756,35 @@ class MainWindow(QMainWindow):
             page_num = data["page"]
             block_idx = data["idx"]
             
+            # Сохраняем зум текущей страницы перед переходом
+            if self.current_page != page_num:
+                self.page_zoom_states[self.current_page] = (
+                    self.page_viewer.transform(),
+                    self.page_viewer.zoom_factor
+                )
+            
             # Всегда обновляем страницу для синхронизации
             self.current_page = page_num
             
             # Рендерим страницу (изображение из кеша если есть)
             if self.current_page in self.page_images:
-                self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page)
+                self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page, reset_zoom=False)
             else:
                 img = self.pdf_document.render_page(self.current_page)
                 if img:
                     self.page_images[self.current_page] = img
-                    self.page_viewer.set_page_image(img, self.current_page)
+                    self.page_viewer.set_page_image(img, self.current_page, reset_zoom=False)
+            
+            # Восстанавливаем зум
+            if self.current_page in self.page_zoom_states:
+                saved_transform, saved_zoom = self.page_zoom_states[self.current_page]
+                self.page_viewer.setTransform(saved_transform)
+                self.page_viewer.zoom_factor = saved_zoom
+            elif self.page_zoom_states:
+                last_page = max(self.page_zoom_states.keys())
+                saved_transform, saved_zoom = self.page_zoom_states[last_page]
+                self.page_viewer.setTransform(saved_transform)
+                self.page_viewer.zoom_factor = saved_zoom
             
             # Устанавливаем блоки текущей страницы
             current_page_data = self._get_or_create_page(self.current_page)
@@ -874,12 +923,12 @@ class MainWindow(QMainWindow):
                             
                             # Рендерим страницу
                             if self.current_page in self.page_images:
-                                self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page)
+                                self.page_viewer.set_page_image(self.page_images[self.current_page], self.current_page, reset_zoom=False)
                             else:
                                 img = self.pdf_document.render_page(self.current_page)
                                 if img:
                                     self.page_images[self.current_page] = img
-                                    self.page_viewer.set_page_image(img, self.current_page)
+                                    self.page_viewer.set_page_image(img, self.current_page, reset_zoom=False)
                             
                             # Устанавливаем блоки текущей страницы
                             current_page_data = self._get_or_create_page(self.current_page)
@@ -964,6 +1013,7 @@ class MainWindow(QMainWindow):
                 if self.pdf_document:
                     self.pdf_document.close()
                 self.page_images.clear()
+                self.page_zoom_states.clear()
                 
                 self.pdf_document = PDFDocument(pdf_path)
                 if not self.pdf_document.open():
@@ -1065,9 +1115,18 @@ class MainWindow(QMainWindow):
             
             if updated_pages:
                 self.annotation_document.pages = updated_pages
+                
+                # Сохраняем текущий зум
+                saved_transform = self.page_viewer.transform()
+                saved_zoom = self.page_viewer.zoom_factor
+                
                 self._render_current_page()
                 self._update_blocks_tree()
                 self._extract_categories_from_document()
+                
+                # Восстанавливаем зум
+                self.page_viewer.setTransform(saved_transform)
+                self.page_viewer.zoom_factor = saved_zoom
                 
                 total_blocks = sum(len(p.blocks) for p in updated_pages)
                 QMessageBox.information(self, "Успех", 
@@ -1187,6 +1246,7 @@ class MainWindow(QMainWindow):
                 self.pdf_document = PDFDocument(new_pdf_path)
                 self.pdf_document.open()
                 self.page_images.clear()
+                self.page_zoom_states.clear()
                 self.current_page = 0
                 self._extract_categories_from_document()
                 self._render_current_page()
