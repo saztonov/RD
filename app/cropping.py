@@ -9,10 +9,14 @@ output/
   category2/
     src/
     blocks.json
+  документация/
+    original.pdf
+    annotations.json
 """
 
 import json
 import logging
+import shutil
 from pathlib import Path
 from PIL import Image
 from typing import List, Dict
@@ -102,6 +106,37 @@ def export_blocks_by_category(doc_path: str, pages: List[PageModel], base_output
                 json.dump(category_blocks_data, f, ensure_ascii=False, indent=2)
             
             logger.info(f"Категория '{category}': {len(blocks)} кропов сохранено, blocks.json создан")
+        
+        # Создаём папку "документация"
+        docs_dir = base_output_path / "документация"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Копируем исходный PDF
+        if Path(doc_path).exists():
+            pdf_filename = Path(doc_path).name
+            shutil.copy2(doc_path, docs_dir / pdf_filename)
+            logger.info(f"PDF скопирован в документация/{pdf_filename}")
+        
+        # Создаём полный annotations.json со всеми блоками
+        annotations_data = {
+            "pdf_path": doc_path,
+            "pages": []
+        }
+        
+        for page in pages:
+            page_data = {
+                "page_index": page.page_index,
+                "width": page.width,
+                "height": page.height,
+                "blocks": [block.to_dict() for block in page.blocks]
+            }
+            annotations_data["pages"].append(page_data)
+        
+        annotations_json_path = docs_dir / "annotations.json"
+        with open(annotations_json_path, 'w', encoding='utf-8') as f:
+            json.dump(annotations_data, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Создан annotations.json со всеми блоками: {annotations_json_path}")
         
         total_blocks = sum(len(blocks) for blocks in blocks_by_category.values())
         logger.info(f"Экспорт завершён: {total_blocks} блоков в {len(blocks_by_category)} категориях")

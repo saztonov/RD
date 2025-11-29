@@ -826,14 +826,88 @@ class MainWindow(QMainWindow):
         """Загрузить разметку из JSON"""
         file_path, _ = QFileDialog.getOpenFileName(self, "Загрузить разметку", "", 
                                                    "JSON Files (*.json)")
-        if file_path:
-            doc = AnnotationIO.load_annotation(file_path)
-            if doc:
-                self.annotation_document = doc
+        if not file_path:
+            return
+        
+        # Пробуем определить формат JSON
+        import json
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Проверяем формат: новый annotations.json имеет "pages" со структурой PageModel
+            # Legacy формат имеет "pages" со структурой Page (с page_number вместо page_index)
+            is_new_format = False
+            if "pages" in data and len(data["pages"]) > 0:
+                first_page = data["pages"][0]
+                # Новый формат использует page_index
+                if "page_index" in first_page:
+                    is_new_format = True
+            
+            if is_new_format:
+                # Загружаем новый формат annotations.json
+                # Нужно открыть соответствующий PDF
+                pdf_path = data.get("pdf_path", "")
+                
+                # Если PDF не существует, спросим у пользователя
+                if not Path(pdf_path).exists():
+                    pdf_path, _ = QFileDialog.getOpenFileName(
+                        self, "Укажите PDF файл", "", "PDF Files (*.pdf)")
+                    if not pdf_path:
+                        return
+                
+                # Открываем PDF
+                if self.pdf_document:
+                    self.pdf_document.close()
+                self.page_images.clear()
+                
+                self.pdf_document = PDFDocument(pdf_path)
+                if not self.pdf_document.open():
+                    QMessageBox.critical(self, "Ошибка", "Не удалось открыть PDF")
+                    return
+                
+                # Рендерим страницы
+                from app.annotation_io import load_annotations
+                images = []
+                for page_num in range(self.pdf_document.page_count):
+                    img = self.pdf_document.render_page(page_num)
+                    if img:
+                        images.append(img)
+                        self.page_images[page_num] = img
+                
+                # Загружаем разметку
+                pages_list = load_annotations(file_path, images)
+                
+                # Конвертируем в legacy Document для совместимости с GUI
+                self.annotation_document = Document(pdf_path=pdf_path)
+                for page_model in pages_list:
+                    from app.models import Page
+                    page = Page(
+                        page_number=page_model.page_index,
+                        width=page_model.width,
+                        height=page_model.height,
+                        blocks=page_model.blocks
+                    )
+                    self.annotation_document.pages.append(page)
+                
+                self.current_page = 0
                 self._extract_categories_from_document()
                 self._render_current_page()
+                self._update_ui()
                 self._update_blocks_tree()
-                QMessageBox.information(self, "Успех", "Разметка загружена")
+                QMessageBox.information(self, "Успех", "Разметка загружена из annotations.json")
+            else:
+                # Загружаем legacy формат
+                doc = AnnotationIO.load_annotation(file_path)
+                if doc:
+                    self.annotation_document = doc
+                    self._extract_categories_from_document()
+                    self._render_current_page()
+                    self._update_blocks_tree()
+                    QMessageBox.information(self, "Успех", "Разметка загружена")
+        
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить разметку: {e}")
     
     def _auto_segment_page(self):
         """Автоматическая сегментация текущей страницы"""
