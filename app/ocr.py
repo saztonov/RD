@@ -38,7 +38,7 @@ class TesseractOCRBackend:
     
     Требует установленного Tesseract:
     - Windows: скачать с https://github.com/UB-Mannheim/tesseract/wiki
-    - Указать путь: pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    - Указать путь: pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
     """
     
     def __init__(self, lang: str = 'rus+eng', tesseract_path: Optional[str] = None):
@@ -147,4 +147,24 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             skipped += 1
     
     logger.info(f"OCR завершён: {processed} блоков обработано, {skipped} пропущено")
+
+
+def create_ocr_engine(backend: str = "tesseract", **kwargs) -> OCRBackend:
+    """
+    Фабрика для создания OCR движка
+    
+    Args:
+        backend: тип движка ("tesseract", "dummy")
+        **kwargs: параметры для движка
+    
+    Returns:
+        OCRBackend объект
+    """
+    if backend == "tesseract":
+        return TesseractOCRBackend(**kwargs)
+    elif backend == "dummy":
+        return DummyOCRBackend()
+    else:
+        logger.warning(f"Неизвестный backend '{backend}', используется dummy")
+        return DummyOCRBackend()
 
