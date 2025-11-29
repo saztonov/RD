@@ -1,0 +1,9 @@
+.venv/
+
+
+dist/
+build/
+.next/
+coverage/
+*.map
+*.lock
