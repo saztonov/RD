@@ -6,6 +6,9 @@
 import json
 import logging
 from pathlib import Path
+from typing import Dict
+from PIL import Image
+from app.models import Document
 
 logger = logging.getLogger(__name__)
 
@@ -148,4 +151,74 @@ def generate_markdown_reports(base_output_dir: str) -> None:
     except Exception as e:
         logger.error(f"Ошибка при генерации Markdown-отчётов: {e}", exc_info=True)
         raise
+
+
+class MarkdownReporter:
+    """Legacy класс для совместимости с GUI (работа с Document)"""
+    
+    def __init__(self, output_dir: str):
+        """
+        Args:
+            output_dir: директория для сохранения MD-отчётов
+        """
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+    
+    def generate_reports(self, document: Document) -> None:
+        """
+        Генерировать Markdown-отчёты для Document
+        
+        Args:
+            document: экземпляр Document
+        """
+        try:
+            # Группируем блоки по категориям
+            blocks_by_category = {}
+            
+            for page in document.pages:
+                for block in page.blocks:
+                    category = block.category or "uncategorized"
+                    if category not in blocks_by_category:
+                        blocks_by_category[category] = []
+                    blocks_by_category[category].append(block)
+            
+            # Создаём MD-файл для каждой категории
+            for category, blocks in blocks_by_category.items():
+                md_path = self.output_dir / f"{category}.md"
+                
+                with open(md_path, 'w', encoding='utf-8') as f:
+                    # Заголовок
+                    f.write(f"# {category}\n\n")
+                    f.write(f"**Source PDF:** {document.pdf_path}\n")
+                    f.write(f"**Total Blocks:** {len(blocks)}\n\n")
+                    f.write("---\n\n")
+                    
+                    # Сортируем блоки по page_index
+                    blocks_sorted = sorted(blocks, key=lambda b: (b.page_index, b.id))
+                    
+                    # Выводим блоки
+                    for block in blocks_sorted:
+                        f.write(f"## Block {block.id} (Page {block.page_index}, Type: {block.block_type.value})\n\n")
+                        
+                        if block.ocr_text:
+                            # Проверяем тип блока для таблиц
+                            if block.block_type.value == "table" and _is_markdown_table(block.ocr_text):
+                                f.write(block.ocr_text)
+                                f.write("\n\n")
+                            else:
+                                escaped_text = _escape_markdown(block.ocr_text)
+                                f.write(escaped_text)
+                                f.write("\n\n")
+                        else:
+                            f.write("*Нет OCR-данных*\n\n")
+                        
+                        f.write("---\n\n")
+                
+                logger.info(f"Генерирован отчёт для '{category}': {md_path} ({len(blocks)} блоков)")
+            
+            logger.info(f"Генерация MD-отчётов завершена: {len(blocks_by_category)} категорий")
+        
+        except Exception as e:
+            logger.error(f"Ошибка генерации отчётов: {e}")
+            raise
 

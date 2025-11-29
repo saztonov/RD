@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 from PIL import Image
 from typing import List, Dict
-from app.models import PageModel, Block
+from app.models import PageModel, Block, Document
 
 
 logger = logging.getLogger(__name__)
@@ -109,4 +109,54 @@ def export_blocks_by_category(doc_path: str, pages: List[PageModel], base_output
     except Exception as e:
         logger.error(f"Ошибка экспорта блоков: {e}", exc_info=True)
         raise
+
+
+class Cropper:
+    """Legacy класс для совместимости с GUI (работа с Document)"""
+    
+    def __init__(self, output_dir: str):
+        """
+        Args:
+            output_dir: директория для сохранения кропов
+        """
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+    
+    def save_block_crops(self, document: Document, page_images: Dict[int, Image.Image]) -> None:
+        """
+        Сохранить кропы всех блоков из Document
+        
+        Args:
+            document: экземпляр Document
+            page_images: словарь {page_number: PIL.Image}
+        """
+        try:
+            for page in document.pages:
+                page_num = page.page_number
+                
+                if page_num not in page_images:
+                    logger.warning(f"Изображение для страницы {page_num} не найдено")
+                    continue
+                
+                page_img = page_images[page_num]
+                
+                for block in page.blocks:
+                    # Обрезаем блок
+                    x1, y1, x2, y2 = block.coords_px
+                    crop = page_img.crop((x1, y1, x2, y2))
+                    
+                    # Сохраняем
+                    crop_filename = f"page{page_num}_block{block.id}.jpg"
+                    crop_path = self.output_dir / crop_filename
+                    crop.save(crop_path, "JPEG", quality=90)
+                    
+                    # Обновляем путь в блоке
+                    block.image_file = crop_filename
+            
+            total_blocks = sum(len(page.blocks) for page in document.pages)
+            logger.info(f"Сохранено {total_blocks} кропов в {self.output_dir}")
+        
+        except Exception as e:
+            logger.error(f"Ошибка сохранения кропов: {e}")
+            raise
 

@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QRectF, QPointF, Signal
 from PySide6.QtGui import QPixmap, QPainter, QPen, QImage, QColor, QWheelEvent, QBrush, QAction
 from PIL import Image
 from typing import Optional, List, Dict
-from app.models import Block, BlockType
+from app.models import Block, BlockType, BlockSource
 
 
 class PageViewer(QGraphicsView):
@@ -137,6 +137,11 @@ class PageViewer(QGraphicsView):
         # Создаём QGraphicsRectItem
         color = self._get_block_color(block.block_type)
         pen = QPen(color, 2)
+        
+        # Авто-блоки отображаем пунктирной линией
+        if block.source == BlockSource.AUTO:
+            pen.setStyle(Qt.DashLine)
+            pen.setWidth(3)
         
         # Выделяем выбранный блок
         if idx == self.selected_block_idx:

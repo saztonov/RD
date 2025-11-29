@@ -18,7 +18,7 @@ from app.annotation_io import AnnotationIO
 from app.cropping import Cropper
 from app.ocr import create_ocr_engine
 from app.report_md import MarkdownReporter
-from app.auto_segmentation import AutoSegmentation
+from app.auto_segmentation import AutoSegmentation, detect_blocks_from_image
 from app.reapply import AnnotationReapplier
 
 
@@ -489,13 +489,15 @@ class MainWindow(QMainWindow):
             return
         
         page_img = self.page_images[self.current_page]
-        suggested_blocks = self.auto_segmentation.suggest_blocks(page_img)
+        
+        # Используем detect_blocks_from_image для обнаружения крупных областей
+        detected_blocks = detect_blocks_from_image(page_img, self.current_page, min_area=5000)
         
         current_page_data = self.annotation_document.pages[self.current_page]
-        current_page_data.blocks.extend(suggested_blocks)
+        current_page_data.blocks.extend(detected_blocks)
         self.page_viewer.set_blocks(current_page_data.blocks)
         
-        QMessageBox.information(self, "Успех", f"Найдено блоков: {len(suggested_blocks)}")
+        QMessageBox.information(self, "Успех", f"Найдено блоков: {len(detected_blocks)}")
     
     def _run_ocr_all(self):
         """Запустить OCR для всех блоков"""
@@ -516,10 +518,9 @@ class MainWindow(QMainWindow):
                 continue
             
             for block in page.blocks:
-                # Обрезаем блок
-                crop = page_img.crop((block.x, block.y, 
-                                     block.x + block.width, 
-                                     block.y + block.height))
+                # Обрезаем блок используя coords_px (x1, y1, x2, y2)
+                x1, y1, x2, y2 = block.coords_px
+                crop = page_img.crop((x1, y1, x2, y2))
                 # OCR
                 block.ocr_text = self.ocr_engine.recognize(crop)
         

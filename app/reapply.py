@@ -4,7 +4,7 @@
 """
 
 from typing import Optional
-from app.models import Document, Page, Block
+from app.models import Document, Page, Block, BlockSource
 from app.pdf_utils import PDFDocument
 
 
@@ -63,17 +63,26 @@ class AnnotationReapplier:
                         height=new_height
                     )
                     
-                    # Переносим блоки с масштабированием
+                    # Переносим блоки используя нормализованные координаты
                     for old_block in old_page.blocks:
-                        new_block = Block(
-                            x=int(old_block.x * scale_x),
-                            y=int(old_block.y * scale_y),
-                            width=int(old_block.width * scale_x),
-                            height=int(old_block.height * scale_y),
+                        # Используем нормализованные координаты для переноса
+                        # (они не зависят от размеров страницы)
+                        new_coords_px = Block.norm_to_px(
+                            old_block.coords_norm,
+                            new_width,
+                            new_height
+                        )
+                        
+                        new_block = Block.create(
+                            page_index=page_num,
+                            coords_px=new_coords_px,
+                            page_width=new_width,
+                            page_height=new_height,
+                            category=old_block.category,
                             block_type=old_block.block_type,
-                            description=old_block.description,
+                            source=old_block.source,
                             ocr_text=old_block.ocr_text,
-                            is_auto=old_block.is_auto
+                            block_id=old_block.id  # сохраняем ID
                         )
                         new_page.blocks.append(new_block)
                     

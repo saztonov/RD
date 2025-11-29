@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from typing import List, Tuple
-from app.models import Block, BlockType
+from app.models import Block, BlockType, BlockSource
 
 
 class AutoSegmentation:
@@ -131,4 +131,76 @@ class AutoSegmentation:
             return BlockType.TABLE
         else:
             return BlockType.TEXT
+
+
+def detect_blocks_from_image(page_image: Image.Image, page_index: int, min_area: int = 5000) -> List[Block]:
+    """
+    Обнаружение блоков на изображении с помощью OpenCV (морфология + контуры)
+    
+    Args:
+        page_image: PIL изображение страницы
+        page_index: индекс страницы
+        min_area: минимальная площадь блока в пикселях
+    
+    Returns:
+        Список найденных блоков с source=AUTO
+    """
+    # Конвертация в grayscale numpy
+    img_np = np.array(page_image.convert('L'))
+    
+    # Adaptive threshold для бинаризации
+    binary = cv2.adaptiveThreshold(
+        img_np, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY_INV, 11, 2
+    )
+    
+    # Морфология: dilation + closing для объединения элементов
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    morph = cv2.dilate(binary, kernel, iterations=2)
+    morph = cv2.morphologyEx(morph, cv2.MORPH_CLOSE, kernel, iterations=1)
+    
+    # Поиск контуров
+    contours, _ = cv2.findContours(morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Создание блоков
+    blocks = []
+    page_width, page_height = page_image.size
+    
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        area = w * h
+        
+        # Фильтр по площади
+        if area < min_area:
+            continue
+        
+        # Координаты в формате (x1, y1, x2, y2)
+        coords_px = (x, y, x + w, y + h)
+        
+        # Простая классификация по соотношению сторон
+        # TODO: можно улучшить классификацию анализом содержимого:
+        # - для TABLE: искать горизонтальные/вертикальные линии с помощью HoughLines
+        # - для IMAGE: анализировать цветность, наличие градиентов
+        # - для TEXT: детектить строки текста с помощью OCR или проекционных профилей
+        aspect_ratio = w / h
+        if aspect_ratio > 3.0:
+            block_type = BlockType.TABLE
+        elif 0.8 <= aspect_ratio <= 1.2:
+            block_type = BlockType.IMAGE
+        else:
+            block_type = BlockType.TEXT
+        
+        # Создание блока
+        block = Block.create(
+            page_index=page_index,
+            coords_px=coords_px,
+            page_width=page_width,
+            page_height=page_height,
+            category="",  # пустая категория для авто-блоков
+            block_type=block_type,
+            source=BlockSource.AUTO
+        )
+        blocks.append(block)
+    
+    return blocks
 
