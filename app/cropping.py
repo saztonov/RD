@@ -3,15 +3,14 @@
 Сохранение кропов блоков в виде изображений в структуру папок по категориям:
 output/
   category1/
-    src/
-      page0_block{id}.jpg
-    blocks.json
+    page0_block{id}.jpg
   category2/
-    src/
-    blocks.json
-  документация/
+    page1_block{id}.jpg
+  неразмеченные/
+    page2_block{id}.jpg
+  src/
     original.pdf
-    annotations.json
+    {filename}_annotations.json
 """
 
 import json
@@ -44,21 +43,21 @@ def export_blocks_by_category(doc_path: str, pages: List[PageModel], base_output
         
         for page in pages:
             for block in page.blocks:
-                if block.category not in blocks_by_category:
-                    blocks_by_category[block.category] = []
-                blocks_by_category[block.category].append(block)
+                category = block.category if block.category else "неразмеченные"
+                if category not in blocks_by_category:
+                    blocks_by_category[category] = []
+                blocks_by_category[category].append(block)
         
         logger.info(f"Найдено категорий: {len(blocks_by_category)}")
         
         # Для каждой категории создаём папку и сохраняем блоки
         for category, blocks in blocks_by_category.items():
             category_dir = base_output_path / category
-            src_dir = category_dir / "src"
-            src_dir.mkdir(parents=True, exist_ok=True)
+            category_dir.mkdir(parents=True, exist_ok=True)
             
             logger.info(f"Обработка категории '{category}': {len(blocks)} блоков")
             
-            # Сохраняем кропы и обновляем image_file
+            # Сохраняем кропы напрямую в папку категории
             for block in blocks:
                 # Получаем изображение страницы
                 if block.page_index >= len(pages):
@@ -72,50 +71,25 @@ def export_blocks_by_category(doc_path: str, pages: List[PageModel], base_output
                 x1, y1, x2, y2 = block.coords_px
                 crop = page_image.crop((x1, y1, x2, y2))
                 
-                # Сохраняем в JPEG
+                # Сохраняем в JPEG напрямую в папку категории
                 crop_filename = f"page{block.page_index}_block{block.id}.jpg"
-                crop_path = src_dir / crop_filename
+                crop_path = category_dir / crop_filename
                 crop.save(crop_path, "JPEG", quality=95)
                 
-                # Обновляем путь в блоке (относительный путь от категории)
-                block.image_file = f"src/{crop_filename}"
+                # Обновляем путь в блоке
+                block.image_file = crop_filename
             
-            # Сохраняем blocks.json для этой категории
-            category_blocks_data = {
-                "category": category,
-                "original_pdf": doc_path,
-                "blocks": []
-            }
-            
-            for block in blocks:
-                block_data = {
-                    "id": block.id,
-                    "page_index": block.page_index,
-                    "coords_norm": list(block.coords_norm),
-                    "block_type": block.block_type.value,
-                    "category": block.category,
-                    "image_file": block.image_file,
-                    "source": block.source.value,
-                    "ocr_text": block.ocr_text
-                }
-                category_blocks_data["blocks"].append(block_data)
-            
-            # Записываем JSON
-            blocks_json_path = category_dir / "blocks.json"
-            with open(blocks_json_path, 'w', encoding='utf-8') as f:
-                json.dump(category_blocks_data, f, ensure_ascii=False, indent=2)
-            
-            logger.info(f"Категория '{category}': {len(blocks)} кропов сохранено, blocks.json создан")
+            logger.info(f"Категория '{category}': {len(blocks)} кропов сохранено")
         
-        # Создаём папку "документация"
-        docs_dir = base_output_path / "документация"
+        # Создаём папку "src"
+        docs_dir = base_output_path / "src"
         docs_dir.mkdir(parents=True, exist_ok=True)
         
         # Копируем исходный PDF
         if Path(doc_path).exists():
             pdf_filename = Path(doc_path).name
             shutil.copy2(doc_path, docs_dir / pdf_filename)
-            logger.info(f"PDF скопирован в документация/{pdf_filename}")
+            logger.info(f"PDF скопирован в src/{pdf_filename}")
         
         # Создаём полный annotations.json со всеми блоками
         annotations_data = {
@@ -132,11 +106,13 @@ def export_blocks_by_category(doc_path: str, pages: List[PageModel], base_output
             }
             annotations_data["pages"].append(page_data)
         
-        annotations_json_path = docs_dir / "annotations.json"
+        # Имя JSON с названием файла
+        pdf_name = Path(doc_path).stem.replace(" ", "_")
+        annotations_json_path = docs_dir / f"{pdf_name}_annotations.json"
         with open(annotations_json_path, 'w', encoding='utf-8') as f:
             json.dump(annotations_data, f, ensure_ascii=False, indent=2)
         
-        logger.info(f"Создан annotations.json со всеми блоками: {annotations_json_path}")
+        logger.info(f"Создан {pdf_name}_annotations.json со всеми блоками: {annotations_json_path}")
         
         total_blocks = sum(len(blocks) for blocks in blocks_by_category.values())
         logger.info(f"Экспорт завершён: {total_blocks} блоков в {len(blocks_by_category)} категориях")
