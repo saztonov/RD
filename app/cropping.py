@@ -1,103 +1,112 @@
 """
 Обрезка и сохранение блоков
-Сохранение кропов блоков в виде изображений в структуру папок:
+Сохранение кропов блоков в виде изображений в структуру папок по категориям:
 output/
-  text/
+  category1/
     src/
-      page_1_block_1.png
-  table/
+      page0_block{id}.jpg
+    blocks.json
+  category2/
     src/
-  image/
-    src/
+    blocks.json
 """
 
+import json
 import logging
 from pathlib import Path
 from PIL import Image
-from typing import List
-from app.models import Document, Block, BlockType
+from typing import List, Dict
+from app.models import PageModel, Block
 
 
 logger = logging.getLogger(__name__)
 
 
-class Cropper:
+def export_blocks_by_category(doc_path: str, pages: List[PageModel], base_output_dir: str) -> None:
     """
-    Класс для обрезки и сохранения блоков из PDF-страниц
+    Экспортировать кропы блоков, сгруппировав по категориям
+    
+    Args:
+        doc_path: путь к исходному PDF
+        pages: список PageModel со всеми страницами
+        base_output_dir: базовая директория для выходных папок по категориям
     """
-    
-    def __init__(self, output_dir: str):
-        """
-        Args:
-            output_dir: базовая директория для сохранения кропов
-        """
-        self.output_dir = Path(output_dir)
-    
-    def save_block_crops(self, document: Document, page_images: dict) -> bool:
-        """
-        Сохранить все блоки документа в виде изображений
+    try:
+        base_output_path = Path(base_output_dir)
+        base_output_path.mkdir(parents=True, exist_ok=True)
         
-        Args:
-            document: документ с разметкой
-            page_images: словарь {page_number: PIL.Image} - отрендеренные страницы
+        # Группируем блоки по категориям
+        blocks_by_category: Dict[str, List[Block]] = {}
         
-        Returns:
-            True если успешно сохранено
-        """
-        try:
-            # Создаём структуру папок
-            logger.info(f"Создание структуры папок в: {self.output_dir}")
-            for block_type in BlockType:
-                type_dir = self.output_dir / block_type.value / "src"
-                type_dir.mkdir(parents=True, exist_ok=True)
+        for page in pages:
+            for block in page.blocks:
+                if block.category not in blocks_by_category:
+                    blocks_by_category[block.category] = []
+                blocks_by_category[block.category].append(block)
+        
+        logger.info(f"Найдено категорий: {len(blocks_by_category)}")
+        
+        # Для каждой категории создаём папку и сохраняем блоки
+        for category, blocks in blocks_by_category.items():
+            category_dir = base_output_path / category
+            src_dir = category_dir / "src"
+            src_dir.mkdir(parents=True, exist_ok=True)
             
-            # Подсчёт блоков
-            total_blocks = sum(len(page.blocks) for page in document.pages)
-            saved_count = 0
+            logger.info(f"Обработка категории '{category}': {len(blocks)} блоков")
             
-            # Обрезаем и сохраняем каждый блок
-            for page in document.pages:
-                page_num = page.page_number
-                if page_num not in page_images:
-                    logger.warning(f"Страница {page_num} не найдена в кеше изображений, пропускаем")
+            # Сохраняем кропы и обновляем image_file
+            for block in blocks:
+                # Получаем изображение страницы
+                if block.page_index >= len(pages):
+                    logger.warning(f"Страница {block.page_index} для блока {block.id} не найдена")
                     continue
                 
-                page_image = page_images[page_num]
+                page = pages[block.page_index]
+                page_image = page.image
                 
-                for idx, block in enumerate(page.blocks):
-                    crop_image = self._crop_block(page_image, block)
-                    if crop_image:
-                        filename = f"page_{page_num + 1}_block_{idx + 1}.png"
-                        save_path = self.output_dir / block.block_type.value / "src" / filename
-                        crop_image.save(save_path)
-                        saved_count += 1
-                        
-                        if saved_count % 10 == 0:
-                            logger.info(f"Сохранено блоков: {saved_count}/{total_blocks}")
+                # Обрезаем блок
+                x1, y1, x2, y2 = block.coords_px
+                crop = page_image.crop((x1, y1, x2, y2))
+                
+                # Сохраняем в JPEG
+                crop_filename = f"page{block.page_index}_block{block.id}.jpg"
+                crop_path = src_dir / crop_filename
+                crop.save(crop_path, "JPEG", quality=90)
+                
+                # Обновляем путь в блоке (относительный путь от категории)
+                block.image_file = f"src/{crop_filename}"
             
-            logger.info(f"Экспорт кропов завершён: {saved_count}/{total_blocks} блоков сохранено в {self.output_dir}")
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка сохранения кропов: {e}", exc_info=True)
-            return False
+            # Сохраняем blocks.json для этой категории
+            category_blocks_data = {
+                "category": category,
+                "original_pdf": doc_path,
+                "blocks": []
+            }
+            
+            for block in blocks:
+                block_data = {
+                    "id": block.id,
+                    "page_index": block.page_index,
+                    "coords_norm": list(block.coords_norm),
+                    "block_type": block.block_type.value,
+                    "category": block.category,
+                    "image_file": block.image_file,
+                    "source": block.source.value,
+                    "ocr_text": block.ocr_text
+                }
+                category_blocks_data["blocks"].append(block_data)
+            
+            # Записываем JSON
+            blocks_json_path = category_dir / "blocks.json"
+            with open(blocks_json_path, 'w', encoding='utf-8') as f:
+                json.dump(category_blocks_data, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"Категория '{category}': {len(blocks)} кропов сохранено, blocks.json создан")
+        
+        total_blocks = sum(len(blocks) for blocks in blocks_by_category.values())
+        logger.info(f"Экспорт завершён: {total_blocks} блоков в {len(blocks_by_category)} категориях")
     
-    def _crop_block(self, page_image: Image.Image, block: Block) -> Image.Image:
-        """
-        Обрезать блок из изображения страницы
-        
-        Args:
-            page_image: изображение страницы
-            block: блок с координатами
-        
-        Returns:
-            Обрезанное изображение
-        """
-        # Координаты для PIL: (left, top, right, bottom)
-        box = (
-            block.x,
-            block.y,
-            block.x + block.width,
-            block.y + block.height
-        )
-        return page_image.crop(box)
+    except Exception as e:
+        logger.error(f"Ошибка экспорта блоков: {e}", exc_info=True)
+        raise
 

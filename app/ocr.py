@@ -4,17 +4,19 @@ OCR обработка блоков
 """
 
 import logging
+from pathlib import Path
+from typing import Protocol, List, Optional
 from PIL import Image
-from typing import Optional
 import pytesseract
+from app.models import Block, BlockType
 
 
 logger = logging.getLogger(__name__)
 
 
-class OCREngine:
+class OCRBackend(Protocol):
     """
-    Абстрактный класс для OCR-движков
+    Интерфейс для OCR-движков
     """
     
     def recognize(self, image: Image.Image) -> str:
@@ -27,10 +29,10 @@ class OCREngine:
         Returns:
             Распознанный текст
         """
-        raise NotImplementedError
+        ...
 
 
-class TesseractOCR(OCREngine):
+class TesseractOCRBackend:
     """
     OCR через Tesseract (pytesseract)
     
@@ -50,7 +52,7 @@ class TesseractOCR(OCREngine):
             pytesseract.pytesseract.tesseract_cmd = tesseract_path
             logger.info(f"Tesseract путь установлен: {tesseract_path}")
         
-        logger.info(f"TesseractOCR инициализирован (языки: {lang})")
+        logger.info(f"TesseractOCRBackend инициализирован (языки: {lang})")
     
     def recognize(self, image: Image.Image) -> str:
         """
@@ -75,7 +77,7 @@ class TesseractOCR(OCREngine):
             return ""
 
 
-class DummyOCR(OCREngine):
+class DummyOCRBackend:
     """
     Заглушка для OCR (для тестирования без Tesseract)
     """
@@ -85,22 +87,64 @@ class DummyOCR(OCREngine):
         return "[OCR placeholder - Tesseract not configured]"
 
 
-# Фабрика OCR-движков
-def create_ocr_engine(engine_type: str = "tesseract", **kwargs) -> OCREngine:
+def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "") -> None:
     """
-    Создать OCR-движок
+    Запустить OCR для блоков типа TEXT или TABLE
     
     Args:
-        engine_type: тип движка ('tesseract', 'dummy', позже 'chandra', 'hunyuan')
-        **kwargs: параметры для конкретного движка
-    
-    Returns:
-        Экземпляр OCR-движка
+        blocks: список блоков для обработки
+        ocr_backend: объект, реализующий OCRBackend
+        base_dir: базовая директория для поиска файлов (если image_file относительный путь)
     """
-    if engine_type == "tesseract":
-        return TesseractOCR(**kwargs)
-    elif engine_type == "dummy":
-        return DummyOCR()
-    else:
-        raise ValueError(f"Неизвестный тип OCR-движка: {engine_type}")
+    processed = 0
+    skipped = 0
+    
+    for block in blocks:
+        # Пропускаем блоки типа IMAGE
+        if block.block_type == BlockType.IMAGE:
+            logger.debug(f"Блок {block.id} (IMAGE) пропущен - OCR не нужен")
+            skipped += 1
+            continue
+        
+        # Пропускаем блоки без image_file
+        if not block.image_file:
+            logger.warning(f"Блок {block.id} не имеет image_file, пропускаем")
+            skipped += 1
+            continue
+        
+        # Проверяем, что тип TEXT или TABLE
+        if block.block_type not in (BlockType.TEXT, BlockType.TABLE):
+            logger.debug(f"Блок {block.id} имеет тип {block.block_type}, пропускаем")
+            skipped += 1
+            continue
+        
+        try:
+            # Определяем полный путь к изображению
+            image_path = Path(block.image_file)
+            if not image_path.is_absolute() and base_dir:
+                image_path = Path(base_dir) / image_path
+            
+            # Проверяем существование файла
+            if not image_path.exists():
+                logger.warning(f"Файл изображения не найден: {image_path}")
+                skipped += 1
+                continue
+            
+            # Загружаем изображение
+            image = Image.open(image_path)
+            
+            # Запускаем OCR
+            ocr_text = ocr_backend.recognize(image)
+            
+            # Сохраняем результат в блок
+            block.ocr_text = ocr_text
+            processed += 1
+            
+            logger.debug(f"Блок {block.id}: OCR выполнен ({len(ocr_text)} символов)")
+        
+        except Exception as e:
+            logger.error(f"Ошибка OCR для блока {block.id}: {e}")
+            skipped += 1
+    
+    logger.info(f"OCR завершён: {processed} блоков обработано, {skipped} пропущено")
 

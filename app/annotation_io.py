@@ -1,82 +1,130 @@
 """
 Сохранение и загрузка разметки
-Работа с JSON-файлами для сохранения/загрузки blocks.json
+Работа с JSON-файлами для сохранения/загрузки annotations.json
 """
 
 import json
 import logging
 from pathlib import Path
-from typing import Optional
-from app.models import Document
+from typing import List
+from PIL import Image
+from app.models import PageModel, Block
 
 
 logger = logging.getLogger(__name__)
 
 
-class AnnotationIO:
+def save_annotations(doc_path: str, pages: List[PageModel], output_dir: str) -> None:
     """
-    Класс для сохранения и загрузки разметки в JSON
+    Сохранить разметку в общий annotations.json
+    
+    Args:
+        doc_path: путь к исходному PDF
+        pages: список PageModel со всеми страницами
+        output_dir: директория для выходных файлов
     """
+    try:
+        output_dir_path = Path(output_dir)
+        output_dir_path.mkdir(parents=True, exist_ok=True)
+        
+        # Сохраняем информацию о документе и блоках
+        annotations_data = {
+            "pdf_path": doc_path,
+            "pages": []
+        }
+        
+        # Для каждой страницы сохраняем метаданные (без самих изображений)
+        for page in pages:
+            page_data = {
+                "page_index": page.page_index,
+                "width": page.width,
+                "height": page.height,
+                "blocks": [block.to_dict() for block in page.blocks]
+            }
+            annotations_data["pages"].append(page_data)
+        
+        # Записываем в JSON
+        output_json_path = output_dir_path / "annotations.json"
+        with open(output_json_path, 'w', encoding='utf-8') as f:
+            json.dump(annotations_data, f, ensure_ascii=False, indent=2)
+        
+        total_blocks = sum(len(page.blocks) for page in pages)
+        logger.info(f"Разметка сохранена: {output_json_path} (страниц: {len(pages)}, блоков: {total_blocks})")
     
-    @staticmethod
-    def save_annotation(document: Document, output_path: str) -> bool:
-        """
-        Сохранить разметку в JSON-файл
-        
-        Args:
-            document: документ с разметкой
-            output_path: путь к JSON-файлу (обычно blocks.json)
-        
-        Returns:
-            True если успешно сохранено
-        """
-        try:
-            output_file = Path(output_path)
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Подсчёт блоков
-            total_blocks = sum(len(page.blocks) for page in document.pages)
-            
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(document.to_dict(), f, ensure_ascii=False, indent=2)
-            
-            logger.info(f"Разметка сохранена: {output_path} (страниц: {len(document.pages)}, блоков: {total_blocks})")
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка сохранения разметки в {output_path}: {e}")
-            return False
+    except Exception as e:
+        logger.error(f"Ошибка сохранения разметки: {e}")
+        raise
+
+
+def load_annotations(json_path: str, images: List[Image.Image]) -> List[PageModel]:
+    """
+    Загрузить разметку из annotations.json и привязать к изображениям
     
-    @staticmethod
-    def load_annotation(input_path: str) -> Optional[Document]:
-        """
-        Загрузить разметку из JSON-файла
+    Args:
+        json_path: путь к JSON-файлу
+        images: список PIL.Image для каждой страницы (в порядке page_index)
+    
+    Returns:
+        Список PageModel с восстановленными блоками
+    """
+    try:
+        json_file = Path(json_path)
         
-        Args:
-            input_path: путь к JSON-файлу
+        if not json_file.exists():
+            logger.error(f"Файл разметки не найден: {json_path}")
+            return []
         
-        Returns:
-            Document или None в случае ошибки
-        """
-        try:
-            input_file = Path(input_path)
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        pages = []
+        
+        for page_data in data.get("pages", []):
+            page_index = page_data["page_index"]
             
-            if not input_file.exists():
-                logger.error(f"Файл разметки не найден: {input_path}")
-                return None
+            # Проверяем наличие соответствующего изображения
+            if page_index >= len(images):
+                logger.warning(f"Изображение для страницы {page_index} не найдено, пропускаем")
+                continue
             
-            with open(input_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            image = images[page_index]
             
-            document = Document.from_dict(data)
+            # Создаём PageModel
+            page_model = PageModel(
+                page_index=page_index,
+                image=image,
+                blocks=[]
+            )
             
-            total_blocks = sum(len(page.blocks) for page in document.pages)
-            logger.info(f"Разметка загружена: {input_path} (страниц: {len(document.pages)}, блоков: {total_blocks})")
+            # Восстанавливаем блоки
+            for block_data in page_data.get("blocks", []):
+                block = Block.from_dict(block_data)
+                
+                # Пересчитываем пиксельные координаты по текущему размеру изображения
+                stored_width = page_data.get("width", image.width)
+                stored_height = page_data.get("height", image.height)
+                
+                if stored_width != image.width or stored_height != image.height:
+                    # Пересчитываем координаты из нормализованных
+                    block.coords_px = Block.norm_to_px(
+                        block.coords_norm,
+                        image.width,
+                        image.height
+                    )
+                
+                page_model.add_block(block)
             
-            return document
-        except json.JSONDecodeError as e:
-            logger.error(f"Некорректный JSON в файле {input_path}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Ошибка загрузки разметки из {input_path}: {e}")
-            return None
+            pages.append(page_model)
+        
+        total_blocks = sum(len(page.blocks) for page in pages)
+        logger.info(f"Разметка загружена: {json_path} (страниц: {len(pages)}, блоков: {total_blocks})")
+        
+        return pages
+    
+    except json.JSONDecodeError as e:
+        logger.error(f"Некорректный JSON в файле {json_path}: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Ошибка загрузки разметки: {e}")
+        return []
 
