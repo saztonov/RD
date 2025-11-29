@@ -11,11 +11,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QActionGroup
 from pathlib import Path
 from typing import Optional
-from app.models import Document, Page, Block, BlockType, BlockSource
+from app.models import Document, Page, Block, BlockType, BlockSource, PageModel
 from app.pdf_utils import PDFDocument
 from app.gui.page_viewer import PageViewer
 from app.annotation_io import AnnotationIO
-from app.cropping import Cropper
+from app.cropping import Cropper, export_blocks_by_category
 from app.ocr import create_ocr_engine
 from app.report_md import MarkdownReporter
 from app.auto_segmentation import AutoSegmentation, detect_blocks_from_image
@@ -745,15 +745,27 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Успех", f"OCR завершён. Обработано {processed_count} блоков.")
     
     def _export_crops(self):
-        """Экспорт кропов блоков"""
+        """Экспорт кропов блоков по категориям"""
         if not self.annotation_document:
             return
         
         output_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для экспорта")
         if output_dir:
-            cropper = Cropper(output_dir)
-            cropper.save_block_crops(self.annotation_document, self.page_images)
-            QMessageBox.information(self, "Успех", "Кропы сохранены")
+            # Конвертируем legacy Document в список PageModel
+            pages_list = []
+            for page in self.annotation_document.pages:
+                page_num = page.page_number
+                if page_num in self.page_images:
+                    page_model = PageModel(
+                        page_index=page_num,
+                        image=self.page_images[page_num],
+                        blocks=page.blocks
+                    )
+                    pages_list.append(page_model)
+            
+            # Экспортируем по категориям
+            export_blocks_by_category(self.annotation_document.pdf_path, pages_list, output_dir)
+            QMessageBox.information(self, "Успех", "Кропы сохранены по категориям")
     
     def _generate_markdown(self):
         """Генерация Markdown отчётов"""
