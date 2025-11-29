@@ -6,7 +6,7 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog, QSpinBox,
                                QComboBox, QTextEdit, QGroupBox, QMessageBox, QToolBar,
-                               QLineEdit, QTreeWidget, QTreeWidgetItem)
+                               QLineEdit, QTreeWidget, QTreeWidgetItem, QTabWidget)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QActionGroup
 from pathlib import Path
@@ -234,12 +234,26 @@ class MainWindow(QMainWindow):
         blocks_group = QGroupBox("Все блоки")
         blocks_layout = QVBoxLayout(blocks_group)
         
+        # Вкладки
+        self.blocks_tabs = QTabWidget()
+        
+        # Вкладка 1: Страница → Категория → Блок
         self.blocks_tree = QTreeWidget()
         self.blocks_tree.setHeaderLabels(["Название", "Тип"])
         self.blocks_tree.setColumnWidth(0, 150)
         self.blocks_tree.itemClicked.connect(self._on_tree_block_clicked)
         self.blocks_tree.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
-        blocks_layout.addWidget(self.blocks_tree)
+        self.blocks_tabs.addTab(self.blocks_tree, "Страница")
+        
+        # Вкладка 2: Категория → Блок → Страница
+        self.blocks_tree_by_category = QTreeWidget()
+        self.blocks_tree_by_category.setHeaderLabels(["Название", "Тип"])
+        self.blocks_tree_by_category.setColumnWidth(0, 150)
+        self.blocks_tree_by_category.itemClicked.connect(self._on_tree_block_clicked)
+        self.blocks_tree_by_category.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
+        self.blocks_tabs.addTab(self.blocks_tree_by_category, "Категория")
+        
+        blocks_layout.addWidget(self.blocks_tabs)
         
         layout.addWidget(blocks_group)
         
@@ -510,6 +524,39 @@ class MainWindow(QMainWindow):
                     block_item.setText(0, f"Блок {idx + 1}")
                     block_item.setText(1, block.block_type.value)
                     block_item.setData(0, Qt.UserRole, {"type": "block", "page": page_num, "idx": idx})
+        
+        # Обновляем второе дерево (группировка по категориям)
+        self._update_blocks_tree_by_category()
+    
+    def _update_blocks_tree_by_category(self):
+        """Обновить дерево блоков со всех страниц, группировка по категориям"""
+        self.blocks_tree_by_category.clear()
+        
+        if not self.annotation_document:
+            return
+        
+        # Собираем все блоки со всех страниц, группируем по категориям
+        categories = {}
+        for page in self.annotation_document.pages:
+            page_num = page.page_number
+            for idx, block in enumerate(page.blocks):
+                cat = block.category if block.category else "(Без категории)"
+                if cat not in categories:
+                    categories[cat] = []
+                categories[cat].append((page_num, idx, block))
+        
+        # Создаём узлы для каждой категории
+        for cat_name in sorted(categories.keys()):
+            cat_item = QTreeWidgetItem(self.blocks_tree_by_category)
+            cat_item.setText(0, cat_name)
+            cat_item.setData(0, Qt.UserRole, {"type": "category"})
+            cat_item.setExpanded(True)
+            
+            for page_num, idx, block in categories[cat_name]:
+                block_item = QTreeWidgetItem(cat_item)
+                block_item.setText(0, f"Блок {idx + 1} (стр. {page_num + 1})")
+                block_item.setText(1, block.block_type.value)
+                block_item.setData(0, Qt.UserRole, {"type": "block", "page": page_num, "idx": idx})
     
     def _on_tree_block_clicked(self, item: QTreeWidgetItem, column: int):
         """Клик по блоку в дереве - переход на страницу и выделение"""
@@ -556,7 +603,7 @@ class MainWindow(QMainWindow):
     
     def _select_block_in_tree(self, block_idx: int):
         """Выделить блок в дереве"""
-        # Ищем item с нужным индексом на текущей странице
+        # Выделяем в первом дереве (по страницам)
         for i in range(self.blocks_tree.topLevelItemCount()):
             page_item = self.blocks_tree.topLevelItem(i)
             page_data = page_item.data(0, Qt.UserRole)
@@ -568,9 +615,19 @@ class MainWindow(QMainWindow):
                 for k in range(cat_item.childCount()):
                     block_item = cat_item.child(k)
                     data = block_item.data(0, Qt.UserRole)
-                    if data and data.get("idx") == block_idx:
+                    if data and data.get("idx") == block_idx and data.get("page") == self.current_page:
                         self.blocks_tree.setCurrentItem(block_item)
-                        return
+                        break
+        
+        # Выделяем во втором дереве (по категориям)
+        for i in range(self.blocks_tree_by_category.topLevelItemCount()):
+            cat_item = self.blocks_tree_by_category.topLevelItem(i)
+            for j in range(cat_item.childCount()):
+                block_item = cat_item.child(j)
+                data = block_item.data(0, Qt.UserRole)
+                if data and data.get("idx") == block_idx and data.get("page") == self.current_page:
+                    self.blocks_tree_by_category.setCurrentItem(block_item)
+                    return
     
     def _delete_selected_block(self):
         """Удалить выбранный блок"""
