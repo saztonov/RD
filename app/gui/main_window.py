@@ -1043,18 +1043,18 @@ class MainWindow(QMainWindow):
         try:
             from app.marker_integration import segment_with_marker
             
-            # Рендерим все страницы если еще нет
-            for page_num in range(self.pdf_document.page_count):
-                if page_num not in self.page_images:
-                    img = self.pdf_document.render_page(page_num)
-                    if img:
-                        self.page_images[page_num] = img
+            # Рендерим текущую страницу если еще нет
+            if self.current_page not in self.page_images:
+                img = self.pdf_document.render_page(self.current_page)
+                if img:
+                    self.page_images[self.current_page] = img
             
             # Запускаем Marker
             updated_pages = segment_with_marker(
                 self.pdf_document.pdf_path,
                 self.annotation_document.pages,
-                self.page_images
+                self.page_images,
+                page_range=[self.current_page]
             )
             
             if updated_pages:

@@ -5,8 +5,10 @@ https://github.com/datalab-to/marker
 
 from pathlib import Path
 from typing import List, Optional
-from PIL import Image
 import logging
+import tempfile
+import os
+import fitz  # PyMuPDF
 
 from app.models import Block, BlockType, BlockSource, Page
 
@@ -37,7 +39,7 @@ class MarkerSegmentation:
             raise
     
     def segment_pdf(self, pdf_path: str, pages: List[Page], 
-                    page_images: dict) -> List[Page]:
+                    page_images: dict, page_range: Optional[List[int]] = None) -> List[Page]:
         """
         Разметка PDF с помощью Marker
         
@@ -45,25 +47,61 @@ class MarkerSegmentation:
             pdf_path: путь к PDF файлу
             pages: список страниц Document
             page_images: словарь {page_num: PIL.Image}
+            page_range: список индексов страниц для обработки (если None, обрабатываются все)
         
         Returns:
             Обновленный список страниц с блоками от Marker
         """
+        temp_pdf_path = None
+        target_pdf_path = pdf_path
+        
         try:
-            logger.info(f"Запуск Marker для {pdf_path}")
+            # Если указан диапазон страниц, создаем временный PDF
+            if page_range is not None:
+                try:
+                    doc = fitz.open(pdf_path)
+                    new_doc = fitz.open()
+                    new_doc.insert_pdf(doc, from_page=page_range[0], to_page=page_range[-1])
+                    
+                    # Создаем временный файл
+                    fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf")
+                    os.close(fd)
+                    
+                    new_doc.save(temp_pdf_path)
+                    new_doc.close()
+                    doc.close()
+                    
+                    target_pdf_path = temp_pdf_path
+                    logger.info(f"Создан временный PDF для {len(page_range)} страниц: {temp_pdf_path}")
+                except Exception as e:
+                    logger.error(f"Ошибка создания временного PDF: {e}")
+                    if temp_pdf_path and os.path.exists(temp_pdf_path):
+                        os.unlink(temp_pdf_path)
+                    raise
+
+            logger.info(f"Запуск Marker для {target_pdf_path}")
             
             # Используем build_document для получения Document с pages
-            document = self._converter.build_document(pdf_path)
+            document = self._converter.build_document(target_pdf_path)
             
             logger.info(f"Marker обработал PDF, страниц: {len(document.pages)}")
             
             # Извлечение блоков из каждой страницы
-            for page_idx, page_data in enumerate(document.pages):
-                if page_idx >= len(pages):
-                    break
+            for i, page_data in enumerate(document.pages):
+                # Определяем реальный индекс страницы
+                if page_range is not None:
+                    if i >= len(page_range):
+                        break
+                    real_page_idx = page_range[i]
+                else:
+                    real_page_idx = i
                 
-                page = pages[page_idx]
-                page_img = page_images.get(page_idx)
+                # Пропускаем, если вышли за границы исходного документа (на всякий случай)
+                if real_page_idx >= len(pages):
+                    continue
+                
+                page = pages[real_page_idx]
+                page_img = page_images.get(real_page_idx)
                 
                 if not page_img:
                     continue
@@ -79,20 +117,27 @@ class MarkerSegmentation:
                 
                 # Извлекаем блоки из страницы
                 blocks = self._extract_blocks_from_page(
-                    page_data, page_idx, page.width, page.height,
+                    page_data, real_page_idx, page.width, page.height,
                     marker_width, marker_height
                 )
                 
                 # Добавляем блоки на страницу
                 if blocks:
                     page.blocks.extend(blocks)
-                    logger.info(f"Страница {page_idx}: добавлено {len(blocks)} блоков")
+                    logger.info(f"Страница {real_page_idx}: добавлено {len(blocks)} блоков")
             
             return pages
             
         except Exception as e:
             logger.error(f"Ошибка Marker: {e}", exc_info=True)
             raise
+        finally:
+            # Удаляем временный файл
+            if temp_pdf_path and os.path.exists(temp_pdf_path):
+                try:
+                    os.unlink(temp_pdf_path)
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить временный файл {temp_pdf_path}: {e}")
     
     # Типы блоков верхнего уровня (игнорируем Line, Span, Word и т.д.)
     TOP_LEVEL_BLOCK_TYPES = {
@@ -160,10 +205,10 @@ class MarkerSegmentation:
                         source=BlockSource.AUTO
                     )
                     
-                    # Добавляем текст если есть (из structure)
-                    structure = getattr(marker_block, 'structure', None)
-                    if structure:
-                        block.ocr_text = str(structure)
+                    # Текст НЕ извлекаем, как запрошено
+                    # structure = getattr(marker_block, 'structure', None)
+                    # if structure:
+                    #     block.ocr_text = str(structure)
                     
                     blocks.append(block)
                     
@@ -206,7 +251,7 @@ class MarkerSegmentation:
 
 
 def segment_with_marker(pdf_path: str, pages: List[Page], 
-                        page_images: dict) -> Optional[List[Page]]:
+                        page_images: dict, page_range: Optional[List[int]] = None) -> Optional[List[Page]]:
     """
     Функция-обертка для разметки PDF через Marker
     
@@ -214,14 +259,14 @@ def segment_with_marker(pdf_path: str, pages: List[Page],
         pdf_path: путь к PDF
         pages: список страниц
         page_images: словарь изображений страниц
+        page_range: список индексов страниц для обработки
     
     Returns:
         Обновленный список страниц или None при ошибке
     """
     try:
         segmenter = MarkerSegmentation()
-        return segmenter.segment_pdf(pdf_path, pages, page_images)
+        return segmenter.segment_pdf(pdf_path, pages, page_images, page_range)
     except Exception as e:
         logger.error(f"Ошибка разметки Marker: {e}")
         return None
-
