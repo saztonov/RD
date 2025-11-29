@@ -953,6 +953,17 @@ class MainWindow(QMainWindow):
             self._render_current_page()
             self._update_ui()
     
+    def keyPressEvent(self, event):
+        """Обработка нажатия клавиш в главном окне"""
+        if event.key() == Qt.Key_Left:
+            self._prev_page()
+            return
+        elif event.key() == Qt.Key_Right:
+            self._next_page()
+            return
+        
+        super().keyPressEvent(event)
+    
     def eventFilter(self, obj, event):
         """Обработка событий для деревьев блоков"""
         from PySide6.QtCore import QEvent

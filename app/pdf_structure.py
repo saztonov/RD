@@ -116,6 +116,13 @@ class PDFStructureAnalyzer:
             for img_idx, img in enumerate(image_list):
                 try:
                     xref = img[0]
+                    # Проверяем, не удалено ли изображение (пустой поток)
+                    try:
+                        if self.doc.xref_length(xref) == 0:
+                            continue
+                    except:
+                        pass
+
                     try:
                         bbox = page.get_image_bbox(img[7] if len(img) > 7 else f"img{img_idx}")
                         bbox_tuple = (bbox.x0, bbox.y0, bbox.x1, bbox.y1) if bbox else (0, 0, 0, 0)
@@ -147,14 +154,37 @@ class PDFStructureAnalyzer:
             for xobj_idx, xobj in enumerate(xobjects):
                 try:
                     xref = xobj[0]
+                    
+                    # Проверяем, не пустой ли объект (удаленный)
+                    try:
+                        if self.doc.xref_length(xref) == 0:
+                            continue
+                    except:
+                        pass
+                        
                     name = xobj[1] if len(xobj) > 1 else f"XObj_{xobj_idx}"
                     
+                    # Пытаемся получить BBox из определения формы
+                    bbox_tuple = (0, 0, 0, 0)
+                    try:
+                        bbox_str = self.doc.xref_get_key(xref, "BBox")
+                        if bbox_str and bbox_str != "null":
+                            # Формат [x0 y0 x1 y1]
+                            import re
+                            nums = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|[-+]?\d+", bbox_str)]
+                            if len(nums) >= 4:
+                                # Это BBox в координатах формы, но лучше чем ничего
+                                # Можно попытаться найти матрицу преобразования, но это сложно без парсинга потока
+                                bbox_tuple = (nums[0], nums[1], nums[2], nums[3])
+                    except Exception as e:
+                        logger.debug(f"Не удалось получить BBox для XObject {xref}: {e}")
+
                     elem = PDFElement(
                         element_type=PDFElementType.FORM,
                         page_num=page_num,
                         index=xobj_idx,
                         name=f"Контейнер: {name}",
-                        bbox=(0, 0, 0, 0),  # Получим позже если нужно
+                        bbox=bbox_tuple,
                         xref=xref,
                         properties={"name": name}
                     )
@@ -237,12 +267,9 @@ class PDFStructureModifier:
                 # Удаление изображения через xref
                 if element.xref:
                     try:
-                        # Удаляем через cleanContents
-                        page.clean_contents()
-                        # Пытаемся удалить объект
-                        # Это сложнее - нужно удалить ссылки в content stream
-                        logger.info(f"Изображение xref={element.xref} помечено для удаления")
-                        # TODO: полное удаление изображений сложнее
+                        logger.info(f"Удаление изображения xref={element.xref}")
+                        # Используем delete_image для удаления ссылки со страницы
+                        page.delete_image(element.xref)
                         return True
                     except Exception as e:
                         logger.error(f"Ошибка удаления изображения: {e}")
@@ -252,7 +279,11 @@ class PDFStructureModifier:
                 if element.xref:
                     try:
                         logger.info(f"Form XObject xref={element.xref} помечен для удаления")
-                        # TODO: удаление Form XObjects
+                        # Очищаем поток XObject, делая его пустым
+                        # Это скроет его на всех страницах, где он используется
+                        self.doc.update_stream(element.xref, b"")
+                        # Также можно удалить BBox чтобы убедиться что он не занимает место
+                        self.doc.xref_set_key(element.xref, "BBox", "[0 0 0 0]")
                         return True
                     except Exception as e:
                         logger.error(f"Ошибка удаления Form XObject: {e}")

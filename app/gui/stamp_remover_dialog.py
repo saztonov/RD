@@ -5,10 +5,10 @@
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                                QTreeWidget, QTreeWidgetItem, QLabel, QSplitter,
-                               QMessageBox, QFileDialog, QCheckBox)
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QImage
-from typing import List, Dict, Optional
+                               QMessageBox, QFileDialog, QCheckBox, QSpinBox, QWidget)
+from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtGui import QPixmap, QImage, QPainter, QPen, QColor
+from typing import List, Dict, Optional, Set
 from pathlib import Path
 import logging
 import tempfile
@@ -32,9 +32,14 @@ class StampRemoverDialog(QDialog):
         self.pdf_path = pdf_path
         self.analyzer = PDFStructureAnalyzer(pdf_path)
         self.page_elements: Dict[int, List[PDFElement]] = {}
-        self.selected_elements: List[PDFElement] = []
+        self.checked_elements: Set[tuple] = set()  # (page_num, element_type, index)
         self.cleaned_pdf_path: Optional[str] = None
         self.structure_loaded: bool = False
+        self.current_preview_page: int = 0
+        self.total_pages: int = 0
+        self.selected_tree_item: Optional[QTreeWidgetItem] = None
+        self.current_preview_pixmap: Optional[QPixmap] = None
+        self.highlighted_element: Optional[PDFElement] = None
         
         self.setWindowTitle("Удаление электронных штампов")
         self.resize(1400, 900)
@@ -67,10 +72,8 @@ class StampRemoverDialog(QDialog):
         """Настройка интерфейса"""
         logger.debug("[StampRemover] _setup_ui: начало")
         layout = QVBoxLayout(self)
-        
-        # Заголовок
-        header = QLabel(f"<b>Документ:</b> {Path(self.pdf_path).name}")
-        layout.addWidget(header)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         
         # Основной сплиттер: слева структура, справа предпросмотр
         splitter = QSplitter(Qt.Horizontal)
@@ -79,12 +82,12 @@ class StampRemoverDialog(QDialog):
         left_panel = self._create_structure_panel()
         splitter.addWidget(left_panel)
         
-        # Правая панель: предпросмотр
+        # Правая панель: предпросмотр с навигацией
         right_panel = self._create_preview_panel()
         splitter.addWidget(right_panel)
         
         splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
+        splitter.setStretchFactor(1, 3)
         
         layout.addWidget(splitter)
         
@@ -117,16 +120,21 @@ class StampRemoverDialog(QDialog):
         
         panel = QWidget()
         layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
         
-        layout.addWidget(QLabel("<b>Структура PDF:</b>"))
-        
-        # Дерево элементов
+        # Дерево элементов с чекбоксами
         self.structure_tree = QTreeWidget()
         self.structure_tree.setHeaderLabels(["Элемент", "Тип"])
         self.structure_tree.setColumnWidth(0, 250)
-        self.structure_tree.setSelectionMode(QTreeWidget.ExtendedSelection)
-        self.structure_tree.itemSelectionChanged.connect(self._on_selection_changed)
+        self.structure_tree.itemClicked.connect(self._on_item_clicked)
         layout.addWidget(self.structure_tree)
+        
+        # Кнопка "Выбрать такое на всех листах"
+        self.select_similar_btn = QPushButton("✓ Выбрать такое на всех листах")
+        self.select_similar_btn.clicked.connect(self._select_similar_on_all_pages)
+        self.select_similar_btn.setEnabled(False)
+        layout.addWidget(self.select_similar_btn)
         
         # Опции фильтрации
         filter_layout = QHBoxLayout()
@@ -149,19 +157,43 @@ class StampRemoverDialog(QDialog):
         layout.addLayout(filter_layout)
         
         # Статистика
-        self.stats_label = QLabel("Всего элементов: 0")
+        self.stats_label = QLabel("Всего элементов: 0 | Выбрано: 0")
         layout.addWidget(self.stats_label)
         
         return panel
     
     def _create_preview_panel(self):
-        """Создать панель предпросмотра"""
+        """Создать панель предпросмотра с навигацией"""
         from PySide6.QtWidgets import QWidget, QVBoxLayout, QScrollArea
         
         panel = QWidget()
         layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
         
-        layout.addWidget(QLabel("<b>Предпросмотр:</b>"))
+        # Навигация по страницам
+        nav_layout = QHBoxLayout()
+        
+        self.prev_page_btn = QPushButton("◀ Назад")
+        self.prev_page_btn.clicked.connect(self._prev_page)
+        nav_layout.addWidget(self.prev_page_btn)
+        
+        self.page_spin = QSpinBox()
+        self.page_spin.setMinimum(1)
+        self.page_spin.setMaximum(1)
+        self.page_spin.valueChanged.connect(self._on_page_changed)
+        nav_layout.addWidget(self.page_spin)
+        
+        self.page_label = QLabel("из 1")
+        nav_layout.addWidget(self.page_label)
+        
+        self.next_page_btn = QPushButton("Вперед ▶")
+        self.next_page_btn.clicked.connect(self._next_page)
+        nav_layout.addWidget(self.next_page_btn)
+        
+        nav_layout.addStretch()
+        
+        layout.addLayout(nav_layout)
         
         # Скролл-область для изображений
         scroll = QScrollArea()
@@ -187,7 +219,15 @@ class StampRemoverDialog(QDialog):
             
             # Получаем количество страниц
             page_count = len(self.analyzer.doc) if self.analyzer.doc else 0
+            self.total_pages = page_count
             logger.info(f"[StampRemover] Страниц в документе: {page_count}")
+            
+            # Обновляем навигацию
+            self.page_spin.blockSignals(True)
+            self.page_spin.setMaximum(max(1, page_count))
+            self.page_spin.setValue(1)
+            self.page_spin.blockSignals(False)
+            self.page_label.setText(f"из {page_count}")
             
             # Прогресс для больших файлов
             progress = None
@@ -229,7 +269,9 @@ class StampRemoverDialog(QDialog):
             
             logger.info("[StampRemover] Отображение предпросмотра")
             # Показываем первую страницу
+            self.current_preview_page = 0
             self._show_preview_page(0)
+            self._update_navigation_buttons()
             
             logger.info("[StampRemover] Загрузка структуры завершена успешно")
         
@@ -271,34 +313,165 @@ class StampRemoverDialog(QDialog):
                 page_item.setText(0, f"Страница {page_num + 1}")
                 page_item.setText(1, f"({len(filtered)} элем.)")
                 page_item.setData(0, Qt.UserRole, {"type": "page", "page_num": page_num})
+                page_item.setCheckState(0, Qt.Unchecked)
                 page_item.setExpanded(True)
                 
-                # Добавляем элементы
+                # Добавляем элементы с чекбоксами
                 for elem in filtered:
                     elem_item = QTreeWidgetItem(page_item)
                     elem_item.setText(0, elem.name)
                     elem_item.setText(1, elem.element_type.value)
                     elem_item.setData(0, Qt.UserRole, {"type": "element", "element": elem})
                     
+                    # Устанавливаем чекбокс
+                    elem_key = (elem.page_num, elem.element_type, elem.index)
+                    if elem_key in self.checked_elements:
+                        elem_item.setCheckState(0, Qt.Checked)
+                    else:
+                        elem_item.setCheckState(0, Qt.Unchecked)
+                    
                     total_count += 1
             
-            self.stats_label.setText(f"Всего элементов: {total_count}")
+            self.stats_label.setText(f"Всего элементов: {total_count} | Выбрано: {len(self.checked_elements)}")
             logger.debug(f"[StampRemover] _update_tree: завершено, элементов: {total_count}")
         
         except Exception as e:
             logger.error(f"[StampRemover] Ошибка обновления дерева: {e}", exc_info=True)
             self.stats_label.setText(f"Ошибка: {e}")
     
-    def _on_selection_changed(self):
-        """Обработка изменения выбора"""
-        self.selected_elements.clear()
+    def _on_item_clicked(self, item: QTreeWidgetItem, column: int):
+        """Обработка клика по элементу дерева"""
+        data = item.data(0, Qt.UserRole)
         
-        for item in self.structure_tree.selectedItems():
-            data = item.data(0, Qt.UserRole)
-            if data and data.get("type") == "element":
-                self.selected_elements.append(data["element"])
+        if data and data.get("type") == "element":
+            elem = data["element"]
+            elem_key = (elem.page_num, elem.element_type, elem.index)
+            
+            # Переключаем состояние чекбокса
+            if item.checkState(0) == Qt.Checked:
+                self.checked_elements.add(elem_key)
+            else:
+                self.checked_elements.discard(elem_key)
+            
+            # Запоминаем выбранный элемент для кнопки "Выбрать такое на всех листах"
+            self.selected_tree_item = item
+            self.select_similar_btn.setEnabled(True)
+            
+            # Подсвечиваем элемент в предпросмотре
+            self.highlighted_element = elem
+            if elem.page_num != self.current_preview_page:
+                # Переключаемся на страницу элемента
+                self.current_preview_page = elem.page_num
+                self.page_spin.blockSignals(True)
+                self.page_spin.setValue(elem.page_num + 1)
+                self.page_spin.blockSignals(False)
+                self._show_preview_page(elem.page_num)
+                self._update_navigation_buttons()
+            else:
+                # Перерисовываем текущую страницу с подсветкой
+                self._redraw_preview_with_highlight()
+            
+            self.stats_label.setText(f"Всего элементов: {self._count_total_elements()} | Выбрано: {len(self.checked_elements)}")
+            
+            logger.debug(f"Выбрано элементов: {len(self.checked_elements)}")
         
-        logger.debug(f"Выбрано элементов: {len(self.selected_elements)}")
+        elif data and data.get("type") == "page":
+            # Клик по странице - переключаем все дочерние элементы
+            page_num = data["page_num"]
+            check_state = item.checkState(0)
+            
+            for i in range(item.childCount()):
+                child = item.child(i)
+                child.setCheckState(0, check_state)
+                
+                child_data = child.data(0, Qt.UserRole)
+                if child_data and child_data.get("type") == "element":
+                    elem = child_data["element"]
+                    elem_key = (elem.page_num, elem.element_type, elem.index)
+                    
+                    if check_state == Qt.Checked:
+                        self.checked_elements.add(elem_key)
+                    else:
+                        self.checked_elements.discard(elem_key)
+            
+            # Переключаемся на страницу
+            if page_num != self.current_preview_page:
+                self.current_preview_page = page_num
+                self.page_spin.blockSignals(True)
+                self.page_spin.setValue(page_num + 1)
+                self.page_spin.blockSignals(False)
+                self._show_preview_page(page_num)
+                self._update_navigation_buttons()
+            
+            self.stats_label.setText(f"Всего элементов: {self._count_total_elements()} | Выбрано: {len(self.checked_elements)}")
+    
+    def _count_total_elements(self) -> int:
+        """Подсчитать общее количество элементов"""
+        total = 0
+        for elements in self.page_elements.values():
+            total += len(elements)
+        return total
+    
+    def _select_similar_on_all_pages(self):
+        """Выбрать похожие элементы на всех страницах"""
+        if not self.selected_tree_item:
+            return
+        
+        data = self.selected_tree_item.data(0, Qt.UserRole)
+        if not data or data.get("type") != "element":
+            return
+        
+        selected_elem = data["element"]
+        
+        # Критерии поиска похожих элементов
+        similar_count = 0
+        for page_num, elements in self.page_elements.items():
+            for elem in elements:
+                if self._is_similar_element(selected_elem, elem):
+                    elem_key = (elem.page_num, elem.element_type, elem.index)
+                    self.checked_elements.add(elem_key)
+                    similar_count += 1
+        
+        # Обновляем дерево
+        self._update_tree()
+        
+        QMessageBox.information(
+            self,
+            "Выбрано",
+            f"Выбрано {similar_count} похожих элементов на всех страницах"
+        )
+    
+    def _is_similar_element(self, elem1: PDFElement, elem2: PDFElement) -> bool:
+        """Проверить, похожи ли два элемента"""
+        # Одинаковый тип
+        if elem1.element_type != elem2.element_type:
+            return False
+        
+        # Для аннотаций: одинаковый подтип
+        if elem1.element_type == PDFElementType.ANNOTATION:
+            type1 = elem1.properties.get("type", "")
+            type2 = elem2.properties.get("type", "")
+            if type1 != type2:
+                return False
+        
+        # Похожий размер (в пределах 10%)
+        bbox1 = elem1.bbox
+        bbox2 = elem2.bbox
+        
+        width1 = abs(bbox1[2] - bbox1[0])
+        height1 = abs(bbox1[3] - bbox1[1])
+        
+        width2 = abs(bbox2[2] - bbox2[0])
+        height2 = abs(bbox2[3] - bbox2[1])
+        
+        if width1 > 0 and height1 > 0 and width2 > 0 and height2 > 0:
+            width_diff = abs(width1 - width2) / max(width1, width2)
+            height_diff = abs(height1 - height2) / max(height1, height2)
+            
+            if width_diff > 0.1 or height_diff > 0.1:
+                return False
+        
+        return True
     
     def _show_preview_page(self, page_num: int):
         """Показать предпросмотр страницы"""
@@ -344,7 +517,13 @@ class StampRemoverDialog(QDialog):
                     logger.debug(f"[StampRemover] Масштабировано до: {scaled.size()}")
                     
                     logger.debug(f"[StampRemover] Установка pixmap в label")
+                    self.current_preview_pixmap = pixmap  # Сохраняем оригинал
                     self.preview_label.setPixmap(scaled)
+                    
+                    # Если есть выделенный элемент на этой странице - подсвечиваем
+                    if self.highlighted_element and self.highlighted_element.page_num == page_num:
+                        self._redraw_preview_with_highlight()
+                    
                     logger.info(f"[StampRemover] Предпросмотр отображен успешно")
                 else:
                     logger.warning(f"[StampRemover] Не удалось отрендерить страницу {page_num}")
@@ -366,40 +545,118 @@ class StampRemoverDialog(QDialog):
     
     def _remove_selected(self):
         """Удалить выбранные элементы"""
-        if not self.selected_elements:
+        if not self.checked_elements:
             QMessageBox.information(self, "Информация", "Выберите элементы для удаления")
             return
         
         reply = QMessageBox.question(
             self,
             "Подтверждение",
-            f"Удалить {len(self.selected_elements)} элемент(ов)?",
+            f"Удалить {len(self.checked_elements)} элемент(ов)?",
             QMessageBox.Yes | QMessageBox.No
         )
         
         if reply != QMessageBox.Yes:
             return
         
-        # Создаем временный файл
+        # Собираем элементы для удаления
+        elements_to_remove = []
+        for page_num, elements in self.page_elements.items():
+            for elem in elements:
+                elem_key = (elem.page_num, elem.element_type, elem.index)
+                if elem_key in self.checked_elements:
+                    elements_to_remove.append(elem)
+        
+        # Создаем временный файл с уникальным именем
+        import time
         temp_dir = tempfile.gettempdir()
-        temp_pdf = Path(temp_dir) / f"cleaned_{Path(self.pdf_path).name}"
+        timestamp = int(time.time() * 1000)
+        original_name = Path(self.pdf_path).stem
+        temp_pdf = Path(temp_dir) / f"cleaned_{original_name}_{timestamp}.pdf"
+        
+        logger.info(f"[StampRemover] Удаление элементов из: {self.pdf_path}")
+        logger.info(f"[StampRemover] Сохранение очищенного PDF в: {temp_pdf}")
         
         # Удаляем элементы
         modifier = PDFStructureModifier(self.pdf_path)
         if modifier.open():
-            count = modifier.remove_elements(self.selected_elements)
+            count = modifier.remove_elements(elements_to_remove)
             
             if modifier.save(str(temp_pdf)):
-                self.cleaned_pdf_path = str(temp_pdf)
-                QMessageBox.information(self, "Успех", f"Удалено {count} элемент(ов)")
+                logger.info(f"[StampRemover] Очищенный PDF успешно сохранен")
                 
-                # Обновляем предпросмотр
-                self.pdf_path = self.cleaned_pdf_path
-                self._load_structure()
+                # Обновляем путь к PDF ПЕРЕД удалением элементов из структуры
+                old_pdf_path = self.pdf_path
+                self.pdf_path = str(temp_pdf)
+                self.cleaned_pdf_path = str(temp_pdf)
+                
+                # Удаляем элементы из page_elements
+                for elem_key in list(self.checked_elements):
+                    page_num, elem_type, elem_index = elem_key
+                    if page_num in self.page_elements:
+                        # Находим и удаляем элемент
+                        self.page_elements[page_num] = [
+                            e for e in self.page_elements[page_num]
+                            if not (e.element_type == elem_type and e.index == elem_index)
+                        ]
+                
+                self.checked_elements.clear()
+                self.highlighted_element = None
+                
+                logger.info(f"[StampRemover] Обновление дерева структуры")
+                # Обновляем дерево
+                self._update_tree()
+                
+                logger.info(f"[StampRemover] Перезагрузка предпросмотра страницы {self.current_preview_page}")
+                # Перезагружаем предпросмотр из нового PDF
+                self._show_preview_page(self.current_preview_page)
+                
+                QMessageBox.information(self, "Успех", f"Удалено {count} элемент(ов)")
             else:
+                logger.error("[StampRemover] Не удалось сохранить очищенный PDF")
                 QMessageBox.critical(self, "Ошибка", "Не удалось сохранить изменения")
             
             modifier.close()
+    
+    def _redraw_preview_with_highlight(self):
+        """Перерисовать предпросмотр с подсветкой выделенного элемента"""
+        if not self.current_preview_pixmap or not self.highlighted_element:
+            return
+        
+        # Создаем копию pixmap для рисования
+        pixmap = self.current_preview_pixmap.copy()
+        
+        # Рисуем bbox элемента
+        painter = QPainter(pixmap)
+        
+        # Красный прямоугольник
+        pen = QPen(QColor(255, 0, 0), 4)
+        painter.setPen(pen)
+        
+        bbox = self.highlighted_element.bbox
+        x0, y0, x1, y1 = bbox
+        
+        # Преобразуем координаты PDF в координаты изображения
+        # PDF координаты обычно в точках, нужно масштабировать
+        # Получаем размер отрендеренного изображения
+        img_width = pixmap.width()
+        img_height = pixmap.height()
+        
+        # Предполагаем, что bbox уже в координатах отрендеренного изображения
+        # Если нет - нужно пересчитать через zoom factor
+        # Для упрощения предполагаем zoom=1.5 (как в render_page)
+        zoom = 1.5
+        rect_x = int(x0 * zoom)
+        rect_y = int(y0 * zoom)
+        rect_w = int((x1 - x0) * zoom)
+        rect_h = int((y1 - y0) * zoom)
+        
+        painter.drawRect(rect_x, rect_y, rect_w, rect_h)
+        painter.end()
+        
+        # Масштабируем и отображаем
+        scaled = pixmap.scaled(800, 1000, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.preview_label.setPixmap(scaled)
     
     def _preview_cleaned(self):
         """Предпросмотр очищенного PDF"""
@@ -434,4 +691,47 @@ class StampRemoverDialog(QDialog):
                 self.pdf_cleaned.emit(self.cleaned_pdf_path)
         
         self.accept()
+    
+    def _prev_page(self):
+        """Перейти на предыдущую страницу"""
+        if self.current_preview_page > 0:
+            self.current_preview_page -= 1
+            self.page_spin.blockSignals(True)
+            self.page_spin.setValue(self.current_preview_page + 1)
+            self.page_spin.blockSignals(False)
+            # Очищаем подсветку если элемент не на текущей странице
+            if self.highlighted_element and self.highlighted_element.page_num != self.current_preview_page:
+                self.highlighted_element = None
+            self._show_preview_page(self.current_preview_page)
+            self._update_navigation_buttons()
+    
+    def _next_page(self):
+        """Перейти на следующую страницу"""
+        if self.current_preview_page < self.total_pages - 1:
+            self.current_preview_page += 1
+            self.page_spin.blockSignals(True)
+            self.page_spin.setValue(self.current_preview_page + 1)
+            self.page_spin.blockSignals(False)
+            # Очищаем подсветку если элемент не на текущей странице
+            if self.highlighted_element and self.highlighted_element.page_num != self.current_preview_page:
+                self.highlighted_element = None
+            self._show_preview_page(self.current_preview_page)
+            self._update_navigation_buttons()
+    
+    def _on_page_changed(self, value: int):
+        """Обработка изменения номера страницы"""
+        new_page = value - 1  # SpinBox показывает 1-based, внутри храним 0-based
+        if 0 <= new_page < self.total_pages:
+            if new_page != self.current_preview_page:
+                self.current_preview_page = new_page
+                # Очищаем подсветку если элемент не на текущей странице
+                if self.highlighted_element and self.highlighted_element.page_num != self.current_preview_page:
+                    self.highlighted_element = None
+                self._show_preview_page(self.current_preview_page)
+            self._update_navigation_buttons()
+    
+    def _update_navigation_buttons(self):
+        """Обновить состояние кнопок навигации"""
+        self.prev_page_btn.setEnabled(self.current_preview_page > 0)
+        self.next_page_btn.setEnabled(self.current_preview_page < self.total_pages - 1)
 

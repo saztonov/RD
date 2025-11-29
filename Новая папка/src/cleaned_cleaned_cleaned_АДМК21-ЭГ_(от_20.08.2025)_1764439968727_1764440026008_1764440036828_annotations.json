@@ -1,0 +1,4394 @@
+{
+  "pdf_path": "C:\\Users\\SVAROV~1\\AppData\\Local\\Temp\\cleaned_cleaned_cleaned_АДМК21-ЭГ (от 20.08.2025)_1764439968727_1764440026008_1764440036828.pdf",
+  "pages": [
+    {
+      "page_index": 0,
+      "width": 1786,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "2907e87a-3f0e-4148-b81b-787ddc9c357e",
+          "page_index": 0,
+          "coords_px": [
+            249,
+            152,
+            464,
+            538
+          ],
+          "coords_norm": [
+            0.13949579831932774,
+            0.060174188440221696,
+            0.25994397759103643,
+            0.21298495645288995
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page0_block2907e87a-3f0e-4148-b81b-787ddc9c357e.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "7ae2ec33-0e0f-4b40-b6fc-f39685bb3c39",
+          "page_index": 0,
+          "coords_px": [
+            908,
+            172,
+            1438,
+            223
+          ],
+          "coords_norm": [
+            0.5086834733893557,
+            0.06809184481393507,
+            0.8056022408963586,
+            0.08828186856690419
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page0_block7ae2ec33-0e0f-4b40-b6fc-f39685bb3c39.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "ad996b63-e430-487e-b806-439c61a96c38",
+          "page_index": 0,
+          "coords_px": [
+            704,
+            231,
+            1621,
+            304
+          ],
+          "coords_norm": [
+            0.39439775910364144,
+            0.09144893111638955,
+            0.9081232492997199,
+            0.12034837688044339
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page0_blockad996b63-e430-487e-b806-439c61a96c38.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "3f2fa9e5-92b6-463d-b0df-463280dacdd9",
+          "page_index": 0,
+          "coords_px": [
+            658,
+            578,
+            1267,
+            626
+          ],
+          "coords_norm": [
+            0.3686274509803922,
+            0.2288202692003167,
+            0.7098039215686275,
+            0.24782264449722882
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page0_block3f2fa9e5-92b6-463d-b0df-463280dacdd9.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "22dc50dd-3e68-47a1-83b8-c2a4006c46c7",
+          "page_index": 0,
+          "coords_px": [
+            254,
+            804,
+            1625,
+            989
+          ],
+          "coords_norm": [
+            0.142296918767507,
+            0.3182897862232779,
+            0.9103641456582633,
+            0.3915281076801267
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page0_block22dc50dd-3e68-47a1-83b8-c2a4006c46c7.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "90c5ccf6-e56d-4ce5-8979-6715a85d0f3b",
+          "page_index": 0,
+          "coords_px": [
+            464,
+            1033,
+            1493,
+            1129
+          ],
+          "coords_norm": [
+            0.25994397759103643,
+            0.4089469517022961,
+            0.8364145658263306,
+            0.44695170229612036
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page0_block90c5ccf6-e56d-4ce5-8979-6715a85d0f3b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "3a9047c9-4b1e-436f-8da8-b7f655120326",
+          "page_index": 0,
+          "coords_px": [
+            434,
+            1391,
+            1473,
+            1495
+          ],
+          "coords_norm": [
+            0.24313725490196078,
+            0.5506730007917656,
+            0.8252100840336134,
+            0.5918448139350753
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page0_block3a9047c9-4b1e-436f-8da8-b7f655120326.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "47bfd029-b298-4a86-ab6a-cd6fc2202cfe",
+          "page_index": 0,
+          "coords_px": [
+            840,
+            1656,
+            1073,
+            1701
+          ],
+          "coords_norm": [
+            0.47058823529411764,
+            0.6555819477434679,
+            0.6011204481792717,
+            0.6733966745843231
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page0_block47bfd029-b298-4a86-ab6a-cd6fc2202cfe.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "ab1ff190-9546-4457-ad1e-461522cb4fbb",
+          "page_index": 0,
+          "coords_px": [
+            862,
+            2354,
+            1063,
+            2389
+          ],
+          "coords_norm": [
+            0.48291316526610645,
+            0.931908155186065,
+            0.5955182072829132,
+            0.9457640538400633
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page0_blockab1ff190-9546-4457-ad1e-461522cb4fbb.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 1,
+      "width": 1786,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "7a4af382-365f-4f74-be57-94a6e14ca022",
+          "page_index": 1,
+          "coords_px": [
+            239,
+            143,
+            464,
+            547
+          ],
+          "coords_norm": [
+            0.13389355742296918,
+            0.05661124307205067,
+            0.25994397759103643,
+            0.21654790182106096
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page1_block7a4af382-365f-4f74-be57-94a6e14ca022.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "bad07fd7-6f5c-4e2c-979e-63cf8b2cbe0b",
+          "page_index": 1,
+          "coords_px": [
+            908,
+            202,
+            1438,
+            250
+          ],
+          "coords_norm": [
+            0.5086834733893557,
+            0.07996832937450514,
+            0.8056022408963586,
+            0.09897070467141726
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_blockbad07fd7-6f5c-4e2c-979e-63cf8b2cbe0b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "dbd0881b-e1e4-46d8-8dae-256df8c1a835",
+          "page_index": 1,
+          "coords_px": [
+            704,
+            261,
+            1621,
+            331
+          ],
+          "coords_norm": [
+            0.39439775910364144,
+            0.10332541567695962,
+            0.9081232492997199,
+            0.13103721298495646
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_blockdbd0881b-e1e4-46d8-8dae-256df8c1a835.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a4dacc55-ee67-47c2-b956-1a481a78623b",
+          "page_index": 1,
+          "coords_px": [
+            660,
+            603,
+            1267,
+            653
+          ],
+          "coords_norm": [
+            0.3697478991596639,
+            0.23871733966745842,
+            0.7098039215686275,
+            0.2585114806017419
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_blocka4dacc55-ee67-47c2-b956-1a481a78623b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "2f99bc82-98c3-4673-94ee-e5a722236f34",
+          "page_index": 1,
+          "coords_px": [
+            254,
+            832,
+            1614,
+            1016
+          ],
+          "coords_norm": [
+            0.142296918767507,
+            0.32937450514647665,
+            0.9042016806722689,
+            0.40221694378463974
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_block2f99bc82-98c3-4673-94ee-e5a722236f34.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "ad5c5d73-51ab-4d46-80e4-789356c13cd8",
+          "page_index": 1,
+          "coords_px": [
+            463,
+            1059,
+            1493,
+            1153
+          ],
+          "coords_norm": [
+            0.2593837535014006,
+            0.4192399049881235,
+            0.8364145658263306,
+            0.4564528899445764
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_blockad5c5d73-51ab-4d46-80e4-789356c13cd8.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "99adcf27-1869-4e7b-8171-118774fa24c2",
+          "page_index": 1,
+          "coords_px": [
+            446,
+            1263,
+            1485,
+            1366
+          ],
+          "coords_norm": [
+            0.24985994397759104,
+            0.5,
+            0.8319327731092437,
+            0.5407759303246239
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_block99adcf27-1869-4e7b-8171-118774fa24c2.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a5227ce2-276d-4245-8801-7d367758ca52",
+          "page_index": 1,
+          "coords_px": [
+            841,
+            1529,
+            1076,
+            1572
+          ],
+          "coords_norm": [
+            0.4711484593837535,
+            0.605304829770388,
+            0.6028011204481792,
+            0.6223277909738717
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_blocka5227ce2-276d-4245-8801-7d367758ca52.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "b5da67b1-1a22-4fd9-9005-c1be2c01d911",
+          "page_index": 1,
+          "coords_px": [
+            371,
+            2019,
+            723,
+            2046
+          ],
+          "coords_norm": [
+            0.20784313725490197,
+            0.7992874109263658,
+            0.4050420168067227,
+            0.8099762470308789
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_blockb5da67b1-1a22-4fd9-9005-c1be2c01d911.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "ee2241a5-6536-495e-849e-17494ffdc6ae",
+          "page_index": 1,
+          "coords_px": [
+            371,
+            2147,
+            779,
+            2174
+          ],
+          "coords_norm": [
+            0.20784313725490197,
+            0.8499604117181314,
+            0.43641456582633054,
+            0.8606492478226445
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_blockee2241a5-6536-495e-849e-17494ffdc6ae.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "e37032f3-3188-4ff2-b2aa-bdba75469fbf",
+          "page_index": 1,
+          "coords_px": [
+            372,
+            1893,
+            1552,
+            2330
+          ],
+          "coords_norm": [
+            0.20840336134453782,
+            0.7494061757719715,
+            0.869467787114846,
+            0.9224069675376089
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page1_blocke37032f3-3188-4ff2-b2aa-bdba75469fbf.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "528f3eb1-f19f-4eed-aa14-67aea4221a58",
+          "page_index": 1,
+          "coords_px": [
+            864,
+            2370,
+            1063,
+            2403
+          ],
+          "coords_norm": [
+            0.48403361344537815,
+            0.9382422802850356,
+            0.5955182072829132,
+            0.9513064133016627
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page1_block528f3eb1-f19f-4eed-aa14-67aea4221a58.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 2,
+      "width": 1786,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "25b873ad-c3f2-4167-b3ae-020ab007ec77",
+          "page_index": 2,
+          "coords_px": [
+            187,
+            87,
+            927,
+            287
+          ],
+          "coords_norm": [
+            0.10476190476190476,
+            0.0344418052256532,
+            0.519327731092437,
+            0.11361836896278701
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page2_block25b873ad-c3f2-4167-b3ae-020ab007ec77.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "debb45d6-fe47-4c39-929e-270e8e48ab08",
+          "page_index": 2,
+          "coords_px": [
+            953,
+            125,
+            1661,
+            229
+          ],
+          "coords_norm": [
+            0.5338935574229692,
+            0.04948535233570863,
+            0.9305322128851541,
+            0.09065716547901821
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page2_blockdebb45d6-fe47-4c39-929e-270e8e48ab08.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "6b393b62-b158-43ba-a694-711c41e78e14",
+          "page_index": 2,
+          "coords_px": [
+            955,
+            233,
+            1584,
+            308
+          ],
+          "coords_norm": [
+            0.5350140056022409,
+            0.09224069675376088,
+            0.8873949579831932,
+            0.12193190815518606
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page2_block6b393b62-b158-43ba-a694-711c41e78e14.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "ba79101a-4ec4-4000-b1a3-59fefd6d12e7",
+          "page_index": 2,
+          "coords_px": [
+            212,
+            602,
+            1302,
+            650
+          ],
+          "coords_norm": [
+            0.11876750700280111,
+            0.23832145684877276,
+            0.7294117647058823,
+            0.2573238321456849
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page2_blockba79101a-4ec4-4000-b1a3-59fefd6d12e7.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "0960cfac-bdfd-4dee-84df-67e827881cbf",
+          "page_index": 2,
+          "coords_px": [
+            254,
+            833,
+            1625,
+            1021
+          ],
+          "coords_norm": [
+            0.142296918767507,
+            0.32977038796516234,
+            0.9103641456582633,
+            0.40419635787806807
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page2_block0960cfac-bdfd-4dee-84df-67e827881cbf.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "1743f9a7-bea2-49cf-88cc-9537448a7351",
+          "page_index": 2,
+          "coords_px": [
+            631,
+            1313,
+            1319,
+            1376
+          ],
+          "coords_norm": [
+            0.3535014005602241,
+            0.5197941409342834,
+            0.7389355742296919,
+            0.5447347585114806
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page2_block1743f9a7-bea2-49cf-88cc-9537448a7351.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "ecbcfaee-f371-4ca1-96a7-f7da33667c1e",
+          "page_index": 2,
+          "coords_px": [
+            470,
+            1626,
+            1453,
+            1729
+          ],
+          "coords_norm": [
+            0.26330532212885155,
+            0.6437054631828979,
+            0.8140056022408964,
+            0.6844813935075218
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page2_blockecbcfaee-f371-4ca1-96a7-f7da33667c1e.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "4a374cbc-7c13-47f6-833d-7e07a972b6de",
+          "page_index": 2,
+          "coords_px": [
+            844,
+            1890,
+            1082,
+            1937
+          ],
+          "coords_norm": [
+            0.47282913165266105,
+            0.7482185273159145,
+            0.6061624649859944,
+            0.766825019794141
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page2_block4a374cbc-7c13-47f6-833d-7e07a972b6de.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "9688285f-d956-4a83-af3c-988371f7f3b9",
+          "page_index": 2,
+          "coords_px": [
+            868,
+            2384,
+            1066,
+            2423
+          ],
+          "coords_norm": [
+            0.48627450980392156,
+            0.943784639746635,
+            0.5971988795518207,
+            0.9592240696753761
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page2_block9688285f-d956-4a83-af3c-988371f7f3b9.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 3,
+      "width": 1786,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "d1f6b15a-0eb3-4e35-9ea0-95bce9829a40",
+          "page_index": 3,
+          "coords_px": [
+            196,
+            160,
+            869,
+            347
+          ],
+          "coords_norm": [
+            0.10980392156862745,
+            0.06334125098970704,
+            0.4868347338935574,
+            0.13737133808392715
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page3_blockd1f6b15a-0eb3-4e35-9ea0-95bce9829a40.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "d3b9689e-dcef-4a1e-9f67-62933147abb1",
+          "page_index": 3,
+          "coords_px": [
+            869,
+            164,
+            1499,
+            195
+          ],
+          "coords_norm": [
+            0.4868347338935574,
+            0.06492478226444973,
+            0.8397759103641457,
+            0.07719714964370546
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_blockd3b9689e-dcef-4a1e-9f67-62933147abb1.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "5ea3e465-fafe-4c49-b0f4-6339483f9012",
+          "page_index": 3,
+          "coords_px": [
+            909,
+            208,
+            1617,
+            258
+          ],
+          "coords_norm": [
+            0.5092436974789916,
+            0.08234362628661916,
+            0.9058823529411765,
+            0.1021377672209026
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_block5ea3e465-fafe-4c49-b0f4-6339483f9012.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "89bd0181-9117-402f-8cb8-30df326274c7",
+          "page_index": 3,
+          "coords_px": [
+            869,
+            267,
+            1531,
+            338
+          ],
+          "coords_norm": [
+            0.4868347338935574,
+            0.10570071258907364,
+            0.857703081232493,
+            0.13380839271575615
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_block89bd0181-9117-402f-8cb8-30df326274c7.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "9cc27e53-5a6e-45d1-b5f5-dc2e42244400",
+          "page_index": 3,
+          "coords_px": [
+            212,
+            510,
+            1302,
+            560
+          ],
+          "coords_norm": [
+            0.11876750700280111,
+            0.20190023752969122,
+            0.7294117647058823,
+            0.22169437846397466
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_block9cc27e53-5a6e-45d1-b5f5-dc2e42244400.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "f66a5562-0fdf-4642-9b56-88b088dfe84e",
+          "page_index": 3,
+          "coords_px": [
+            254,
+            749,
+            1625,
+            931
+          ],
+          "coords_norm": [
+            0.142296918767507,
+            0.29651623119556614,
+            0.9103641456582633,
+            0.3685669041963579
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_blockf66a5562-0fdf-4642-9b56-88b088dfe84e.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "2a4cfad7-7858-464a-861d-cd4014aa29a0",
+          "page_index": 3,
+          "coords_px": [
+            631,
+            1153,
+            1319,
+            1213
+          ],
+          "coords_norm": [
+            0.3535014005602241,
+            0.4564528899445764,
+            0.7389355742296919,
+            0.48020585906571656
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_block2a4cfad7-7858-464a-861d-cd4014aa29a0.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "7c9d3cff-1cf6-48d9-9866-eb5f687f904a",
+          "page_index": 3,
+          "coords_px": [
+            470,
+            1390,
+            1453,
+            1493
+          ],
+          "coords_norm": [
+            0.26330532212885155,
+            0.55027711797308,
+            0.8140056022408964,
+            0.5910530482977039
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_block7c9d3cff-1cf6-48d9-9866-eb5f687f904a.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "f742432d-b3e6-45c4-b0c3-aef09d27eb8b",
+          "page_index": 3,
+          "coords_px": [
+            853,
+            1655,
+            1085,
+            1699
+          ],
+          "coords_norm": [
+            0.4778711484593838,
+            0.6551860649247823,
+            0.6078431372549019,
+            0.6726049089469517
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_blockf742432d-b3e6-45c4-b0c3-aef09d27eb8b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "83270ead-a863-42ac-9777-f5504df29875",
+          "page_index": 3,
+          "coords_px": [
+            355,
+            1864,
+            1519,
+            2160
+          ],
+          "coords_norm": [
+            0.19887955182072828,
+            0.7379255740300871,
+            0.8509803921568627,
+            0.8551068883610451
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_block83270ead-a863-42ac-9777-f5504df29875.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "b584b6cf-4e99-4a9c-aa0b-c362617a94a1",
+          "page_index": 3,
+          "coords_px": [
+            868,
+            2282,
+            1065,
+            2315
+          ],
+          "coords_norm": [
+            0.48627450980392156,
+            0.9034045922406968,
+            0.5966386554621849,
+            0.9164687252573238
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page3_blockb584b6cf-4e99-4a9c-aa0b-c362617a94a1.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 4,
+      "width": 1785,
+      "height": 2526,
+      "blocks": [
+        {
+          "id": "f2418baa-bab6-41d2-8c46-3c2a41f9324b",
+          "page_index": 4,
+          "coords_px": [
+            119,
+            10,
+            1748,
+            2496
+          ],
+          "coords_norm": [
+            0.06666666666666667,
+            0.00395882818685669,
+            0.9792717086834734,
+            0.9881235154394299
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page4_blockf2418baa-bab6-41d2-8c46-3c2a41f9324b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "3b3e1c4e-da53-45c3-83bc-402481be8dec",
+          "page_index": 4,
+          "coords_px": [
+            44,
+            2136,
+            128,
+            2330
+          ],
+          "coords_norm": [
+            0.02464985994397759,
+            0.8456057007125891,
+            0.07170868347338935,
+            0.9224069675376089
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page4_block3b3e1c4e-da53-45c3-83bc-402481be8dec.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "f18c64ad-a605-4894-ba1e-04d020ce7286",
+          "page_index": 4,
+          "coords_px": [
+            92,
+            2377,
+            125,
+            2481
+          ],
+          "coords_norm": [
+            0.0515406162464986,
+            0.9410134600158353,
+            0.0700280112044818,
+            0.982185273159145
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page4_blockf18c64ad-a605-4894-ba1e-04d020ce7286.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 5,
+      "width": 1785,
+      "height": 2526,
+      "blocks": [
+        {
+          "id": "70918995-0a68-4f81-aae3-13871086b324",
+          "page_index": 5,
+          "coords_px": [
+            133,
+            15,
+            1762,
+            2491
+          ],
+          "coords_norm": [
+            0.07450980392156863,
+            0.0059382422802850355,
+            0.9871148459383754,
+            0.9861441013460016
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page5_block70918995-0a68-4f81-aae3-13871086b324.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "e8a39f0e-210a-4f7c-9880-485ec1bf5721",
+          "page_index": 5,
+          "coords_px": [
+            1315,
+            2481,
+            1458,
+            2523
+          ],
+          "coords_norm": [
+            0.7366946778711485,
+            0.982185273159145,
+            0.8168067226890756,
+            0.998812351543943
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page5_blocke8a39f0e-210a-4f7c-9880-485ec1bf5721.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "89d62d1b-0cb0-43c8-891c-700b28727151",
+          "page_index": 5,
+          "coords_px": [
+            44,
+            2136,
+            128,
+            2328
+          ],
+          "coords_norm": [
+            0.02464985994397759,
+            0.8456057007125891,
+            0.07170868347338935,
+            0.9216152019002375
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page5_block89d62d1b-0cb0-43c8-891c-700b28727151.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "36e21eb8-af6a-4ca7-8383-c534e9997695",
+          "page_index": 5,
+          "coords_px": [
+            92,
+            2377,
+            125,
+            2485
+          ],
+          "coords_norm": [
+            0.0515406162464986,
+            0.9410134600158353,
+            0.0700280112044818,
+            0.9837688044338876
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page5_block36e21eb8-af6a-4ca7-8383-c534e9997695.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 6,
+      "width": 3573,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "7e154568-e259-49bd-be82-c7ce41060943",
+          "page_index": 6,
+          "coords_px": [
+            115,
+            20,
+            1894,
+            2505
+          ],
+          "coords_norm": [
+            0.03219484882418813,
+            0.00791765637371338,
+            0.5302351623740201,
+            0.9916864608076009
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page6_block7e154568-e259-49bd-be82-c7ce41060943.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "651b8010-aff1-4fc7-ac8d-91caafde2da5",
+          "page_index": 6,
+          "coords_px": [
+            2222,
+            86,
+            3135,
+            130
+          ],
+          "coords_norm": [
+            0.6220604703247481,
+            0.034045922406967535,
+            0.8776595744680851,
+            0.05146476642913698
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page6_block651b8010-aff1-4fc7-ac8d-91caafde2da5.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "37209283-f4dc-4487-81ad-54b5011441bc",
+          "page_index": 6,
+          "coords_px": [
+            1853,
+            129,
+            3476,
+            398
+          ],
+          "coords_norm": [
+            0.5187569988801791,
+            0.0510688836104513,
+            0.973124300111982,
+            0.15756136183689629
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page6_block37209283-f4dc-4487-81ad-54b5011441bc.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "ae699820-fff7-45c9-b286-03632d30bfcc",
+          "page_index": 6,
+          "coords_px": [
+            2222,
+            424,
+            3108,
+            466
+          ],
+          "coords_norm": [
+            0.6220604703247481,
+            0.16785431512272367,
+            0.8701007838745801,
+            0.18448139350752177
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page6_blockae699820-fff7-45c9-b286-03632d30bfcc.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "9d83654a-22e3-41f6-a9b0-48aacfe12d7b",
+          "page_index": 6,
+          "coords_px": [
+            1853,
+            466,
+            3476,
+            1694
+          ],
+          "coords_norm": [
+            0.5187569988801791,
+            0.18448139350752177,
+            0.973124300111982,
+            0.6706254948535234
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page6_block9d83654a-22e3-41f6-a9b0-48aacfe12d7b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "6abd1f40-bc23-406d-9164-74e4f7ee837c",
+          "page_index": 6,
+          "coords_px": [
+            1913,
+            1683,
+            3528,
+            2527
+          ],
+          "coords_norm": [
+            0.5355543113101904,
+            0.666270783847981,
+            0.9876819708846585,
+            1.0003958828186856
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page6_block6abd1f40-bc23-406d-9164-74e4f7ee837c.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "883855a2-d766-411e-8c62-b5a0f922dac1",
+          "page_index": 6,
+          "coords_px": [
+            11,
+            1424,
+            34,
+            1586
+          ],
+          "coords_norm": [
+            0.003079507278835386,
+            0.5637371338083927,
+            0.009518477043673012,
+            0.6278701504354711
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page6_block883855a2-d766-411e-8c62-b5a0f922dac1.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "69e9c5d2-492c-4729-ac88-62e8b1555efe",
+          "page_index": 6,
+          "coords_px": [
+            81,
+            1776,
+            105,
+            2458
+          ],
+          "coords_norm": [
+            0.02267637178051512,
+            0.7030878859857482,
+            0.029395296752519597,
+            0.9730799683293745
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page6_block69e9c5d2-492c-4729-ac88-62e8b1555efe.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "7d9c06a4-8fa4-4369-b6d5-9d6669020d69",
+          "page_index": 6,
+          "coords_px": [
+            11,
+            872,
+            34,
+            1033
+          ],
+          "coords_norm": [
+            0.003079507278835386,
+            0.3452098178939034,
+            0.009518477043673012,
+            0.4089469517022961
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page6_block7d9c06a4-8fa4-4369-b6d5-9d6669020d69.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "2a02ebfd-97b8-429d-a33d-5491274b66a5",
+          "page_index": 6,
+          "coords_px": [
+            53,
+            1610,
+            115,
+            1750
+          ],
+          "coords_norm": [
+            0.014837625979843226,
+            0.6373713380839272,
+            0.03219484882418813,
+            0.6927949326999209
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page6_block2a02ebfd-97b8-429d-a33d-5491274b66a5.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 7,
+      "width": 3573,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "1f284586-e60c-42be-9d02-65160de6965b",
+          "page_index": 7,
+          "coords_px": [
+            533,
+            80,
+            1419,
+            130
+          ],
+          "coords_norm": [
+            0.14921612541993282,
+            0.03167062549485352,
+            0.3972564389697648,
+            0.05146476642913698
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block1f284586-e60c-42be-9d02-65160de6965b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "c694fe56-b5e3-494e-b144-c32515cb3614",
+          "page_index": 7,
+          "coords_px": [
+            176,
+            129,
+            1763,
+            536
+          ],
+          "coords_norm": [
+            0.04927211646136618,
+            0.0510688836104513,
+            0.4935610302351624,
+            0.2121931908155186
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page7_blockc694fe56-b5e3-494e-b144-c32515cb3614.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "669205a6-328b-4cc9-bc22-0cf73a6e9445",
+          "page_index": 7,
+          "coords_px": [
+            878,
+            557,
+            1096,
+            590
+          ],
+          "coords_norm": [
+            0.2458006718924972,
+            0.22050673000791765,
+            0.3068309070548712,
+            0.23357086302454474
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block669205a6-328b-4cc9-bc22-0cf73a6e9445.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "24ba362f-17d1-4a9d-94ef-e13564466e19",
+          "page_index": 7,
+          "coords_px": [
+            188,
+            637,
+            1747,
+            756
+          ],
+          "coords_norm": [
+            0.05263157894736842,
+            0.2521773555027712,
+            0.4890817469204927,
+            0.2992874109263658
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block24ba362f-17d1-4a9d-94ef-e13564466e19.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "14ef4ec5-76f3-4a78-851c-664ca600ea29",
+          "page_index": 7,
+          "coords_px": [
+            188,
+            802,
+            1714,
+            923
+          ],
+          "coords_norm": [
+            0.05263157894736842,
+            0.3174980205859066,
+            0.4798432250839866,
+            0.3653998416468725
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block14ef4ec5-76f3-4a78-851c-664ca600ea29.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "08c1394c-3baf-4b3c-998c-5c907ec94509",
+          "page_index": 7,
+          "coords_px": [
+            199,
+            927,
+            1130,
+            964
+          ],
+          "coords_norm": [
+            0.055711086226203806,
+            0.3669833729216152,
+            0.31634938409854424,
+            0.38163103721298497
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block08c1394c-3baf-4b3c-998c-5c907ec94509.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "c56e4f50-33c6-4c3d-970e-367ac826e67e",
+          "page_index": 7,
+          "coords_px": [
+            199,
+            966,
+            884,
+            1006
+          ],
+          "coords_norm": [
+            0.055711086226203806,
+            0.3824228028503563,
+            0.24748040313549832,
+            0.39825811559778307
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockc56e4f50-33c6-4c3d-970e-367ac826e67e.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "52841d72-97ca-4b67-a6f1-4cef73b80991",
+          "page_index": 7,
+          "coords_px": [
+            199,
+            1011,
+            1241,
+            1048
+          ],
+          "coords_norm": [
+            0.055711086226203806,
+            0.4002375296912114,
+            0.34742441209406494,
+            0.41488519398258117
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block52841d72-97ca-4b67-a6f1-4cef73b80991.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "8bb38bbe-c207-465e-a350-75329710d1af",
+          "page_index": 7,
+          "coords_px": [
+            199,
+            1057,
+            1689,
+            1089
+          ],
+          "coords_norm": [
+            0.055711086226203806,
+            0.4184481393507522,
+            0.47284434490481525,
+            0.4311163895486936
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block8bb38bbe-c207-465e-a350-75329710d1af.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "5d53af49-8e83-4aa0-a1a5-c2bd073ffb1e",
+          "page_index": 7,
+          "coords_px": [
+            184,
+            1100,
+            1733,
+            1172
+          ],
+          "coords_norm": [
+            0.051511758118701005,
+            0.43547110055423593,
+            0.4851623740201568,
+            0.4639746634996041
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block5d53af49-8e83-4aa0-a1a5-c2bd073ffb1e.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "48927a02-d176-4823-b0ac-904676bb6a3c",
+          "page_index": 7,
+          "coords_px": [
+            199,
+            1179,
+            1487,
+            1214
+          ],
+          "coords_norm": [
+            0.055711086226203806,
+            0.4667458432304038,
+            0.4162933930571109,
+            0.4806017418844022
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block48927a02-d176-4823-b0ac-904676bb6a3c.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "038d4178-73e8-4c48-a175-cf6658322a14",
+          "page_index": 7,
+          "coords_px": [
+            195,
+            1265,
+            1745,
+            1339
+          ],
+          "coords_norm": [
+            0.05459126539753639,
+            0.5007917656373714,
+            0.488521836506159,
+            0.5300870942201108
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block038d4178-73e8-4c48-a175-cf6658322a14.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "67781b28-597d-42e2-ae42-b7bd0e3bce76",
+          "page_index": 7,
+          "coords_px": [
+            195,
+            1391,
+            1747,
+            1588
+          ],
+          "coords_norm": [
+            0.05459126539753639,
+            0.5506730007917656,
+            0.4890817469204927,
+            0.6286619160728424
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block67781b28-597d-42e2-ae42-b7bd0e3bce76.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a188146d-87fd-4e75-89cc-635cf710a555",
+          "page_index": 7,
+          "coords_px": [
+            198,
+            1640,
+            1738,
+            1714
+          ],
+          "coords_norm": [
+            0.055431131019036954,
+            0.6492478226444972,
+            0.486562150055991,
+            0.6785431512272367
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blocka188146d-87fd-4e75-89cc-635cf710a555.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "9b96580a-5f46-4b07-af2b-a3c30fb73c05",
+          "page_index": 7,
+          "coords_px": [
+            191,
+            1767,
+            1753,
+            2178
+          ],
+          "coords_norm": [
+            0.05347144456886898,
+            0.6995249406175772,
+            0.49076147816349386,
+            0.8622327790973872
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block9b96580a-5f46-4b07-af2b-a3c30fb73c05.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "34af375f-71d1-4bd9-9909-8a0a8f196a30",
+          "page_index": 7,
+          "coords_px": [
+            195,
+            2221,
+            1738,
+            2420
+          ],
+          "coords_norm": [
+            0.05459126539753639,
+            0.879255740300871,
+            0.486562150055991,
+            0.9580364212193191
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block34af375f-71d1-4bd9-9909-8a0a8f196a30.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "aef29407-f1c2-4357-a6f7-a7e1b20b9ab7",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            83,
+            3411,
+            160
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.03285827395091053,
+            0.9549272116461366,
+            0.06334125098970704
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockaef29407-f1c2-4357-a6f7-a7e1b20b9ab7.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "d6b0b720-311f-4f3a-aac7-16825b4a9ac2",
+          "page_index": 7,
+          "coords_px": [
+            1897,
+            210,
+            3432,
+            368
+          ],
+          "coords_norm": [
+            0.5310750279955208,
+            0.0831353919239905,
+            0.9608062709966405,
+            0.1456848772763262
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockd6b0b720-311f-4f3a-aac7-16825b4a9ac2.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "d4ec74c0-f74f-4c4f-9f04-d1d7a1fc6dc4",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            419,
+            3397,
+            534
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.16587490102929534,
+            0.9510078387458006,
+            0.21140142517814728
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockd4ec74c0-f74f-4c4f-9f04-d1d7a1fc6dc4.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "8023d307-c95a-43ad-8010-baecbc014171",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            584,
+            3446,
+            659
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.23119556611243072,
+            0.9647256438969765,
+            0.2608867775138559
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block8023d307-c95a-43ad-8010-baecbc014171.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a4891dc9-2b31-4751-a9c3-5c47b1658886",
+          "page_index": 7,
+          "coords_px": [
+            1897,
+            711,
+            3432,
+            784
+          ],
+          "coords_norm": [
+            0.5310750279955208,
+            0.2814726840855107,
+            0.9608062709966405,
+            0.3103721298495645
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blocka4891dc9-2b31-4751-a9c3-5c47b1658886.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "45e80782-351b-4ed4-ad4e-d4d00bc403a3",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            790,
+            2462,
+            826
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.31274742676167855,
+            0.6892497200447928,
+            0.3269992082343626
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block45e80782-351b-4ed4-ad4e-d4d00bc403a3.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "c1da1b7d-7db5-47bd-90fa-c87831a6a639",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            830,
+            2298,
+            867
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.3285827395091053,
+            0.6433370660694289,
+            0.34323040380047504
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockc1da1b7d-7db5-47bd-90fa-c87831a6a639.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a3444931-ff04-4edf-8f5d-bb909b86d5a8",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            874,
+            2865,
+            909
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.34600158353127475,
+            0.8020716685330347,
+            0.35985748218527314
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blocka3444931-ff04-4edf-8f5d-bb909b86d5a8.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "8e91cbf0-4190-4c8b-8cd2-dbbf1019be07",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            920,
+            2534,
+            950
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.3642121931908155,
+            0.7094064949608063,
+            0.3760886777513856
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block8e91cbf0-4190-4c8b-8cd2-dbbf1019be07.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "742c991c-bbc4-4aa8-9c64-f147d831a35e",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            1000,
+            3332,
+            1075
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.39588281868566905,
+            0.9328107502799552,
+            0.4255740300870942
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block742c991c-bbc4-4aa8-9c64-f147d831a35e.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "d381750d-720d-4884-817c-4e8f2f580ae9",
+          "page_index": 7,
+          "coords_px": [
+            1897,
+            1127,
+            3460,
+            1201
+          ],
+          "coords_norm": [
+            0.5310750279955208,
+            0.44615993665874903,
+            0.9686450167973124,
+            0.4754552652414885
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockd381750d-720d-4884-817c-4e8f2f580ae9.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "fb2c8bd0-c1b7-495b-82fc-961c874c3578",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            1249,
+            2554,
+            1283
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.49445764053840063,
+            0.7150055991041433,
+            0.5079176563737133
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockfb2c8bd0-c1b7-495b-82fc-961c874c3578.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "71cdf34f-10f8-4c58-979c-5d8f8003abad",
+          "page_index": 7,
+          "coords_px": [
+            1900,
+            1288,
+            3453,
+            1574
+          ],
+          "coords_norm": [
+            0.5319148936170213,
+            0.5098970704671417,
+            0.9666853303471444,
+            0.6231195566112431
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_block71cdf34f-10f8-4c58-979c-5d8f8003abad.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "e5cd3fd1-aaf5-4398-8e3e-1ecd33ff988d",
+          "page_index": 7,
+          "coords_px": [
+            1934,
+            1678,
+            3535,
+            2527
+          ],
+          "coords_norm": [
+            0.5414333706606943,
+            0.6642913697545526,
+            0.9896416573348265,
+            1.0003958828186856
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page7_blocke5cd3fd1-aaf5-4398-8e3e-1ecd33ff988d.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "d92c55e5-7a81-4db2-b11a-2c8eb0cc0920",
+          "page_index": 7,
+          "coords_px": [
+            11,
+            1424,
+            34,
+            1586
+          ],
+          "coords_norm": [
+            0.003079507278835386,
+            0.5637371338083927,
+            0.009518477043673012,
+            0.6278701504354711
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockd92c55e5-7a81-4db2-b11a-2c8eb0cc0920.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "d78b6eef-6643-4953-bd95-b988b2427039",
+          "page_index": 7,
+          "coords_px": [
+            81,
+            1776,
+            105,
+            2458
+          ],
+          "coords_norm": [
+            0.02267637178051512,
+            0.7030878859857482,
+            0.029395296752519597,
+            0.9730799683293745
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockd78b6eef-6643-4953-bd95-b988b2427039.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "bee23d39-ccb0-4794-b326-b5d945f1f591",
+          "page_index": 7,
+          "coords_px": [
+            11,
+            872,
+            34,
+            1033
+          ],
+          "coords_norm": [
+            0.003079507278835386,
+            0.3452098178939034,
+            0.009518477043673012,
+            0.4089469517022961
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockbee23d39-ccb0-4794-b326-b5d945f1f591.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "c809b1e2-1e87-4990-8de7-ec2fd1c49a69",
+          "page_index": 7,
+          "coords_px": [
+            53,
+            1610,
+            114,
+            1750
+          ],
+          "coords_norm": [
+            0.014837625979843226,
+            0.6373713380839272,
+            0.031914893617021274,
+            0.6927949326999209
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page7_blockc809b1e2-1e87-4990-8de7-ec2fd1c49a69.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 8,
+      "width": 3573,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "bd899357-46fe-4f78-99ee-0e7f53f3be62",
+          "page_index": 8,
+          "coords_px": [
+            205,
+            108,
+            1719,
+            274
+          ],
+          "coords_norm": [
+            0.05739081746920493,
+            0.04275534441805225,
+            0.4812430011198208,
+            0.10847189231987332
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blockbd899357-46fe-4f78-99ee-0e7f53f3be62.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a05d1fb3-0127-4328-9ed5-08e34513f16d",
+          "page_index": 8,
+          "coords_px": [
+            205,
+            281,
+            1599,
+            357
+          ],
+          "coords_norm": [
+            0.05739081746920493,
+            0.111243072050673,
+            0.4476483762597984,
+            0.14133016627078385
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blocka05d1fb3-0127-4328-9ed5-08e34513f16d.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "5857e9f4-eb55-4045-9609-d544bb7fca44",
+          "page_index": 8,
+          "coords_px": [
+            202,
+            366,
+            1686,
+            440
+          ],
+          "coords_norm": [
+            0.05655095184770437,
+            0.14489311163895488,
+            0.4720044792833147,
+            0.17418844022169439
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_block5857e9f4-eb55-4045-9609-d544bb7fca44.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "aa40ccba-3156-45ae-a6a0-f22c4a5bca96",
+          "page_index": 8,
+          "coords_px": [
+            212,
+            490,
+            1698,
+            690
+          ],
+          "coords_norm": [
+            0.0593505039193729,
+            0.19398258115597783,
+            0.4753639417693169,
+            0.27315914489311166
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blockaa40ccba-3156-45ae-a6a0-f22c4a5bca96.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "b35f5f76-b085-482c-9e8a-521398a70bbd",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            741,
+            1696,
+            898
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.29334916864608074,
+            0.4748040313549832,
+            0.3555027711797308
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blockb35f5f76-b085-482c-9e8a-521398a70bbd.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a0826f11-73ec-4e06-b667-c4508c86556d",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            951,
+            1664,
+            1064
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.37648456057007124,
+            0.4658454647256439,
+            0.42121931908155186
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blocka0826f11-73ec-4e06-b667-c4508c86556d.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "c5eb53a7-0d00-48b9-b163-d6d1b438b11c",
+          "page_index": 8,
+          "coords_px": [
+            209,
+            1114,
+            1556,
+            1189
+          ],
+          "coords_norm": [
+            0.05851063829787234,
+            0.4410134600158353,
+            0.43561030235162373,
+            0.47070467141726047
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blockc5eb53a7-0d00-48b9-b163-d6d1b438b11c.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "48784f2b-e6bc-43ec-af02-a3f24d14fd2c",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1239,
+            1376,
+            1272
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.49049881235154397,
+            0.38521836506159013,
+            0.503562945368171
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_block48784f2b-e6bc-43ec-af02-a3f24d14fd2c.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "67acb2f3-f354-4cbf-be49-a75edf2b26bf",
+          "page_index": 8,
+          "coords_px": [
+            202,
+            1325,
+            1703,
+            1438
+          ],
+          "coords_norm": [
+            0.05655095184770437,
+            0.5245447347585115,
+            0.4767637178051512,
+            0.569279493269992
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_block67acb2f3-f354-4cbf-be49-a75edf2b26bf.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "8323fa3a-225b-4cb3-88de-3778570f7cf8",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1446,
+            563,
+            1480
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.5724465558194775,
+            0.15761478163493842,
+            0.5859065716547902
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_block8323fa3a-225b-4cb3-88de-3778570f7cf8.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "fed8c13d-9a9d-42cd-9d22-1da04a6304b9",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1486,
+            576,
+            1521
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.5882818685669042,
+            0.1612541993281075,
+            0.6021377672209026
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blockfed8c13d-9a9d-42cd-9d22-1da04a6304b9.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "e9288f53-9e35-4ee1-8e59-6a22ff510159",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1533,
+            585,
+            1563
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.6068883610451307,
+            0.16377379619260918,
+            0.6187648456057007
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blocke9288f53-9e35-4ee1-8e59-6a22ff510159.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "7c12f7e7-5b48-42a6-a6da-88594dbd4cc1",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1575,
+            590,
+            1605
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.6235154394299287,
+            0.16517357222844345,
+            0.6353919239904988
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_block7c12f7e7-5b48-42a6-a6da-88594dbd4cc1.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "f5d55cf5-494f-455e-8a13-949b63316821",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1614,
+            590,
+            1646
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.6389548693586699,
+            0.16517357222844345,
+            0.6516231195566112
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blockf5d55cf5-494f-455e-8a13-949b63316821.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "c311722a-6861-47a2-8f5c-5ca875b91463",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1653,
+            598,
+            1688
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.6543942992874109,
+            0.1674132138857783,
+            0.6682501979414094
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blockc311722a-6861-47a2-8f5c-5ca875b91463.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "11f3c740-669a-42d2-9ab6-8cd315f591ea",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1732,
+            1238,
+            1771
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.6856690419635788,
+            0.34658454647256437,
+            0.7011084718923198
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_block11f3c740-669a-42d2-9ab6-8cd315f591ea.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "dc47dcd8-59d3-4811-be6b-418f4efc917c",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1821,
+            1075,
+            1854
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.7209026128266033,
+            0.3009518477043673,
+            0.7339667458432304
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_blockdc47dcd8-59d3-4811-be6b-418f4efc917c.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "84f4408b-b15a-477a-8444-b34a83fab387",
+          "page_index": 8,
+          "coords_px": [
+            214,
+            1908,
+            1667,
+            1979
+          ],
+          "coords_norm": [
+            0.059910414333706606,
+            0.7553444180522565,
+            0.46668533034714443,
+            0.783452098178939
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_block84f4408b-b15a-477a-8444-b34a83fab387.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "74b92910-45c6-4211-8ff0-a9f449813059",
+          "page_index": 8,
+          "coords_px": [
+            1949,
+            1621,
+            3542,
+            2528
+          ],
+          "coords_norm": [
+            0.5456326987681971,
+            0.6417260490894695,
+            0.9916013437849944,
+            1.0007917656373713
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page8_block74b92910-45c6-4211-8ff0-a9f449813059.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "2e46389f-fe9c-44b4-ae5c-a16210310632",
+          "page_index": 8,
+          "coords_px": [
+            11,
+            872,
+            34,
+            1033
+          ],
+          "coords_norm": [
+            0.003079507278835386,
+            0.3452098178939034,
+            0.009518477043673012,
+            0.4089469517022961
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page8_block2e46389f-fe9c-44b4-ae5c-a16210310632.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 9,
+      "width": 12510,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "4f067dd7-f4d8-408d-bbfe-6e5287b15d95",
+          "page_index": 9,
+          "coords_px": [
+            172,
+            50,
+            1622,
+            2463
+          ],
+          "coords_norm": [
+            0.013749000799360511,
+            0.01979414093428345,
+            0.129656274980016,
+            0.9750593824228029
+          ],
+          "category": "",
+          "block_type": "text",
+          "source": "user",
+          "image_file": "page9_block4f067dd7-f4d8-408d-bbfe-6e5287b15d95.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "502c5223-3799-4f05-9b07-0e1820e0c149",
+          "page_index": 9,
+          "coords_px": [
+            1705,
+            1641,
+            2529,
+            2439
+          ],
+          "coords_norm": [
+            0.13629096722621903,
+            0.649643705463183,
+            0.20215827338129497,
+            0.9655581947743468
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_block502c5223-3799-4f05-9b07-0e1820e0c149.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "332964ac-1f5b-48c4-b6b8-408a85fb8d30",
+          "page_index": 9,
+          "coords_px": [
+            1822,
+            187,
+            3093,
+            674
+          ],
+          "coords_norm": [
+            0.14564348521183054,
+            0.07403008709422011,
+            0.247242206235012,
+            0.2668250197941409
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_block332964ac-1f5b-48c4-b6b8-408a85fb8d30.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "710abd45-ebfd-4945-b24f-854362ef7e8b",
+          "page_index": 9,
+          "coords_px": [
+            1704,
+            726,
+            2404,
+            1169
+          ],
+          "coords_norm": [
+            0.13621103117505995,
+            0.28741092636579574,
+            0.19216626698641087,
+            0.46278701504354713
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_block710abd45-ebfd-4945-b24f-854362ef7e8b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "e281c62e-dfb7-4bff-bece-2ae22474d004",
+          "page_index": 9,
+          "coords_px": [
+            3210,
+            74,
+            5442,
+            672
+          ],
+          "coords_norm": [
+            0.2565947242206235,
+            0.02929532858273951,
+            0.43501199040767385,
+            0.2660332541567696
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_blocke281c62e-dfb7-4bff-bece-2ae22474d004.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "62e48fc2-a617-4469-97de-00067cf13f20",
+          "page_index": 9,
+          "coords_px": [
+            5455,
+            50,
+            7030,
+            675
+          ],
+          "coords_norm": [
+            0.43605115907274183,
+            0.01979414093428345,
+            0.5619504396482814,
+            0.2672209026128266
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_block62e48fc2-a617-4469-97de-00067cf13f20.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "03b74b7f-3c14-4083-b72d-e186bc633bfa",
+          "page_index": 9,
+          "coords_px": [
+            2541,
+            754,
+            4861,
+            2364
+          ],
+          "coords_norm": [
+            0.20311750599520384,
+            0.29849564528899447,
+            0.3885691446842526,
+            0.9358669833729216
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_block03b74b7f-3c14-4083-b72d-e186bc633bfa.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "57f59081-e9e0-4a2d-93c4-cd17c0ac9d72",
+          "page_index": 9,
+          "coords_px": [
+            4899,
+            699,
+            5548,
+            1215
+          ],
+          "coords_norm": [
+            0.3916067146282974,
+            0.27672209026128264,
+            0.4434852118305356,
+            0.4809976247030879
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_block57f59081-e9e0-4a2d-93c4-cd17c0ac9d72.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "013630f8-c68f-48c4-b241-25f7934eefa5",
+          "page_index": 9,
+          "coords_px": [
+            5556,
+            747,
+            8432,
+            2327
+          ],
+          "coords_norm": [
+            0.44412470023980816,
+            0.29572446555819476,
+            0.6740207833733014,
+            0.9212193190815519
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_block013630f8-c68f-48c4-b241-25f7934eefa5.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "bdfb0ea5-8fd5-4d0a-9b02-814d453d5c3b",
+          "page_index": 9,
+          "coords_px": [
+            8369,
+            669,
+            11323,
+            2205
+          ],
+          "coords_norm": [
+            0.6689848121502798,
+            0.2648456057007126,
+            0.9051159072741807,
+            0.8729216152019003
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_blockbdfb0ea5-8fd5-4d0a-9b02-814d453d5c3b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "65cac7be-d713-4508-b530-163b8a489525",
+          "page_index": 9,
+          "coords_px": [
+            11305,
+            416,
+            12251,
+            1699
+          ],
+          "coords_norm": [
+            0.9036770583533174,
+            0.16468725257323832,
+            0.9792965627498001,
+            0.6726049089469517
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page9_block65cac7be-d713-4508-b530-163b8a489525.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 10,
+      "width": 10112,
+      "height": 13964,
+      "blocks": [
+        {
+          "id": "b1bd35dc-b402-40bc-bc5e-0256441c2c2c",
+          "page_index": 10,
+          "coords_px": [
+            6349,
+            10553,
+            7775,
+            11154
+          ],
+          "coords_norm": [
+            0.6279299772524973,
+            0.7557831411587768,
+            0.76896449411532,
+            0.7988254673064528
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_blockb1bd35dc-b402-40bc-bc5e-0256441c2c2c.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a6cbb8c8-df0e-43f7-98ad-e7bb11a27989",
+          "page_index": 10,
+          "coords_px": [
+            7934,
+            10549,
+            9573,
+            11209
+          ],
+          "coords_norm": [
+            0.7846899416477104,
+            0.7554966697701068,
+            0.946790624072792,
+            0.802764448900666
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_blocka6cbb8c8-df0e-43f7-98ad-e7bb11a27989.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "c4e73fe2-ec1d-438f-81a5-4e95e259ead8",
+          "page_index": 10,
+          "coords_px": [
+            4732,
+            10509,
+            5870,
+            11164
+          ],
+          "coords_norm": [
+            0.4680051429136584,
+            0.7526319558834061,
+            0.5805558302838493,
+            0.7995416457781279
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_blockc4e73fe2-ec1d-438f-81a5-4e95e259ead8.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "928b693d-09ba-41fe-b467-c60183405857",
+          "page_index": 10,
+          "coords_px": [
+            3145,
+            11538,
+            4637,
+            12749
+          ],
+          "coords_norm": [
+            0.31104737414696865,
+            0.8263267206187782,
+            0.45860943526851944,
+            0.9130559335386378
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block928b693d-09ba-41fe-b467-c60183405857.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "b3e23d63-796f-4e1b-b54a-c7e65019a126",
+          "page_index": 10,
+          "coords_px": [
+            4770,
+            11679,
+            5591,
+            12858
+          ],
+          "coords_norm": [
+            0.471763425971714,
+            0.8364248370693977,
+            0.5529621204628622,
+            0.9208622788798969
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_blockb3e23d63-796f-4e1b-b54a-c7e65019a126.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "49d72e5d-e3a9-4841-9398-988421eea18b",
+          "page_index": 10,
+          "coords_px": [
+            1686,
+            11498,
+            3111,
+            12379
+          ],
+          "coords_norm": [
+            0.16674908515478193,
+            0.8234620067320776,
+            0.3076846998318663,
+            0.8865573300866576
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block49d72e5d-e3a9-4841-9398-988421eea18b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "522bbb31-90b7-4625-bb6a-3d07e88a6176",
+          "page_index": 10,
+          "coords_px": [
+            284,
+            11551,
+            1665,
+            12351
+          ],
+          "coords_norm": [
+            0.028088220749678566,
+            0.8272577526319559,
+            0.1646721392542775,
+            0.8845520303659672
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block522bbb31-90b7-4625-bb6a-3d07e88a6176.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "6b3b3d9d-d0fb-4e38-bc41-276bdd24e2f2",
+          "page_index": 10,
+          "coords_px": [
+            293,
+            10568,
+            1272,
+            11327
+          ],
+          "coords_norm": [
+            0.02897834042132331,
+            0.7568574088662895,
+            0.12580358025912372,
+            0.8112153548664327
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block6b3b3d9d-d0fb-4e38-bc41-276bdd24e2f2.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "52a8cf01-ae1b-4bfd-9504-21dd7ddde800",
+          "page_index": 10,
+          "coords_px": [
+            1362,
+            10529,
+            2213,
+            11327
+          ],
+          "coords_norm": [
+            0.13470477697557115,
+            0.7540643128267565,
+            0.21887053703886855,
+            0.8112153548664327
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block52a8cf01-ae1b-4bfd-9504-21dd7ddde800.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "b6132237-8a80-407b-902e-81f13ea882c3",
+          "page_index": 10,
+          "coords_px": [
+            2225,
+            10531,
+            3074,
+            11301
+          ],
+          "coords_norm": [
+            0.2200573632677282,
+            0.7542075485210915,
+            0.304025318959549,
+            0.8093532908400773
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_blockb6132237-8a80-407b-902e-81f13ea882c3.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "03f95c89-e042-4d1d-816d-139ce95a5417",
+          "page_index": 10,
+          "coords_px": [
+            3150,
+            10552,
+            4526,
+            11354
+          ],
+          "coords_norm": [
+            0.31154188507566016,
+            0.7557115233116093,
+            0.4476312926515676,
+            0.8131490367399556
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block03f95c89-e042-4d1d-816d-139ce95a5417.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "215f1067-8963-4503-a041-881014be8ba3",
+          "page_index": 10,
+          "coords_px": [
+            160,
+            86,
+            9999,
+            10494
+          ],
+          "coords_norm": [
+            0.01582434971812877,
+            0.006159134856406216,
+            0.9889229551973099,
+            0.7515576881758934
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block215f1067-8963-4503-a041-881014be8ba3.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "9187eac9-d542-40c1-b495-b2ef3f4ea609",
+          "page_index": 10,
+          "coords_px": [
+            6192,
+            11217,
+            8168,
+            12566
+          ],
+          "coords_norm": [
+            0.6124023340915834,
+            0.8033373916780061,
+            0.8078330531104737,
+            0.8999498675069827
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block9187eac9-d542-40c1-b495-b2ef3f4ea609.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "11df3026-c815-44b1-a233-f1446d0edc4a",
+          "page_index": 10,
+          "coords_px": [
+            8222,
+            11275,
+            10036,
+            12226
+          ],
+          "coords_norm": [
+            0.8131737711403422,
+            0.807491226813722,
+            0.9925823360696271,
+            0.875599799470028
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block11df3026-c815-44b1-a233-f1446d0edc4a.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "235bb91d-0b29-4f91-be66-341bc68f995e",
+          "page_index": 10,
+          "coords_px": [
+            8409,
+            12260,
+            9975,
+            13169
+          ],
+          "coords_norm": [
+            0.8316684798734052,
+            0.8780348062737234,
+            0.9865493027395905,
+            0.9431354293489937
+          ],
+          "category": "",
+          "block_type": "text",
+          "source": "user",
+          "image_file": "page10_block235bb91d-0b29-4f91-be66-341bc68f995e.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "e407b0d8-b6b9-47b5-9af6-d2138897b5f7",
+          "page_index": 10,
+          "coords_px": [
+            5922,
+            12795,
+            8237,
+            13902
+          ],
+          "coords_norm": [
+            0.5856987439422411,
+            0.9163503545083435,
+            0.8146573039264168,
+            0.9956313113227816
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_blocke407b0d8-b6b9-47b5-9af6-d2138897b5f7.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "385dfb4c-e9cd-44f2-934b-22df4d987d76",
+          "page_index": 10,
+          "coords_px": [
+            4501,
+            12981,
+            5573,
+            13663
+          ],
+          "coords_norm": [
+            0.44515873800810996,
+            0.9296712740815011,
+            0.5511818811195728,
+            0.9785146458497458
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block385dfb4c-e9cd-44f2-934b-22df4d987d76.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "4425fcac-bf46-469f-bc59-70c6a4ee5d51",
+          "page_index": 10,
+          "coords_px": [
+            3254,
+            12951,
+            4211,
+            13687
+          ],
+          "coords_norm": [
+            0.3218277123924439,
+            0.9275227386664757,
+            0.4164771041440016,
+            0.9802334741817661
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_block4425fcac-bf46-469f-bc59-70c6a4ee5d51.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a38fde2e-79ab-411d-9899-308c68beb684",
+          "page_index": 10,
+          "coords_px": [
+            242,
+            12418,
+            3108,
+            13894
+          ],
+          "coords_norm": [
+            0.023934328948669766,
+            0.8893504261261906,
+            0.3073879932746514,
+            0.9950583685454415
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page10_blocka38fde2e-79ab-411d-9899-308c68beb684.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 11,
+      "width": 10112,
+      "height": 7153,
+      "blocks": [
+        {
+          "id": "16a1253c-0a9c-4594-a089-b789e78387b3",
+          "page_index": 11,
+          "coords_px": [
+            199,
+            27,
+            9811,
+            6518
+          ],
+          "coords_norm": [
+            0.01968153496192266,
+            0.0037751677852348995,
+            0.9703293442785086,
+            0.9113534675615212
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page11_block16a1253c-0a9c-4594-a089-b789e78387b3.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "dd7fc13d-e15b-4c76-b8a8-a6891aa81263",
+          "page_index": 11,
+          "coords_px": [
+            10111,
+            7125,
+            10153,
+            7188
+          ],
+          "coords_norm": [
+            1.0,
+            0.9962248322147651,
+            1.004153891801009,
+            1.00503355704698
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page11_blockdd7fc13d-e15b-4c76-b8a8-a6891aa81263.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "ee53e046-66f1-4709-b29f-2dcf5c4dc391",
+          "page_index": 11,
+          "coords_px": [
+            10082,
+            7153,
+            10146,
+            7217
+          ],
+          "coords_norm": [
+            0.9971318366135892,
+            1.0001398210290828,
+            1.0034615765008408,
+            1.0090883668903803
+          ],
+          "category": "",
+          "block_type": "image",
+          "source": "user",
+          "image_file": "page11_blockee53e046-66f1-4709-b29f-2dcf5c4dc391.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "b40b42fa-f5db-429b-9063-5c03dea720e8",
+          "page_index": 11,
+          "coords_px": [
+            1991,
+            6549,
+            3453,
+            6928
+          ],
+          "coords_norm": [
+            0.19691425180496488,
+            0.9156879194630873,
+            0.34150924735436655,
+            0.9686800894854586
+          ],
+          "category": "",
+          "block_type": "text",
+          "source": "user",
+          "image_file": "page11_blockb40b42fa-f5db-429b-9063-5c03dea720e8.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 12,
+      "width": 10112,
+      "height": 13964,
+      "blocks": [
+        {
+          "id": "61f24f0c-1258-4d0f-8303-d63cf377d6f3",
+          "page_index": 12,
+          "coords_px": [
+            0,
+            0,
+            10111,
+            10594
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            0.7587194728926449
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page12_block61f24f0c-1258-4d0f-8303-d63cf377d6f3.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "128c81bb-ae00-4f20-bb43-a051d2d57e14",
+          "page_index": 12,
+          "coords_px": [
+            8465,
+            12079,
+            9909,
+            12383
+          ],
+          "coords_norm": [
+            0.8372070022747503,
+            0.8650719759364034,
+            0.9800217584808625,
+            0.8868438014753276
+          ],
+          "category": "",
+          "block_type": "text",
+          "source": "user",
+          "image_file": "page12_block128c81bb-ae00-4f20-bb43-a051d2d57e14.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 13,
+      "width": 10112,
+      "height": 7153,
+      "blocks": [
+        {
+          "id": "75d269d5-b4cc-4c97-9701-eeed0640caf2",
+          "page_index": 13,
+          "coords_px": [
+            0,
+            0,
+            10111,
+            7151
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            0.9998601789709173
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page13_block75d269d5-b4cc-4c97-9701-eeed0640caf2.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 14,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "81b0e015-39a5-4029-a42c-9695b71e58b3",
+          "page_index": 14,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page14_block81b0e015-39a5-4029-a42c-9695b71e58b3.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 15,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "97e8e891-7ce0-4152-956f-862f5d2e35d8",
+          "page_index": 15,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page15_block97e8e891-7ce0-4152-956f-862f5d2e35d8.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 16,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "f4f52628-31a4-4d66-b5e1-400e8e8da162",
+          "page_index": 16,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page16_blockf4f52628-31a4-4d66-b5e1-400e8e8da162.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 17,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "f23b43db-ee56-469f-a668-793e18f6f298",
+          "page_index": 17,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page17_blockf23b43db-ee56-469f-a668-793e18f6f298.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 18,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "d7ded0a2-af6d-42a7-b968-467be30a201b",
+          "page_index": 18,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page18_blockd7ded0a2-af6d-42a7-b968-467be30a201b.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 19,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "feec29fb-6e61-4af8-bb9c-8ec330b14fff",
+          "page_index": 19,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page19_blockfeec29fb-6e61-4af8-bb9c-8ec330b14fff.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 20,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "7b6d000d-8005-4660-9bdf-3d6cd4b3d6af",
+          "page_index": 20,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page20_block7b6d000d-8005-4660-9bdf-3d6cd4b3d6af.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 21,
+      "width": 7153,
+      "height": 5052,
+      "blocks": [
+        {
+          "id": "987d8c04-8b60-4d58-a9fa-0b1a89d07599",
+          "page_index": 21,
+          "coords_px": [
+            0,
+            0,
+            7151,
+            5051
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            0.9998601789709173,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page21_block987d8c04-8b60-4d58-a9fa-0b1a89d07599.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 22,
+      "width": 5052,
+      "height": 7153,
+      "blocks": [
+        {
+          "id": "20374d87-46f1-4c55-9da9-ae0beec0642d",
+          "page_index": 22,
+          "coords_px": [
+            335,
+            0,
+            5051,
+            7151
+          ],
+          "coords_norm": [
+            0.0663235002969709,
+            0.0,
+            1.0,
+            0.9998601789709173
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page22_block20374d87-46f1-4c55-9da9-ae0beec0642d.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "95f29092-0c31-42cf-b8b4-1799a640041d",
+          "page_index": 22,
+          "coords_px": [
+            11,
+            6050,
+            34,
+            6211
+          ],
+          "coords_norm": [
+            0.002177786576915462,
+            0.845917225950783,
+            0.006731340328647793,
+            0.8684284116331096
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page22_block95f29092-0c31-42cf-b8b4-1799a640041d.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "70df4c6f-536f-4b57-9333-5c28322453ba",
+          "page_index": 22,
+          "coords_px": [
+            82,
+            6402,
+            106,
+            7084
+          ],
+          "coords_norm": [
+            0.016234409027915266,
+            0.8951342281879194,
+            0.020985943377549,
+            0.9904921700223713
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page22_block70df4c6f-536f-4b57-9333-5c28322453ba.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "17876d79-c7cd-4f7c-a8ba-d81958b66a1d",
+          "page_index": 22,
+          "coords_px": [
+            11,
+            5497,
+            34,
+            5659
+          ],
+          "coords_norm": [
+            0.002177786576915462,
+            0.768596196868009,
+            0.006731340328647793,
+            0.7912472035794184
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page22_block17876d79-c7cd-4f7c-a8ba-d81958b66a1d.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "ae2e7047-4b66-4fd5-8dc1-3a983dc8e482",
+          "page_index": 22,
+          "coords_px": [
+            53,
+            6236,
+            115,
+            6375
+          ],
+          "coords_norm": [
+            0.0104929716887745,
+            0.8719239373601789,
+            0.02276776875866165,
+            0.8913590604026845
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page22_blockae2e7047-4b66-4fd5-8dc1-3a983dc8e482.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 23,
+      "width": 5052,
+      "height": 7153,
+      "blocks": [
+        {
+          "id": "a7421309-46f5-48d5-a5bf-0490e7013e7f",
+          "page_index": 23,
+          "coords_px": [
+            1908,
+            433,
+            2313,
+            488
+          ],
+          "coords_norm": [
+            0.377746980795882,
+            0.06054250559284116,
+            0.4579291229459513,
+            0.06823266219239374
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_blocka7421309-46f5-48d5-a5bf-0490e7013e7f.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "1c9f832a-9f09-439c-940d-cde8c09811aa",
+          "page_index": 23,
+          "coords_px": [
+            213,
+            446,
+            4986,
+            6984
+          ],
+          "coords_norm": [
+            0.04216986735299941,
+            0.062360178970917224,
+            0.9871312611364086,
+            0.9765100671140939
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page23_block1c9f832a-9f09-439c-940d-cde8c09811aa.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "9629aecd-2d60-4f73-896b-d148eb8c0251",
+          "page_index": 23,
+          "coords_px": [
+            2896,
+            7009,
+            3174,
+            7039
+          ],
+          "coords_norm": [
+            0.5733518115224708,
+            0.9800055928411633,
+            0.6283904177390616,
+            0.9842002237136466
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_block9629aecd-2d60-4f73-896b-d148eb8c0251.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "859da3e4-7b0a-468d-9bd7-1f9666901b75",
+          "page_index": 23,
+          "coords_px": [
+            11,
+            6050,
+            34,
+            6211
+          ],
+          "coords_norm": [
+            0.002177786576915462,
+            0.845917225950783,
+            0.006731340328647793,
+            0.8684284116331096
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_block859da3e4-7b0a-468d-9bd7-1f9666901b75.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "2af687f3-55e2-4cee-bb86-86da8ccb967d",
+          "page_index": 23,
+          "coords_px": [
+            82,
+            6402,
+            106,
+            7084
+          ],
+          "coords_norm": [
+            0.016234409027915266,
+            0.8951342281879194,
+            0.020985943377549,
+            0.9904921700223713
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_block2af687f3-55e2-4cee-bb86-86da8ccb967d.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "454cd4fc-4185-4ef5-bff4-02bcfff9b830",
+          "page_index": 23,
+          "coords_px": [
+            4589,
+            7118,
+            4732,
+            7145
+          ],
+          "coords_norm": [
+            0.9085329637695506,
+            0.9952460850111857,
+            0.9368441892694516,
+            0.9990212527964206
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_block454cd4fc-4185-4ef5-bff4-02bcfff9b830.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "5879840b-ef89-443d-a5c2-c2ebad6bdaac",
+          "page_index": 23,
+          "coords_px": [
+            11,
+            5497,
+            34,
+            5659
+          ],
+          "coords_norm": [
+            0.002177786576915462,
+            0.768596196868009,
+            0.006731340328647793,
+            0.7912472035794184
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_block5879840b-ef89-443d-a5c2-c2ebad6bdaac.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "2f0cdf33-1164-4a2c-bbaf-927f44681e40",
+          "page_index": 23,
+          "coords_px": [
+            3607,
+            7031,
+            3715,
+            7102
+          ],
+          "coords_norm": [
+            0.7141160166303703,
+            0.9830816554809844,
+            0.735497921203722,
+            0.9930089485458613
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_block2f0cdf33-1164-4a2c-bbaf-927f44681e40.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "90a89a16-0d1f-480b-8c98-ffdb00d6411e",
+          "page_index": 23,
+          "coords_px": [
+            3444,
+            7032,
+            3573,
+            7061
+          ],
+          "coords_norm": [
+            0.6818451791724411,
+            0.9832214765100671,
+            0.7073846763017224,
+            0.9872762863534675
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_block90a89a16-0d1f-480b-8c98-ffdb00d6411e.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "d65ccd3e-426e-4101-9759-a7cfeb8fbf1b",
+          "page_index": 23,
+          "coords_px": [
+            4127,
+            7037,
+            4445,
+            7063
+          ],
+          "coords_norm": [
+            0.8170659275391011,
+            0.983920581655481,
+            0.8800237576717481,
+            0.9875559284116331
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_blockd65ccd3e-426e-4101-9759-a7cfeb8fbf1b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "e0692803-38dd-4431-b7cd-5a92664c7bb0",
+          "page_index": 23,
+          "coords_px": [
+            3918,
+            7035,
+            3971,
+            7103
+          ],
+          "coords_norm": [
+            0.7756879825777074,
+            0.9836409395973155,
+            0.7861809542664819,
+            0.993148769574944
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_blocke0692803-38dd-4431-b7cd-5a92664c7bb0.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "35b9cdc5-6701-46c1-8374-ed00dd820f2b",
+          "page_index": 23,
+          "coords_px": [
+            3444,
+            7074,
+            3487,
+            7102
+          ],
+          "coords_norm": [
+            0.6818451791724411,
+            0.9890939597315436,
+            0.6903583448822015,
+            0.9930089485458613
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_block35b9cdc5-6701-46c1-8374-ed00dd820f2b.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "402e3033-2c13-4e1e-bc76-916bd6356449",
+          "page_index": 23,
+          "coords_px": [
+            53,
+            6236,
+            115,
+            6375
+          ],
+          "coords_norm": [
+            0.0104929716887745,
+            0.8719239373601789,
+            0.02276776875866165,
+            0.8913590604026845
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_block402e3033-2c13-4e1e-bc76-916bd6356449.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "a721b82d-5367-46fd-b509-17e241d3c0ba",
+          "page_index": 23,
+          "coords_px": [
+            4822,
+            7012,
+            4992,
+            7090
+          ],
+          "coords_norm": [
+            0.9546624430805781,
+            0.9804250559284117,
+            0.9883191447238171,
+            0.991331096196868
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_blocka721b82d-5367-46fd-b509-17e241d3c0ba.jpg",
+          "ocr_text": null
+        },
+        {
+          "id": "c66e6f30-0d8f-44db-9b07-e3cf21991be8",
+          "page_index": 23,
+          "coords_px": [
+            213,
+            6989,
+            575,
+            7060
+          ],
+          "coords_norm": [
+            0.04216986735299941,
+            0.9772091722595079,
+            0.11383884379330826,
+            0.9871364653243848
+          ],
+          "category": "Marker",
+          "block_type": "text",
+          "source": "auto",
+          "image_file": "page23_blockc66e6f30-0d8f-44db-9b07-e3cf21991be8.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 24,
+      "width": 5052,
+      "height": 7153,
+      "blocks": [
+        {
+          "id": "6133b54e-026f-4767-9443-031b97a9f9e6",
+          "page_index": 24,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            7151
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            0.9998601789709173
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page24_block6133b54e-026f-4767-9443-031b97a9f9e6.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 25,
+      "width": 5052,
+      "height": 7153,
+      "blocks": [
+        {
+          "id": "ec1216a9-e0b1-466d-b073-7ba1d1b582bb",
+          "page_index": 25,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            7151
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            0.9998601789709173
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page25_blockec1216a9-e0b1-466d-b073-7ba1d1b582bb.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 26,
+      "width": 3573,
+      "height": 5052,
+      "blocks": [
+        {
+          "id": "1f641f62-d09b-4e00-9aac-a077204155ba",
+          "page_index": 26,
+          "coords_px": [
+            0,
+            0,
+            3572,
+            5051
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page26_block1f641f62-d09b-4e00-9aac-a077204155ba.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 27,
+      "width": 3573,
+      "height": 5052,
+      "blocks": [
+        {
+          "id": "b829350f-6799-4c9f-9177-676fb7063b14",
+          "page_index": 27,
+          "coords_px": [
+            0,
+            0,
+            3572,
+            5051
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page27_blockb829350f-6799-4c9f-9177-676fb7063b14.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 28,
+      "width": 7153,
+      "height": 5052,
+      "blocks": [
+        {
+          "id": "96faf5e5-53ba-4ca7-9eb1-1fda63c9401a",
+          "page_index": 28,
+          "coords_px": [
+            0,
+            0,
+            7151,
+            5051
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            0.9998601789709173,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page28_block96faf5e5-53ba-4ca7-9eb1-1fda63c9401a.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 29,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "ed06f983-4167-430e-be94-415c75790320",
+          "page_index": 29,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page29_blocked06f983-4167-430e-be94-415c75790320.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 30,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "8a77a95a-0ecb-4bbf-a2e1-31d42e1f5105",
+          "page_index": 30,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page30_block8a77a95a-0ecb-4bbf-a2e1-31d42e1f5105.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 31,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "a1c762df-c22f-41c4-8760-62c72ca16019",
+          "page_index": 31,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page31_blocka1c762df-c22f-41c4-8760-62c72ca16019.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 32,
+      "width": 7578,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "e5900725-e025-44f0-ae06-52d68beafa02",
+          "page_index": 32,
+          "coords_px": [
+            0,
+            0,
+            7576,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            0.9998680216444503,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page32_blocke5900725-e025-44f0-ae06-52d68beafa02.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 33,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "0fa725b1-21b1-46cc-af8a-d22dc3dc0870",
+          "page_index": 33,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page33_block0fa725b1-21b1-46cc-af8a-d22dc3dc0870.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 34,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "6ff2a5b4-64f8-4ab1-a937-5d596df250b3",
+          "page_index": 34,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page34_block6ff2a5b4-64f8-4ab1-a937-5d596df250b3.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 35,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "f6c511de-c8e4-4085-ab7e-9789ed0e3873",
+          "page_index": 35,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page35_blockf6c511de-c8e4-4085-ab7e-9789ed0e3873.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 36,
+      "width": 5052,
+      "height": 3573,
+      "blocks": [
+        {
+          "id": "021f8e5a-e379-45fc-a5f2-b5093142ffd3",
+          "page_index": 36,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            3572
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page36_block021f8e5a-e379-45fc-a5f2-b5093142ffd3.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 37,
+      "width": 7153,
+      "height": 5052,
+      "blocks": [
+        {
+          "id": "842928d0-d835-4575-b301-91bcadcdb364",
+          "page_index": 37,
+          "coords_px": [
+            0,
+            0,
+            7151,
+            5051
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            0.9998601789709173,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page37_block842928d0-d835-4575-b301-91bcadcdb364.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 38,
+      "width": 5052,
+      "height": 7153,
+      "blocks": [
+        {
+          "id": "f2a011bf-47a4-4742-a713-39bf19072de7",
+          "page_index": 38,
+          "coords_px": [
+            0,
+            0,
+            5051,
+            7151
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            0.9998601789709173
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page38_blockf2a011bf-47a4-4742-a713-39bf19072de7.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 39,
+      "width": 3573,
+      "height": 5052,
+      "blocks": [
+        {
+          "id": "8bbe85fc-6b09-4a16-9e63-98dd0e9fb874",
+          "page_index": 39,
+          "coords_px": [
+            0,
+            0,
+            3572,
+            5051
+          ],
+          "coords_norm": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "category": "Marker",
+          "block_type": "image",
+          "source": "auto",
+          "image_file": "page39_block8bbe85fc-6b09-4a16-9e63-98dd0e9fb874.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 40,
+      "width": 3573,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "f1cdb817-8e88-4350-a512-ded998a9e4af",
+          "page_index": 40,
+          "coords_px": [
+            157,
+            32,
+            3552,
+            1630
+          ],
+          "coords_norm": [
+            0.043952967525195966,
+            0.012668250197941409,
+            0.9944008958566629,
+            0.6452889944576405
+          ],
+          "category": "",
+          "block_type": "table",
+          "source": "user",
+          "image_file": "page40_blockf1cdb817-8e88-4350-a512-ded998a9e4af.jpg",
+          "ocr_text": null
+        }
+      ]
+    },
+    {
+      "page_index": 41,
+      "width": 3573,
+      "height": 2527,
+      "blocks": [
+        {
+          "id": "d2f3d911-a978-4360-b2f2-16e2d185ea20",
+          "page_index": 41,
+          "coords_px": [
+            122,
+            4,
+            3559,
+            1511
+          ],
+          "coords_norm": [
+            0.0341545352743561,
+            0.001583531274742676,
+            0.9963605823068309,
+            0.598178939034046
+          ],
+          "category": "Marker",
+          "block_type": "table",
+          "source": "auto",
+          "image_file": "page41_blockd2f3d911-a978-4360-b2f2-16e2d185ea20.jpg",
+          "ocr_text": null
+        }
+      ]
+    }
+  ]
+}
