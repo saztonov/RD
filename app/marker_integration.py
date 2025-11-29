@@ -4,7 +4,7 @@ https://github.com/datalab-to/marker
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import logging
 import tempfile
 import os
@@ -42,11 +42,6 @@ class MarkerSegmentation:
                 logger.info("Инициализация Marker (загрузка моделей)...")
                 # Загружаем модели
                 models = create_model_dict()
-                
-                # Конфигурация для ускорения: отключаем OCR если возможно, но Marker
-                # рассчитан на полный пайплайн. Основное ускорение - кэширование моделей.
-                # Можно попробовать передать config, если библиотека это поддерживает в будущем.
-                
                 self._converter = PdfConverter(artifact_dict=models)
                 logger.info("Marker готов")
         except Exception as e:
@@ -54,14 +49,14 @@ class MarkerSegmentation:
             raise
     
     def segment_pdf(self, pdf_path: str, pages: List[Page], 
-                    page_images: dict, page_range: Optional[List[int]] = None) -> List[Page]:
+                    page_images: Optional[dict] = None, page_range: Optional[List[int]] = None) -> List[Page]:
         """
         Разметка PDF с помощью Marker
         
         Args:
             pdf_path: путь к PDF файлу
             pages: список страниц Document
-            page_images: словарь {page_num: PIL.Image}
+            page_images: словарь {page_num: PIL.Image} (не используется для детекции, оставлен для совместимости)
             page_range: список индексов страниц для обработки (если None, обрабатываются все)
         
         Returns:
@@ -97,8 +92,6 @@ class MarkerSegmentation:
             logger.info(f"Запуск Marker для {target_pdf_path}")
             
             # Используем build_document для получения Document с pages
-            # Marker кэширует результаты, но для временных файлов это не поможет.
-            # Сама обработка может занимать время.
             document = self._converter.build_document(target_pdf_path)
             
             logger.info(f"Marker обработал PDF, страниц: {len(document.pages)}")
@@ -118,10 +111,6 @@ class MarkerSegmentation:
                     continue
                 
                 page = pages[real_page_idx]
-                page_img = page_images.get(real_page_idx)
-                
-                if not page_img:
-                    continue
                 
                 # Получаем размер страницы из Marker (PDF points)
                 marker_page_bbox = page_data.polygon.bbox if page_data.polygon else None
@@ -133,15 +122,20 @@ class MarkerSegmentation:
                     marker_height = page.height
                 
                 # Извлекаем блоки из страницы
-                blocks = self._extract_blocks_from_page(
+                new_blocks = self._extract_blocks_from_page(
                     page_data, real_page_idx, page.width, page.height,
                     marker_width, marker_height
                 )
                 
-                # Добавляем блоки на страницу
-                if blocks:
-                    page.blocks.extend(blocks)
-                    logger.info(f"Страница {real_page_idx}: добавлено {len(blocks)} блоков")
+                # Фильтруем блоки: не добавляем те, которые пересекаются с существующими
+                added_count = 0
+                for new_block in new_blocks:
+                    if not self._is_overlapping_with_existing(new_block, page.blocks):
+                        page.blocks.append(new_block)
+                        added_count += 1
+                
+                if added_count > 0:
+                    logger.info(f"Страница {real_page_idx}: добавлено {added_count} блоков (найдено {len(new_blocks)})")
             
             return pages
             
@@ -156,6 +150,37 @@ class MarkerSegmentation:
                 except Exception as e:
                     logger.warning(f"Не удалось удалить временный файл {temp_pdf_path}: {e}")
     
+    def _is_overlapping_with_existing(self, new_block: Block, existing_blocks: List[Block], threshold: float = 0.3) -> bool:
+        """
+        Проверка пересечения нового блока с существующими.
+        Возвращает True, если есть значительное пересечение.
+        """
+        new_coords = new_block.coords_px # (x1, y1, x2, y2)
+        
+        for existing in existing_blocks:
+            ex_coords = existing.coords_px
+            
+            # Считаем пересечение
+            x_left = max(new_coords[0], ex_coords[0])
+            y_top = max(new_coords[1], ex_coords[1])
+            x_right = min(new_coords[2], ex_coords[2])
+            y_bottom = min(new_coords[3], ex_coords[3])
+            
+            if x_right < x_left or y_bottom < y_top:
+                continue # Нет пересечения
+            
+            intersection_area = (x_right - x_left) * (y_bottom - y_top)
+            new_block_area = (new_coords[2] - new_coords[0]) * (new_coords[3] - new_coords[1])
+            
+            if new_block_area <= 0:
+                continue
+            
+            # Если пересечение занимает более threshold% от площади НОВОГО блока, считаем это дубликатом/наложением
+            if (intersection_area / new_block_area) > threshold:
+                return True
+                
+        return False
+
     # Типы блоков верхнего уровня
     TOP_LEVEL_BLOCK_TYPES = {
         'Text', 'Table', 'Figure', 'Picture', 'Caption', 'Code', 
@@ -263,14 +288,14 @@ class MarkerSegmentation:
 
 
 def segment_with_marker(pdf_path: str, pages: List[Page], 
-                        page_images: dict, page_range: Optional[List[int]] = None) -> Optional[List[Page]]:
+                        page_images: Optional[dict] = None, page_range: Optional[List[int]] = None) -> Optional[List[Page]]:
     """
     Функция-обертка для разметки PDF через Marker
     
     Args:
         pdf_path: путь к PDF
         pages: список страниц
-        page_images: словарь изображений страниц
+        page_images: словарь изображений страниц (опционально)
         page_range: список индексов страниц для обработки
     
     Returns:
