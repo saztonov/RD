@@ -1,5 +1,6 @@
 """
 Интеграция с Marker для автоматической разметки PDF
+https://github.com/datalab-to/marker
 """
 
 from pathlib import Path
@@ -27,9 +28,9 @@ class MarkerSegmentation:
             
             if self._converter is None:
                 logger.info("Инициализация Marker...")
-                self._converter = PdfConverter(
-                    artifact_dict=create_model_dict()
-                )
+                # Загружаем модели
+                models = create_model_dict()
+                self._converter = PdfConverter(artifact_dict=models)
                 logger.info("Marker готов")
         except Exception as e:
             logger.error(f"Ошибка инициализации Marker: {e}")
@@ -49,15 +50,15 @@ class MarkerSegmentation:
             Обновленный список страниц с блоками от Marker
         """
         try:
-            from marker.converters.pdf import PdfConverter
-            
             logger.info(f"Запуск Marker для {pdf_path}")
             
-            # Конвертация PDF
-            rendered = self._converter(pdf_path)
+            # Используем build_document для получения Document с pages
+            document = self._converter.build_document(pdf_path)
             
-            # Извлечение блоков
-            for page_idx, page_data in enumerate(rendered.pages):
+            logger.info(f"Marker обработал PDF, страниц: {len(document.pages)}")
+            
+            # Извлечение блоков из каждой страницы
+            for page_idx, page_data in enumerate(document.pages):
                 if page_idx >= len(pages):
                     break
                 
@@ -67,82 +68,140 @@ class MarkerSegmentation:
                 if not page_img:
                     continue
                 
-                # Извлекаем блоки из результатов Marker
-                blocks = self._extract_blocks_from_marker(
-                    page_data, page_idx, page.width, page.height
+                # Получаем размер страницы из Marker (PDF points)
+                marker_page_bbox = page_data.polygon.bbox if page_data.polygon else None
+                if marker_page_bbox:
+                    marker_width = marker_page_bbox[2] - marker_page_bbox[0]
+                    marker_height = marker_page_bbox[3] - marker_page_bbox[1]
+                else:
+                    marker_width = page.width
+                    marker_height = page.height
+                
+                # Извлекаем блоки из страницы
+                blocks = self._extract_blocks_from_page(
+                    page_data, page_idx, page.width, page.height,
+                    marker_width, marker_height
                 )
                 
                 # Добавляем блоки на страницу
-                page.blocks.extend(blocks)
-                
-                logger.info(f"Страница {page_idx}: добавлено {len(blocks)} блоков")
+                if blocks:
+                    page.blocks.extend(blocks)
+                    logger.info(f"Страница {page_idx}: добавлено {len(blocks)} блоков")
             
             return pages
             
         except Exception as e:
-            logger.error(f"Ошибка Marker: {e}")
+            logger.error(f"Ошибка Marker: {e}", exc_info=True)
             raise
     
-    def _extract_blocks_from_marker(self, page_data, page_idx: int, 
-                                     page_width: float, page_height: float) -> List[Block]:
-        """Извлечение блоков из результатов Marker"""
+    # Типы блоков верхнего уровня (игнорируем Line, Span, Word и т.д.)
+    TOP_LEVEL_BLOCK_TYPES = {
+        'Text', 'Table', 'Figure', 'Picture', 'Caption', 'Code', 
+        'Equation', 'SectionHeader', 'ListItem', 'PageHeader', 
+        'PageFooter', 'Footnote', 'Form', 'Handwriting', 'Reference',
+        'TableOfContents', 'ComplexRegion', 'InlineMath'
+    }
+    
+    def _extract_blocks_from_page(self, page_data, page_idx: int, 
+                                   page_width: float, page_height: float,
+                                   marker_width: float, marker_height: float) -> List[Block]:
+        """Извлечение блоков из страницы Marker (PageGroup)"""
         blocks = []
         
+        # Коэффициенты масштабирования из координат Marker в пиксели изображения
+        scale_x = page_width / marker_width if marker_width > 0 else 1.0
+        scale_y = page_height / marker_height if marker_height > 0 else 1.0
+        
         try:
-            # Marker возвращает layout с блоками
-            if not hasattr(page_data, 'layout') or not page_data.layout:
+            # PageGroup содержит children с блоками
+            children = getattr(page_data, 'children', None)
+            if not children:
+                logger.warning(f"Страница {page_idx}: нет children")
                 return blocks
             
-            for layout_block in page_data.layout:
-                # Получаем координаты bbox
-                if not hasattr(layout_block, 'bbox') or not layout_block.bbox:
+            # Фильтруем только блоки верхнего уровня
+            top_level_blocks = []
+            for child in children:
+                block_type_name = type(child).__name__
+                if block_type_name in self.TOP_LEVEL_BLOCK_TYPES:
+                    top_level_blocks.append(child)
+            
+            logger.debug(f"Страница {page_idx}: блоков: {len(top_level_blocks)} из {len(children)}, scale: {scale_x:.2f}x{scale_y:.2f}")
+            
+            for idx, marker_block in enumerate(top_level_blocks):
+                try:
+                    # Получаем polygon (PolygonBox)
+                    polygon = getattr(marker_block, 'polygon', None)
+                    if not polygon:
+                        continue
+                    
+                    # PolygonBox имеет метод bbox -> [x1, y1, x2, y2]
+                    bbox = polygon.bbox
+                    if bbox and len(bbox) == 4:
+                        # Масштабируем координаты
+                        x1 = bbox[0] * scale_x
+                        y1 = bbox[1] * scale_y
+                        x2 = bbox[2] * scale_x
+                        y2 = bbox[3] * scale_y
+                    else:
+                        continue
+                    
+                    # Определяем тип блока
+                    block_type = self._detect_block_type(marker_block)
+                    
+                    # Создаем блок
+                    block = Block.create(
+                        page_index=page_idx,
+                        coords_px=(int(x1), int(y1), int(x2), int(y2)),
+                        page_width=page_width,
+                        page_height=page_height,
+                        category="Marker",
+                        block_type=block_type,
+                        source=BlockSource.AUTO
+                    )
+                    
+                    # Добавляем текст если есть (из structure)
+                    structure = getattr(marker_block, 'structure', None)
+                    if structure:
+                        block.ocr_text = str(structure)
+                    
+                    blocks.append(block)
+                    
+                except Exception as block_err:
+                    logger.warning(f"Ошибка блока {idx}: {block_err}")
                     continue
-                
-                bbox = layout_block.bbox
-                x1, y1, x2, y2 = bbox.x0, bbox.y0, bbox.x1, bbox.y1
-                
-                # Определяем тип блока
-                block_type = self._detect_block_type(layout_block)
-                
-                # Создаем блок
-                block = Block.create(
-                    page_index=page_idx,
-                    coords_px=(int(x1), int(y1), int(x2), int(y2)),
-                    page_width=page_width,
-                    page_height=page_height,
-                    category="Marker",
-                    block_type=block_type,
-                    source=BlockSource.AUTO
-                )
-                
-                # Добавляем OCR текст если есть
-                if hasattr(layout_block, 'text') and layout_block.text:
-                    block.ocr_text = layout_block.text
-                
-                blocks.append(block)
         
         except Exception as e:
-            logger.warning(f"Ошибка извлечения блоков: {e}")
+            logger.error(f"Ошибка извлечения блоков со страницы {page_idx}: {e}")
         
         return blocks
     
     def _detect_block_type(self, layout_block) -> BlockType:
-        """Определение типа блока из Marker layout"""
+        """Определение типа блока из Marker"""
         try:
+            # Проверяем атрибут block_type
             if hasattr(layout_block, 'block_type'):
-                marker_type = layout_block.block_type.lower()
+                btype = str(layout_block.block_type).lower()
                 
-                if 'table' in marker_type:
+                if 'table' in btype:
                     return BlockType.TABLE
-                elif 'figure' in marker_type or 'image' in marker_type:
+                elif 'figure' in btype or 'image' in btype or 'picture' in btype:
                     return BlockType.IMAGE
-                else:
-                    return BlockType.TEXT
+            
+            # Проверяем label
+            if hasattr(layout_block, 'label'):
+                label = str(layout_block.label).lower()
+                
+                if 'table' in label:
+                    return BlockType.TABLE
+                elif 'figure' in label or 'image' in label:
+                    return BlockType.IMAGE
             
             # По умолчанию текст
             return BlockType.TEXT
             
-        except:
+        except Exception as e:
+            logger.debug(f"Ошибка определения типа блока: {e}")
             return BlockType.TEXT
 
 
