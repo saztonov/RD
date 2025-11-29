@@ -6,9 +6,9 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog, QSpinBox,
                                QComboBox, QTextEdit, QGroupBox, QMessageBox, QToolBar,
-                               QDialog, QDialogButtonBox, QLineEdit, QFormLayout)
+                               QLineEdit, QTreeWidget, QTreeWidgetItem)
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QActionGroup
 from pathlib import Path
 from typing import Optional
 from app.models import Document, Page, Block, BlockType, BlockSource
@@ -160,6 +160,36 @@ class MainWindow(QMainWindow):
         self.next_action = QAction("Вперед ▶", self)
         self.next_action.triggered.connect(self._next_page)
         toolbar.addAction(self.next_action)
+        
+        toolbar.addSeparator()
+        
+        # Выбор типа блока для рисования
+        toolbar.addWidget(QLabel("  Тип блока:"))
+        
+        self.block_type_group = QActionGroup(self)
+        self.block_type_group.setExclusive(True)
+        
+        self.text_action = QAction("📝 Текст", self)
+        self.text_action.setCheckable(True)
+        self.text_action.setChecked(True)
+        self.text_action.setData(BlockType.TEXT)
+        self.block_type_group.addAction(self.text_action)
+        toolbar.addAction(self.text_action)
+        
+        self.table_action = QAction("📊 Таблица", self)
+        self.table_action.setCheckable(True)
+        self.table_action.setData(BlockType.TABLE)
+        self.block_type_group.addAction(self.table_action)
+        toolbar.addAction(self.table_action)
+        
+        self.image_action = QAction("🖼️ Картинка", self)
+        self.image_action.setCheckable(True)
+        self.image_action.setData(BlockType.IMAGE)
+        self.block_type_group.addAction(self.image_action)
+        toolbar.addAction(self.image_action)
+        
+        # Текущий выбранный тип
+        self.selected_block_type = BlockType.TEXT
     
     def _setup_ui(self):
         """Настройка интерфейса"""
@@ -199,6 +229,19 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
         
+        # Группа: список блоков с группировкой по категориям
+        blocks_group = QGroupBox("Блоки страницы")
+        blocks_layout = QVBoxLayout(blocks_group)
+        
+        self.blocks_tree = QTreeWidget()
+        self.blocks_tree.setHeaderLabels(["Название", "Тип"])
+        self.blocks_tree.setColumnWidth(0, 150)
+        self.blocks_tree.itemClicked.connect(self._on_tree_block_clicked)
+        self.blocks_tree.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
+        blocks_layout.addWidget(self.blocks_tree)
+        
+        layout.addWidget(blocks_group)
+        
         # Группа: свойства выбранного блока
         block_group = QGroupBox("Свойства блока")
         block_layout = QVBoxLayout(block_group)
@@ -212,19 +255,26 @@ class MainWindow(QMainWindow):
         type_layout.addWidget(self.block_type_combo)
         block_layout.addLayout(type_layout)
         
-        # Описание
-        block_layout.addWidget(QLabel("Описание:"))
-        self.block_description = QTextEdit()
-        self.block_description.setMaximumHeight(100)
-        self.block_description.textChanged.connect(self._on_block_description_changed)
-        block_layout.addWidget(self.block_description)
+        # Категория
+        cat_layout = QHBoxLayout()
+        cat_layout.addWidget(QLabel("Категория:"))
+        self.category_edit = QLineEdit()
+        self.category_edit.setPlaceholderText("Введите категорию...")
+        self.category_edit.editingFinished.connect(self._on_category_changed)
+        cat_layout.addWidget(self.category_edit)
+        block_layout.addLayout(cat_layout)
         
         # OCR текст
         block_layout.addWidget(QLabel("OCR результат:"))
         self.block_ocr_text = QTextEdit()
         self.block_ocr_text.setReadOnly(True)
-        self.block_ocr_text.setMaximumHeight(150)
+        self.block_ocr_text.setMaximumHeight(100)
         block_layout.addWidget(self.block_ocr_text)
+        
+        # Кнопка удаления
+        self.delete_block_btn = QPushButton("🗑️ Удалить блок")
+        self.delete_block_btn.clicked.connect(self._delete_selected_block)
+        block_layout.addWidget(self.delete_block_btn)
         
         layout.addWidget(block_group)
         
@@ -253,8 +303,6 @@ class MainWindow(QMainWindow):
         actions_layout.addWidget(self.reapply_btn)
         
         layout.addWidget(actions_group)
-        
-        layout.addStretch()
         
         return panel
     
@@ -310,6 +358,9 @@ class MainWindow(QMainWindow):
             # Устанавливаем блоки текущей страницы
             current_page_data = self.annotation_document.pages[self.current_page]
             self.page_viewer.set_blocks(current_page_data.blocks)
+            
+            # Обновляем дерево блоков
+            self._update_blocks_tree()
     
     def _update_ui(self):
         """Обновить UI элементы"""
@@ -334,38 +385,38 @@ class MainWindow(QMainWindow):
     
     def _on_block_drawn(self, x1: int, y1: int, x2: int, y2: int):
         """
-        Обработка завершения рисования блока
-        Показываем диалог для ввода параметров блока
+        Обработка завершения рисования блока.
+        Блок создаётся сразу с типом, выбранным на тулбаре.
         """
         if not self.annotation_document:
             return
         
-        # Показываем диалог для ввода параметров
-        dialog = BlockPropertiesDialog(self)
-        if dialog.exec() == QDialog.Accepted:
-            category, block_type = dialog.get_values()
-            
-            # Получаем размеры страницы
-            current_page_data = self.annotation_document.pages[self.current_page]
-            page_width = current_page_data.width
-            page_height = current_page_data.height
-            
-            # Создаём блок
-            block = Block.create(
-                page_index=self.current_page,
-                coords_px=(x1, y1, x2, y2),
-                page_width=page_width,
-                page_height=page_height,
-                category=category,
-                block_type=block_type,
-                source=BlockSource.USER
-            )
-            
-            # Добавляем блок на страницу
-            current_page_data.blocks.append(block)
-            
-            # Обновляем отображение
-            self.page_viewer.set_blocks(current_page_data.blocks)
+        # Получаем текущий выбранный тип из тулбара
+        checked_action = self.block_type_group.checkedAction()
+        block_type = checked_action.data() if checked_action else BlockType.TEXT
+        
+        # Получаем размеры страницы
+        current_page_data = self.annotation_document.pages[self.current_page]
+        page_width = current_page_data.width
+        page_height = current_page_data.height
+        
+        # Создаём блок без категории (пользователь задаст потом)
+        block = Block.create(
+            page_index=self.current_page,
+            coords_px=(x1, y1, x2, y2),
+            page_width=page_width,
+            page_height=page_height,
+            category="",
+            block_type=block_type,
+            source=BlockSource.USER
+        )
+        
+        # Добавляем блок на страницу
+        current_page_data.blocks.append(block)
+        
+        # Обновляем отображение
+        self.page_viewer.set_blocks(current_page_data.blocks)
+        self._update_blocks_tree()
     
     def _on_block_selected(self, block_idx: int):
         """Обработка выбора блока"""
@@ -376,10 +427,19 @@ class MainWindow(QMainWindow):
         if 0 <= block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[block_idx]
             
-            # Обновляем UI
+            # Обновляем UI свойств
+            self.block_type_combo.blockSignals(True)
             self.block_type_combo.setCurrentText(block.block_type.value)
-            self.block_description.setText(block.category)
+            self.block_type_combo.blockSignals(False)
+            
+            self.category_edit.blockSignals(True)
+            self.category_edit.setText(block.category)
+            self.category_edit.blockSignals(False)
+            
             self.block_ocr_text.setText(block.ocr_text or "")
+            
+            # Выделяем в дереве
+            self._select_block_in_tree(block_idx)
     
     def _on_block_type_changed(self, new_type: str):
         """Изменение типа выбранного блока"""
@@ -387,24 +447,89 @@ class MainWindow(QMainWindow):
             return
 
         current_page_data = self.annotation_document.pages[self.current_page]
-        if 0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
+        if self.page_viewer.selected_block_idx is not None and \
+           0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[self.page_viewer.selected_block_idx]
             try:
                 block.block_type = BlockType(new_type)
-                # Перерисовываем Viewer чтобы обновить цвета
-                self.page_viewer.update()
+                # Перерисовываем Viewer и дерево
+                self.page_viewer._redraw_blocks()
+                self._update_blocks_tree()
             except ValueError:
                 pass
     
-    def _on_block_description_changed(self):
-        """Изменение описания выбранного блока"""
+    def _on_category_changed(self):
+        """Изменение категории выбранного блока"""
         if not self.annotation_document:
             return
         
         current_page_data = self.annotation_document.pages[self.current_page]
-        if 0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
+        if self.page_viewer.selected_block_idx is not None and \
+           0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[self.page_viewer.selected_block_idx]
-            block.category = self.block_description.toPlainText()
+            block.category = self.category_edit.text().strip()
+            self._update_blocks_tree()
+    
+    def _update_blocks_tree(self):
+        """Обновить дерево блоков с группировкой по категориям"""
+        self.blocks_tree.clear()
+        
+        if not self.annotation_document:
+            return
+        
+        current_page_data = self.annotation_document.pages[self.current_page]
+        
+        # Группируем блоки по категориям
+        categories = {}
+        for idx, block in enumerate(current_page_data.blocks):
+            cat = block.category if block.category else "(Без категории)"
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append((idx, block))
+        
+        # Сортируем категории
+        for cat_name in sorted(categories.keys()):
+            cat_item = QTreeWidgetItem(self.blocks_tree)
+            cat_item.setText(0, cat_name)
+            cat_item.setData(0, Qt.UserRole, None)  # Категория, не блок
+            cat_item.setExpanded(True)
+            
+            for idx, block in categories[cat_name]:
+                block_item = QTreeWidgetItem(cat_item)
+                block_item.setText(0, f"Блок {idx + 1}")
+                block_item.setText(1, block.block_type.value)
+                block_item.setData(0, Qt.UserRole, idx)  # Индекс блока
+    
+    def _on_tree_block_clicked(self, item: QTreeWidgetItem, column: int):
+        """Клик по блоку в дереве"""
+        block_idx = item.data(0, Qt.UserRole)
+        if block_idx is not None:
+            self.page_viewer.selected_block_idx = block_idx
+            self.page_viewer._redraw_blocks()
+            self._on_block_selected(block_idx)
+    
+    def _on_tree_block_double_clicked(self, item: QTreeWidgetItem, column: int):
+        """Двойной клик - редактирование категории"""
+        block_idx = item.data(0, Qt.UserRole)
+        if block_idx is not None:
+            self.category_edit.setFocus()
+            self.category_edit.selectAll()
+    
+    def _select_block_in_tree(self, block_idx: int):
+        """Выделить блок в дереве"""
+        # Ищем item с нужным индексом
+        for i in range(self.blocks_tree.topLevelItemCount()):
+            cat_item = self.blocks_tree.topLevelItem(i)
+            for j in range(cat_item.childCount()):
+                child = cat_item.child(j)
+                if child.data(0, Qt.UserRole) == block_idx:
+                    self.blocks_tree.setCurrentItem(child)
+                    return
+    
+    def _delete_selected_block(self):
+        """Удалить выбранный блок"""
+        if self.page_viewer.selected_block_idx is not None:
+            self._on_block_deleted(self.page_viewer.selected_block_idx)
     
     def _on_block_editing(self, block_idx: int):
         """Обработка двойного клика для редактирования блока"""
@@ -413,21 +538,11 @@ class MainWindow(QMainWindow):
         
         current_page_data = self.annotation_document.pages[self.current_page]
         if 0 <= block_idx < len(current_page_data.blocks):
-            block = current_page_data.blocks[block_idx]
-            
-            # Показываем диалог редактирования с текущими значениями
-            dialog = BlockPropertiesDialog(self)
-            dialog.category_edit.setText(block.category)
-            dialog.type_combo.setCurrentText(block.block_type.value)
-            
-            if dialog.exec() == QDialog.Accepted:
-                category, block_type = dialog.get_values()
-                block.category = category
-                block.block_type = block_type
-                
-                # Обновляем отображение
-                self.page_viewer.set_blocks(current_page_data.blocks)
-                self._on_block_selected(block_idx)  # перерисовываем UI
+            # Выбираем блок и фокусируемся на поле категории
+            self.page_viewer.selected_block_idx = block_idx
+            self._on_block_selected(block_idx)
+            self.category_edit.setFocus()
+            self.category_edit.selectAll()
     
     def _on_block_deleted(self, block_idx: int):
         """Обработка удаления блока"""
@@ -440,14 +555,14 @@ class MainWindow(QMainWindow):
             del current_page_data.blocks[block_idx]
             
             # Очищаем UI
-            self.block_description.setText("")
+            self.category_edit.setText("")
             self.block_type_combo.setCurrentIndex(0)
             self.block_ocr_text.setText("")
+            self.page_viewer.selected_block_idx = None
             
             # Обновляем отображение
             self.page_viewer.set_blocks(current_page_data.blocks)
-            
-            QMessageBox.information(self, "Успех", "Блок удалён")
+            self._update_blocks_tree()
     
     def _on_page_changed(self, new_page: int):
         """Обработка запроса смены страницы от viewer"""
@@ -498,6 +613,7 @@ class MainWindow(QMainWindow):
             if doc:
                 self.annotation_document = doc
                 self._render_current_page()
+                self._update_blocks_tree()
                 QMessageBox.information(self, "Успех", "Разметка загружена")
     
     def _auto_segment_page(self):
@@ -513,6 +629,7 @@ class MainWindow(QMainWindow):
         current_page_data = self.annotation_document.pages[self.current_page]
         current_page_data.blocks.extend(detected_blocks)
         self.page_viewer.set_blocks(current_page_data.blocks)
+        self._update_blocks_tree()
         
         QMessageBox.information(self, "Успех", f"Найдено блоков: {len(detected_blocks)}")
     
@@ -614,50 +731,4 @@ class MainWindow(QMainWindow):
                 self._render_current_page()
                 self._update_ui()
                 QMessageBox.information(self, "Успех", "Разметка перенесена")
-
-
-class BlockPropertiesDialog(QDialog):
-    """
-    Диалог для ввода свойств блока при ручной разметке или редактировании
-    """
-    
-    def __init__(self, parent=None, title: str = "Свойства блока"):
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.setModal(True)
-        self.setMinimumWidth(400)
-        
-        # Создаём форму
-        layout = QFormLayout(self)
-        
-        # Поле для category
-        self.category_edit = QLineEdit()
-        self.category_edit.setPlaceholderText("Например: Заголовок, Параметры, Спецификация")
-        layout.addRow("Категория (описание):", self.category_edit)
-        
-        # Выбор типа блока
-        self.type_combo = QComboBox()
-        self.type_combo.addItems([t.value for t in BlockType])
-        self.type_combo.setCurrentText(BlockType.TEXT.value)
-        layout.addRow("Тип блока:", self.type_combo)
-        
-        # Кнопки OK/Cancel
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addRow(buttons)
-        
-        # Фокус на поле ввода
-        self.category_edit.setFocus()
-    
-    def get_values(self) -> tuple:
-        """
-        Получить введённые значения
-        
-        Returns:
-            (category: str, block_type: BlockType)
-        """
-        category = self.category_edit.text().strip()
-        block_type = BlockType(self.type_combo.currentText())
-        return category, block_type
 
