@@ -843,7 +843,8 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QEvent
         from PySide6.QtGui import QKeyEvent
         
-        if obj in (self.blocks_tree, self.blocks_tree_by_category):
+        if hasattr(self, 'blocks_tree') and hasattr(self, 'blocks_tree_by_category') and \
+           obj in (self.blocks_tree, self.blocks_tree_by_category):
             if event.type() == QEvent.KeyPress and isinstance(event, QKeyEvent):
                 if event.key() == Qt.Key_Delete:
                     current_item = obj.currentItem()
