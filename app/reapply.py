@@ -3,9 +3,12 @@
 Адаптация координат блоков при изменении размеров страниц
 """
 
+import json
+import fitz
 from typing import Optional
-from app.models import Document, Page, Block, BlockSource
-from app.pdf_utils import PDFDocument
+from pathlib import Path
+from app.models import Document, Page, Block, BlockSource, PageModel
+from app.pdf_utils import PDFDocument, render_page_to_image, open_pdf
 
 
 class AnnotationReapplier:
@@ -93,4 +96,90 @@ class AnnotationReapplier:
         except Exception as e:
             print(f"Ошибка переноса разметки: {e}")
             return None
+
+
+def transfer_annotations_to_new_pdf(
+    old_annotations_path: str, 
+    new_pdf_path: str, 
+    zoom: float = 2.0
+) -> tuple[fitz.Document, list[PageModel]]:
+    """
+    Перенос разметки из старого annotations.json на новый PDF
+    
+    Args:
+        old_annotations_path: путь к старому annotations.json
+        new_pdf_path: путь к новому PDF-файлу
+        zoom: коэффициент масштабирования для рендеринга (default: 2.0)
+    
+    Returns:
+        tuple[fitz.Document, list[PageModel]]: новый PDF документ и список PageModel с перенесёнными блоками
+    
+    Raises:
+        FileNotFoundError: если файлы не найдены
+        json.JSONDecodeError: если JSON некорректен
+        Exception: другие ошибки
+    """
+    # Загрузить старый annotations.json
+    annotations_file = Path(old_annotations_path)
+    if not annotations_file.exists():
+        raise FileNotFoundError(f"Файл разметки не найден: {old_annotations_path}")
+    
+    with open(old_annotations_path, 'r', encoding='utf-8') as f:
+        old_data = json.load(f)
+    
+    # Открыть новый PDF
+    new_doc = open_pdf(new_pdf_path)
+    
+    # Отрендерить страницы нового PDF
+    new_pages: list[PageModel] = []
+    
+    for page_data in old_data.get("pages", []):
+        page_index = page_data["page_index"]
+        
+        # Проверить, что страница существует в новом PDF
+        if page_index >= len(new_doc):
+            print(f"Предупреждение: страница {page_index} отсутствует в новом PDF, пропускается")
+            continue
+        
+        # Рендерить страницу нового PDF
+        new_image = render_page_to_image(new_doc, page_index, zoom)
+        
+        # Создать PageModel
+        page_model = PageModel(
+            page_index=page_index,
+            image=new_image,
+            blocks=[]
+        )
+        
+        # Перенести блоки
+        for block_data in page_data.get("blocks", []):
+            # Взять нормализованные координаты из старого JSON
+            coords_norm = tuple(block_data["coords_norm"])
+            
+            # Рассчитать новые coords_px по размеру изображения новой страницы
+            new_coords_px = Block.norm_to_px(
+                coords_norm,
+                new_image.width,
+                new_image.height
+            )
+            
+            # Создать новый Block с пустыми image_file и ocr_text
+            new_block = Block.create(
+                page_index=page_index,
+                coords_px=new_coords_px,
+                page_width=new_image.width,
+                page_height=new_image.height,
+                category=block_data.get("category", ""),
+                block_type=BlockType(block_data["block_type"]),
+                source=BlockSource(block_data["source"]),
+                image_file=None,  # пустой
+                ocr_text=None,  # пустой
+                block_id=block_data.get("id")  # сохранить ID
+            )
+            
+            page_model.blocks.append(new_block)
+        
+        new_pages.append(page_model)
+    
+    return new_doc, new_pages
 
