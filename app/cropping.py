@@ -71,7 +71,7 @@ def export_blocks_by_category(doc_path: str, pages: List[PageModel], base_output
                 # Сохраняем в JPEG
                 crop_filename = f"page{block.page_index}_block{block.id}.jpg"
                 crop_path = src_dir / crop_filename
-                crop.save(crop_path, "JPEG", quality=90)
+                crop.save(crop_path, "JPEG", quality=95)
                 
                 # Обновляем путь в блоке (относительный путь от категории)
                 block.image_file = f"src/{crop_filename}"
@@ -148,7 +148,7 @@ class Cropper:
                     # Сохраняем
                     crop_filename = f"page{page_num}_block{block.id}.jpg"
                     crop_path = self.output_dir / crop_filename
-                    crop.save(crop_path, "JPEG", quality=90)
+                    crop.save(crop_path, "JPEG", quality=95)
                     
                     # Обновляем путь в блоке
                     block.image_file = crop_filename
