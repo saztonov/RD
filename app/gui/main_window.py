@@ -266,6 +266,13 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
         
+        # Закрываем старый PDF
+        if self.pdf_document:
+            self.pdf_document.close()
+        
+        # Очищаем кеш
+        self.page_images.clear()
+        
         # Открываем PDF
         self.pdf_document = PDFDocument(file_path)
         if not self.pdf_document.open():
