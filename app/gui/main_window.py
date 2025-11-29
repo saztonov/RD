@@ -6,7 +6,8 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog, QSpinBox,
                                QComboBox, QTextEdit, QGroupBox, QMessageBox, QToolBar,
-                               QLineEdit, QTreeWidget, QTreeWidgetItem, QTabWidget)
+                               QLineEdit, QTreeWidget, QTreeWidgetItem, QTabWidget,
+                               QListWidget, QInputDialog)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence, QActionGroup
 from pathlib import Path
@@ -35,6 +36,8 @@ class MainWindow(QMainWindow):
         self.annotation_document: Optional[Document] = None
         self.current_page: int = 0
         self.page_images: dict = {}  # кеш отрендеренных страниц
+        self.categories: list = []  # список пользовательских категорий
+        self.active_category: str = ""  # активная категория для новых блоков
         
         # Компоненты
         self.ocr_engine = create_ocr_engine("dummy")  # замените на "tesseract" после установки
@@ -277,7 +280,21 @@ class MainWindow(QMainWindow):
         self.category_edit.setPlaceholderText("Введите категорию...")
         self.category_edit.editingFinished.connect(self._on_category_changed)
         cat_layout.addWidget(self.category_edit)
+        
+        # Кнопка добавления категории
+        self.add_category_btn = QPushButton("➕")
+        self.add_category_btn.setMaximumWidth(30)
+        self.add_category_btn.setToolTip("Добавить новую категорию")
+        self.add_category_btn.clicked.connect(self._add_category)
+        cat_layout.addWidget(self.add_category_btn)
         block_layout.addLayout(cat_layout)
+        
+        # Список категорий
+        block_layout.addWidget(QLabel("Категории:"))
+        self.categories_list = QListWidget()
+        self.categories_list.setMaximumHeight(80)
+        self.categories_list.itemClicked.connect(self._on_category_clicked)
+        block_layout.addWidget(self.categories_list)
         
         # OCR текст
         block_layout.addWidget(QLabel("OCR результат:"))
@@ -354,6 +371,7 @@ class MainWindow(QMainWindow):
         self.current_page = 0
         self._render_current_page()
         self._update_ui()
+        self._extract_categories_from_document()
     
     def _render_current_page(self, update_tree: bool = True):
         """Отрендерить текущую страницу"""
@@ -416,13 +434,13 @@ class MainWindow(QMainWindow):
         page_width = current_page_data.width
         page_height = current_page_data.height
         
-        # Создаём блок без категории (пользователь задаст потом)
+        # Создаём блок с активной категорией (если выбрана)
         block = Block.create(
             page_index=self.current_page,
             coords_px=(x1, y1, x2, y2),
             page_width=page_width,
             page_height=page_height,
-            category="",
+            category=self.active_category,
             block_type=block_type,
             source=BlockSource.USER
         )
@@ -476,6 +494,11 @@ class MainWindow(QMainWindow):
     
     def _on_category_changed(self):
         """Изменение категории выбранного блока"""
+        category = self.category_edit.text().strip()
+        
+        # Устанавливаем как активную категорию
+        self.active_category = category
+        
         if not self.annotation_document:
             return
         
@@ -483,8 +506,87 @@ class MainWindow(QMainWindow):
         if self.page_viewer.selected_block_idx is not None and \
            0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[self.page_viewer.selected_block_idx]
-            block.category = self.category_edit.text().strip()
+            block.category = category
             self._update_blocks_tree()
+    
+    def _add_category(self):
+        """Добавить новую категорию в список"""
+        # Если есть текст в поле, используем его
+        text = self.category_edit.text().strip()
+        if not text:
+            # Иначе открываем диалог
+            text, ok = QInputDialog.getText(self, "Новая категория", "Введите название категории:")
+            if not ok or not text.strip():
+                return
+            text = text.strip()
+        
+        # Добавляем если ещё нет
+        if text and text not in self.categories:
+            self.categories.append(text)
+            self._update_categories_list()
+        
+        # Устанавливаем как активную категорию
+        self.active_category = text
+        
+        # Применяем к выбранному блоку
+        if self.page_viewer.selected_block_idx is not None:
+            self._apply_category_to_selected_block(text)
+    
+    def _update_categories_list(self):
+        """Обновить список категорий"""
+        self.categories_list.clear()
+        for cat in sorted(self.categories):
+            self.categories_list.addItem(cat)
+    
+    def _on_category_clicked(self, item):
+        """Применить категорию к выбранному блоку при клике и установить как активную"""
+        category = item.text()
+        
+        # Устанавливаем как активную категорию
+        self.active_category = category
+        self.category_edit.blockSignals(True)
+        self.category_edit.setText(category)
+        self.category_edit.blockSignals(False)
+        
+        # Применяем к выбранному блоку, если есть
+        if self.annotation_document and self.page_viewer.selected_block_idx is not None:
+            self._apply_category_to_selected_block(category)
+    
+    def _apply_category_to_selected_block(self, category: str):
+        """Применить категорию к выбранному блоку"""
+        if not self.annotation_document:
+            return
+        
+        current_page_data = self.annotation_document.pages[self.current_page]
+        if self.page_viewer.selected_block_idx is not None and \
+           0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
+            block = current_page_data.blocks[self.page_viewer.selected_block_idx]
+            block.category = category
+            
+            # Обновляем UI
+            self.category_edit.blockSignals(True)
+            self.category_edit.setText(category)
+            self.category_edit.blockSignals(False)
+            
+            self._update_blocks_tree()
+    
+    def _extract_categories_from_document(self):
+        """Извлечь все категории из документа"""
+        if not self.annotation_document:
+            return
+        
+        categories_set = set()
+        for page in self.annotation_document.pages:
+            for block in page.blocks:
+                if block.category and block.category.strip():
+                    categories_set.add(block.category.strip())
+        
+        # Добавляем новые категории
+        for cat in categories_set:
+            if cat not in self.categories:
+                self.categories.append(cat)
+        
+        self._update_categories_list()
     
     def _update_blocks_tree(self):
         """Обновить дерево блоков со всех страниц, группировка по страницам"""
@@ -728,6 +830,7 @@ class MainWindow(QMainWindow):
             doc = AnnotationIO.load_annotation(file_path)
             if doc:
                 self.annotation_document = doc
+                self._extract_categories_from_document()
                 self._render_current_page()
                 self._update_blocks_tree()
                 QMessageBox.information(self, "Успех", "Разметка загружена")
@@ -856,6 +959,7 @@ class MainWindow(QMainWindow):
                 self.pdf_document.open()
                 self.page_images.clear()
                 self.current_page = 0
+                self._extract_categories_from_document()
                 self._render_current_page()
                 self._update_ui()
                 QMessageBox.information(self, "Успех", "Разметка перенесена")
