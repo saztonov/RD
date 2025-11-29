@@ -888,14 +888,22 @@ class MainWindow(QMainWindow):
             return
         
         if 0 <= block_idx < len(current_page_data.blocks):
+            # Сначала сбрасываем выбор во вьюере, чтобы сигналы от UI не применились к "новому" блоку по старому индексу
+            self.page_viewer.selected_block_idx = None
+            
             # Удаляем блок
             del current_page_data.blocks[block_idx]
             
-            # Очищаем UI
+            # Очищаем UI с блокировкой сигналов
+            self.category_edit.blockSignals(True)
             self.category_edit.setText("")
+            self.category_edit.blockSignals(False)
+            
+            self.block_type_combo.blockSignals(True)
             self.block_type_combo.setCurrentIndex(0)
+            self.block_type_combo.blockSignals(False)
+            
             self.block_ocr_text.setText("")
-            self.page_viewer.selected_block_idx = None
             
             # Обновляем отображение
             self.page_viewer.set_blocks(current_page_data.blocks)
