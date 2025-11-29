@@ -8,7 +8,9 @@
 - ✅ **Удаление электронных штампов** (аннотации, изображения, контейнеры)
 - ✅ Ручное выделение прямоугольных блоков (text/table/image)
 - ✅ Автоматическая сегментация блоков
-- ✅ OCR распознавание текста (pytesseract)
+- ✅ **OCR распознавание** (Tesseract + HunyuanOCR)
+  - Tesseract: постраничное с сохранением блоков
+  - **HunyuanOCR**: единый MD документ, таблицы→HTML, формулы→LaTeX
 - ✅ Сохранение разметки в JSON
 - ✅ Экспорт кропов блоков в изображения
 - ✅ Генерация Markdown отчётов по категориям
@@ -25,12 +27,27 @@
 pip install -r requirements.txt
 ```
 
-### 3. Установите Tesseract OCR (опционально, для OCR)
+### 3. Установите PyTorch (для HunyuanOCR, опционально)
 
-**Windows:**
-- Скачайте установщик: https://github.com/UB-Mannheim/tesseract/wiki
-- Установите (например, в `C:\Program Files\Tesseract-OCR`)
-- После установки укажите путь в коде или добавьте в PATH
+```bash
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+```
+
+### 4. OCR движки (опционально)
+
+**Tesseract OCR:**
+- Скачайте: https://github.com/UB-Mannheim/tesseract/wiki
+- Установите в `C:\Program Files\Tesseract-OCR`
+
+**HunyuanOCR:**
+```bash
+cd "Новая папка"
+git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git
+cd HunyuanOCR/Hunyuan-OCR-master
+pip install -r requirements.txt
+```
+- Требуется GPU с CUDA (опционально, работает и на CPU)
+- **Документация:** [`docs/HUNYUAN_OCR.md`](docs/HUNYUAN_OCR.md)
 
 ## Запуск
 
@@ -101,8 +118,14 @@ RD/
 - "Загрузить разметку" → загрузить существующий blocks.json
 
 ### 5. OCR
-- "Запустить OCR" → распознать текст во всех блоках
-- Результаты отобразятся в правой панели
+- **"Запустить OCR"** (Ctrl+R) → выбор метода распознавания:
+  - **Tesseract**: постраничное с сохранением разметки блоков
+  - **HunyuanOCR**: создание единого Markdown документа
+    - ✅ Таблицы → HTML
+    - ✅ Формулы → LaTeX
+    - ✅ Многоязычность
+    - ✅ Порядок чтения
+- Результаты сохраняются в `.md` файл
 
 ### 6. Экспорт
 - "Экспорт кропов" → сохранить изображения блоков в папки:
@@ -135,7 +158,7 @@ pyinstaller --onefile --windowed --name="PDFAnnotation" app/main.py
 | `pdf_utils.py` | Открытие PDF и рендеринг страниц через PyMuPDF | ✨ Функции + класс, логирование, обработка ошибок |
 | `annotation_io.py` | Сохранение/загрузка разметки в JSON | Логирование операций |
 | `cropping.py` | Обрезка блоков и сохранение в изображения | Прогресс-логирование |
-| `ocr.py` | Абстракция над OCR движками (pytesseract) | Расширяемая архитектура, логирование |
+| `ocr.py` | Абстракция над OCR движками (Tesseract + HunyuanOCR) | Расширяемая архитектура, логирование |
 | `report_md.py` | Генерация Markdown отчётов | Группировка по типам |
 | `auto_segmentation.py` | Автоматическое выделение блоков (OpenCV) | Эвристики для типов блоков |
 | `reapply.py` | Перенос разметки на новый PDF | Автоматическое масштабирование координат |

@@ -1,6 +1,6 @@
 """
 OCR обработка блоков
-Абстракция над OCR-движками (сейчас pytesseract, позже Chandra/HunyuanOCR)
+Абстракция над OCR-движками (pytesseract, HunyuanOCR)
 """
 
 import logging
@@ -89,6 +89,101 @@ class DummyOCRBackend:
         return "[OCR placeholder - Tesseract not configured]"
 
 
+class HunyuanOCRBackend:
+    """
+    OCR через HunyuanOCR (Tencent VLM)
+    Поддержка многоязычных документов с таблицами и формулами
+    
+    Требует установки репозитория:
+    git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git
+    cd HunyuanOCR/Hunyuan-OCR-master
+    pip install -r requirements.txt
+    """
+    
+    def __init__(self, hunyuan_repo_path: Optional[str] = None):
+        """
+        Args:
+            hunyuan_repo_path: путь к клонированному репозиторию HunyuanOCR
+                               (по умолчанию ищет в ./HunyuanOCR или ./Новая папка/HunyuanOCR)
+        """
+        try:
+            import sys
+            from pathlib import Path as PathLib
+            
+            # Ищем репозиторий HunyuanOCR
+            if hunyuan_repo_path:
+                repo_path = PathLib(hunyuan_repo_path)
+            else:
+                # Пробуем стандартные пути
+                possible_paths = [
+                    PathLib("HunyuanOCR/Hunyuan-OCR-master"),
+                    PathLib("Новая папка/HunyuanOCR/Hunyuan-OCR-master"),
+                    PathLib("../HunyuanOCR/Hunyuan-OCR-master"),
+                ]
+                repo_path = None
+                for path in possible_paths:
+                    if path.exists():
+                        repo_path = path
+                        break
+                
+                if not repo_path:
+                    raise FileNotFoundError(
+                        "Репозиторий HunyuanOCR не найден. Установите его:\n"
+                        "git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git\n"
+                        "cd HunyuanOCR/Hunyuan-OCR-master\n"
+                        "pip install -r requirements.txt"
+                    )
+            
+            # Добавляем путь в sys.path
+            sys.path.insert(0, str(repo_path))
+            logger.info(f"HunyuanOCR репозиторий найден: {repo_path}")
+            
+            # Импортируем HunyuanOCR
+            try:
+                from inference import HunyuanOCR
+                self.ocr_model = HunyuanOCR()
+                logger.info("HunyuanOCR инициализирован успешно")
+            except ImportError as e:
+                logger.error(f"Не удалось импортировать HunyuanOCR: {e}")
+                raise ImportError(
+                    f"Ошибка импорта HunyuanOCR из {repo_path}. "
+                    "Убедитесь что установлены зависимости: pip install -r requirements.txt"
+                )
+            
+            # Промпт для извлечения документа в Markdown
+            self.prompt = (
+                "Извлеките всю информацию из основного текста изображения документа "
+                "и представьте ее в формате Markdown, игнорируя заголовки и колонтитулы. "
+                "Таблицы должны быть выражены в формате HTML, формулы — в формате LaTeX, "
+                "а разбор должен быть организован в соответствии с порядком чтения."
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка инициализации HunyuanOCR: {e}")
+            raise
+    
+    def recognize(self, image: Image.Image) -> str:
+        """
+        Распознать текст через HunyuanOCR
+        
+        Args:
+            image: изображение для распознавания
+        
+        Returns:
+            Распознанный текст в Markdown формате
+        """
+        try:
+            # Вызываем HunyuanOCR с промптом
+            result = self.ocr_model.predict(image, prompt=self.prompt)
+            
+            logger.debug(f"HunyuanOCR: распознано {len(result)} символов")
+            return result.strip()
+            
+        except Exception as e:
+            logger.error(f"Ошибка HunyuanOCR распознавания: {e}")
+            return f"[Ошибка HunyuanOCR: {e}]"
+
+
 def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "") -> None:
     """
     Запустить OCR для блоков типа TEXT или TABLE
@@ -156,7 +251,7 @@ def create_ocr_engine(backend: str = "tesseract", **kwargs) -> OCRBackend:
     Фабрика для создания OCR движка
     
     Args:
-        backend: тип движка ("tesseract", "dummy")
+        backend: тип движка ("tesseract", "dummy", "hunyuan")
         **kwargs: параметры для движка
     
     Returns:
@@ -164,9 +259,59 @@ def create_ocr_engine(backend: str = "tesseract", **kwargs) -> OCRBackend:
     """
     if backend == "tesseract":
         return TesseractOCRBackend(**kwargs)
+    elif backend == "hunyuan":
+        return HunyuanOCRBackend(**kwargs)
     elif backend == "dummy":
         return DummyOCRBackend()
     else:
         logger.warning(f"Неизвестный backend '{backend}', используется dummy")
         return DummyOCRBackend()
+
+
+def run_hunyuan_ocr_full_document(page_images: dict, output_path: str) -> str:
+    """
+    Распознать весь документ с HunyuanOCR и создать единый Markdown файл
+    
+    Args:
+        page_images: словарь {page_num: PIL.Image} со всеми страницами
+        output_path: путь для сохранения результирующего MD файла
+    
+    Returns:
+        Путь к созданному MD файлу
+    """
+    try:
+        logger.info(f"Запуск HunyuanOCR для {len(page_images)} страниц")
+        
+        # Создаем HunyuanOCR backend
+        ocr_engine = HunyuanOCRBackend()
+        
+        # Собираем результаты по страницам
+        markdown_parts = []
+        
+        for page_num in sorted(page_images.keys()):
+            logger.info(f"Обработка страницы {page_num + 1}")
+            image = page_images[page_num]
+            
+            # Распознаем страницу
+            page_markdown = ocr_engine.recognize(image)
+            
+            # Добавляем в результат
+            markdown_parts.append(f"# Страница {page_num + 1}\n\n{page_markdown}\n\n---\n\n")
+        
+        # Объединяем в единый документ
+        full_markdown = "".join(markdown_parts)
+        
+        # Сохраняем
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(full_markdown)
+        
+        logger.info(f"Markdown документ сохранен: {output_file}")
+        return str(output_file)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при обработке документа HunyuanOCR: {e}", exc_info=True)
+        raise
 

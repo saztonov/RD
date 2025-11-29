@@ -18,7 +18,7 @@ from app.pdf_utils import PDFDocument
 from app.gui.page_viewer import PageViewer
 from app.annotation_io import AnnotationIO
 from app.cropping import Cropper, export_blocks_by_category
-from app.ocr import create_ocr_engine
+from app.ocr import create_ocr_engine, run_hunyuan_ocr_full_document
 from app.report_md import MarkdownReporter
 from app.auto_segmentation import AutoSegmentation, detect_blocks_from_image
 from app.reapply import AnnotationReapplier
@@ -1138,7 +1138,39 @@ class MainWindow(QMainWindow):
         if not self.annotation_document:
             return
         
-        # TODO: добавить прогресс-бар
+        # Диалог выбора метода OCR
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QRadioButton, QDialogButtonBox
+        
+        choice_dialog = QDialog(self)
+        choice_dialog.setWindowTitle("Выбор метода OCR")
+        layout = QVBoxLayout(choice_dialog)
+        
+        layout.addWidget(QLabel("Выберите метод распознавания:"))
+        
+        tesseract_radio = QRadioButton("Tesseract (постраничный, сохраняет разметку блоков)")
+        hunyuan_radio = QRadioButton("HunyuanOCR (единый MD документ, высокая точность)")
+        tesseract_radio.setChecked(True)
+        
+        layout.addWidget(tesseract_radio)
+        layout.addWidget(hunyuan_radio)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(choice_dialog.accept)
+        buttons.rejected.connect(choice_dialog.reject)
+        layout.addWidget(buttons)
+        
+        if choice_dialog.exec() != QDialog.Accepted:
+            return
+        
+        use_hunyuan = hunyuan_radio.isChecked()
+        
+        if use_hunyuan:
+            self._run_hunyuan_ocr()
+        else:
+            self._run_tesseract_ocr()
+    
+    def _run_tesseract_ocr(self):
+        """Запустить Tesseract OCR для блоков"""
         from PySide6.QtWidgets import QProgressDialog
         
         total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
@@ -1158,7 +1190,6 @@ class MainWindow(QMainWindow):
                 
             page_num = page.page_number
             if page_num not in self.page_images:
-                # Рендерим страницу если нужно
                 img = self.pdf_document.render_page(page_num)
                 if img:
                     self.page_images[page_num] = img
@@ -1171,12 +1202,9 @@ class MainWindow(QMainWindow):
                 if progress.wasCanceled():
                     break
                 
-                # Обрезаем блок используя coords_px (x1, y1, x2, y2)
                 x1, y1, x2, y2 = block.coords_px
-                # Проверяем валидность координат
                 if x1 < x2 and y1 < y2:
                     crop = page_img.crop((x1, y1, x2, y2))
-                    # OCR
                     block.ocr_text = self.ocr_engine.recognize(crop)
                 
                 processed_count += 1
@@ -1184,6 +1212,77 @@ class MainWindow(QMainWindow):
         
         progress.close()
         QMessageBox.information(self, "Успех", f"OCR завершён. Обработано {processed_count} блоков.")
+    
+    def _run_hunyuan_ocr(self):
+        """Запустить HunyuanOCR для всего документа"""
+        from PySide6.QtWidgets import QProgressDialog, QFileDialog
+        
+        # Рендерим все страницы если нужно
+        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.annotation_document.pages), self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        
+        for i, page in enumerate(self.annotation_document.pages):
+            page_num = page.page_number
+            if page_num not in self.page_images:
+                img = self.pdf_document.render_page(page_num)
+                if img:
+                    self.page_images[page_num] = img
+            progress.setValue(i + 1)
+        
+        progress.close()
+        
+        # Выбираем куда сохранить результат
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Сохранить распознанный документ", 
+            "recognized_document.md", 
+            "Markdown Files (*.md)"
+        )
+        
+        if not output_path:
+            return
+        
+        # Запускаем HunyuanOCR
+        progress = QProgressDialog("Распознавание с HunyuanOCR...", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        
+        try:
+            result_path = run_hunyuan_ocr_full_document(self.page_images, output_path)
+            progress.close()
+            
+            QMessageBox.information(
+                self, 
+                "Успех", 
+                f"Документ распознан и сохранен:\n{result_path}"
+            )
+        except FileNotFoundError as e:
+            progress.close()
+            QMessageBox.critical(
+                self, 
+                "HunyuanOCR не установлен", 
+                f"{e}\n\n"
+                "Инструкция по установке:\n"
+                "1. cd \"Новая папка\"\n"
+                "2. git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git\n"
+                "3. cd HunyuanOCR/Hunyuan-OCR-master\n"
+                "4. pip install -r requirements.txt\n\n"
+                "Подробности: HUNYUAN_SETUP.md"
+            )
+        except ImportError as e:
+            progress.close()
+            QMessageBox.critical(
+                self, 
+                "Ошибка импорта HunyuanOCR", 
+                f"{e}\n\n"
+                "Проверьте что установлены все зависимости:\n"
+                "cd HunyuanOCR/Hunyuan-OCR-master\n"
+                "pip install -r requirements.txt"
+            )
+        except Exception as e:
+            progress.close()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка HunyuanOCR:\n{e}")
     
     def _export_crops(self):
         """Экспорт кропов блоков по категориям"""

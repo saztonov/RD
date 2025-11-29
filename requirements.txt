@@ -11,6 +11,12 @@ Pillow>=10.0.0
 # OCR
 pytesseract>=0.3.10
 
+# HunyuanOCR - установите отдельно:
+# cd "Новая папка"
+# git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git
+# cd HunyuanOCR/Hunyuan-OCR-master
+# pip install -r requirements.txt
+
 # Data Handling
 numpy>=1.24.0
 
