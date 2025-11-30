@@ -111,13 +111,6 @@ class LocalVLMBackend:
             # Дефолтный промпт для OCR из файла
             if not prompt:
                 prompt = load_prompt("ocr_full_page.txt")
-                if not prompt:
-                    # Fallback если файл не найден
-                    prompt = (
-                        "Распознай весь текст на этом изображении. "
-                        "Сохрани структуру документа, таблицы представь в Markdown формате. "
-                        "Выведи только распознанный текст без комментариев."
-                    )
             
             # Конвертируем изображение в base64
             img_base64 = self._image_to_base64(image)
@@ -327,16 +320,6 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             if block.block_type == BlockType.IMAGE:
                 # Для изображений - детальное описание из промпта
                 image_prompt = load_prompt("ocr_image_description.txt")
-                if not image_prompt:
-                    # Fallback если файл не найден
-                    image_prompt = (
-                        "Подробно опиши всё, что ты видишь на этом изображении. "
-                        "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
-                        "Если есть текст на русском языке - распознай и выведи его полностью. "
-                        "Если есть техническая информация, параметры, размеры - укажи их точно. "
-                        "Опиши структуру, компоненты, связи между элементами. "
-                        "Ответ должен быть максимально информативным и на русском языке."
-                    )
                 ocr_text = image_description_backend.recognize(image, prompt=image_prompt)
                 block.ocr_text = ocr_text
                 

@@ -1155,100 +1155,354 @@ class MainWindow(QMainWindow):
     
     def _run_ocr_all(self):
         """Запустить OCR для всех блоков"""
-        if not self.annotation_document:
+        if not self.annotation_document or not self.pdf_document:
+            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF")
             return
         
-        # Диалог выбора метода OCR
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QRadioButton, QDialogButtonBox, QGroupBox, QLineEdit
+        # Диалог настройки OCR и выбора папки
+        from app.gui.ocr_dialog import OCRDialog
         
-        choice_dialog = QDialog(self)
-        choice_dialog.setWindowTitle("Выбор метода OCR")
-        layout = QVBoxLayout(choice_dialog)
-        
-        layout.addWidget(QLabel("Выберите режим распознавания:"))
-        
-        blocks_radio = QRadioButton("По блокам (учитывает вашу разметку)")
-        full_page_radio = QRadioButton("Вся страница (автоматическая структура)")
-        full_page_radio.setChecked(True)
-        
-        layout.addWidget(blocks_radio)
-        layout.addWidget(full_page_radio)
-        
-        layout.addWidget(QLabel("\nВыберите движок OCR:"))
-        
-        # Локальный VLM сервер (приоритет)
-        local_vlm_radio = QRadioButton("Локальный VLM сервер (Qwen3-VL и др.)")
-        local_vlm_radio.setChecked(True)
-        layout.addWidget(local_vlm_radio)
-        
-        # Поля для настройки VLM сервера
-        vlm_group = QGroupBox()
-        vlm_layout = QVBoxLayout(vlm_group)
-        
-        server_layout = QHBoxLayout()
-        server_layout.addWidget(QLabel("URL сервера:"))
-        server_url_edit = QLineEdit("http://127.0.0.1:1234/v1")
-        server_layout.addWidget(server_url_edit)
-        vlm_layout.addLayout(server_layout)
-        
-        model_layout = QHBoxLayout()
-        model_layout.addWidget(QLabel("Модель:"))
-        model_name_edit = QLineEdit("qwen3-vl-32b-instruct")
-        model_layout.addWidget(model_name_edit)
-        vlm_layout.addLayout(model_layout)
-        
-        layout.addWidget(vlm_group)
-        
-        # Chandra OCR
-        layout.addWidget(QLabel("\nИли Chandra OCR:"))
-        chandra_radio = QRadioButton("Chandra OCR")
-        layout.addWidget(chandra_radio)
-        
-        chandra_group = QGroupBox()
-        chandra_layout = QVBoxLayout(chandra_group)
-        hf_radio = QRadioButton("HuggingFace (локально)")
-        vllm_radio = QRadioButton("vLLM сервер")
-        hf_radio.setChecked(True)
-        chandra_layout.addWidget(hf_radio)
-        chandra_layout.addWidget(vllm_radio)
-        layout.addWidget(chandra_group)
-        
-        # Связываем радиокнопки с группами настроек
-        def toggle_groups():
-            is_vlm = local_vlm_radio.isChecked()
-            vlm_group.setEnabled(is_vlm)
-            chandra_group.setEnabled(not is_vlm)
-        
-        local_vlm_radio.toggled.connect(toggle_groups)
-        chandra_radio.toggled.connect(toggle_groups)
-        toggle_groups()
-        
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(choice_dialog.accept)
-        buttons.rejected.connect(choice_dialog.reject)
-        layout.addWidget(buttons)
-        
-        if choice_dialog.exec() != QDialog.Accepted:
+        dialog = OCRDialog(self)
+        if dialog.exec() != QDialog.Accepted:
             return
         
-        use_blocks = blocks_radio.isChecked()
+        # Получаем параметры
+        output_dir = Path(dialog.output_dir)
+        mode = dialog.mode
+        engine = dialog.engine
         
-        if local_vlm_radio.isChecked():
-            # Локальный VLM сервер
-            api_base = server_url_edit.text().strip()
-            model_name = model_name_edit.text().strip()
-            
-            if use_blocks:
-                self._run_local_vlm_ocr_blocks(api_base, model_name)
+        # Создаем структуру папок
+        output_dir.mkdir(parents=True, exist_ok=True)
+        crops_dir = output_dir / "crops"
+        crops_dir.mkdir(exist_ok=True)
+        
+        # 1. Копируем исходный PDF
+        import shutil
+        pdf_name = Path(self.annotation_document.pdf_path).name
+        pdf_output = output_dir / pdf_name
+        shutil.copy2(self.annotation_document.pdf_path, pdf_output)
+        logger.info(f"PDF сохранен: {pdf_output}")
+        
+        # 2. Запускаем OCR
+        if mode == "blocks":
+            if engine == "local_vlm":
+                self._run_local_vlm_ocr_blocks_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir, crops_dir)
             else:
-                self._run_local_vlm_ocr(api_base, model_name)
+                self._run_chandra_ocr_blocks_with_output(dialog.chandra_method, output_dir, crops_dir)
         else:
-            # Chandra OCR
-            method = "vllm" if vllm_radio.isChecked() else "hf"
-            if use_blocks:
-                self._run_chandra_ocr_blocks(method)
+            if engine == "local_vlm":
+                self._run_local_vlm_ocr_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir)
             else:
-                self._run_chandra_ocr(method)
+                self._run_chandra_ocr_with_output(dialog.chandra_method, output_dir)
+
+    def _run_local_vlm_ocr_blocks_with_output(self, api_base: str, model_name: str, output_dir: Path, crops_dir: Path):
+        """Запустить LocalVLM OCR для блоков с сохранением результатов в папку"""
+        from PySide6.QtWidgets import QProgressDialog
+        from app.ocr import create_ocr_engine, generate_structured_markdown
+        from app.annotation_io import AnnotationIO
+        
+        try:
+            ocr_engine = create_ocr_engine("local_vlm", api_base=api_base, model_name=model_name)
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка LocalVLM OCR", f"Не удалось инициализировать:\n{e}")
+            return
+            
+        total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
+        if total_blocks == 0:
+            QMessageBox.information(self, "Информация", "Нет блоков для OCR")
+            return
+
+        progress = QProgressDialog(f"Распознавание блоков через {model_name}...", "Отмена", 0, total_blocks, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+
+        processed_count = 0
+        
+        for page in self.annotation_document.pages:
+            if progress.wasCanceled():
+                break
+                
+            page_num = page.page_number
+            if page_num not in self.page_images:
+                img = self.pdf_document.render_page(page_num)
+                if img:
+                    self.page_images[page_num] = img
+            
+            page_img = self.page_images.get(page_num)
+            if not page_img:
+                continue
+            
+            for block in page.blocks:
+                if progress.wasCanceled():
+                    break
+                
+                x1, y1, x2, y2 = block.coords_px
+                if x1 >= x2 or y1 >= y2:
+                    processed_count += 1
+                    progress.setValue(processed_count)
+                    continue
+                
+                crop = page_img.crop((x1, y1, x2, y2))
+                
+                try:
+                    # Сохраняем кроп
+                    crop_filename = f"page{page_num}_block{block.id}.png"
+                    crop_path = crops_dir / crop_filename
+                    crop.save(crop_path, "PNG")
+                    block.image_file = str(crop_path)
+                    
+                    if block.block_type == BlockType.IMAGE:
+                        from app.ocr import load_prompt
+                        image_prompt = load_prompt("ocr_image_description.txt")
+                        block.ocr_text = ocr_engine.recognize(crop, prompt=image_prompt)
+                    elif block.block_type == BlockType.TABLE:
+                        from app.ocr import load_prompt
+                        table_prompt = load_prompt("ocr_table.txt")
+                        block.ocr_text = ocr_engine.recognize(crop, prompt=table_prompt) if table_prompt else ocr_engine.recognize(crop)
+                    elif block.block_type == BlockType.TEXT:
+                        from app.ocr import load_prompt
+                        text_prompt = load_prompt("ocr_text.txt")
+                        block.ocr_text = ocr_engine.recognize(crop, prompt=text_prompt) if text_prompt else ocr_engine.recognize(crop)
+                        
+                except Exception as e:
+                    logger.error(f"Error OCR block {block.id}: {e}")
+                    block.ocr_text = f"[Error: {e}]"
+                
+                processed_count += 1
+                progress.setValue(processed_count)
+        
+        progress.close()
+        
+        # 3. Сохраняем разметку JSON
+        json_path = output_dir / "annotation.json"
+        AnnotationIO.save_annotation(self.annotation_document, str(json_path))
+        logger.info(f"Разметка сохранена: {json_path}")
+        
+        # 4. Генерируем Markdown
+        md_path = output_dir / "document.md"
+        generate_structured_markdown(self.annotation_document.pages, str(md_path))
+        logger.info(f"Markdown сохранен: {md_path}")
+        
+        pdf_name = Path(self.annotation_document.pdf_path).name
+        QMessageBox.information(
+            self, 
+            "Готово", 
+            f"OCR завершен!\n\n"
+            f"Результаты сохранены в:\n{output_dir}\n\n"
+            f"• {pdf_name}\n"
+            f"• annotation.json\n"
+            f"• crops/\n"
+            f"• document.md"
+        )
+    
+    def _run_chandra_ocr_blocks_with_output(self, method: str, output_dir: Path, crops_dir: Path):
+        """Запустить Chandra OCR для блоков с сохранением результатов в папку"""
+        from PySide6.QtWidgets import QProgressDialog
+        from app.ocr import create_ocr_engine, generate_structured_markdown
+        from app.annotation_io import AnnotationIO
+        
+        try:
+            chandra_engine = create_ocr_engine("chandra", method=method)
+            vlm_engine = create_ocr_engine("local_vlm", api_base="http://127.0.0.1:1234/v1", model_name="qwen3-vl-32b-instruct")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка OCR", f"Не удалось инициализировать:\n{e}")
+            return
+            
+        total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
+        if total_blocks == 0:
+            QMessageBox.information(self, "Информация", "Нет блоков для OCR")
+            return
+
+        progress = QProgressDialog("Распознавание блоков (Chandra + VLM)...", "Отмена", 0, total_blocks, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+
+        processed_count = 0
+        
+        for page in self.annotation_document.pages:
+            if progress.wasCanceled():
+                break
+                
+            page_num = page.page_number
+            if page_num not in self.page_images:
+                img = self.pdf_document.render_page(page_num)
+                if img:
+                    self.page_images[page_num] = img
+            
+            page_img = self.page_images.get(page_num)
+            if not page_img:
+                continue
+            
+            for block in page.blocks:
+                if progress.wasCanceled():
+                    break
+                
+                x1, y1, x2, y2 = block.coords_px
+                if x1 >= x2 or y1 >= y2:
+                    processed_count += 1
+                    progress.setValue(processed_count)
+                    continue
+                
+                crop = page_img.crop((x1, y1, x2, y2))
+                
+                try:
+                    # Сохраняем кроп
+                    crop_filename = f"page{page_num}_block{block.id}.png"
+                    crop_path = crops_dir / crop_filename
+                    crop.save(crop_path, "PNG")
+                    block.image_file = str(crop_path)
+                    
+                    if block.block_type == BlockType.IMAGE:
+                        from app.ocr import load_prompt
+                        image_prompt = load_prompt("ocr_image_description.txt")
+                        block.ocr_text = vlm_engine.recognize(crop, prompt=image_prompt)
+                    elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
+                        block.ocr_text = chandra_engine.recognize(crop)
+                        
+                except Exception as e:
+                    logger.error(f"Error OCR block {block.id}: {e}")
+                    block.ocr_text = f"[Error: {e}]"
+                
+                processed_count += 1
+                progress.setValue(processed_count)
+        
+        progress.close()
+        
+        # 3. Сохраняем разметку JSON
+        json_path = output_dir / "annotation.json"
+        AnnotationIO.save_annotation(self.annotation_document, str(json_path))
+        logger.info(f"Разметка сохранена: {json_path}")
+        
+        # 4. Генерируем Markdown
+        md_path = output_dir / "document.md"
+        generate_structured_markdown(self.annotation_document.pages, str(md_path))
+        logger.info(f"Markdown сохранен: {md_path}")
+        
+        pdf_name = Path(self.annotation_document.pdf_path).name
+        QMessageBox.information(
+            self, 
+            "Готово", 
+            f"OCR завершен!\n\n"
+            f"Результаты сохранены в:\n{output_dir}\n\n"
+            f"• {pdf_name}\n"
+            f"• annotation.json\n"
+            f"• crops/\n"
+            f"• document.md"
+        )
+    
+    def _run_local_vlm_ocr_with_output(self, api_base: str, model_name: str, output_dir: Path):
+        """Запустить LocalVLM OCR для всего документа с сохранением результатов в папку"""
+        from PySide6.QtWidgets import QProgressDialog
+        from app.ocr import run_local_vlm_full_document
+        from app.annotation_io import AnnotationIO
+        
+        # Рендерим все страницы если нужно
+        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.annotation_document.pages), self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        
+        for i, page in enumerate(self.annotation_document.pages):
+            page_num = page.page_number
+            if page_num not in self.page_images:
+                img = self.pdf_document.render_page(page_num)
+                if img:
+                    self.page_images[page_num] = img
+            progress.setValue(i + 1)
+        
+        progress.close()
+        
+        # Запускаем LocalVLM OCR
+        progress = QProgressDialog(f"Распознавание с {model_name}...", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        
+        try:
+            md_path = output_dir / "document.md"
+            result_path = run_local_vlm_full_document(
+                self.page_images, 
+                str(md_path), 
+                api_base=api_base,
+                model_name=model_name
+            )
+            
+            # Сохраняем разметку JSON
+            json_path = output_dir / "annotation.json"
+            AnnotationIO.save_annotation(self.annotation_document, str(json_path))
+            
+            progress.close()
+            
+            pdf_name = Path(self.annotation_document.pdf_path).name
+            QMessageBox.information(
+                self, 
+                "Успех", 
+                f"OCR завершен!\n\n"
+                f"Результаты сохранены в:\n{output_dir}\n\n"
+                f"• {pdf_name}\n"
+                f"• annotation.json\n"
+                f"• document.md"
+            )
+        except Exception as e:
+            progress.close()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка LocalVLM OCR:\n{e}")
+    
+    def _run_chandra_ocr_with_output(self, method: str, output_dir: Path):
+        """Запустить Chandra OCR для всего документа с сохранением результатов в папку"""
+        from PySide6.QtWidgets import QProgressDialog
+        from app.ocr import run_chandra_ocr_full_document
+        from app.annotation_io import AnnotationIO
+        
+        # Рендерим все страницы если нужно
+        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.annotation_document.pages), self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        
+        for i, page in enumerate(self.annotation_document.pages):
+            page_num = page.page_number
+            if page_num not in self.page_images:
+                img = self.pdf_document.render_page(page_num)
+                if img:
+                    self.page_images[page_num] = img
+            progress.setValue(i + 1)
+        
+        progress.close()
+        
+        # Запускаем Chandra OCR
+        progress = QProgressDialog("Распознавание с Chandra OCR...", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        
+        try:
+            md_path = output_dir / "document.md"
+            result_path = run_chandra_ocr_full_document(self.page_images, str(md_path), method=method)
+            
+            # Сохраняем разметку JSON
+            json_path = output_dir / "annotation.json"
+            AnnotationIO.save_annotation(self.annotation_document, str(json_path))
+            
+            progress.close()
+            
+            pdf_name = Path(self.annotation_document.pdf_path).name
+            QMessageBox.information(
+                self, 
+                "Успех", 
+                f"OCR завершен!\n\n"
+                f"Результаты сохранены в:\n{output_dir}\n\n"
+                f"• {pdf_name}\n"
+                f"• annotation.json\n"
+                f"• document.md"
+            )
+        except ImportError as e:
+            progress.close()
+            QMessageBox.critical(
+                self, 
+                "Ошибка импорта Chandra OCR", 
+                f"{e}\n\n"
+                "Требуется установить chandra-ocr:\n"
+                "pip install chandra-ocr"
+            )
+        except Exception as e:
+            progress.close()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка Chandra OCR:\n{e}")
 
     def _run_local_vlm_ocr_blocks(self, api_base: str, model_name: str):
         """Запустить LocalVLM OCR для блоков с учетом типов"""
@@ -1316,16 +1570,6 @@ class MainWindow(QMainWindow):
                         # Детальное описание из промпта
                         from app.ocr import load_prompt
                         image_prompt = load_prompt("ocr_image_description.txt")
-                        if not image_prompt:
-                            # Fallback
-                            image_prompt = (
-                                "Подробно опиши всё, что ты видишь на этом изображении. "
-                                "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
-                                "Если есть текст на русском языке - распознай и выведи его полностью. "
-                                "Если есть техническая информация, параметры, размеры - укажи их точно. "
-                                "Опиши структуру, компоненты, связи между элементами. "
-                                "Ответ должен быть максимально информативным и на русском языке."
-                            )
                         block.ocr_text = ocr_engine.recognize(crop, prompt=image_prompt)
                         
                     elif block.block_type == BlockType.TABLE:
@@ -1434,16 +1678,6 @@ class MainWindow(QMainWindow):
                         # Детальное описание из промпта
                         from app.ocr import load_prompt
                         image_prompt = load_prompt("ocr_image_description.txt")
-                        if not image_prompt:
-                            # Fallback
-                            image_prompt = (
-                                "Подробно опиши всё, что ты видишь на этом изображении. "
-                                "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
-                                "Если есть текст на русском языке - распознай и выведи его полностью. "
-                                "Если есть техническая информация, параметры, размеры - укажи их точно. "
-                                "Опиши структуру, компоненты, связи между элементами. "
-                                "Ответ должен быть максимально информативным и на русском языке."
-                            )
                         block.ocr_text = vlm_engine.recognize(crop, prompt=image_prompt)
                         
                     elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
