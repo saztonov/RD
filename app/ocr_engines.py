@@ -73,8 +73,9 @@ class LocalVLMEngine(OCREngine):
                     ]
                 }
             ],
-            max_tokens=4096,
-            temperature=0.0
+            max_tokens=8192,
+            temperature=0.1,
+            top_p=0.9
         )
         
         return response.choices[0].message.content.strip()

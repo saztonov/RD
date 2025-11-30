@@ -87,12 +87,19 @@ class LocalVLMBackend:
         except ImportError:
             raise ImportError("Требуется установить requests: pip install requests")
         
-        logger.info(f"LocalVLM инициализирован (сервер: {api_base}, модель: {model_name})")
+        logger.info(f"LocalVLM инициализирован (сервер: {self.api_base}, модель: {self.model_name})")
     
     def _image_to_base64(self, image: Image.Image) -> str:
         """Конвертировать PIL Image в base64"""
+        # Сжимаем если изображение больше 1500px
+        max_size = 1500
+        if image.width > max_size or image.height > max_size:
+            ratio = min(max_size / image.width, max_size / image.height)
+            new_size = (int(image.width * ratio), int(image.height * ratio))
+            image = image.resize(new_size, Image.LANCZOS)
+        
         buffer = io.BytesIO()
-        image.save(buffer, format='PNG')
+        image.save(buffer, format='PNG', optimize=True)
         img_bytes = buffer.getvalue()
         return base64.b64encode(img_bytes).decode('utf-8')
     
@@ -134,8 +141,9 @@ class LocalVLMBackend:
                         ]
                     }
                 ],
-                "max_tokens": 4096,
-                "temperature": 0.0
+                "max_tokens": 8192,
+                "temperature": 0.1,
+                "top_p": 0.9
             }
             
             # Отправляем запрос
@@ -143,7 +151,7 @@ class LocalVLMBackend:
                 url,
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=120
+                timeout=90
             )
             
             if response.status_code != 200:
