@@ -49,7 +49,7 @@ class MarkerSegmentation:
             raise
     
     def segment_pdf(self, pdf_path: str, pages: List[Page], 
-                    page_images: Optional[dict] = None, page_range: Optional[List[int]] = None) -> List[Page]:
+                    page_images: Optional[dict] = None, page_range: Optional[List[int]] = None, category: str = "") -> List[Page]:
         """
         Разметка PDF с помощью Marker
         
@@ -58,6 +58,7 @@ class MarkerSegmentation:
             pages: список страниц Document
             page_images: словарь {page_num: PIL.Image} (не используется для детекции, оставлен для совместимости)
             page_range: список индексов страниц для обработки (если None, обрабатываются все)
+            category: категория для создаваемых блоков
         
         Returns:
             Обновленный список страниц с блоками от Marker
@@ -124,7 +125,7 @@ class MarkerSegmentation:
                 # Извлекаем блоки из страницы
                 new_blocks = self._extract_blocks_from_page(
                     page_data, real_page_idx, page.width, page.height,
-                    marker_width, marker_height
+                    marker_width, marker_height, category
                 )
                 
                 # Фильтруем блоки: не добавляем те, которые пересекаются с существующими
@@ -191,7 +192,7 @@ class MarkerSegmentation:
     
     def _extract_blocks_from_page(self, page_data, page_idx: int, 
                                    page_width: float, page_height: float,
-                                   marker_width: float, marker_height: float) -> List[Block]:
+                                   marker_width: float, marker_height: float, category: str = "") -> List[Block]:
         """Извлечение блоков из страницы Marker (PageGroup)"""
         blocks = []
         
@@ -236,13 +237,13 @@ class MarkerSegmentation:
                     # Определяем тип блока
                     block_type = self._detect_block_type(marker_block)
                     
-                    # Создаем блок
+                    # Создаем блок с категорией из GUI
                     block = Block.create(
                         page_index=page_idx,
                         coords_px=(int(x1), int(y1), int(x2), int(y2)),
                         page_width=page_width,
                         page_height=page_height,
-                        category="Marker",
+                        category=category,
                         block_type=block_type,
                         source=BlockSource.AUTO
                     )
@@ -288,7 +289,7 @@ class MarkerSegmentation:
 
 
 def segment_with_marker(pdf_path: str, pages: List[Page], 
-                        page_images: Optional[dict] = None, page_range: Optional[List[int]] = None) -> Optional[List[Page]]:
+                        page_images: Optional[dict] = None, page_range: Optional[List[int]] = None, category: str = "") -> Optional[List[Page]]:
     """
     Функция-обертка для разметки PDF через Marker
     
@@ -297,6 +298,7 @@ def segment_with_marker(pdf_path: str, pages: List[Page],
         pages: список страниц
         page_images: словарь изображений страниц (опционально)
         page_range: список индексов страниц для обработки
+        category: категория для создаваемых блоков
     
     Returns:
         Обновленный список страниц или None при ошибке
@@ -304,7 +306,7 @@ def segment_with_marker(pdf_path: str, pages: List[Page],
     try:
         # Используем глобальный экземпляр
         segmenter = get_marker_segmentation()
-        return segmenter.segment_pdf(pdf_path, pages, page_images, page_range)
+        return segmenter.segment_pdf(pdf_path, pages, page_images, page_range, category)
     except Exception as e:
         logger.error(f"Ошибка разметки Marker: {e}")
         return None

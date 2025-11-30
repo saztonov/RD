@@ -19,6 +19,7 @@ import shutil
 from pathlib import Path
 from PIL import Image
 from typing import List, Dict
+import fitz
 from app.models import PageModel, Block, Document
 
 
@@ -50,6 +51,9 @@ def export_blocks_by_category(doc_path: str, pages: List[PageModel], base_output
         
         logger.info(f"Найдено категорий: {len(blocks_by_category)}")
         
+        # Открываем PDF для извлечения фрагментов
+        pdf_doc = fitz.open(doc_path)
+        
         # Для каждой категории создаём папку и сохраняем блоки
         for category, blocks in blocks_by_category.items():
             category_dir = base_output_path / category
@@ -65,21 +69,50 @@ def export_blocks_by_category(doc_path: str, pages: List[PageModel], base_output
                     continue
                 
                 page = pages[block.page_index]
-                page_image = page.image
                 
-                # Обрезаем блок
-                x1, y1, x2, y2 = block.coords_px
-                crop = page_image.crop((x1, y1, x2, y2))
+                # Сохраняем PDF-фрагмент
+                pdf_filename = f"page{block.page_index}_block{block.id}.pdf"
+                pdf_path = category_dir / pdf_filename
                 
-                # Сохраняем в JPEG напрямую в папку категории
-                crop_filename = f"page{block.page_index}_block{block.id}.jpg"
-                crop_path = category_dir / crop_filename
-                crop.save(crop_path, "JPEG", quality=95)
+                try:
+                    # Создаём новый PDF-документ для этого блока
+                    out_pdf = fitz.open()
+                    pdf_page = pdf_doc[block.page_index]
+                    
+                    # Вставляем страницу
+                    out_pdf.insert_pdf(pdf_doc, from_page=block.page_index, to_page=block.page_index)
+                    out_page = out_pdf[0]
+                    
+                    # Получаем координаты в PDF-пространстве (нормализованные)
+                    x0_norm, y0_norm, x1_norm, y1_norm = block.coords_norm
+                    page_rect = pdf_page.rect
+                    
+                    # Преобразуем в абсолютные координаты PDF
+                    crop_rect = fitz.Rect(
+                        page_rect.x0 + x0_norm * page_rect.width,
+                        page_rect.y0 + y0_norm * page_rect.height,
+                        page_rect.x0 + x1_norm * page_rect.width,
+                        page_rect.y0 + y1_norm * page_rect.height
+                    )
+                    
+                    # Устанавливаем CropBox
+                    out_page.set_cropbox(crop_rect)
+                    
+                    # Сохраняем PDF
+                    out_pdf.save(str(pdf_path), garbage=4, deflate=True)
+                    out_pdf.close()
+                    
+                    logger.debug(f"PDF-кроп сохранён: {pdf_path}")
+                except Exception as e:
+                    logger.error(f"Ошибка сохранения PDF-кропа для блока {block.id}: {e}")
                 
                 # Обновляем путь в блоке
-                block.image_file = crop_filename
+                block.image_file = pdf_filename
             
             logger.info(f"Категория '{category}': {len(blocks)} кропов сохранено")
+        
+        # Закрываем PDF
+        pdf_doc.close()
         
         # Создаём папку "src"
         docs_dir = base_output_path / "src"

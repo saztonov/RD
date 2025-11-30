@@ -21,12 +21,13 @@ class AutoSegmentation:
         self.min_width = 50
         self.min_height = 50
     
-    def suggest_blocks(self, page_image: Image.Image) -> List[Block]:
+    def suggest_blocks(self, page_image: Image.Image, category: str = "") -> List[Block]:
         """
         Предложить блоки для страницы на основе анализа изображения
         
         Args:
             page_image: изображение страницы
+            category: категория для создаваемых блоков
         
         Returns:
             Список предложенных блоков
@@ -39,7 +40,7 @@ class AutoSegmentation:
             contours = self._find_contours(img_cv)
             
             # Конвертация контуров в блоки
-            blocks = self._contours_to_blocks(contours)
+            blocks = self._contours_to_blocks(contours, category)
             
             return blocks
         except Exception as e:
@@ -75,12 +76,13 @@ class AutoSegmentation:
         
         return contours
     
-    def _contours_to_blocks(self, contours: List) -> List[Block]:
+    def _contours_to_blocks(self, contours: List, category: str = "") -> List[Block]:
         """
         Конвертировать контуры в блоки
         
         Args:
             contours: список контуров OpenCV
+            category: категория для создаваемых блоков
         
         Returns:
             Список блоков
@@ -101,7 +103,7 @@ class AutoSegmentation:
                     coords_px=(x, y, x+w, y+h),
                     page_width=page_image.width,
                     page_height=page_image.height,
-                    category="Auto-detected",
+                    category=category,
                     block_type=block_type,
                     source=BlockSource.AUTO
                 )
@@ -134,7 +136,7 @@ class AutoSegmentation:
             return BlockType.TEXT
 
 
-def detect_blocks_from_image(page_image: Image.Image, page_index: int, min_area: int = 5000) -> List[Block]:
+def detect_blocks_from_image(page_image: Image.Image, page_index: int, min_area: int = 5000, category: str = "") -> List[Block]:
     """
     Обнаружение блоков на изображении с помощью OpenCV (морфология + контуры)
     
@@ -142,6 +144,7 @@ def detect_blocks_from_image(page_image: Image.Image, page_index: int, min_area:
         page_image: PIL изображение страницы
         page_index: индекс страницы
         min_area: минимальная площадь блока в пикселях
+        category: категория для создаваемых блоков
     
     Returns:
         Список найденных блоков с source=AUTO
@@ -197,7 +200,7 @@ def detect_blocks_from_image(page_image: Image.Image, page_index: int, min_area:
             coords_px=coords_px,
             page_width=page_width,
             page_height=page_height,
-            category="",  # пустая категория для авто-блоков
+            category=category,
             block_type=block_type,
             source=BlockSource.AUTO
         )

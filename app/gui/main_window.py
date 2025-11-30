@@ -4,6 +4,7 @@
 """
 
 import logging
+import json
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog, QSpinBox,
                                QComboBox, QTextEdit, QGroupBox, QMessageBox, QToolBar,
@@ -31,17 +32,18 @@ class MarkerWorker(QThread):
     finished = Signal(object)  # Возвращает список обновленных страниц или None
     error = Signal(str)
 
-    def __init__(self, pdf_path, pages, page_images, page_range=None):
+    def __init__(self, pdf_path, pages, page_images, page_range=None, category=""):
         super().__init__()
         self.pdf_path = pdf_path
         self.pages = pages
         self.page_images = page_images
         self.page_range = page_range
+        self.category = category
 
     def run(self):
         try:
             from app.marker_integration import segment_with_marker
-            result = segment_with_marker(self.pdf_path, self.pages, self.page_images, self.page_range)
+            result = segment_with_marker(self.pdf_path, self.pages, self.page_images, self.page_range, self.category)
             self.finished.emit(result)
         except Exception as e:
             self.error.emit(str(e))
@@ -145,6 +147,16 @@ class MainWindow(QMainWindow):
         reapply_action.triggered.connect(self._reapply_annotation)
         tools_menu.addAction(reapply_action)
         
+        tools_menu.addSeparator()
+        
+        export_cat_action = QAction("Экспорт категорий", self)
+        export_cat_action.triggered.connect(self._export_categories)
+        tools_menu.addAction(export_cat_action)
+        
+        import_cat_action = QAction("Импорт категорий", self)
+        import_cat_action.triggered.connect(self._import_categories)
+        tools_menu.addAction(import_cat_action)
+        
         # Меню "Вид"
         view_menu = menubar.addMenu("&Вид")
         
@@ -167,6 +179,13 @@ class MainWindow(QMainWindow):
         fit_action.setShortcut(QKeySequence("Ctrl+F"))
         fit_action.triggered.connect(self._fit_to_view)
         view_menu.addAction(fit_action)
+        
+        view_menu.addSeparator()
+        
+        clear_page_action = QAction("Очистить разметку страницы", self)
+        clear_page_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
+        clear_page_action.triggered.connect(self._clear_current_page)
+        view_menu.addAction(clear_page_action)
     
     def _setup_toolbar(self):
         """Настройка панели инструментов"""
@@ -1096,7 +1115,8 @@ class MainWindow(QMainWindow):
             self.pdf_document.pdf_path,
             self.annotation_document.pages,
             self.page_images,
-            page_range=page_range
+            page_range=page_range,
+            category=self.active_category
         )
         
         self._worker.finished.connect(lambda result: self._on_marker_finished(result, show_success))
@@ -1567,3 +1587,62 @@ class MainWindow(QMainWindow):
             self._update_categories_list()
         
         self._apply_category_to_blocks(blocks_data, category)
+    
+    def _export_categories(self):
+        """Экспортировать список категорий в JSON"""
+        if not self.categories:
+            QMessageBox.information(self, "Информация", "Нет категорий для экспорта")
+            return
+        
+        file_path, _ = QFileDialog.getSaveFileName(self, "Экспорт категорий", "categories.json", "JSON Files (*.json)")
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump({"categories": self.categories}, f, ensure_ascii=False, indent=2)
+                QMessageBox.information(self, "Успех", f"Экспортировано {len(self.categories)} категорий")
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка", f"Ошибка экспорта:\n{e}")
+    
+    def _import_categories(self):
+        """Импортировать список категорий из JSON"""
+        file_path, _ = QFileDialog.getOpenFileName(self, "Импорт категорий", "", "JSON Files (*.json)")
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                imported = data.get("categories", [])
+                
+                # Добавляем новые категории
+                new_count = 0
+                for cat in imported:
+                    if cat and cat not in self.categories:
+                        self.categories.append(cat)
+                        new_count += 1
+                
+                self._update_categories_list()
+                QMessageBox.information(self, "Успех", f"Импортировано {new_count} новых категорий")
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка", f"Ошибка импорта:\n{e}")
+    
+    def _clear_current_page(self):
+        """Очистить все блоки с текущей страницы"""
+        if not self.annotation_document:
+            return
+        
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data or not current_page_data.blocks:
+            QMessageBox.information(self, "Информация", "На странице нет блоков")
+            return
+        
+        reply = QMessageBox.question(
+            self,
+            "Подтверждение",
+            f"Удалить все {len(current_page_data.blocks)} блоков со страницы {self.current_page + 1}?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            current_page_data.blocks.clear()
+            self.page_viewer.set_blocks([])
+            self._update_blocks_tree()
+            QMessageBox.information(self, "Успех", "Разметка страницы очищена")
