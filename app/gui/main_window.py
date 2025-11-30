@@ -17,11 +17,14 @@ from typing import Optional
 from app.models import Document, Page, Block, BlockType, BlockSource, PageModel
 from app.pdf_utils import PDFDocument
 from app.gui.page_viewer import PageViewer
+from app.gui.ocr_manager import OCRManager
+from app.gui.blocks_tree_manager import BlocksTreeManager
+from app.gui.category_manager import CategoryManager
 from app.annotation_io import AnnotationIO
 from app.cropping import Cropper, export_blocks_by_category
-from app.ocr import create_ocr_engine, run_chandra_ocr_full_document, run_local_vlm_full_document
+from app.ocr import create_ocr_engine
 from app.report_md import MarkdownReporter
-from app.auto_segmentation import AutoSegmentation, detect_blocks_from_image
+from app.auto_segmentation import AutoSegmentation
 from app.reapply import AnnotationReapplier
 
 logger = logging.getLogger(__name__)
@@ -67,13 +70,24 @@ class MainWindow(QMainWindow):
         self.page_zoom_states: dict = {}  # зум для каждой страницы
         
         # Компоненты
-        self.ocr_engine = create_ocr_engine("dummy")  # замените на "chandra" после установки
+        self.ocr_engine = create_ocr_engine("dummy")
         self.auto_segmentation = AutoSegmentation()
+        
+        # Менеджеры (инициализируются после setup_ui)
+        self.ocr_manager = None
+        self.blocks_tree_manager = None
+        self.category_manager = None
         
         # Настройка UI
         self._setup_menu()
         self._setup_toolbar()
         self._setup_ui()
+        
+        # Инициализация менеджеров после создания UI
+        self.ocr_manager = OCRManager(self)
+        self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree, self.blocks_tree_by_category)
+        self.category_manager = CategoryManager(self, self.categories_list)
+        
         self.setWindowTitle("PDF Annotation Tool")
         self.resize(1200, 800)
     
@@ -150,11 +164,11 @@ class MainWindow(QMainWindow):
         tools_menu.addSeparator()
         
         export_cat_action = QAction("Экспорт категорий", self)
-        export_cat_action.triggered.connect(self._export_categories)
+        export_cat_action.triggered.connect(lambda: self.category_manager.export_categories())
         tools_menu.addAction(export_cat_action)
         
         import_cat_action = QAction("Импорт категорий", self)
-        import_cat_action.triggered.connect(self._import_categories)
+        import_cat_action.triggered.connect(lambda: self.category_manager.import_categories())
         tools_menu.addAction(import_cat_action)
         
         # Меню "Вид"
@@ -303,7 +317,7 @@ class MainWindow(QMainWindow):
         self.blocks_tree.setSortingEnabled(True)
         self.blocks_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.blocks_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.blocks_tree.customContextMenuRequested.connect(self._on_tree_context_menu)
+        self.blocks_tree.customContextMenuRequested.connect(lambda pos: self.blocks_tree_manager.on_tree_context_menu(pos))
         self.blocks_tree.itemClicked.connect(self._on_tree_block_clicked)
         self.blocks_tree.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
         self.blocks_tree.installEventFilter(self)
@@ -316,7 +330,7 @@ class MainWindow(QMainWindow):
         self.blocks_tree_by_category.setSortingEnabled(True)
         self.blocks_tree_by_category.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.blocks_tree_by_category.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.blocks_tree_by_category.customContextMenuRequested.connect(self._on_tree_context_menu)
+        self.blocks_tree_by_category.customContextMenuRequested.connect(lambda pos: self.blocks_tree_manager.on_tree_context_menu(pos))
         self.blocks_tree_by_category.itemClicked.connect(self._on_tree_block_clicked)
         self.blocks_tree_by_category.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
         self.blocks_tree_by_category.installEventFilter(self)
@@ -351,7 +365,7 @@ class MainWindow(QMainWindow):
         self.add_category_btn = QPushButton("➕")
         self.add_category_btn.setMaximumWidth(30)
         self.add_category_btn.setToolTip("Добавить новую категорию")
-        self.add_category_btn.clicked.connect(self._add_category)
+        self.add_category_btn.clicked.connect(lambda: self.category_manager.add_category())
         cat_layout.addWidget(self.add_category_btn)
         block_layout.addLayout(cat_layout)
         
@@ -359,7 +373,7 @@ class MainWindow(QMainWindow):
         block_layout.addWidget(QLabel("Категории:"))
         self.categories_list = QListWidget()
         self.categories_list.setMaximumHeight(80)
-        self.categories_list.itemClicked.connect(self._on_category_clicked)
+        self.categories_list.itemClicked.connect(lambda item: self.category_manager.on_category_clicked(item))
         block_layout.addWidget(self.categories_list)
         
         # OCR текст
@@ -476,7 +490,7 @@ class MainWindow(QMainWindow):
         self.current_page = 0
         self._render_current_page()
         self._update_ui()
-        self._extract_categories_from_document()
+        self.category_manager.extract_categories_from_document()
     
     def _render_current_page(self, update_tree: bool = True):
         """Отрендерить текущую страницу"""
@@ -516,7 +530,7 @@ class MainWindow(QMainWindow):
             
             # Обновляем дерево блоков
             if update_tree:
-                self._update_blocks_tree()
+                self.blocks_tree_manager.update_blocks_tree()
     
     def _update_ui(self):
         """Обновить UI элементы"""
@@ -586,7 +600,7 @@ class MainWindow(QMainWindow):
         
         # Обновляем отображение
         self.page_viewer.set_blocks(current_page_data.blocks)
-        self._update_blocks_tree()
+        self.blocks_tree_manager.update_blocks_tree()
     
     def _on_block_selected(self, block_idx: int):
         """Обработка выбора блока"""
@@ -610,8 +624,8 @@ class MainWindow(QMainWindow):
         
         self.block_ocr_text.setText(block.ocr_text or "")
         
-        # Выделяем в дереве
-        self._select_block_in_tree(block_idx)
+            # Выделяем в дереве
+            self.blocks_tree_manager.select_block_in_tree(block_idx)
     
     def _on_block_type_changed(self, new_type: str):
         """Изменение типа выбранного блока"""
@@ -629,7 +643,7 @@ class MainWindow(QMainWindow):
                 block.block_type = BlockType(new_type)
                 # Перерисовываем Viewer и дерево
                 self.page_viewer._redraw_blocks()
-                self._update_blocks_tree()
+                self.blocks_tree_manager.update_blocks_tree()
             except ValueError:
                 pass
     
@@ -651,7 +665,7 @@ class MainWindow(QMainWindow):
            0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[self.page_viewer.selected_block_idx]
             block.category = category
-            self._update_blocks_tree()
+            self.blocks_tree_manager.update_blocks_tree()
     
     def _add_category(self):
         """Добавить новую категорию в список"""
@@ -674,138 +688,7 @@ class MainWindow(QMainWindow):
         
         # Применяем к выбранному блоку
         if self.page_viewer.selected_block_idx is not None:
-            self._apply_category_to_selected_block(text)
-    
-    def _update_categories_list(self):
-        """Обновить список категорий"""
-        self.categories_list.clear()
-        for cat in sorted(self.categories):
-            self.categories_list.addItem(cat)
-    
-    def _on_category_clicked(self, item):
-        """Применить категорию к выбранному блоку при клике и установить как активную"""
-        category = item.text()
-        
-        # Устанавливаем как активную категорию
-        self.active_category = category
-        self.category_edit.blockSignals(True)
-        self.category_edit.setText(category)
-        self.category_edit.blockSignals(False)
-        
-        # Применяем к выбранному блоку, если есть
-        if self.annotation_document and self.page_viewer.selected_block_idx is not None:
-            self._apply_category_to_selected_block(category)
-    
-    def _apply_category_to_selected_block(self, category: str):
-        """Применить категорию к выбранному блоку"""
-        if not self.annotation_document:
-            return
-        
-        current_page_data = self._get_or_create_page(self.current_page)
-        if not current_page_data:
-            return
-        
-        if self.page_viewer.selected_block_idx is not None and \
-           0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
-            block = current_page_data.blocks[self.page_viewer.selected_block_idx]
-            block.category = category
-            
-            # Обновляем UI
-            self.category_edit.blockSignals(True)
-            self.category_edit.setText(category)
-            self.category_edit.blockSignals(False)
-            
-            self._update_blocks_tree()
-    
-    def _extract_categories_from_document(self):
-        """Извлечь все категории из документа"""
-        if not self.annotation_document:
-            return
-        
-        categories_set = set()
-        for page in self.annotation_document.pages:
-            for block in page.blocks:
-                if block.category and block.category.strip():
-                    categories_set.add(block.category.strip())
-        
-        # Добавляем новые категории
-        for cat in categories_set:
-            if cat not in self.categories:
-                self.categories.append(cat)
-        
-        self._update_categories_list()
-    
-    def _update_blocks_tree(self):
-        """Обновить дерево блоков со всех страниц, группировка по страницам"""
-        self.blocks_tree.clear()
-        
-        if not self.annotation_document:
-            return
-        
-        # Проходим по всем страницам
-        for page in self.annotation_document.pages:
-            page_num = page.page_number
-            if not page.blocks:
-                continue
-            
-            # Создаём узел страницы
-            page_item = QTreeWidgetItem(self.blocks_tree)
-            page_item.setText(0, f"Страница {page_num + 1}")
-            page_item.setData(0, Qt.UserRole, {"type": "page", "page": page_num})
-            page_item.setExpanded(page_num == self.current_page)
-            
-            # Группируем блоки страницы по категориям
-            categories = {}
-            for idx, block in enumerate(page.blocks):
-                cat = block.category if block.category else "(Без категории)"
-                if cat not in categories:
-                    categories[cat] = []
-                categories[cat].append((idx, block))
-            
-            for cat_name in sorted(categories.keys()):
-                cat_item = QTreeWidgetItem(page_item)
-                cat_item.setText(0, cat_name)
-                cat_item.setData(0, Qt.UserRole, {"type": "category", "page": page_num})
-                cat_item.setExpanded(True)
-                
-                for idx, block in categories[cat_name]:
-                    block_item = QTreeWidgetItem(cat_item)
-                    block_item.setText(0, f"Блок {idx + 1}")
-                    block_item.setText(1, block.block_type.value)
-                    block_item.setData(0, Qt.UserRole, {"type": "block", "page": page_num, "idx": idx})
-        
-        # Обновляем второе дерево (группировка по категориям)
-        self._update_blocks_tree_by_category()
-    
-    def _update_blocks_tree_by_category(self):
-        """Обновить дерево блоков со всех страниц, группировка по категориям"""
-        self.blocks_tree_by_category.clear()
-        
-        if not self.annotation_document:
-            return
-        
-        # Собираем все блоки со всех страниц, группируем по категориям
-        categories = {}
-        for page in self.annotation_document.pages:
-            page_num = page.page_number
-            for idx, block in enumerate(page.blocks):
-                cat = block.category if block.category else "(Без категории)"
-                if cat not in categories:
-                    categories[cat] = []
-                categories[cat].append((page_num, idx, block))
-        
-        # Создаём узлы для каждой категории
-        for cat_name in sorted(categories.keys()):
-            cat_item = QTreeWidgetItem(self.blocks_tree_by_category)
-            cat_item.setText(0, cat_name)
-            cat_item.setData(0, Qt.UserRole, {"type": "category"})
-            cat_item.setExpanded(True)
-            
-            for page_num, idx, block in categories[cat_name]:
-                block_item = QTreeWidgetItem(cat_item)
-                block_item.setText(0, f"Блок {idx + 1} (стр. {page_num + 1})")
-                block_item.setText(1, block.block_type.value)
-                block_item.setData(0, Qt.UserRole, {"type": "block", "page": page_num, "idx": idx})
+            self.category_manager.apply_category_to_selected_block(text)
     
     def _on_tree_block_clicked(self, item: QTreeWidgetItem, column: int):
         """Клик по блоку в дереве - переход на страницу и выделение"""
@@ -868,35 +751,6 @@ class MainWindow(QMainWindow):
             self.category_edit.setFocus()
             self.category_edit.selectAll()
     
-    def _select_block_in_tree(self, block_idx: int):
-        """Выделить блок в дереве"""
-        # Выделяем в первом дереве (по страницам)
-        for i in range(self.blocks_tree.topLevelItemCount()):
-            page_item = self.blocks_tree.topLevelItem(i)
-            page_data = page_item.data(0, Qt.UserRole)
-            if not page_data or page_data.get("page") != self.current_page:
-                continue
-            
-            for j in range(page_item.childCount()):
-                cat_item = page_item.child(j)
-                for k in range(cat_item.childCount()):
-                    block_item = cat_item.child(j) # Bug fix: cat_item.child(k)
-                    block_item = cat_item.child(k)
-                    data = block_item.data(0, Qt.UserRole)
-                    if data and data.get("idx") == block_idx and data.get("page") == self.current_page:
-                        self.blocks_tree.setCurrentItem(block_item)
-                        break
-        
-        # Выделяем во втором дереве (по категориям)
-        for i in range(self.blocks_tree_by_category.topLevelItemCount()):
-            cat_item = self.blocks_tree_by_category.topLevelItem(i)
-            for j in range(cat_item.childCount()):
-                block_item = cat_item.child(j)
-                data = block_item.data(0, Qt.UserRole)
-                if data and data.get("idx") == block_idx and data.get("page") == self.current_page:
-                    self.blocks_tree_by_category.setCurrentItem(block_item)
-                    return
-    
     def _delete_selected_block(self):
         """Удалить выбранный блок"""
         if self.page_viewer.selected_block_idx is not None:
@@ -947,7 +801,7 @@ class MainWindow(QMainWindow):
             
             # Обновляем отображение
             self.page_viewer.set_blocks(current_page_data.blocks)
-            self._update_blocks_tree()
+            self.blocks_tree_manager.update_blocks_tree()
     
     def _on_block_moved(self, block_idx: int, x1: int, y1: int, x2: int, y2: int):
         """Обработка перемещения/изменения размера блока"""
@@ -1058,15 +912,21 @@ class MainWindow(QMainWindow):
     
     def _load_annotation(self):
         """Загрузить разметку из JSON"""
-        # ... (код загрузки оставлен без изменений в logic flow, только свернут в write tool)
-        # Для краткости ответа при полной перезаписи:
-        # Полная реализация метода _load_annotation уже была в файле, я её сохраняю.
-        pass
-    
-    def _auto_segment_page(self):
-        """Автоматическая сегментация текущей страницы (оставлена для совместимости, но кнопка удалена из UI)"""
-        # Этот метод больше не используется через кнопку, но может быть вызван через меню
-        pass
+        file_path, _ = QFileDialog.getOpenFileName(self, "Загрузить разметку", "", "JSON Files (*.json)")
+        if not file_path:
+            return
+        
+        loaded_doc = AnnotationIO.load_annotation(file_path)
+        if loaded_doc:
+            self.annotation_document = loaded_doc
+            
+            pdf_path = loaded_doc.pdf_path
+            if Path(pdf_path).exists():
+                self._load_cleaned_pdf(pdf_path)
+            
+            self.blocks_tree_manager.update_blocks_tree()
+            self.category_manager.extract_categories_from_document()
+            QMessageBox.information(self, "Успех", "Разметка загружена")
     
     def _marker_segment_pdf(self):
         """Разметка текущей страницы PDF с помощью Marker (в фоне)"""
@@ -1136,8 +996,8 @@ class MainWindow(QMainWindow):
             saved_zoom = self.page_viewer.zoom_factor
             
             self._render_current_page()
-            self._update_blocks_tree()
-            self._extract_categories_from_document()
+            self.blocks_tree_manager.update_blocks_tree()
+            self.category_manager.extract_categories_from_document()
             
             # Восстанавливаем зум
             self.page_viewer.setTransform(saved_transform)
@@ -1155,47 +1015,8 @@ class MainWindow(QMainWindow):
     
     def _run_ocr_all(self):
         """Запустить OCR для всех блоков"""
-        if not self.annotation_document or not self.pdf_document:
-            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF")
-            return
-        
-        # Диалог настройки OCR и выбора папки
-        from app.gui.ocr_dialog import OCRDialog
-        
-        dialog = OCRDialog(self)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        
-        # Получаем параметры
-        output_dir = Path(dialog.output_dir)
-        mode = dialog.mode
-        engine = dialog.engine
-        
-        # Создаем структуру папок
-        output_dir.mkdir(parents=True, exist_ok=True)
-        crops_dir = output_dir / "crops"
-        crops_dir.mkdir(exist_ok=True)
-        
-        # 1. Копируем исходный PDF
-        import shutil
-        pdf_name = Path(self.annotation_document.pdf_path).name
-        pdf_output = output_dir / pdf_name
-        shutil.copy2(self.annotation_document.pdf_path, pdf_output)
-        logger.info(f"PDF сохранен: {pdf_output}")
-        
-        # 2. Запускаем OCR
-        if mode == "blocks":
-            if engine == "local_vlm":
-                self._run_local_vlm_ocr_blocks_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir, crops_dir)
-            else:
-                self._run_chandra_ocr_blocks_with_output(dialog.chandra_method, output_dir, crops_dir)
-        else:
-            if engine == "local_vlm":
-                self._run_local_vlm_ocr_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir)
-            else:
-                self._run_chandra_ocr_with_output(dialog.chandra_method, output_dir)
+        self.ocr_manager.run_ocr_all()
 
-    def _run_local_vlm_ocr_blocks_with_output(self, api_base: str, model_name: str, output_dir: Path, crops_dir: Path):
         """Запустить LocalVLM OCR для блоков с сохранением результатов в папку"""
         from PySide6.QtWidgets import QProgressDialog
         from app.ocr import create_ocr_engine, generate_structured_markdown
@@ -1295,526 +1116,6 @@ class MainWindow(QMainWindow):
             f"• document.md"
         )
     
-    def _run_chandra_ocr_blocks_with_output(self, method: str, output_dir: Path, crops_dir: Path):
-        """Запустить Chandra OCR для блоков с сохранением результатов в папку"""
-        from PySide6.QtWidgets import QProgressDialog
-        from app.ocr import create_ocr_engine, generate_structured_markdown
-        from app.annotation_io import AnnotationIO
-        
-        try:
-            chandra_engine = create_ocr_engine("chandra", method=method)
-            vlm_engine = create_ocr_engine("local_vlm", api_base="http://127.0.0.1:1234/v1", model_name="qwen3-vl-32b-instruct")
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка OCR", f"Не удалось инициализировать:\n{e}")
-            return
-            
-        total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
-        if total_blocks == 0:
-            QMessageBox.information(self, "Информация", "Нет блоков для OCR")
-            return
-
-        progress = QProgressDialog("Распознавание блоков (Chandra + VLM)...", "Отмена", 0, total_blocks, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-
-        processed_count = 0
-        
-        for page in self.annotation_document.pages:
-            if progress.wasCanceled():
-                break
-                
-            page_num = page.page_number
-            if page_num not in self.page_images:
-                img = self.pdf_document.render_page(page_num)
-                if img:
-                    self.page_images[page_num] = img
-            
-            page_img = self.page_images.get(page_num)
-            if not page_img:
-                continue
-            
-            for block in page.blocks:
-                if progress.wasCanceled():
-                    break
-                
-                x1, y1, x2, y2 = block.coords_px
-                if x1 >= x2 or y1 >= y2:
-                    processed_count += 1
-                    progress.setValue(processed_count)
-                    continue
-                
-                crop = page_img.crop((x1, y1, x2, y2))
-                
-                try:
-                    # Сохраняем кроп
-                    crop_filename = f"page{page_num}_block{block.id}.png"
-                    crop_path = crops_dir / crop_filename
-                    crop.save(crop_path, "PNG")
-                    block.image_file = str(crop_path)
-                    
-                    if block.block_type == BlockType.IMAGE:
-                        from app.ocr import load_prompt
-                        image_prompt = load_prompt("ocr_image_description.txt")
-                        block.ocr_text = vlm_engine.recognize(crop, prompt=image_prompt)
-                    elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                        block.ocr_text = chandra_engine.recognize(crop)
-                        
-                except Exception as e:
-                    logger.error(f"Error OCR block {block.id}: {e}")
-                    block.ocr_text = f"[Error: {e}]"
-                
-                processed_count += 1
-                progress.setValue(processed_count)
-        
-        progress.close()
-        
-        # 3. Сохраняем разметку JSON
-        json_path = output_dir / "annotation.json"
-        AnnotationIO.save_annotation(self.annotation_document, str(json_path))
-        logger.info(f"Разметка сохранена: {json_path}")
-        
-        # 4. Генерируем Markdown
-        md_path = output_dir / "document.md"
-        generate_structured_markdown(self.annotation_document.pages, str(md_path))
-        logger.info(f"Markdown сохранен: {md_path}")
-        
-        pdf_name = Path(self.annotation_document.pdf_path).name
-        QMessageBox.information(
-            self, 
-            "Готово", 
-            f"OCR завершен!\n\n"
-            f"Результаты сохранены в:\n{output_dir}\n\n"
-            f"• {pdf_name}\n"
-            f"• annotation.json\n"
-            f"• crops/\n"
-            f"• document.md"
-        )
-    
-    def _run_local_vlm_ocr_with_output(self, api_base: str, model_name: str, output_dir: Path):
-        """Запустить LocalVLM OCR для всего документа с сохранением результатов в папку"""
-        from PySide6.QtWidgets import QProgressDialog
-        from app.ocr import run_local_vlm_full_document
-        from app.annotation_io import AnnotationIO
-        
-        # Рендерим все страницы если нужно
-        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.annotation_document.pages), self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        for i, page in enumerate(self.annotation_document.pages):
-            page_num = page.page_number
-            if page_num not in self.page_images:
-                img = self.pdf_document.render_page(page_num)
-                if img:
-                    self.page_images[page_num] = img
-            progress.setValue(i + 1)
-        
-        progress.close()
-        
-        # Запускаем LocalVLM OCR
-        progress = QProgressDialog(f"Распознавание с {model_name}...", None, 0, 0, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        try:
-            md_path = output_dir / "document.md"
-            result_path = run_local_vlm_full_document(
-                self.page_images, 
-                str(md_path), 
-                api_base=api_base,
-                model_name=model_name
-            )
-            
-            # Сохраняем разметку JSON
-            json_path = output_dir / "annotation.json"
-            AnnotationIO.save_annotation(self.annotation_document, str(json_path))
-            
-            progress.close()
-            
-            pdf_name = Path(self.annotation_document.pdf_path).name
-            QMessageBox.information(
-                self, 
-                "Успех", 
-                f"OCR завершен!\n\n"
-                f"Результаты сохранены в:\n{output_dir}\n\n"
-                f"• {pdf_name}\n"
-                f"• annotation.json\n"
-                f"• document.md"
-            )
-        except Exception as e:
-            progress.close()
-            QMessageBox.critical(self, "Ошибка", f"Ошибка LocalVLM OCR:\n{e}")
-    
-    def _run_chandra_ocr_with_output(self, method: str, output_dir: Path):
-        """Запустить Chandra OCR для всего документа с сохранением результатов в папку"""
-        from PySide6.QtWidgets import QProgressDialog
-        from app.ocr import run_chandra_ocr_full_document
-        from app.annotation_io import AnnotationIO
-        
-        # Рендерим все страницы если нужно
-        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.annotation_document.pages), self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        for i, page in enumerate(self.annotation_document.pages):
-            page_num = page.page_number
-            if page_num not in self.page_images:
-                img = self.pdf_document.render_page(page_num)
-                if img:
-                    self.page_images[page_num] = img
-            progress.setValue(i + 1)
-        
-        progress.close()
-        
-        # Запускаем Chandra OCR
-        progress = QProgressDialog("Распознавание с Chandra OCR...", None, 0, 0, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        try:
-            md_path = output_dir / "document.md"
-            result_path = run_chandra_ocr_full_document(self.page_images, str(md_path), method=method)
-            
-            # Сохраняем разметку JSON
-            json_path = output_dir / "annotation.json"
-            AnnotationIO.save_annotation(self.annotation_document, str(json_path))
-            
-            progress.close()
-            
-            pdf_name = Path(self.annotation_document.pdf_path).name
-            QMessageBox.information(
-                self, 
-                "Успех", 
-                f"OCR завершен!\n\n"
-                f"Результаты сохранены в:\n{output_dir}\n\n"
-                f"• {pdf_name}\n"
-                f"• annotation.json\n"
-                f"• document.md"
-            )
-        except ImportError as e:
-            progress.close()
-            QMessageBox.critical(
-                self, 
-                "Ошибка импорта Chandra OCR", 
-                f"{e}\n\n"
-                "Требуется установить chandra-ocr:\n"
-                "pip install chandra-ocr"
-            )
-        except Exception as e:
-            progress.close()
-            QMessageBox.critical(self, "Ошибка", f"Ошибка Chandra OCR:\n{e}")
-
-    def _run_local_vlm_ocr_blocks(self, api_base: str, model_name: str):
-        """Запустить LocalVLM OCR для блоков с учетом типов"""
-        from PySide6.QtWidgets import QProgressDialog
-        from app.ocr import create_ocr_engine
-        from pathlib import Path
-        
-        # Проверяем наличие backend
-        try:
-            ocr_engine = create_ocr_engine("local_vlm", api_base=api_base, model_name=model_name)
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка LocalVLM OCR", f"Не удалось инициализировать:\n{e}")
-            return
-            
-        total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
-        if total_blocks == 0:
-            QMessageBox.information(self, "Информация", "Нет блоков для OCR")
-            return
-
-        # Создаем временную директорию для кропов изображений
-        temp_crops_dir = Path.cwd() / "temp_crops"
-        temp_crops_dir.mkdir(exist_ok=True)
-
-        progress = QProgressDialog(f"Распознавание блоков через {model_name}...", "Отмена", 0, total_blocks, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-
-        processed_count = 0
-        
-        for page in self.annotation_document.pages:
-            if progress.wasCanceled():
-                break
-                
-            page_num = page.page_number
-            # Рендерим если нужно
-            if page_num not in self.page_images:
-                img = self.pdf_document.render_page(page_num)
-                if img:
-                    self.page_images[page_num] = img
-            
-            page_img = self.page_images.get(page_num)
-            if not page_img:
-                continue
-            
-            for block in page.blocks:
-                if progress.wasCanceled():
-                    break
-                
-                x1, y1, x2, y2 = block.coords_px
-                if x1 >= x2 or y1 >= y2:
-                    processed_count += 1
-                    progress.setValue(processed_count)
-                    continue
-                
-                crop = page_img.crop((x1, y1, x2, y2))
-                
-                try:
-                    if block.block_type == BlockType.IMAGE:
-                        # Для изображений - сохраняем кроп и делаем детальное описание
-                        crop_filename = f"page{page_num}_block{block.id}.png"
-                        crop_path = temp_crops_dir / crop_filename
-                        crop.save(crop_path, "PNG")
-                        block.image_file = str(crop_path)
-                        
-                        # Детальное описание из промпта
-                        from app.ocr import load_prompt
-                        image_prompt = load_prompt("ocr_image_description.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=image_prompt)
-                        
-                    elif block.block_type == BlockType.TABLE:
-                        # Для таблиц - специальный промпт
-                        from app.ocr import load_prompt
-                        table_prompt = load_prompt("ocr_table.txt")
-                        if table_prompt:
-                            block.ocr_text = ocr_engine.recognize(crop, prompt=table_prompt)
-                        else:
-                            block.ocr_text = ocr_engine.recognize(crop)
-                        
-                    elif block.block_type == BlockType.TEXT:
-                        # Для текста - специальный промпт
-                        from app.ocr import load_prompt
-                        text_prompt = load_prompt("ocr_text.txt")
-                        if text_prompt:
-                            block.ocr_text = ocr_engine.recognize(crop, prompt=text_prompt)
-                        else:
-                            block.ocr_text = ocr_engine.recognize(crop)
-                        
-                except Exception as e:
-                    logger.error(f"Error OCR block {block.id}: {e}")
-                    block.ocr_text = f"[Error: {e}]"
-                
-                processed_count += 1
-                progress.setValue(processed_count)
-        
-        progress.close()
-        
-        # Предлагаем сразу сгенерировать MD
-        reply = QMessageBox.question(
-            self, 
-            "Готово", 
-            f"Обработано {processed_count} блоков.\nСгенерировать структурированный Markdown документ сейчас?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        
-        if reply == QMessageBox.Yes:
-            self._generate_structured_markdown()
-    
-    def _run_chandra_ocr_blocks(self, method: str = "hf"):
-        """Запустить Chandra OCR для блоков с учетом типов (TEXT/TABLE через Chandra, IMAGE через VLM)"""
-        from PySide6.QtWidgets import QProgressDialog
-        from app.ocr import create_ocr_engine
-        from pathlib import Path
-        
-        # Проверяем наличие backend
-        try:
-            chandra_engine = create_ocr_engine("chandra", method=method)
-            # Для изображений используем VLM сервер
-            vlm_engine = create_ocr_engine("local_vlm", api_base="http://127.0.0.1:1234/v1", model_name="qwen3-vl-32b-instruct")
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка OCR", f"Не удалось инициализировать:\n{e}")
-            return
-            
-        total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
-        if total_blocks == 0:
-            QMessageBox.information(self, "Информация", "Нет блоков для OCR")
-            return
-
-        # Создаем временную директорию для кропов изображений
-        temp_crops_dir = Path.cwd() / "temp_crops"
-        temp_crops_dir.mkdir(exist_ok=True)
-
-        progress = QProgressDialog("Распознавание блоков (Chandra + VLM)...", "Отмена", 0, total_blocks, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-
-        processed_count = 0
-        
-        for page in self.annotation_document.pages:
-            if progress.wasCanceled():
-                break
-                
-            page_num = page.page_number
-            # Рендерим если нужно
-            if page_num not in self.page_images:
-                img = self.pdf_document.render_page(page_num)
-                if img:
-                    self.page_images[page_num] = img
-            
-            page_img = self.page_images.get(page_num)
-            if not page_img:
-                continue
-            
-            for block in page.blocks:
-                if progress.wasCanceled():
-                    break
-                
-                x1, y1, x2, y2 = block.coords_px
-                if x1 >= x2 or y1 >= y2:
-                    processed_count += 1
-                    progress.setValue(processed_count)
-                    continue
-                
-                crop = page_img.crop((x1, y1, x2, y2))
-                
-                try:
-                    if block.block_type == BlockType.IMAGE:
-                        # Для изображений - сохраняем кроп и используем VLM для описания
-                        crop_filename = f"page{page_num}_block{block.id}.png"
-                        crop_path = temp_crops_dir / crop_filename
-                        crop.save(crop_path, "PNG")
-                        block.image_file = str(crop_path)
-                        
-                        # Детальное описание из промпта
-                        from app.ocr import load_prompt
-                        image_prompt = load_prompt("ocr_image_description.txt")
-                        block.ocr_text = vlm_engine.recognize(crop, prompt=image_prompt)
-                        
-                    elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                        # Для текста и таблиц - Chandra OCR (промпты не поддерживаются)
-                        block.ocr_text = chandra_engine.recognize(crop)
-                        
-                except Exception as e:
-                    logger.error(f"Error OCR block {block.id}: {e}")
-                    block.ocr_text = f"[Error: {e}]"
-                
-                processed_count += 1
-                progress.setValue(processed_count)
-        
-        progress.close()
-        
-        # Предлагаем сразу сгенерировать MD
-        reply = QMessageBox.question(
-            self, 
-            "Готово", 
-            f"Обработано {processed_count} блоков.\nСгенерировать структурированный Markdown документ сейчас?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        
-        if reply == QMessageBox.Yes:
-            self._generate_structured_markdown()
-    
-    
-    def _run_local_vlm_ocr(self, api_base: str, model_name: str):
-        """Запустить LocalVLM OCR для всего документа"""
-        from PySide6.QtWidgets import QProgressDialog, QFileDialog
-        
-        # Рендерим все страницы если нужно
-        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.annotation_document.pages), self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        for i, page in enumerate(self.annotation_document.pages):
-            page_num = page.page_number
-            if page_num not in self.page_images:
-                img = self.pdf_document.render_page(page_num)
-                if img:
-                    self.page_images[page_num] = img
-            progress.setValue(i + 1)
-        
-        progress.close()
-        
-        # Выбираем куда сохранить результат
-        output_path, _ = QFileDialog.getSaveFileName(
-            self, 
-            "Сохранить распознанный документ", 
-            "recognized_document.md", 
-            "Markdown Files (*.md)"
-        )
-        
-        if not output_path:
-            return
-        
-        # Запускаем LocalVLM OCR
-        progress = QProgressDialog(f"Распознавание с {model_name}...", None, 0, 0, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        try:
-            result_path = run_local_vlm_full_document(
-                self.page_images, 
-                output_path, 
-                api_base=api_base,
-                model_name=model_name
-            )
-            progress.close()
-            
-            QMessageBox.information(
-                self, 
-                "Успех", 
-                f"Документ распознан и сохранен:\n{result_path}"
-            )
-        except Exception as e:
-            progress.close()
-            QMessageBox.critical(self, "Ошибка", f"Ошибка LocalVLM OCR:\n{e}")
-    
-    def _run_chandra_ocr(self, method: str = "hf"):
-        """Запустить Chandra OCR для всего документа"""
-        from PySide6.QtWidgets import QProgressDialog, QFileDialog
-        
-        # Рендерим все страницы если нужно
-        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.annotation_document.pages), self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        for i, page in enumerate(self.annotation_document.pages):
-            page_num = page.page_number
-            if page_num not in self.page_images:
-                img = self.pdf_document.render_page(page_num)
-                if img:
-                    self.page_images[page_num] = img
-            progress.setValue(i + 1)
-        
-        progress.close()
-        
-        # Выбираем куда сохранить результат
-        output_path, _ = QFileDialog.getSaveFileName(
-            self, 
-            "Сохранить распознанный документ", 
-            "recognized_document.md", 
-            "Markdown Files (*.md)"
-        )
-        
-        if not output_path:
-            return
-        
-        # Запускаем Chandra OCR
-        progress = QProgressDialog("Распознавание с Chandra OCR...", None, 0, 0, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        try:
-            result_path = run_chandra_ocr_full_document(self.page_images, output_path, method=method)
-            progress.close()
-            
-            QMessageBox.information(
-                self, 
-                "Успех", 
-                f"Документ распознан и сохранен:\n{result_path}"
-            )
-        except ImportError as e:
-            progress.close()
-            QMessageBox.critical(
-                self, 
-                "Ошибка импорта Chandra OCR", 
-                f"{e}\n\n"
-                "Требуется установить chandra-ocr:\n"
-                "pip install chandra-ocr"
-            )
-        except Exception as e:
-            progress.close()
-            QMessageBox.critical(self, "Ошибка", f"Ошибка Chandra OCR:\n{e}")
-    
     def _export_crops(self):
         """Экспорт кропов блоков по категориям"""
         if not self.annotation_document:
@@ -1908,7 +1209,7 @@ class MainWindow(QMainWindow):
                 self.page_images.clear()
                 self.page_zoom_states.clear()
                 self.current_page = 0
-                self._extract_categories_from_document()
+                self.category_manager.extract_categories_from_document()
                 self._render_current_page()
                 self._update_ui()
                 QMessageBox.information(self, "Успех", "Разметка перенесена")
@@ -1961,129 +1262,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"[MainWindow] Критическая ошибка удаления штампов: {e}", exc_info=True)
             QMessageBox.critical(self, "Ошибка", f"Ошибка удаления штампов:\n{e}")
-    
-    def _on_tree_context_menu(self, position):
-        """Контекстное меню для дерева блоков"""
-        tree = self.sender()
-        selected_items = tree.selectedItems()
-        
-        # Фильтруем только блоки
-        selected_blocks = []
-        for item in selected_items:
-            data = item.data(0, Qt.UserRole)
-            if data and isinstance(data, dict) and data.get("type") == "block":
-                selected_blocks.append(data)
-        
-        if not selected_blocks:
-            return
-        
-        menu = QMenu(self)
-        
-        # Применить тип
-        type_menu = menu.addMenu(f"Применить тип ({len(selected_blocks)} блоков)")
-        for block_type in BlockType:
-            action = type_menu.addAction(block_type.value)
-            action.triggered.connect(lambda checked, bt=block_type: self._apply_type_to_blocks(selected_blocks, bt))
-        
-        # Применить категорию
-        cat_menu = menu.addMenu(f"Применить категорию ({len(selected_blocks)} блоков)")
-        for cat in sorted(self.categories):
-            action = cat_menu.addAction(cat)
-            action.triggered.connect(lambda checked, c=cat: self._apply_category_to_blocks(selected_blocks, c))
-        
-        # Новая категория
-        new_cat_action = cat_menu.addAction("Новая категория...")
-        new_cat_action.triggered.connect(lambda: self._apply_new_category_to_blocks(selected_blocks))
-        
-        menu.exec_(tree.viewport().mapToGlobal(position))
-    
-    def _apply_type_to_blocks(self, blocks_data: list, block_type: BlockType):
-        """Применить тип к нескольким блокам"""
-        if not self.annotation_document:
-            return
-        
-        for data in blocks_data:
-            page_num = data["page"]
-            block_idx = data["idx"]
-            
-            if page_num < len(self.annotation_document.pages):
-                page = self.annotation_document.pages[page_num]
-                if block_idx < len(page.blocks):
-                    page.blocks[block_idx].block_type = block_type
-        
-        self._render_current_page()
-        self._update_blocks_tree()
-        QMessageBox.information(self, "Успех", f"Тип '{block_type.value}' применён к {len(blocks_data)} блокам")
-    
-    def _apply_category_to_blocks(self, blocks_data: list, category: str):
-        """Применить категорию к нескольким блокам"""
-        if not self.annotation_document:
-            return
-        
-        for data in blocks_data:
-            page_num = data["page"]
-            block_idx = data["idx"]
-            
-            if page_num < len(self.annotation_document.pages):
-                page = self.annotation_document.pages[page_num]
-                if block_idx < len(page.blocks):
-                    page.blocks[block_idx].category = category
-        
-        self._render_current_page()
-        self._update_blocks_tree()
-        QMessageBox.information(self, "Успех", f"Категория '{category}' применена к {len(blocks_data)} блокам")
-    
-    def _apply_new_category_to_blocks(self, blocks_data: list):
-        """Применить новую категорию к нескольким блокам"""
-        text, ok = QInputDialog.getText(self, "Новая категория", "Введите название категории:")
-        if not ok or not text.strip():
-            return
-        
-        category = text.strip()
-        
-        # Добавляем если ещё нет
-        if category and category not in self.categories:
-            self.categories.append(category)
-            self._update_categories_list()
-        
-        self._apply_category_to_blocks(blocks_data, category)
-    
-    def _export_categories(self):
-        """Экспортировать список категорий в JSON"""
-        if not self.categories:
-            QMessageBox.information(self, "Информация", "Нет категорий для экспорта")
-            return
-        
-        file_path, _ = QFileDialog.getSaveFileName(self, "Экспорт категорий", "categories.json", "JSON Files (*.json)")
-        if file_path:
-            try:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump({"categories": self.categories}, f, ensure_ascii=False, indent=2)
-                QMessageBox.information(self, "Успех", f"Экспортировано {len(self.categories)} категорий")
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", f"Ошибка экспорта:\n{e}")
-    
-    def _import_categories(self):
-        """Импортировать список категорий из JSON"""
-        file_path, _ = QFileDialog.getOpenFileName(self, "Импорт категорий", "", "JSON Files (*.json)")
-        if file_path:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                imported = data.get("categories", [])
-                
-                # Добавляем новые категории
-                new_count = 0
-                for cat in imported:
-                    if cat and cat not in self.categories:
-                        self.categories.append(cat)
-                        new_count += 1
-                
-                self._update_categories_list()
-                QMessageBox.information(self, "Успех", f"Импортировано {new_count} новых категорий")
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", f"Ошибка импорта:\n{e}")
-    
     def _clear_current_page(self):
         """Очистить все блоки с текущей страницы"""
         if not self.annotation_document:
@@ -2104,5 +1282,5 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.Yes:
             current_page_data.blocks.clear()
             self.page_viewer.set_blocks([])
-            self._update_blocks_tree()
+            self.blocks_tree_manager.update_blocks_tree()
             QMessageBox.information(self, "Успех", "Разметка страницы очищена")
