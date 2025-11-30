@@ -19,7 +19,7 @@ from app.pdf_utils import PDFDocument
 from app.gui.page_viewer import PageViewer
 from app.annotation_io import AnnotationIO
 from app.cropping import Cropper, export_blocks_by_category
-from app.ocr import create_ocr_engine, run_hunyuan_ocr_full_document
+from app.ocr import create_ocr_engine, run_chandra_ocr_full_document, run_local_vlm_full_document
 from app.report_md import MarkdownReporter
 from app.auto_segmentation import AutoSegmentation, detect_blocks_from_image
 from app.reapply import AnnotationReapplier
@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
         self.page_zoom_states: dict = {}  # зум для каждой страницы
         
         # Компоненты
-        self.ocr_engine = create_ocr_engine("dummy")  # замените на "tesseract" после установки
+        self.ocr_engine = create_ocr_engine("dummy")  # замените на "chandra" после установки
         self.auto_segmentation = AutoSegmentation()
         
         # Настройка UI
@@ -1159,32 +1159,69 @@ class MainWindow(QMainWindow):
             return
         
         # Диалог выбора метода OCR
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QRadioButton, QDialogButtonBox, QGroupBox
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QRadioButton, QDialogButtonBox, QGroupBox, QLineEdit
         
         choice_dialog = QDialog(self)
         choice_dialog.setWindowTitle("Выбор метода OCR")
         layout = QVBoxLayout(choice_dialog)
         
-        layout.addWidget(QLabel("Выберите метод распознавания:"))
-        
-        tesseract_radio = QRadioButton("Tesseract (классический OCR для блоков)")
-        hunyuan_radio = QRadioButton("HunyuanOCR (AI модель, высокая точность)")
-        hunyuan_radio.setChecked(True)
-        
-        layout.addWidget(tesseract_radio)
-        layout.addWidget(hunyuan_radio)
-        
-        layout.addWidget(QLabel("Режим:"))
-        mode_group = QGroupBox()
-        mode_layout = QVBoxLayout(mode_group)
+        layout.addWidget(QLabel("Выберите режим распознавания:"))
         
         blocks_radio = QRadioButton("По блокам (учитывает вашу разметку)")
-        full_page_radio = QRadioButton("Вся страница (авто-структура)")
+        full_page_radio = QRadioButton("Вся страница (автоматическая структура)")
         full_page_radio.setChecked(True)
         
-        mode_layout.addWidget(blocks_radio)
-        mode_layout.addWidget(full_page_radio)
-        layout.addWidget(mode_group)
+        layout.addWidget(blocks_radio)
+        layout.addWidget(full_page_radio)
+        
+        layout.addWidget(QLabel("\nВыберите движок OCR:"))
+        
+        # Локальный VLM сервер (приоритет)
+        local_vlm_radio = QRadioButton("Локальный VLM сервер (Qwen3-VL и др.)")
+        local_vlm_radio.setChecked(True)
+        layout.addWidget(local_vlm_radio)
+        
+        # Поля для настройки VLM сервера
+        vlm_group = QGroupBox()
+        vlm_layout = QVBoxLayout(vlm_group)
+        
+        server_layout = QHBoxLayout()
+        server_layout.addWidget(QLabel("URL сервера:"))
+        server_url_edit = QLineEdit("http://127.0.0.1:1234/v1")
+        server_layout.addWidget(server_url_edit)
+        vlm_layout.addLayout(server_layout)
+        
+        model_layout = QHBoxLayout()
+        model_layout.addWidget(QLabel("Модель:"))
+        model_name_edit = QLineEdit("qwen3-vl-32b-instruct")
+        model_layout.addWidget(model_name_edit)
+        vlm_layout.addLayout(model_layout)
+        
+        layout.addWidget(vlm_group)
+        
+        # Chandra OCR
+        layout.addWidget(QLabel("\nИли Chandra OCR:"))
+        chandra_radio = QRadioButton("Chandra OCR")
+        layout.addWidget(chandra_radio)
+        
+        chandra_group = QGroupBox()
+        chandra_layout = QVBoxLayout(chandra_group)
+        hf_radio = QRadioButton("HuggingFace (локально)")
+        vllm_radio = QRadioButton("vLLM сервер")
+        hf_radio.setChecked(True)
+        chandra_layout.addWidget(hf_radio)
+        chandra_layout.addWidget(vllm_radio)
+        layout.addWidget(chandra_group)
+        
+        # Связываем радиокнопки с группами настроек
+        def toggle_groups():
+            is_vlm = local_vlm_radio.isChecked()
+            vlm_group.setEnabled(is_vlm)
+            chandra_group.setEnabled(not is_vlm)
+        
+        local_vlm_radio.toggled.connect(toggle_groups)
+        chandra_radio.toggled.connect(toggle_groups)
+        toggle_groups()
         
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(choice_dialog.accept)
@@ -1194,29 +1231,35 @@ class MainWindow(QMainWindow):
         if choice_dialog.exec() != QDialog.Accepted:
             return
         
-        use_hunyuan = hunyuan_radio.isChecked()
         use_blocks = blocks_radio.isChecked()
         
-        if use_hunyuan:
+        if local_vlm_radio.isChecked():
+            # Локальный VLM сервер
+            api_base = server_url_edit.text().strip()
+            model_name = model_name_edit.text().strip()
+            
             if use_blocks:
-                self._run_hunyuan_ocr_blocks()
+                self._run_local_vlm_ocr_blocks(api_base, model_name)
             else:
-                self._run_hunyuan_ocr()
+                self._run_local_vlm_ocr(api_base, model_name)
         else:
-            if not use_blocks:
-                 QMessageBox.information(self, "Info", "Tesseract работает только по блокам. Запускаем по блокам.")
-            self._run_tesseract_ocr()
+            # Chandra OCR
+            method = "vllm" if vllm_radio.isChecked() else "hf"
+            if use_blocks:
+                self._run_chandra_ocr_blocks(method)
+            else:
+                self._run_chandra_ocr(method)
 
-    def _run_hunyuan_ocr_blocks(self):
-        """Запустить HunyuanOCR для блоков (с сохранением разметки пользователя)"""
+    def _run_local_vlm_ocr_blocks(self, api_base: str, model_name: str):
+        """Запустить LocalVLM OCR для блоков"""
         from PySide6.QtWidgets import QProgressDialog
         from app.ocr import create_ocr_engine
         
         # Проверяем наличие backend
         try:
-            ocr_engine = create_ocr_engine("hunyuan")
+            ocr_engine = create_ocr_engine("local_vlm", api_base=api_base, model_name=model_name)
         except Exception as e:
-            QMessageBox.critical(self, "Ошибка HunyuanOCR", f"Не удалось инициализировать:\n{e}")
+            QMessageBox.critical(self, "Ошибка LocalVLM OCR", f"Не удалось инициализировать:\n{e}")
             return
             
         total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
@@ -1224,7 +1267,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Информация", "Нет блоков для OCR")
             return
 
-        progress = QProgressDialog("Распознавание блоков через HunyuanOCR...", "Отмена", 0, total_blocks, self)
+        progress = QProgressDialog(f"Распознавание блоков через {model_name}...", "Отмена", 0, total_blocks, self)
         progress.setWindowModality(Qt.WindowModal)
         progress.show()
 
@@ -1259,10 +1302,8 @@ class MainWindow(QMainWindow):
                     x1, y1, x2, y2 = block.coords_px
                     if x1 < x2 and y1 < y2:
                         crop = page_img.crop((x1, y1, x2, y2))
-                        # Используем более простой промпт для блоков
-                        block_prompt = "Transcribe the content of this image fragment to Markdown."
                         try:
-                            block.ocr_text = ocr_engine.recognize(crop, prompt=block_prompt)
+                            block.ocr_text = ocr_engine.recognize(crop)
                         except Exception as e:
                             logger.error(f"Error OCR block {block.id}: {e}")
                             block.ocr_text = f"[Error: {e}]"
@@ -1283,16 +1324,24 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.Yes:
             self._generate_markdown()
     
-    def _run_tesseract_ocr(self):
-        """Запустить Tesseract OCR для блоков"""
+    def _run_chandra_ocr_blocks(self, method: str = "hf"):
+        """Запустить Chandra OCR для блоков (с сохранением разметки пользователя)"""
         from PySide6.QtWidgets import QProgressDialog
+        from app.ocr import create_ocr_engine
         
+        # Проверяем наличие backend
+        try:
+            ocr_engine = create_ocr_engine("chandra", method=method)
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка Chandra OCR", f"Не удалось инициализировать:\n{e}")
+            return
+            
         total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
         if total_blocks == 0:
             QMessageBox.information(self, "Информация", "Нет блоков для OCR")
             return
 
-        progress = QProgressDialog("Распознавание текста...", "Отмена", 0, total_blocks, self)
+        progress = QProgressDialog("Распознавание блоков через Chandra OCR...", "Отмена", 0, total_blocks, self)
         progress.setWindowModality(Qt.WindowModal)
         progress.show()
 
@@ -1303,6 +1352,7 @@ class MainWindow(QMainWindow):
                 break
                 
             page_num = page.page_number
+            # Рендерим если нужно
             if page_num not in self.page_images:
                 img = self.pdf_document.render_page(page_num)
                 if img:
@@ -1316,19 +1366,41 @@ class MainWindow(QMainWindow):
                 if progress.wasCanceled():
                     break
                 
-                x1, y1, x2, y2 = block.coords_px
-                if x1 < x2 and y1 < y2:
-                    crop = page_img.crop((x1, y1, x2, y2))
-                    block.ocr_text = self.ocr_engine.recognize(crop)
+                # Пропускаем блоки типа IMAGE
+                if block.block_type == BlockType.IMAGE:
+                     processed_count += 1
+                     progress.setValue(processed_count)
+                     continue
+
+                if block.block_type in (BlockType.TEXT, BlockType.TABLE):
+                    x1, y1, x2, y2 = block.coords_px
+                    if x1 < x2 and y1 < y2:
+                        crop = page_img.crop((x1, y1, x2, y2))
+                        try:
+                            block.ocr_text = ocr_engine.recognize(crop)
+                        except Exception as e:
+                            logger.error(f"Error OCR block {block.id}: {e}")
+                            block.ocr_text = f"[Error: {e}]"
                 
                 processed_count += 1
                 progress.setValue(processed_count)
         
         progress.close()
-        QMessageBox.information(self, "Успех", f"OCR завершён. Обработано {processed_count} блоков.")
+        
+        # Предлагаем сразу сгенерировать MD
+        reply = QMessageBox.question(
+            self, 
+            "Готово", 
+            f"Обработано {processed_count} блоков.\nСгенерировать единый Markdown документ сейчас?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            self._generate_markdown()
     
-    def _run_hunyuan_ocr(self):
-        """Запустить HunyuanOCR для всего документа"""
+    
+    def _run_local_vlm_ocr(self, api_base: str, model_name: str):
+        """Запустить LocalVLM OCR для всего документа"""
         from PySide6.QtWidgets import QProgressDialog, QFileDialog
         
         # Рендерим все страницы если нужно
@@ -1357,13 +1429,18 @@ class MainWindow(QMainWindow):
         if not output_path:
             return
         
-        # Запускаем HunyuanOCR
-        progress = QProgressDialog("Распознавание с HunyuanOCR...", None, 0, 0, self)
+        # Запускаем LocalVLM OCR
+        progress = QProgressDialog(f"Распознавание с {model_name}...", None, 0, 0, self)
         progress.setWindowModality(Qt.WindowModal)
         progress.show()
         
         try:
-            result_path = run_hunyuan_ocr_full_document(self.page_images, output_path)
+            result_path = run_local_vlm_full_document(
+                self.page_images, 
+                output_path, 
+                api_base=api_base,
+                model_name=model_name
+            )
             progress.close()
             
             QMessageBox.information(
@@ -1371,26 +1448,66 @@ class MainWindow(QMainWindow):
                 "Успех", 
                 f"Документ распознан и сохранен:\n{result_path}"
             )
-        except FileNotFoundError as e:
+        except Exception as e:
             progress.close()
-            QMessageBox.critical(
+            QMessageBox.critical(self, "Ошибка", f"Ошибка LocalVLM OCR:\n{e}")
+    
+    def _run_chandra_ocr(self, method: str = "hf"):
+        """Запустить Chandra OCR для всего документа"""
+        from PySide6.QtWidgets import QProgressDialog, QFileDialog
+        
+        # Рендерим все страницы если нужно
+        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.annotation_document.pages), self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        
+        for i, page in enumerate(self.annotation_document.pages):
+            page_num = page.page_number
+            if page_num not in self.page_images:
+                img = self.pdf_document.render_page(page_num)
+                if img:
+                    self.page_images[page_num] = img
+            progress.setValue(i + 1)
+        
+        progress.close()
+        
+        # Выбираем куда сохранить результат
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Сохранить распознанный документ", 
+            "recognized_document.md", 
+            "Markdown Files (*.md)"
+        )
+        
+        if not output_path:
+            return
+        
+        # Запускаем Chandra OCR
+        progress = QProgressDialog("Распознавание с Chandra OCR...", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        
+        try:
+            result_path = run_chandra_ocr_full_document(self.page_images, output_path, method=method)
+            progress.close()
+            
+            QMessageBox.information(
                 self, 
-                "HunyuanOCR не установлен", 
-                f"{e}\n\n"
-                "Проверьте установку зависимостей (transformers, torch)."
+                "Успех", 
+                f"Документ распознан и сохранен:\n{result_path}"
             )
         except ImportError as e:
             progress.close()
             QMessageBox.critical(
                 self, 
-                "Ошибка импорта HunyuanOCR", 
+                "Ошибка импорта Chandra OCR", 
                 f"{e}\n\n"
-                "Требуется установить transformers с поддержкой HunyuanOCR:\n"
-                "pip install git+https://github.com/huggingface/transformers@82a06db03535c49aa987719ed0746a76093b1ec4"
+                "Требуется установить chandra-ocr:\n"
+                "pip install chandra-ocr"
             )
         except Exception as e:
             progress.close()
-            QMessageBox.critical(self, "Ошибка", f"Ошибка HunyuanOCR:\n{e}")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка Chandra OCR:\n{e}")
     
     def _export_crops(self):
         """Экспорт кропов блоков по категориям"""

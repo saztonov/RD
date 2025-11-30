@@ -1,5 +1,5 @@
 """
-Пример использования HunyuanOCR для распознавания документов
+Пример использования Chandra OCR для распознавания документов
 """
 
 import sys
@@ -8,15 +8,15 @@ from pathlib import Path
 # Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.ocr import HunyuanOCRBackend, run_hunyuan_ocr_full_document
+from app.ocr import ChandraOCRBackend, run_chandra_ocr_full_document
 from app.pdf_utils import PDFDocument
 from PIL import Image
 
 
-def test_single_page():
-    """Тест распознавания одной страницы"""
+def test_single_image():
+    """Тест распознавания одного изображения"""
     print("=" * 60)
-    print("Тест 1: Распознавание одной страницы")
+    print("Тест 1: Распознавание одного изображения")
     print("=" * 60)
     
     # Загружаем изображение
@@ -28,8 +28,8 @@ def test_single_page():
     image = Image.open(image_path)
     
     # Создаем OCR движок
-    print("Инициализация HunyuanOCR...")
-    ocr = HunyuanOCRBackend()
+    print("Инициализация Chandra OCR (метод: hf)...")
+    ocr = ChandraOCRBackend(method="hf")
     
     # Распознаем
     print("Распознавание...")
@@ -76,9 +76,9 @@ def test_full_pdf():
         print(f"  Страница {page_num + 1}/{pdf_doc.page_count}")
     
     # Запускаем распознавание
-    print("\nЗапуск HunyuanOCR для всего документа...")
+    print("\nЗапуск Chandra OCR для всего документа...")
     output_path = "test_full_document.md"
-    result_path = run_hunyuan_ocr_full_document(page_images, output_path)
+    result_path = run_chandra_ocr_full_document(page_images, output_path, method="hf")
     
     print(f"\n✅ Документ распознан и сохранен: {result_path}")
     
@@ -89,8 +89,8 @@ def test_full_pdf():
 def main():
     """Главная функция"""
     try:
-        # Тест 1: одна страница
-        test_single_page()
+        # Тест 1: одно изображение
+        test_single_image()
         
         # Тест 2: полный документ
         test_full_pdf()
@@ -107,5 +107,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

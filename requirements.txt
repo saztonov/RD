@@ -8,20 +8,11 @@ PyMuPDF>=1.23.0
 opencv-python>=4.8.0
 Pillow>=10.0.0
 
-# OCR
-pytesseract>=0.3.10
+# OCR - Chandra (опционально)
+# chandra-ocr
 
-# HunyuanOCR Dependencies
-# Clone repo separately: git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git
-torch>=2.0.0
-torchvision>=0.15.0
-transformers>=4.30.0
-accelerate>=0.26.0
-timm>=0.9.0
-bs4
-markdown
-# Note: For RTX 5090 (CUDA 12.x), install torch manually if needed:
-# pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# OCR - Локальные VLM серверы
+requests>=2.31.0
 
 # Data Handling
 numpy>=1.24.0

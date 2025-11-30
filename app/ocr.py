@@ -1,14 +1,18 @@
 """
-OCR обработка блоков
-Абстракция над OCR-движками (pytesseract, HunyuanOCR)
+OCR обработка через различные движки
+Поддержка Chandra OCR и локальных VLM серверов (Qwen3-VL и др.)
 """
 
 import logging
+import tempfile
+import subprocess
+import shutil
+import json
+import base64
+import io
 from pathlib import Path
 from typing import Protocol, List, Optional
 from PIL import Image
-import pytesseract
-import torch
 from app.models import Block, BlockType
 
 logger = logging.getLogger(__name__)
@@ -33,198 +37,215 @@ class OCRBackend(Protocol):
         ...
 
 
-class TesseractOCRBackend:
+class LocalVLMBackend:
     """
-    OCR через Tesseract (pytesseract)
-    
-    Требует установленного Tesseract:
-    - Windows: скачать с https://github.com/UB-Mannheim/tesseract/wiki
-    - Указать путь: pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+    OCR через локальный VLM сервер (Qwen3-VL, LLaVA и др.)
+    Использует OpenAI-совместимый API
     """
     
-    def __init__(self, lang: str = 'rus+eng', tesseract_path: Optional[str] = None):
+    def __init__(self, api_base: str = "http://127.0.0.1:1234/v1", model_name: str = "qwen3-vl-32b-instruct"):
         """
         Args:
-            lang: языки для распознавания (например 'rus+eng')
-            tesseract_path: путь к tesseract.exe (если None, берётся из PATH)
+            api_base: URL сервера (например http://127.0.0.1:1234/v1)
+            model_name: имя модели на сервере
         """
-        self.lang = lang
-        if tesseract_path:
-            pytesseract.pytesseract.tesseract_cmd = tesseract_path
-            logger.info(f"Tesseract путь установлен: {tesseract_path}")
+        self.api_base = api_base.rstrip('/')
+        self.model_name = model_name
         
-        logger.info(f"TesseractOCRBackend инициализирован (языки: {lang})")
+        try:
+            import requests
+            self.requests = requests
+        except ImportError:
+            raise ImportError("Требуется установить requests: pip install requests")
+        
+        logger.info(f"LocalVLM инициализирован (сервер: {api_base}, модель: {model_name})")
+    
+    def _image_to_base64(self, image: Image.Image) -> str:
+        """Конвертировать PIL Image в base64"""
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        img_bytes = buffer.getvalue()
+        return base64.b64encode(img_bytes).decode('utf-8')
     
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """
-        Распознать текст через Tesseract
+        Распознать текст через локальный VLM сервер
         
         Args:
             image: изображение для распознавания
-            prompt: игнорируется для Tesseract
+            prompt: промпт для модели
         
         Returns:
             Распознанный текст
         """
         try:
-            text = pytesseract.image_to_string(image, lang=self.lang)
-            result = text.strip()
-            logger.debug(f"OCR выполнен: {len(result)} символов распознано")
-            return result
-        except pytesseract.TesseractNotFoundError:
-            # Логируем ошибку один раз или более явно, возвращаем понятную строку
-            err_msg = "[Tesseract не найден]"
-            logger.error("Tesseract не найден. Установите Tesseract и добавьте путь в PATH или конфиг.")
-            return err_msg
+            # Дефолтный промпт для OCR
+            if not prompt:
+                prompt = (
+                    "Распознай весь текст на этом изображении. "
+                    "Сохрани структуру документа, таблицы представь в Markdown формате. "
+                    "Выведи только распознанный текст без комментариев."
+                )
+            
+            # Конвертируем изображение в base64
+            img_base64 = self._image_to_base64(image)
+            
+            # Формируем запрос в OpenAI формате
+            url = f"{self.api_base}/chat/completions"
+            
+            payload = {
+                "model": self.model_name,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{img_base64}"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "max_tokens": 4096,
+                "temperature": 0.0
+            }
+            
+            # Отправляем запрос
+            response = self.requests.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=120
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"VLM сервер ошибка: {response.status_code} - {response.text}")
+                return f"[Ошибка VLM: HTTP {response.status_code}]"
+            
+            # Парсим ответ
+            result = response.json()
+            text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            
+            if not text:
+                logger.error(f"Пустой ответ от VLM сервера: {result}")
+                return "[Ошибка: пустой ответ от сервера]"
+            
+            logger.debug(f"VLM OCR: распознано {len(text)} символов")
+            return text.strip()
+            
+        except self.requests.exceptions.ConnectionError:
+            logger.error(f"Не удалось подключиться к VLM серверу: {self.api_base}")
+            return "[Ошибка: сервер недоступен]"
+        except self.requests.exceptions.Timeout:
+            logger.error("VLM сервер: превышен таймаут")
+            return "[Ошибка: таймаут сервера]"
         except Exception as e:
-            logger.error(f"Ошибка OCR: {e}")
-            return f"[Ошибка OCR: {e}]"
+            logger.error(f"Ошибка VLM OCR: {e}", exc_info=True)
+            return f"[Ошибка VLM OCR: {e}]"
 
 
-class DummyOCRBackend:
+class ChandraOCRBackend:
     """
-    Заглушка для OCR (для тестирования без Tesseract)
-    """
-    
-    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
-        """Возвращает заглушку"""
-        return "[OCR placeholder - Tesseract not configured]"
-
-
-class HunyuanOCRBackend:
-    """
-    OCR через HunyuanOCR (Tencent VLM)
-    Использует Hugging Face Transformers.
+    OCR через Chandra (datalab-to/chandra)
+    Использует CLI интерфейс через subprocess
     """
     
-    def __init__(self, model_path: str = "tencent/HunyuanOCR"):
+    def __init__(self, method: str = "hf", vllm_api_base: str = "http://localhost:8000/v1"):
         """
         Args:
-            model_path: путь к модели или имя на HF Hub
+            method: метод инференса ('hf' или 'vllm')
+            vllm_api_base: URL vLLM сервера (если method='vllm')
         """
-        try:
-            from transformers import AutoProcessor, HunYuanVLForConditionalGeneration
-            
-            logger.info("Инициализация HunyuanOCR (Transformers)...")
-            
-            self.processor = AutoProcessor.from_pretrained(model_path, use_fast=False)
-            self.model = HunYuanVLForConditionalGeneration.from_pretrained(
-                model_path,
-                attn_implementation="eager",
-                dtype=torch.bfloat16,
-                device_map="auto"
-            )
-            
-            self.default_prompt = (
-                "提取文档图片中正文的所有信息用markdown格式表示，其中页眉、页脚部分忽略，表格用html格式表达，文档中公式用latex格式表示，按照阅读顺序组织进行解析。"
-                # Перевод: "Извлеките всю информацию из основного текста изображения документа в формате markdown, 
-                # игнорируя заголовки и колонтитулы, таблицы в формате html, формулы в latex, 
-                # организовав разбор в порядке чтения."
-            )
-            
-            logger.info("HunyuanOCR инициализирован успешно")
-            
-        except ImportError as e:
-            logger.error(f"Не удалось импортировать transformers: {e}")
+        self.method = method
+        self.vllm_api_base = vllm_api_base
+        
+        # Проверяем установку chandra
+        if not shutil.which("chandra"):
             raise ImportError(
-                "Требуется библиотека transformers (версия с поддержкой HunyuanOCR). "
-                "Выполните: pip install git+https://github.com/huggingface/transformers@82a06db03535c49aa987719ed0746a76093b1ec4"
+                "Требуется установить chandra-ocr:\n"
+                "pip install chandra-ocr"
             )
-        except Exception as e:
-            logger.error(f"Ошибка инициализации HunyuanOCR: {e}")
-            raise
-
-    def _clean_repeated_substrings(self, text: str) -> str:
-        """Очистка повторяющихся подстрок (из официального скрипта)"""
-        n = len(text)
-        if n < 8000:
-            return text
-        for length in range(2, n // 10 + 1):
-            candidate = text[-length:] 
-            count = 0
-            i = n - length
-            
-            while i >= 0 and text[i:i + length] == candidate:
-                count += 1
-                i -= length
-
-            if count >= 10:
-                return text[:n - length * (count - 1)]  
-
-        return text
-
+        
+        logger.info(f"ChandraOCR инициализирован (метод: {method})")
+    
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """
-        Распознать текст через HunyuanOCR
+        Распознать текст через Chandra
         
         Args:
             image: изображение для распознавания
-            prompt: кастомный промпт
+            prompt: игнорируется (Chandra не использует промпты)
         
         Returns:
             Распознанный текст в Markdown формате
         """
         try:
-            actual_prompt = prompt if prompt else self.default_prompt
-            
-            # Подготовка сообщений (список сообщений для одного диалога)
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "image": image},
-                        {"type": "text", "text": actual_prompt},
-                    ],
-                }
-            ]
-            
-            # apply_chat_template принимает список сообщений (диалог)
-            text_prompt = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            
-            texts = [text_prompt]
-            
-            # Подготовка инпутов
-            inputs = self.processor(
-                text=texts,
-                images=image,
-                padding=True,
-                return_tensors="pt",
-            )
-            
-            # Инференс
-            with torch.no_grad():
-                device = next(self.model.parameters()).device
-                inputs = inputs.to(device)
+            # Создаем временные файлы
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
                 
-                generated_ids = self.model.generate(
-                    **inputs, 
-                    max_new_tokens=2048, # Увеличил токенов для больших доков
-                    do_sample=False
+                # Сохраняем изображение
+                img_path = tmp_path / "input.png"
+                image.save(img_path, 'PNG')
+                
+                # Директория для вывода
+                output_dir = tmp_path / "output"
+                output_dir.mkdir()
+                
+                # Запускаем Chandra через CLI
+                cmd = [
+                    "chandra",
+                    str(img_path),
+                    str(output_dir),
+                    "--method", self.method,
+                    "--no-images"  # Не извлекаем изображения для отдельных блоков
+                ]
+                
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # 5 минут таймаут
                 )
                 
-            # Декодирование
-            if "input_ids" in inputs:
-                input_ids = inputs.input_ids
-            else:
-                input_ids = inputs.inputs
+                if result.returncode != 0:
+                    logger.error(f"Chandra CLI ошибка: {result.stderr}")
+                    return f"[Ошибка Chandra OCR: {result.stderr}]"
                 
-            generated_ids_trimmed = [
-                out_ids[len(in_ids):] for in_ids, out_ids in zip(input_ids, generated_ids)
-            ]
-            
-            output_text = self.processor.batch_decode(
-                generated_ids_trimmed, 
-                skip_special_tokens=True, 
-                clean_up_tokenization_spaces=False
-            )[0]
-            
-            result = self._clean_repeated_substrings(output_text)
-            logger.debug(f"HunyuanOCR: распознано {len(result)} символов")
-            return result.strip()
-            
+                # Читаем результат - Chandra создает подпапку с именем файла
+                md_file = output_dir / "input" / "input.md"
+                if not md_file.exists():
+                    # Пробуем альтернативный путь
+                    md_files = list(output_dir.rglob("*.md"))
+                    if md_files:
+                        md_file = md_files[0]
+                    else:
+                        logger.error(f"Не найден .md файл в {output_dir}")
+                        return "[Ошибка: результат не найден]"
+                
+                text = md_file.read_text(encoding='utf-8')
+                logger.debug(f"Chandra OCR: распознано {len(text)} символов")
+                return text.strip()
+                
+        except subprocess.TimeoutExpired:
+            logger.error("Chandra OCR: превышен таймаут")
+            return "[Ошибка: таймаут распознавания]"
         except Exception as e:
-            logger.error(f"Ошибка HunyuanOCR распознавания: {e}")
-            return f"[Ошибка HunyuanOCR: {e}]"
+            logger.error(f"Ошибка Chandra OCR: {e}", exc_info=True)
+            return f"[Ошибка Chandra OCR: {e}]"
+
+
+class DummyOCRBackend:
+    """
+    Заглушка для OCR (для тестирования)
+    """
+    
+    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
+        """Возвращает заглушку"""
+        return "[OCR placeholder - OCR engine not configured]"
 
 
 def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "") -> None:
@@ -237,13 +258,11 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
     for block in blocks:
         # Пропускаем блоки типа IMAGE
         if block.block_type == BlockType.IMAGE:
-            # logger.debug(f"Блок {block.id} (IMAGE) пропущен - OCR не нужен")
             skipped += 1
             continue
         
         # Пропускаем блоки без image_file
         if not block.image_file:
-            # logger.warning(f"Блок {block.id} не имеет image_file, пропускаем")
             skipped += 1
             continue
         
@@ -268,13 +287,7 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             image = Image.open(image_path)
             
             # Запускаем OCR
-            # Для блоков используем специфичный промпт если это Hunyuan
-            block_prompt = None
-            if isinstance(ocr_backend, HunyuanOCRBackend):
-                 # Простой промпт для транскрипции фрагмента
-                 block_prompt = "Transcribe the content of this image fragment to Markdown."
-
-            ocr_text = ocr_backend.recognize(image, prompt=block_prompt)
+            ocr_text = ocr_backend.recognize(image)
             
             # Сохраняем результат в блок
             block.ocr_text = ocr_text
@@ -287,14 +300,21 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
     logger.info(f"OCR завершён: {processed} блоков обработано, {skipped} пропущено")
 
 
-def create_ocr_engine(backend: str = "tesseract", **kwargs) -> OCRBackend:
+def create_ocr_engine(backend: str = "local_vlm", **kwargs) -> OCRBackend:
     """
     Фабрика для создания OCR движка
+    
+    Args:
+        backend: тип движка ('local_vlm', 'chandra' или 'dummy')
+        **kwargs: дополнительные параметры для движка
+    
+    Returns:
+        Экземпляр OCR движка
     """
-    if backend == "tesseract":
-        return TesseractOCRBackend(**kwargs)
-    elif backend == "hunyuan":
-        return HunyuanOCRBackend(**kwargs)
+    if backend == "local_vlm":
+        return LocalVLMBackend(**kwargs)
+    elif backend == "chandra":
+        return ChandraOCRBackend(**kwargs)
     elif backend == "dummy":
         return DummyOCRBackend()
     else:
@@ -302,43 +322,148 @@ def create_ocr_engine(backend: str = "tesseract", **kwargs) -> OCRBackend:
         return DummyOCRBackend()
 
 
-def run_hunyuan_ocr_full_document(page_images: dict, output_path: str) -> str:
+def run_chandra_ocr_full_document(page_images: dict, output_path: str, method: str = "hf") -> str:
     """
-    Распознать весь документ с HunyuanOCR и создать единый Markdown файл
+    Распознать весь документ с Chandra OCR и создать единый Markdown файл
+    
+    Args:
+        page_images: словарь {page_num: PIL.Image}
+        output_path: путь для сохранения результата
+        method: метод инференса ('hf' или 'vllm')
+    
+    Returns:
+        Путь к сохраненному файлу
     """
     try:
-        logger.info(f"Запуск HunyuanOCR для {len(page_images)} страниц")
+        logger.info(f"Запуск Chandra OCR для {len(page_images)} страниц")
         
-        # Создаем HunyuanOCR backend
-        ocr_engine = HunyuanOCRBackend()
-        
-        # Собираем результаты по страницам
-        markdown_parts = []
-        
-        for page_num in sorted(page_images.keys()):
-            logger.info(f"Обработка страницы {page_num + 1}")
-            image = page_images[page_num]
-            
-            # Распознаем страницу
-            # Используем дефолтный промпт для всей страницы
-            page_markdown = ocr_engine.recognize(image)
-            
-            # Добавляем в результат
-            markdown_parts.append(f"# Страница {page_num + 1}\n\n{page_markdown}\n\n---\n\n")
-        
-        # Объединяем в единый документ
-        full_markdown = "".join(markdown_parts)
-        
-        # Сохраняем
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
         
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(full_markdown)
+        # Создаем временную директорию
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            input_dir = tmp_path / "input"
+            output_dir = tmp_path / "output"
+            input_dir.mkdir()
+            output_dir.mkdir()
+            
+            # Сохраняем страницы как изображения
+            for page_num in sorted(page_images.keys()):
+                image = page_images[page_num]
+                img_path = input_dir / f"page_{page_num:04d}.png"
+                image.save(img_path, 'PNG')
+            
+            # Запускаем Chandra для каждой страницы
+            markdown_parts = []
+            
+            for page_num in sorted(page_images.keys()):
+                logger.info(f"Обработка страницы {page_num + 1}/{len(page_images)}")
+                
+                img_path = input_dir / f"page_{page_num:04d}.png"
+                page_output_dir = output_dir / f"page_{page_num:04d}"
+                page_output_dir.mkdir()
+                
+                # CLI команда
+                cmd = [
+                    "chandra",
+                    str(img_path),
+                    str(page_output_dir),
+                    "--method", method,
+                    "--include-images"  # Включаем извлечение изображений
+                ]
+                
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                    
+                    if result.returncode != 0:
+                        logger.error(f"Ошибка на странице {page_num}: {result.stderr}")
+                        markdown_parts.append(f"# Страница {page_num + 1}\n\n[Ошибка распознавания]\n\n---\n\n")
+                        continue
+                    
+                    # Читаем результат
+                    md_files = list(page_output_dir.rglob("*.md"))
+                    if md_files:
+                        page_text = md_files[0].read_text(encoding='utf-8')
+                        markdown_parts.append(f"# Страница {page_num + 1}\n\n{page_text}\n\n---\n\n")
+                        
+                        # Копируем изображения если есть
+                        images_src = page_output_dir / f"page_{page_num:04d}" / "images"
+                        if images_src.exists():
+                            images_dst = output_file.parent / "images"
+                            images_dst.mkdir(exist_ok=True)
+                            for img_file in images_src.iterdir():
+                                new_name = f"page{page_num}_{img_file.name}"
+                                shutil.copy2(img_file, images_dst / new_name)
+                    else:
+                        logger.warning(f"Не найден .md файл для страницы {page_num}")
+                        markdown_parts.append(f"# Страница {page_num + 1}\n\n[Результат не найден]\n\n---\n\n")
+                
+                except subprocess.TimeoutExpired:
+                    logger.error(f"Таймаут на странице {page_num}")
+                    markdown_parts.append(f"# Страница {page_num + 1}\n\n[Таймаут]\n\n---\n\n")
+            
+            # Объединяем результаты
+            full_markdown = "".join(markdown_parts)
+            
+            # Сохраняем
+            output_file.write_text(full_markdown, encoding='utf-8')
+            
+            logger.info(f"Markdown документ сохранен: {output_file}")
+            return str(output_file)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при обработке документа Chandra OCR: {e}", exc_info=True)
+        raise
+
+
+def run_local_vlm_full_document(page_images: dict, output_path: str, api_base: str = "http://127.0.0.1:1234/v1", model_name: str = "qwen3-vl-32b-instruct") -> str:
+    """
+    Распознать весь документ через локальный VLM сервер
+    
+    Args:
+        page_images: словарь {page_num: PIL.Image}
+        output_path: путь для сохранения результата
+        api_base: URL VLM сервера
+        model_name: имя модели
+    
+    Returns:
+        Путь к сохраненному файлу
+    """
+    try:
+        logger.info(f"Запуск LocalVLM OCR для {len(page_images)} страниц")
+        
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Создаем движок
+        vlm = LocalVLMBackend(api_base=api_base, model_name=model_name)
+        
+        # Обрабатываем страницы
+        markdown_parts = []
+        
+        for page_num in sorted(page_images.keys()):
+            logger.info(f"Обработка страницы {page_num + 1}/{len(page_images)}")
+            image = page_images[page_num]
+            
+            # Распознаем страницу
+            page_text = vlm.recognize(image)
+            markdown_parts.append(f"# Страница {page_num + 1}\n\n{page_text}\n\n---\n\n")
+        
+        # Объединяем результаты
+        full_markdown = "".join(markdown_parts)
+        
+        # Сохраняем
+        output_file.write_text(full_markdown, encoding='utf-8')
         
         logger.info(f"Markdown документ сохранен: {output_file}")
         return str(output_file)
         
     except Exception as e:
-        logger.error(f"Ошибка при обработке документа HunyuanOCR: {e}", exc_info=True)
+        logger.error(f"Ошибка при обработке документа LocalVLM OCR: {e}", exc_info=True)
         raise

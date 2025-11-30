@@ -8,9 +8,9 @@
 - ✅ **Удаление электронных штампов** (аннотации, изображения, контейнеры)
 - ✅ Ручное выделение прямоугольных блоков (text/table/image)
 - ✅ Автоматическая сегментация блоков
-- ✅ **OCR распознавание** (Tesseract + HunyuanOCR)
-  - Tesseract: постраничное с сохранением блоков
-  - **HunyuanOCR**: единый MD документ, таблицы→HTML, формулы→LaTeX
+- ✅ **OCR распознавание** (Локальные VLM + Chandra OCR)
+  - **Локальные VLM серверы**: Qwen3-VL-32B, LLaVA и др.
+  - **Chandra OCR**: таблицы, формы, рукописный текст, полная структура
 - ✅ Сохранение разметки в JSON
 - ✅ Экспорт кропов блоков в изображения
 - ✅ Генерация Markdown отчётов по категориям
@@ -27,27 +27,19 @@
 pip install -r requirements.txt
 ```
 
-### 3. Установите PyTorch (для HunyuanOCR, опционально)
+### 3. OCR движки (опционально)
 
+**Вариант 1: Локальный VLM сервер (рекомендуется)**
+- Запустите Qwen3-VL-32B или другую VLM модель на `http://127.0.0.1:1234`
+- Используйте LM Studio, vLLM или Ollama
+- **Документация:** [`docs/LOCAL_VLM_OCR.md`](docs/LOCAL_VLM_OCR.md)
+
+**Вариант 2: Chandra OCR**
 ```bash
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+pip install chandra-ocr
 ```
-
-### 4. OCR движки (опционально)
-
-**Tesseract OCR:**
-- Скачайте: https://github.com/UB-Mannheim/tesseract/wiki
-- Установите в `C:\Program Files\Tesseract-OCR`
-
-**HunyuanOCR:**
-```bash
-cd "Новая папка"
-git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git
-cd HunyuanOCR/Hunyuan-OCR-master
-pip install -r requirements.txt
-```
-- Требуется GPU с CUDA (опционально, работает и на CPU)
-- **Документация:** [`docs/HUNYUAN_OCR.md`](docs/HUNYUAN_OCR.md)
+- GPU рекомендуется для ускорения
+- **Документация:** [`docs/CHANDRA_OCR.md`](docs/CHANDRA_OCR.md)
 
 ## Запуск
 
@@ -118,14 +110,26 @@ RD/
 - "Загрузить разметку" → загрузить существующий blocks.json
 
 ### 5. OCR
-- **"Запустить OCR"** (Ctrl+R) → выбор метода распознавания:
-  - **Tesseract**: постраничное с сохранением разметки блоков
-  - **HunyuanOCR**: создание единого Markdown документа
-    - ✅ Таблицы → HTML
-    - ✅ Формулы → LaTeX
-    - ✅ Многоязычность
-    - ✅ Порядок чтения
-- Результаты сохраняются в `.md` файл
+- **"Запустить OCR"** (Ctrl+R) → выбор движка и режима:
+
+**Движки OCR:**
+1. **Локальный VLM сервер** (Qwen3-VL и др.)
+   - URL: `http://127.0.0.1:1234/v1`
+   - Модель: `qwen3-vl-32b-instruct`
+   - Отличная работа с русским языком
+2. **Chandra OCR**
+   - HuggingFace (локально) или vLLM сервер
+   - Оптимизирована для документов
+
+**Режимы:**
+- **По блокам**: распознавание ваших размеченных блоков
+- **Вся страница**: автоматическая структура документа
+
+**Результаты:**
+- ✅ Таблицы в Markdown
+- ✅ Формы и структура
+- ✅ Рукописный текст
+- ✅ Полное сохранение layout
 
 ### 6. Экспорт
 - "Экспорт кропов" → сохранить изображения блоков в папки:
@@ -158,7 +162,7 @@ pyinstaller --onefile --windowed --name="PDFAnnotation" app/main.py
 | `pdf_utils.py` | Открытие PDF и рендеринг страниц через PyMuPDF | ✨ Функции + класс, логирование, обработка ошибок |
 | `annotation_io.py` | Сохранение/загрузка разметки в JSON | Логирование операций |
 | `cropping.py` | Обрезка блоков и сохранение в изображения | Прогресс-логирование |
-| `ocr.py` | Абстракция над OCR движками (Tesseract + HunyuanOCR) | Расширяемая архитектура, логирование |
+| `ocr.py` | OCR движки (LocalVLM + Chandra) | Высокоточное распознавание документов |
 | `report_md.py` | Генерация Markdown отчётов | Группировка по типам |
 | `auto_segmentation.py` | Автоматическое выделение блоков (OpenCV) | Эвристики для типов блоков |
 | `reapply.py` | Перенос разметки на новый PDF | Автоматическое масштабирование координат |
@@ -236,7 +240,7 @@ user_blocks = page.get_blocks_by_source(BlockSource.USER)
 
 ## Следующие шаги
 
-1. Интеграция Chandra/HunyuanOCR вместо pytesseract
+1. ✅ Интеграция Chandra OCR
 2. Улучшение автосегментации (ML-модели)
 3. Горячие клавиши и удобства UI
 4. Пакетная обработка нескольких PDF
