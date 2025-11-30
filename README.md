@@ -45,10 +45,11 @@ pip install chandra-ocr
 
 Для автоматической разметки через Datalab API:
 ```bash
-set DATALAB_API_KEY=ваш_api_ключ
+copy env.example .env
 ```
-- Получите API ключ на [datalab.to](https://www.datalab.to/)
-- **Документация:** [`docs/DATALAB_API_INTEGRATION.md`](docs/DATALAB_API_INTEGRATION.md)
+Откройте `.env` и укажите API ключ от [datalab.to](https://www.datalab.to/)
+
+**Документация:** [`docs/DATALAB_API_INTEGRATION.md`](docs/DATALAB_API_INTEGRATION.md)
 
 ## Запуск
 

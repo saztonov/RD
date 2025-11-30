@@ -192,4 +192,3 @@ class BlocksTreeManager:
             self.parent.category_manager.update_categories_list()
         
         self.apply_category_to_blocks(blocks_data, category)
-

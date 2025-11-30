@@ -5,6 +5,7 @@
 
 import logging
 import json
+import os
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog, QSpinBox,
                                QComboBox, QTextEdit, QGroupBox, QMessageBox, QToolBar,
@@ -47,30 +48,6 @@ class MarkerWorker(QThread):
         try:
             from app.marker_integration import segment_with_marker
             result = segment_with_marker(self.pdf_path, self.pages, self.page_images, self.page_range, self.category)
-            self.finished.emit(result)
-        except Exception as e:
-            self.error.emit(str(e))
-
-
-class DatalabWorker(QThread):
-    """Фоновый поток для выполнения разметки через Datalab API"""
-    finished = Signal(object)
-    error = Signal(str)
-
-    def __init__(self, pdf_path, pages, page_images, page_range=None, category="", api_key=None):
-        super().__init__()
-        self.pdf_path = pdf_path
-        self.pages = pages
-        self.page_images = page_images
-        self.page_range = page_range
-        self.category = category
-        self.api_key = api_key
-
-    def run(self):
-        try:
-            from app.datalab_integration import segment_with_datalab
-            result = segment_with_datalab(self.pdf_path, self.pages, self.page_images, 
-                                          self.page_range, self.category, self.api_key)
             self.finished.emit(result)
         except Exception as e:
             self.error.emit(str(e))
@@ -167,16 +144,6 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(marker_action)
         
         tools_menu.addSeparator()
-        
-        datalab_all_action = QAction("&Datalab (все стр.)", self)
-        datalab_all_action.setShortcut(QKeySequence("Ctrl+Shift+D"))
-        datalab_all_action.triggered.connect(self._datalab_segment_all_pages)
-        tools_menu.addAction(datalab_all_action)
-        
-        datalab_action = QAction("&Datalab разметка", self)
-        datalab_action.setShortcut(QKeySequence("Ctrl+D"))
-        datalab_action.triggered.connect(self._datalab_segment_pdf)
-        tools_menu.addAction(datalab_action)
         
         run_ocr_action = QAction("Запустить &OCR", self)
         run_ocr_action.setShortcut(QKeySequence("Ctrl+R"))
@@ -444,13 +411,7 @@ class MainWindow(QMainWindow):
         self.marker_segment_btn.clicked.connect(self._marker_segment_pdf)
         actions_layout.addWidget(self.marker_segment_btn)
         
-        self.datalab_all_btn = QPushButton("Datalab (все стр.)")
-        self.datalab_all_btn.clicked.connect(self._datalab_segment_all_pages)
-        actions_layout.addWidget(self.datalab_all_btn)
-        
-        self.datalab_segment_btn = QPushButton("Datalab разметка")
-        self.datalab_segment_btn.clicked.connect(self._datalab_segment_pdf)
-        actions_layout.addWidget(self.datalab_segment_btn)
+        actions_layout.addWidget(QLabel(""))  # Разделитель
         
         self.run_ocr_btn = QPushButton("Запустить OCR")
         self.run_ocr_btn.clicked.connect(self._run_ocr_all)
@@ -1063,82 +1024,6 @@ class MainWindow(QMainWindow):
     def _on_marker_error(self, error_msg):
         """Обработка ошибки Marker"""
         QMessageBox.critical(self, "Ошибка", f"Ошибка Marker: {error_msg}")
-    
-    def _datalab_segment_pdf(self):
-        """Разметка текущей страницы PDF с помощью Datalab API (в фоне)"""
-        self._run_datalab_worker(page_range=[self.current_page], show_success=False)
-    
-    def _datalab_segment_all_pages(self):
-        """Разметка всех страниц PDF с помощью Datalab API (в фоне)"""
-        self._run_datalab_worker(page_range=None, show_success=True)
-    
-    def _run_datalab_worker(self, page_range=None, show_success=True):
-        """Запуск Datalab в фоновом потоке"""
-        if not self.annotation_document or not self.pdf_document:
-            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF")
-            return
-        
-        # Запрос API ключа у пользователя
-        api_key, ok = QInputDialog.getText(
-            self, 
-            "Datalab API Key", 
-            "Введите Datalab API Key\n(или оставьте пустым для использования переменной окружения DATALAB_API_KEY):",
-            QLineEdit.Password
-        )
-        
-        if not ok:
-            return
-        
-        if not api_key:
-            api_key = None
-        
-        # Диалог прогресса
-        self._progress_dialog = QProgressDialog("Datalab анализирует PDF...", "Отмена", 0, 0, self)
-        self._progress_dialog.setWindowModality(Qt.WindowModal)
-        self._progress_dialog.setCancelButton(None)
-        self._progress_dialog.show()
-        
-        # Создаем и запускаем воркер
-        self._worker = DatalabWorker(
-            self.pdf_document.pdf_path,
-            self.annotation_document.pages,
-            self.page_images,
-            page_range=page_range,
-            category=self.active_category,
-            api_key=api_key
-        )
-        
-        self._worker.finished.connect(lambda result: self._on_datalab_finished(result, show_success))
-        self._worker.error.connect(self._on_datalab_error)
-        self._worker.finished.connect(self._progress_dialog.close)
-        self._worker.error.connect(self._progress_dialog.close)
-        
-        self._worker.start()
-    
-    def _on_datalab_finished(self, updated_pages, show_success):
-        """Обработка завершения Datalab"""
-        if updated_pages:
-            self.annotation_document.pages = updated_pages
-            
-            saved_transform = self.page_viewer.transform()
-            saved_zoom = self.page_viewer.zoom_factor
-            
-            self._render_current_page()
-            self.blocks_tree_manager.update_blocks_tree()
-            self.category_manager.extract_categories_from_document()
-            
-            self.page_viewer.setTransform(saved_transform)
-            self.page_viewer.zoom_factor = saved_zoom
-            
-            if show_success:
-                total_blocks = sum(len(p.blocks) for p in updated_pages)
-                QMessageBox.information(self, "Успех", f"Datalab завершен. Всего блоков: {total_blocks}")
-        else:
-            QMessageBox.warning(self, "Ошибка", "Datalab не смог обработать PDF")
-    
-    def _on_datalab_error(self, error_msg):
-        """Обработка ошибки Datalab"""
-        QMessageBox.critical(self, "Ошибка", f"Ошибка Datalab: {error_msg}")
     
     def _run_ocr_all(self):
         """Запустить OCR для всех блоков"""
