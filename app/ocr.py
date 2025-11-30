@@ -248,26 +248,29 @@ class DummyOCRBackend:
         return "[OCR placeholder - OCR engine not configured]"
 
 
-def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "") -> None:
+def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "", 
+                       image_description_backend: Optional[OCRBackend] = None) -> None:
     """
-    Запустить OCR для блоков типа TEXT или TABLE
+    Запустить OCR для блоков с учетом типа:
+    - TEXT/TABLE: распознавание текста
+    - IMAGE: детальное описание на русском языке
+    
+    Args:
+        blocks: список блоков для обработки
+        ocr_backend: движок OCR для текста и таблиц
+        base_dir: базовая директория для поиска image_file
+        image_description_backend: движок для описания изображений (если None, используется ocr_backend)
     """
     processed = 0
     skipped = 0
     
+    # Если не указан специальный движок для изображений, используем основной
+    if image_description_backend is None:
+        image_description_backend = ocr_backend
+    
     for block in blocks:
-        # Пропускаем блоки типа IMAGE
-        if block.block_type == BlockType.IMAGE:
-            skipped += 1
-            continue
-        
         # Пропускаем блоки без image_file
         if not block.image_file:
-            skipped += 1
-            continue
-        
-        # Проверяем, что тип TEXT или TABLE
-        if block.block_type not in (BlockType.TEXT, BlockType.TABLE):
             skipped += 1
             continue
         
@@ -286,12 +289,28 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             # Загружаем изображение
             image = Image.open(image_path)
             
-            # Запускаем OCR
-            ocr_text = ocr_backend.recognize(image)
-            
-            # Сохраняем результат в блок
-            block.ocr_text = ocr_text
-            processed += 1
+            # Обрабатываем в зависимости от типа блока
+            if block.block_type == BlockType.IMAGE:
+                # Для изображений - детальное описание на русском
+                image_prompt = (
+                    "Подробно опиши всё, что ты видишь на этом изображении. "
+                    "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
+                    "Если есть текст на русском языке - распознай и выведи его полностью. "
+                    "Если есть техническая информация, параметры, размеры - укажи их точно. "
+                    "Опиши структуру, компоненты, связи между элементами. "
+                    "Ответ должен быть максимально информативным и на русском языке."
+                )
+                ocr_text = image_description_backend.recognize(image, prompt=image_prompt)
+                block.ocr_text = ocr_text
+                processed += 1
+                
+            elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
+                # Для текста и таблиц - стандартное распознавание
+                ocr_text = ocr_backend.recognize(image)
+                block.ocr_text = ocr_text
+                processed += 1
+            else:
+                skipped += 1
             
         except Exception as e:
             logger.error(f"Ошибка OCR для блока {block.id}: {e}")
@@ -419,6 +438,84 @@ def run_chandra_ocr_full_document(page_images: dict, output_path: str, method: s
         
     except Exception as e:
         logger.error(f"Ошибка при обработке документа Chandra OCR: {e}", exc_info=True)
+        raise
+
+
+def generate_structured_markdown(pages: List, output_path: str, images_dir: str = "images") -> str:
+    """
+    Генерация markdown документа из размеченных блоков с учетом типов
+    
+    Args:
+        pages: список Page объектов с блоками
+        output_path: путь для сохранения markdown файла
+        images_dir: имя директории для изображений (относительно output_path)
+    
+    Returns:
+        Путь к сохраненному файлу
+    """
+    try:
+        from app.models import Page, BlockType
+        
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        markdown_parts = []
+        
+        for page in pages:
+            page_num = page.page_number
+            markdown_parts.append(f"# Страница {page_num + 1}\n\n")
+            
+            # Сортируем блоки по вертикальной позиции (сверху вниз)
+            sorted_blocks = sorted(page.blocks, key=lambda b: b.coords_px[1])
+            
+            for block in sorted_blocks:
+                if not block.ocr_text:
+                    continue
+                
+                category_prefix = f"**{block.category}**\n\n" if block.category else ""
+                
+                if block.block_type == BlockType.IMAGE:
+                    # Для изображений: описание + ссылка на кроп
+                    markdown_parts.append(f"{category_prefix}")
+                    markdown_parts.append(f"*Изображение:*\n\n")
+                    markdown_parts.append(f"{block.ocr_text}\n\n")
+                    
+                    # Добавляем ссылку на кроп, если есть image_file
+                    if block.image_file:
+                        # Конвертируем путь к кропу в относительный
+                        crop_path = Path(block.image_file)
+                        if crop_path.is_absolute():
+                            # Пытаемся сделать относительным к output_path
+                            try:
+                                rel_path = crop_path.relative_to(output_file.parent)
+                                markdown_parts.append(f"![Изображение]({rel_path})\n\n")
+                            except ValueError:
+                                # Если не получается сделать относительным, используем абсолютный
+                                markdown_parts.append(f"![Изображение]({crop_path})\n\n")
+                        else:
+                            markdown_parts.append(f"![Изображение]({crop_path})\n\n")
+                    
+                elif block.block_type == BlockType.TABLE:
+                    # Для таблиц
+                    markdown_parts.append(f"{category_prefix}")
+                    markdown_parts.append(f"{block.ocr_text}\n\n")
+                    
+                elif block.block_type == BlockType.TEXT:
+                    # Для текста
+                    markdown_parts.append(f"{category_prefix}")
+                    markdown_parts.append(f"{block.ocr_text}\n\n")
+            
+            markdown_parts.append("---\n\n")
+        
+        # Объединяем и сохраняем
+        full_markdown = "".join(markdown_parts)
+        output_file.write_text(full_markdown, encoding='utf-8')
+        
+        logger.info(f"Структурированный markdown документ сохранен: {output_file}")
+        return str(output_file)
+        
+    except Exception as e:
+        logger.error(f"Ошибка генерации структурированного markdown: {e}", exc_info=True)
         raise
 
 

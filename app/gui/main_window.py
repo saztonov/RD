@@ -1251,9 +1251,10 @@ class MainWindow(QMainWindow):
                 self._run_chandra_ocr(method)
 
     def _run_local_vlm_ocr_blocks(self, api_base: str, model_name: str):
-        """Запустить LocalVLM OCR для блоков"""
+        """Запустить LocalVLM OCR для блоков с учетом типов"""
         from PySide6.QtWidgets import QProgressDialog
         from app.ocr import create_ocr_engine
+        from pathlib import Path
         
         # Проверяем наличие backend
         try:
@@ -1266,6 +1267,10 @@ class MainWindow(QMainWindow):
         if total_blocks == 0:
             QMessageBox.information(self, "Информация", "Нет блоков для OCR")
             return
+
+        # Создаем временную директорию для кропов изображений
+        temp_crops_dir = Path.cwd() / "temp_crops"
+        temp_crops_dir.mkdir(exist_ok=True)
 
         progress = QProgressDialog(f"Распознавание блоков через {model_name}...", "Отмена", 0, total_blocks, self)
         progress.setWindowModality(Qt.WindowModal)
@@ -1292,21 +1297,40 @@ class MainWindow(QMainWindow):
                 if progress.wasCanceled():
                     break
                 
-                # Пропускаем блоки типа IMAGE
-                if block.block_type == BlockType.IMAGE:
-                     processed_count += 1
-                     progress.setValue(processed_count)
-                     continue
-
-                if block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                    x1, y1, x2, y2 = block.coords_px
-                    if x1 < x2 and y1 < y2:
-                        crop = page_img.crop((x1, y1, x2, y2))
-                        try:
-                            block.ocr_text = ocr_engine.recognize(crop)
-                        except Exception as e:
-                            logger.error(f"Error OCR block {block.id}: {e}")
-                            block.ocr_text = f"[Error: {e}]"
+                x1, y1, x2, y2 = block.coords_px
+                if x1 >= x2 or y1 >= y2:
+                    processed_count += 1
+                    progress.setValue(processed_count)
+                    continue
+                
+                crop = page_img.crop((x1, y1, x2, y2))
+                
+                try:
+                    if block.block_type == BlockType.IMAGE:
+                        # Для изображений - сохраняем кроп и делаем детальное описание
+                        crop_filename = f"page{page_num}_block{block.id}.png"
+                        crop_path = temp_crops_dir / crop_filename
+                        crop.save(crop_path, "PNG")
+                        block.image_file = str(crop_path)
+                        
+                        # Детальное описание на русском
+                        image_prompt = (
+                            "Подробно опиши всё, что ты видишь на этом изображении. "
+                            "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
+                            "Если есть текст на русском языке - распознай и выведи его полностью. "
+                            "Если есть техническая информация, параметры, размеры - укажи их точно. "
+                            "Опиши структуру, компоненты, связи между элементами. "
+                            "Ответ должен быть максимально информативным и на русском языке."
+                        )
+                        block.ocr_text = ocr_engine.recognize(crop, prompt=image_prompt)
+                        
+                    elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
+                        # Для текста и таблиц - стандартное распознавание
+                        block.ocr_text = ocr_engine.recognize(crop)
+                        
+                except Exception as e:
+                    logger.error(f"Error OCR block {block.id}: {e}")
+                    block.ocr_text = f"[Error: {e}]"
                 
                 processed_count += 1
                 progress.setValue(processed_count)
@@ -1317,23 +1341,26 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self, 
             "Готово", 
-            f"Обработано {processed_count} блоков.\nСгенерировать единый Markdown документ сейчас?",
+            f"Обработано {processed_count} блоков.\nСгенерировать структурированный Markdown документ сейчас?",
             QMessageBox.Yes | QMessageBox.No
         )
         
         if reply == QMessageBox.Yes:
-            self._generate_markdown()
+            self._generate_structured_markdown()
     
     def _run_chandra_ocr_blocks(self, method: str = "hf"):
-        """Запустить Chandra OCR для блоков (с сохранением разметки пользователя)"""
+        """Запустить Chandra OCR для блоков с учетом типов (TEXT/TABLE через Chandra, IMAGE через VLM)"""
         from PySide6.QtWidgets import QProgressDialog
         from app.ocr import create_ocr_engine
+        from pathlib import Path
         
         # Проверяем наличие backend
         try:
-            ocr_engine = create_ocr_engine("chandra", method=method)
+            chandra_engine = create_ocr_engine("chandra", method=method)
+            # Для изображений используем VLM сервер
+            vlm_engine = create_ocr_engine("local_vlm", api_base="http://127.0.0.1:1234/v1", model_name="qwen3-vl-32b-instruct")
         except Exception as e:
-            QMessageBox.critical(self, "Ошибка Chandra OCR", f"Не удалось инициализировать:\n{e}")
+            QMessageBox.critical(self, "Ошибка OCR", f"Не удалось инициализировать:\n{e}")
             return
             
         total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
@@ -1341,7 +1368,11 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Информация", "Нет блоков для OCR")
             return
 
-        progress = QProgressDialog("Распознавание блоков через Chandra OCR...", "Отмена", 0, total_blocks, self)
+        # Создаем временную директорию для кропов изображений
+        temp_crops_dir = Path.cwd() / "temp_crops"
+        temp_crops_dir.mkdir(exist_ok=True)
+
+        progress = QProgressDialog("Распознавание блоков (Chandra + VLM)...", "Отмена", 0, total_blocks, self)
         progress.setWindowModality(Qt.WindowModal)
         progress.show()
 
@@ -1366,21 +1397,40 @@ class MainWindow(QMainWindow):
                 if progress.wasCanceled():
                     break
                 
-                # Пропускаем блоки типа IMAGE
-                if block.block_type == BlockType.IMAGE:
-                     processed_count += 1
-                     progress.setValue(processed_count)
-                     continue
-
-                if block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                    x1, y1, x2, y2 = block.coords_px
-                    if x1 < x2 and y1 < y2:
-                        crop = page_img.crop((x1, y1, x2, y2))
-                        try:
-                            block.ocr_text = ocr_engine.recognize(crop)
-                        except Exception as e:
-                            logger.error(f"Error OCR block {block.id}: {e}")
-                            block.ocr_text = f"[Error: {e}]"
+                x1, y1, x2, y2 = block.coords_px
+                if x1 >= x2 or y1 >= y2:
+                    processed_count += 1
+                    progress.setValue(processed_count)
+                    continue
+                
+                crop = page_img.crop((x1, y1, x2, y2))
+                
+                try:
+                    if block.block_type == BlockType.IMAGE:
+                        # Для изображений - сохраняем кроп и используем VLM для описания
+                        crop_filename = f"page{page_num}_block{block.id}.png"
+                        crop_path = temp_crops_dir / crop_filename
+                        crop.save(crop_path, "PNG")
+                        block.image_file = str(crop_path)
+                        
+                        # Детальное описание на русском через VLM
+                        image_prompt = (
+                            "Подробно опиши всё, что ты видишь на этом изображении. "
+                            "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
+                            "Если есть текст на русском языке - распознай и выведи его полностью. "
+                            "Если есть техническая информация, параметры, размеры - укажи их точно. "
+                            "Опиши структуру, компоненты, связи между элементами. "
+                            "Ответ должен быть максимально информативным и на русском языке."
+                        )
+                        block.ocr_text = vlm_engine.recognize(crop, prompt=image_prompt)
+                        
+                    elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
+                        # Для текста и таблиц - Chandra OCR
+                        block.ocr_text = chandra_engine.recognize(crop)
+                        
+                except Exception as e:
+                    logger.error(f"Error OCR block {block.id}: {e}")
+                    block.ocr_text = f"[Error: {e}]"
                 
                 processed_count += 1
                 progress.setValue(processed_count)
@@ -1391,12 +1441,12 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self, 
             "Готово", 
-            f"Обработано {processed_count} блоков.\nСгенерировать единый Markdown документ сейчас?",
+            f"Обработано {processed_count} блоков.\nСгенерировать структурированный Markdown документ сейчас?",
             QMessageBox.Yes | QMessageBox.No
         )
         
         if reply == QMessageBox.Yes:
-            self._generate_markdown()
+            self._generate_structured_markdown()
     
     
     def _run_local_vlm_ocr(self, api_base: str, model_name: str):
@@ -1542,6 +1592,43 @@ class MainWindow(QMainWindow):
             reporter = MarkdownReporter(output_dir)
             reporter.generate_reports(self.annotation_document)
             QMessageBox.information(self, "Успех", "Markdown отчёты созданы")
+    
+    def _generate_structured_markdown(self):
+        """Генерация структурированного Markdown документа из размеченных блоков"""
+        if not self.annotation_document:
+            return
+        
+        from app.ocr import generate_structured_markdown
+        
+        # Выбираем путь для сохранения
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить структурированный документ",
+            "recognized_document.md",
+            "Markdown Files (*.md)"
+        )
+        
+        if not output_path:
+            return
+        
+        try:
+            result_path = generate_structured_markdown(
+                self.annotation_document.pages,
+                output_path
+            )
+            
+            QMessageBox.information(
+                self,
+                "Успех",
+                f"Структурированный Markdown документ создан:\n{result_path}\n\n"
+                f"Изображения сохранены с кропами и описаниями."
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Ошибка",
+                f"Ошибка генерации структурированного markdown:\n{e}"
+            )
     
     def _reapply_annotation(self):
         """Перенос разметки на новый PDF"""
