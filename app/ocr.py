@@ -281,7 +281,8 @@ class DummyOCRBackend:
 
 
 def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "", 
-                       image_description_backend: Optional[OCRBackend] = None) -> None:
+                       image_description_backend: Optional[OCRBackend] = None,
+                       index_file: Optional[str] = None) -> None:
     """
     Запустить OCR для блоков с учетом типа:
     - TEXT/TABLE: распознавание текста
@@ -292,6 +293,7 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
         ocr_backend: движок OCR для текста и таблиц
         base_dir: базовая директория для поиска image_file
         image_description_backend: движок для описания изображений (если None, используется ocr_backend)
+        index_file: путь к файлу индекса для IMAGE блоков (если указан, создается индекс)
     """
     processed = 0
     skipped = 0
@@ -337,6 +339,13 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
                     )
                 ocr_text = image_description_backend.recognize(image, prompt=image_prompt)
                 block.ocr_text = ocr_text
+                
+                # Если указан index_file, обновляем индекс
+                if index_file:
+                    from app.report_md import update_smart_index
+                    image_name = Path(block.image_file).name if block.image_file else f"block_{block.id}"
+                    update_smart_index(ocr_text, image_name, index_file)
+                
                 processed += 1
                 
             elif block.block_type == BlockType.TABLE:
@@ -537,12 +546,17 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
                             # Пытаемся сделать относительным к output_path
                             try:
                                 rel_path = crop_path.relative_to(output_file.parent)
-                                markdown_parts.append(f"![Изображение]({rel_path})\n\n")
+                                # Конвертируем в POSIX путь (прямые слэши)
+                                rel_path_str = rel_path.as_posix()
+                                markdown_parts.append(f"![Изображение]({rel_path_str})\n\n")
                             except ValueError:
                                 # Если не получается сделать относительным, используем абсолютный
-                                markdown_parts.append(f"![Изображение]({crop_path})\n\n")
+                                crop_path_str = crop_path.as_posix()
+                                markdown_parts.append(f"![Изображение]({crop_path_str})\n\n")
                         else:
-                            markdown_parts.append(f"![Изображение]({crop_path})\n\n")
+                            # Конвертируем в POSIX путь (прямые слэши)
+                            crop_path_str = crop_path.as_posix()
+                            markdown_parts.append(f"![Изображение]({crop_path_str})\n\n")
                     
                 elif block.block_type == BlockType.TABLE:
                     # Для таблиц
