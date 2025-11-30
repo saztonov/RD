@@ -146,22 +146,35 @@ def test_marker_ocr_workflow():
                 crop = Image.open(block.image_file)
                 
                 if block.block_type == BlockType.IMAGE:
-                    # Детальное описание изображения
-                    image_prompt = (
-                        "Подробно опиши всё, что ты видишь на этом изображении. "
-                        "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
-                        "Если есть текст на русском языке - распознай и выведи его полностью. "
-                        "Если есть техническая информация, параметры, размеры - укажи их точно. "
-                        "Опиши структуру, компоненты, связи между элементами. "
-                        "Ответ должен быть максимально информативным и на русском языке."
-                    )
-                    block.ocr_text = image_engine.recognize(crop, prompt=image_prompt)
+                    # Детальное описание изображения из промпта
+                    from app.ocr import load_prompt
+                    image_prompt = load_prompt("ocr_image_description.txt")
+                    if image_prompt:
+                        block.ocr_text = image_engine.recognize(crop, prompt=image_prompt)
+                    else:
+                        # Fallback
+                        block.ocr_text = image_engine.recognize(crop)
                     print(f"     ✓ IMAGE блок {block.id[:8]}... описан")
                     
-                elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                    # Стандартное распознавание
-                    block.ocr_text = text_engine.recognize(crop)
-                    print(f"     ✓ {block.block_type.value.upper()} блок {block.id[:8]}... распознан")
+                elif block.block_type == BlockType.TABLE:
+                    # Таблица с промптом
+                    from app.ocr import load_prompt
+                    table_prompt = load_prompt("ocr_table.txt")
+                    if table_prompt:
+                        block.ocr_text = text_engine.recognize(crop, prompt=table_prompt)
+                    else:
+                        block.ocr_text = text_engine.recognize(crop)
+                    print(f"     ✓ TABLE блок {block.id[:8]}... распознан")
+                    
+                elif block.block_type == BlockType.TEXT:
+                    # Текст с промптом
+                    from app.ocr import load_prompt
+                    text_prompt = load_prompt("ocr_text.txt")
+                    if text_prompt:
+                        block.ocr_text = text_engine.recognize(crop, prompt=text_prompt)
+                    else:
+                        block.ocr_text = text_engine.recognize(crop)
+                    print(f"     ✓ TEXT блок {block.id[:8]}... распознан")
                     
             except Exception as e:
                 print(f"     ❌ Ошибка блока {block.id[:8]}: {e}")

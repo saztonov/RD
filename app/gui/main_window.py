@@ -1313,20 +1313,38 @@ class MainWindow(QMainWindow):
                         crop.save(crop_path, "PNG")
                         block.image_file = str(crop_path)
                         
-                        # Детальное описание на русском
-                        image_prompt = (
-                            "Подробно опиши всё, что ты видишь на этом изображении. "
-                            "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
-                            "Если есть текст на русском языке - распознай и выведи его полностью. "
-                            "Если есть техническая информация, параметры, размеры - укажи их точно. "
-                            "Опиши структуру, компоненты, связи между элементами. "
-                            "Ответ должен быть максимально информативным и на русском языке."
-                        )
+                        # Детальное описание из промпта
+                        from app.ocr import load_prompt
+                        image_prompt = load_prompt("ocr_image_description.txt")
+                        if not image_prompt:
+                            # Fallback
+                            image_prompt = (
+                                "Подробно опиши всё, что ты видишь на этом изображении. "
+                                "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
+                                "Если есть текст на русском языке - распознай и выведи его полностью. "
+                                "Если есть техническая информация, параметры, размеры - укажи их точно. "
+                                "Опиши структуру, компоненты, связи между элементами. "
+                                "Ответ должен быть максимально информативным и на русском языке."
+                            )
                         block.ocr_text = ocr_engine.recognize(crop, prompt=image_prompt)
                         
-                    elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                        # Для текста и таблиц - стандартное распознавание
-                        block.ocr_text = ocr_engine.recognize(crop)
+                    elif block.block_type == BlockType.TABLE:
+                        # Для таблиц - специальный промпт
+                        from app.ocr import load_prompt
+                        table_prompt = load_prompt("ocr_table.txt")
+                        if table_prompt:
+                            block.ocr_text = ocr_engine.recognize(crop, prompt=table_prompt)
+                        else:
+                            block.ocr_text = ocr_engine.recognize(crop)
+                        
+                    elif block.block_type == BlockType.TEXT:
+                        # Для текста - специальный промпт
+                        from app.ocr import load_prompt
+                        text_prompt = load_prompt("ocr_text.txt")
+                        if text_prompt:
+                            block.ocr_text = ocr_engine.recognize(crop, prompt=text_prompt)
+                        else:
+                            block.ocr_text = ocr_engine.recognize(crop)
                         
                 except Exception as e:
                     logger.error(f"Error OCR block {block.id}: {e}")
@@ -1413,19 +1431,23 @@ class MainWindow(QMainWindow):
                         crop.save(crop_path, "PNG")
                         block.image_file = str(crop_path)
                         
-                        # Детальное описание на русском через VLM
-                        image_prompt = (
-                            "Подробно опиши всё, что ты видишь на этом изображении. "
-                            "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
-                            "Если есть текст на русском языке - распознай и выведи его полностью. "
-                            "Если есть техническая информация, параметры, размеры - укажи их точно. "
-                            "Опиши структуру, компоненты, связи между элементами. "
-                            "Ответ должен быть максимально информативным и на русском языке."
-                        )
+                        # Детальное описание из промпта
+                        from app.ocr import load_prompt
+                        image_prompt = load_prompt("ocr_image_description.txt")
+                        if not image_prompt:
+                            # Fallback
+                            image_prompt = (
+                                "Подробно опиши всё, что ты видишь на этом изображении. "
+                                "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
+                                "Если есть текст на русском языке - распознай и выведи его полностью. "
+                                "Если есть техническая информация, параметры, размеры - укажи их точно. "
+                                "Опиши структуру, компоненты, связи между элементами. "
+                                "Ответ должен быть максимально информативным и на русском языке."
+                            )
                         block.ocr_text = vlm_engine.recognize(crop, prompt=image_prompt)
                         
                     elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                        # Для текста и таблиц - Chandra OCR
+                        # Для текста и таблиц - Chandra OCR (промпты не поддерживаются)
                         block.ocr_text = chandra_engine.recognize(crop)
                         
                 except Exception as e:

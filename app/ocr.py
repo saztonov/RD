@@ -18,6 +18,35 @@ from app.models import Block, BlockType
 logger = logging.getLogger(__name__)
 
 
+# Папка с промптами
+PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+
+def load_prompt(prompt_file: str) -> str:
+    """
+    Загрузить промпт из файла в папке prompts/
+    
+    Args:
+        prompt_file: имя файла (например "ocr_text.txt")
+    
+    Returns:
+        Текст промпта или дефолтный текст при ошибке
+    """
+    try:
+        prompt_path = PROMPTS_DIR / prompt_file
+        
+        if prompt_path.exists():
+            text = prompt_path.read_text(encoding='utf-8').strip()
+            logger.debug(f"Промпт загружен из {prompt_file}")
+            return text
+        else:
+            logger.warning(f"Файл промпта не найден: {prompt_path}")
+            return ""
+    except Exception as e:
+        logger.error(f"Ошибка загрузки промпта {prompt_file}: {e}")
+        return ""
+
+
 class OCRBackend(Protocol):
     """
     Интерфейс для OCR-движков
@@ -73,19 +102,22 @@ class LocalVLMBackend:
         
         Args:
             image: изображение для распознавания
-            prompt: промпт для модели
+            prompt: промпт для модели (если None, загружается из prompts/ocr_full_page.txt)
         
         Returns:
             Распознанный текст
         """
         try:
-            # Дефолтный промпт для OCR
+            # Дефолтный промпт для OCR из файла
             if not prompt:
-                prompt = (
-                    "Распознай весь текст на этом изображении. "
-                    "Сохрани структуру документа, таблицы представь в Markdown формате. "
-                    "Выведи только распознанный текст без комментариев."
-                )
+                prompt = load_prompt("ocr_full_page.txt")
+                if not prompt:
+                    # Fallback если файл не найден
+                    prompt = (
+                        "Распознай весь текст на этом изображении. "
+                        "Сохрани структуру документа, таблицы представь в Markdown формате. "
+                        "Выведи только распознанный текст без комментариев."
+                    )
             
             # Конвертируем изображение в base64
             img_base64 = self._image_to_base64(image)
@@ -291,22 +323,39 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             
             # Обрабатываем в зависимости от типа блока
             if block.block_type == BlockType.IMAGE:
-                # Для изображений - детальное описание на русском
-                image_prompt = (
-                    "Подробно опиши всё, что ты видишь на этом изображении. "
-                    "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
-                    "Если есть текст на русском языке - распознай и выведи его полностью. "
-                    "Если есть техническая информация, параметры, размеры - укажи их точно. "
-                    "Опиши структуру, компоненты, связи между элементами. "
-                    "Ответ должен быть максимально информативным и на русском языке."
-                )
+                # Для изображений - детальное описание из промпта
+                image_prompt = load_prompt("ocr_image_description.txt")
+                if not image_prompt:
+                    # Fallback если файл не найден
+                    image_prompt = (
+                        "Подробно опиши всё, что ты видишь на этом изображении. "
+                        "Обрати внимание на все детали: текст, схемы, диаграммы, таблицы, графики, символы, цифры. "
+                        "Если есть текст на русском языке - распознай и выведи его полностью. "
+                        "Если есть техническая информация, параметры, размеры - укажи их точно. "
+                        "Опиши структуру, компоненты, связи между элементами. "
+                        "Ответ должен быть максимально информативным и на русском языке."
+                    )
                 ocr_text = image_description_backend.recognize(image, prompt=image_prompt)
                 block.ocr_text = ocr_text
                 processed += 1
                 
-            elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                # Для текста и таблиц - стандартное распознавание
-                ocr_text = ocr_backend.recognize(image)
+            elif block.block_type == BlockType.TABLE:
+                # Для таблиц - специальный промпт
+                table_prompt = load_prompt("ocr_table.txt")
+                if table_prompt:
+                    ocr_text = ocr_backend.recognize(image, prompt=table_prompt)
+                else:
+                    ocr_text = ocr_backend.recognize(image)
+                block.ocr_text = ocr_text
+                processed += 1
+                
+            elif block.block_type == BlockType.TEXT:
+                # Для текста - специальный промпт
+                text_prompt = load_prompt("ocr_text.txt")
+                if text_prompt:
+                    ocr_text = ocr_backend.recognize(image, prompt=text_prompt)
+                else:
+                    ocr_text = ocr_backend.recognize(image)
                 block.ocr_text = ocr_text
                 processed += 1
             else:
