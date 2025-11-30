@@ -129,6 +129,10 @@ class LocalVLMBackend:
                 "model": self.model_name,
                 "messages": [
                     {
+                        "role": "system",
+                        "content": "You are an expert design engineer and automation specialist. Your task is to analyze technical drawings and extract data into structured JSON or Markdown formats with 100% accuracy. Do not omit details. Do not hallucinate values."
+                    },
+                    {
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt},
@@ -141,9 +145,11 @@ class LocalVLMBackend:
                         ]
                     }
                 ],
-                "max_tokens": 8192,
+                "max_tokens": 16384,
                 "temperature": 0.1,
-                "top_p": 0.9
+                "top_p": 0.9,
+                "frequency_penalty": 0.0,
+                "presence_penalty": 0.0
             }
             
             # Отправляем запрос
