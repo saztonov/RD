@@ -22,11 +22,9 @@ from app.gui.ocr_manager import OCRManager
 from app.gui.blocks_tree_manager import BlocksTreeManager
 from app.gui.category_manager import CategoryManager
 from app.annotation_io import AnnotationIO
-from app.cropping import Cropper, export_blocks_by_category
+from app.cropping import Cropper
 from app.ocr import create_ocr_engine
-from app.report_md import MarkdownReporter
 from app.auto_segmentation import AutoSegmentation
-from app.reapply import AnnotationReapplier
 
 logger = logging.getLogger(__name__)
 
@@ -149,20 +147,6 @@ class MainWindow(QMainWindow):
         run_ocr_action.setShortcut(QKeySequence("Ctrl+R"))
         run_ocr_action.triggered.connect(self._run_ocr_all)
         tools_menu.addAction(run_ocr_action)
-        
-        tools_menu.addSeparator()
-        
-        export_action = QAction("&Экспорт кропов", self)
-        export_action.triggered.connect(self._export_crops)
-        tools_menu.addAction(export_action)
-        
-        md_action = QAction("Генерация &Markdown", self)
-        md_action.triggered.connect(self._generate_markdown)
-        tools_menu.addAction(md_action)
-        
-        reapply_action = QAction("&Перенос разметки", self)
-        reapply_action.triggered.connect(self._reapply_annotation)
-        tools_menu.addAction(reapply_action)
         
         tools_menu.addSeparator()
         
@@ -379,18 +363,6 @@ class MainWindow(QMainWindow):
         self.categories_list.itemClicked.connect(lambda item: self.category_manager.on_category_clicked(item))
         block_layout.addWidget(self.categories_list)
         
-        # OCR текст
-        block_layout.addWidget(QLabel("OCR результат:"))
-        self.block_ocr_text = QTextEdit()
-        self.block_ocr_text.setReadOnly(True)
-        self.block_ocr_text.setMaximumHeight(100)
-        block_layout.addWidget(self.block_ocr_text)
-        
-        # Кнопка удаления
-        self.delete_block_btn = QPushButton("🗑️ Удалить блок")
-        self.delete_block_btn.clicked.connect(self._delete_selected_block)
-        block_layout.addWidget(self.delete_block_btn)
-        
         layout.addWidget(block_group)
         
         # Кнопки действий
@@ -416,18 +388,6 @@ class MainWindow(QMainWindow):
         self.run_ocr_btn = QPushButton("Запустить OCR")
         self.run_ocr_btn.clicked.connect(self._run_ocr_all)
         actions_layout.addWidget(self.run_ocr_btn)
-        
-        self.export_crops_btn = QPushButton("Экспорт кропов")
-        self.export_crops_btn.clicked.connect(self._export_crops)
-        actions_layout.addWidget(self.export_crops_btn)
-        
-        self.generate_md_btn = QPushButton("Генерация MD")
-        self.generate_md_btn.clicked.connect(self._generate_markdown)
-        actions_layout.addWidget(self.generate_md_btn)
-        
-        self.reapply_btn = QPushButton("Перенос разметки")
-        self.reapply_btn.clicked.connect(self._reapply_annotation)
-        actions_layout.addWidget(self.reapply_btn)
         
         layout.addWidget(actions_group)
         
@@ -628,8 +588,6 @@ class MainWindow(QMainWindow):
         self.category_edit.setText(block.category)
         self.category_edit.blockSignals(False)
         
-        self.block_ocr_text.setText(block.ocr_text or "")
-        
         # Выделяем в дереве
         self.blocks_tree_manager.select_block_in_tree(block_idx)
     
@@ -802,8 +760,6 @@ class MainWindow(QMainWindow):
             self.block_type_combo.blockSignals(True)
             self.block_type_combo.setCurrentIndex(0)
             self.block_type_combo.blockSignals(False)
-            
-            self.block_ocr_text.setText("")
             
             # Обновляем отображение
             self.page_viewer.set_blocks(current_page_data.blocks)
@@ -1128,39 +1084,6 @@ class MainWindow(QMainWindow):
             f"• document.md"
         )
     
-    def _export_crops(self):
-        """Экспорт кропов блоков по категориям"""
-        if not self.annotation_document:
-            return
-        
-        output_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для экспорта")
-        if output_dir:
-            # Конвертируем legacy Document в список PageModel
-            pages_list = []
-            for page in self.annotation_document.pages:
-                page_num = page.page_number
-                if page_num in self.page_images:
-                    page_model = PageModel(
-                        page_index=page_num,
-                        image=self.page_images[page_num],
-                        blocks=page.blocks
-                    )
-                    pages_list.append(page_model)
-            
-            # Экспортируем по категориям
-            export_blocks_by_category(self.annotation_document.pdf_path, pages_list, output_dir)
-            QMessageBox.information(self, "Успех", "Кропы сохранены по категориям")
-    
-    def _generate_markdown(self):
-        """Генерация Markdown отчётов"""
-        if not self.annotation_document:
-            return
-        
-        output_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для MD-отчётов")
-        if output_dir:
-            reporter = MarkdownReporter(output_dir)
-            reporter.generate_reports(self.annotation_document)
-            QMessageBox.information(self, "Успех", "Markdown отчёты созданы")
     
     def _generate_structured_markdown(self):
         """Генерация структурированного Markdown документа из размеченных блоков"""
@@ -1198,33 +1121,6 @@ class MainWindow(QMainWindow):
                 "Ошибка",
                 f"Ошибка генерации структурированного markdown:\n{e}"
             )
-    
-    def _reapply_annotation(self):
-        """Перенос разметки на новый PDF"""
-        if not self.annotation_document:
-            QMessageBox.warning(self, "Внимание", "Сначала загрузите разметку")
-            return
-        
-        new_pdf_path, _ = QFileDialog.getOpenFileName(self, "Выберите новый PDF", "", 
-                                                      "PDF Files (*.pdf)")
-        if new_pdf_path:
-            reapplier = AnnotationReapplier(self.annotation_document, new_pdf_path)
-            new_doc = reapplier.reapply()
-            
-            if new_doc:
-                self.annotation_document = new_doc
-                # Переоткрываем PDF
-                if self.pdf_document:
-                    self.pdf_document.close()
-                self.pdf_document = PDFDocument(new_pdf_path)
-                self.pdf_document.open()
-                self.page_images.clear()
-                self.page_zoom_states.clear()
-                self.current_page = 0
-                self.category_manager.extract_categories_from_document()
-                self._render_current_page()
-                self._update_ui()
-                QMessageBox.information(self, "Успех", "Разметка перенесена")
     
     def _remove_stamps(self):
         """Удаление электронных штампов из PDF"""
