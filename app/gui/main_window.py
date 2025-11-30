@@ -1139,7 +1139,7 @@ class MainWindow(QMainWindow):
             return
         
         # Диалог выбора метода OCR
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QRadioButton, QDialogButtonBox
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QRadioButton, QDialogButtonBox, QGroupBox
         
         choice_dialog = QDialog(self)
         choice_dialog.setWindowTitle("Выбор метода OCR")
@@ -1147,12 +1147,24 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(QLabel("Выберите метод распознавания:"))
         
-        tesseract_radio = QRadioButton("Tesseract (постраничный, сохраняет разметку блоков)")
-        hunyuan_radio = QRadioButton("HunyuanOCR (единый MD документ, высокая точность)")
-        tesseract_radio.setChecked(True)
+        tesseract_radio = QRadioButton("Tesseract (классический OCR для блоков)")
+        hunyuan_radio = QRadioButton("HunyuanOCR (AI модель, высокая точность)")
+        hunyuan_radio.setChecked(True)
         
         layout.addWidget(tesseract_radio)
         layout.addWidget(hunyuan_radio)
+        
+        layout.addWidget(QLabel("Режим:"))
+        mode_group = QGroupBox()
+        mode_layout = QVBoxLayout(mode_group)
+        
+        blocks_radio = QRadioButton("По блокам (учитывает вашу разметку)")
+        full_page_radio = QRadioButton("Вся страница (авто-структура)")
+        full_page_radio.setChecked(True)
+        
+        mode_layout.addWidget(blocks_radio)
+        mode_layout.addWidget(full_page_radio)
+        layout.addWidget(mode_group)
         
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(choice_dialog.accept)
@@ -1163,11 +1175,93 @@ class MainWindow(QMainWindow):
             return
         
         use_hunyuan = hunyuan_radio.isChecked()
+        use_blocks = blocks_radio.isChecked()
         
         if use_hunyuan:
-            self._run_hunyuan_ocr()
+            if use_blocks:
+                self._run_hunyuan_ocr_blocks()
+            else:
+                self._run_hunyuan_ocr()
         else:
+            if not use_blocks:
+                 QMessageBox.information(self, "Info", "Tesseract работает только по блокам. Запускаем по блокам.")
             self._run_tesseract_ocr()
+
+    def _run_hunyuan_ocr_blocks(self):
+        """Запустить HunyuanOCR для блоков (с сохранением разметки пользователя)"""
+        from PySide6.QtWidgets import QProgressDialog
+        from app.ocr import create_ocr_engine
+        
+        # Проверяем наличие backend
+        try:
+            ocr_engine = create_ocr_engine("hunyuan")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка HunyuanOCR", f"Не удалось инициализировать:\n{e}")
+            return
+            
+        total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
+        if total_blocks == 0:
+            QMessageBox.information(self, "Информация", "Нет блоков для OCR")
+            return
+
+        progress = QProgressDialog("Распознавание блоков через HunyuanOCR...", "Отмена", 0, total_blocks, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+
+        processed_count = 0
+        
+        for page in self.annotation_document.pages:
+            if progress.wasCanceled():
+                break
+                
+            page_num = page.page_number
+            # Рендерим если нужно
+            if page_num not in self.page_images:
+                img = self.pdf_document.render_page(page_num)
+                if img:
+                    self.page_images[page_num] = img
+            
+            page_img = self.page_images.get(page_num)
+            if not page_img:
+                continue
+            
+            for block in page.blocks:
+                if progress.wasCanceled():
+                    break
+                
+                # Пропускаем блоки типа IMAGE
+                if block.block_type == BlockType.IMAGE:
+                     processed_count += 1
+                     progress.setValue(processed_count)
+                     continue
+
+                if block.block_type in (BlockType.TEXT, BlockType.TABLE):
+                    x1, y1, x2, y2 = block.coords_px
+                    if x1 < x2 and y1 < y2:
+                        crop = page_img.crop((x1, y1, x2, y2))
+                        # Используем более простой промпт для блоков
+                        block_prompt = "Transcribe the content of this image fragment to Markdown."
+                        try:
+                            block.ocr_text = ocr_engine.recognize(crop, prompt=block_prompt)
+                        except Exception as e:
+                            logger.error(f"Error OCR block {block.id}: {e}")
+                            block.ocr_text = f"[Error: {e}]"
+                
+                processed_count += 1
+                progress.setValue(processed_count)
+        
+        progress.close()
+        
+        # Предлагаем сразу сгенерировать MD
+        reply = QMessageBox.question(
+            self, 
+            "Готово", 
+            f"Обработано {processed_count} блоков.\nСгенерировать единый Markdown документ сейчас?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            self._generate_markdown()
     
     def _run_tesseract_ocr(self):
         """Запустить Tesseract OCR для блоков"""
@@ -1263,12 +1357,7 @@ class MainWindow(QMainWindow):
                 self, 
                 "HunyuanOCR не установлен", 
                 f"{e}\n\n"
-                "Инструкция по установке:\n"
-                "1. cd \"Новая папка\"\n"
-                "2. git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git\n"
-                "3. cd HunyuanOCR/Hunyuan-OCR-master\n"
-                "4. pip install -r requirements.txt\n\n"
-                "Подробности: HUNYUAN_SETUP.md"
+                "Проверьте установку зависимостей (transformers, torch)."
             )
         except ImportError as e:
             progress.close()
@@ -1276,9 +1365,8 @@ class MainWindow(QMainWindow):
                 self, 
                 "Ошибка импорта HunyuanOCR", 
                 f"{e}\n\n"
-                "Проверьте что установлены все зависимости:\n"
-                "cd HunyuanOCR/Hunyuan-OCR-master\n"
-                "pip install -r requirements.txt"
+                "Требуется установить transformers с поддержкой HunyuanOCR:\n"
+                "pip install git+https://github.com/huggingface/transformers@82a06db03535c49aa987719ed0746a76093b1ec4"
             )
         except Exception as e:
             progress.close()

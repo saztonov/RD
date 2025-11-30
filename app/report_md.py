@@ -217,7 +217,39 @@ class MarkdownReporter:
                 logger.info(f"Генерирован отчёт для '{category}': {md_path} ({len(blocks)} блоков)")
             
             logger.info(f"Генерация MD-отчётов завершена: {len(blocks_by_category)} категорий")
-        
+            
+            # Также генерируем общий отчет (все блоки в одном файле)
+            all_blocks = []
+            for blocks in blocks_by_category.values():
+                all_blocks.extend(blocks)
+            
+            if all_blocks:
+                combined_path = self.output_dir / "combined_full_report.md"
+                with open(combined_path, 'w', encoding='utf-8') as f:
+                    f.write(f"# Полный отчет\n\n")
+                    f.write(f"**Source PDF:** {document.pdf_path}\n")
+                    f.write(f"**Total Blocks:** {len(all_blocks)}\n\n")
+                    f.write("---\n\n")
+                    
+                    # Сортируем все блоки по странице и ID
+                    all_blocks_sorted = sorted(all_blocks, key=lambda b: (b.page_index, b.id))
+                    
+                    for block in all_blocks_sorted:
+                        category = block.category or "Uncategorized"
+                        f.write(f"## Block {block.id} (Page {block.page_index}, Type: {block.block_type.value}, Category: {category})\n\n")
+                        
+                        if block.ocr_text:
+                            if block.block_type.value == "table" and _is_markdown_table(block.ocr_text):
+                                f.write(block.ocr_text)
+                            else:
+                                f.write(block.ocr_text) # Не экранируем для combined отчета, чтобы сохранить структуру MD от Hunyuan
+                        else:
+                            f.write("*Нет OCR-данных*\n\n")
+                        
+                        f.write("\n\n---\n\n")
+                
+                logger.info(f"Сгенерирован общий отчет: {combined_path}")
+
         except Exception as e:
             logger.error(f"Ошибка генерации отчётов: {e}")
             raise

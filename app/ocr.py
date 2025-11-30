@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Protocol, List, Optional
 from PIL import Image
 import pytesseract
+import torch
 from app.models import Block, BlockType
-
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +19,13 @@ class OCRBackend(Protocol):
     Интерфейс для OCR-движков
     """
     
-    def recognize(self, image: Image.Image) -> str:
+    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """
         Распознать текст на изображении
         
         Args:
             image: изображение для распознавания
+            prompt: кастомный промпт (опционально)
         
         Returns:
             Распознанный текст
@@ -54,12 +55,13 @@ class TesseractOCRBackend:
         
         logger.info(f"TesseractOCRBackend инициализирован (языки: {lang})")
     
-    def recognize(self, image: Image.Image) -> str:
+    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """
         Распознать текст через Tesseract
         
         Args:
             image: изображение для распознавания
+            prompt: игнорируется для Tesseract
         
         Returns:
             Распознанный текст
@@ -84,7 +86,7 @@ class DummyOCRBackend:
     Заглушка для OCR (для тестирования без Tesseract)
     """
     
-    def recognize(self, image: Image.Image) -> str:
+    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """Возвращает заглушку"""
         return "[OCR placeholder - Tesseract not configured]"
 
@@ -92,90 +94,131 @@ class DummyOCRBackend:
 class HunyuanOCRBackend:
     """
     OCR через HunyuanOCR (Tencent VLM)
-    Поддержка многоязычных документов с таблицами и формулами
-    
-    Требует установки репозитория:
-    git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git
-    cd HunyuanOCR/Hunyuan-OCR-master
-    pip install -r requirements.txt
+    Использует Hugging Face Transformers.
     """
     
-    def __init__(self, hunyuan_repo_path: Optional[str] = None):
+    def __init__(self, model_path: str = "tencent/HunyuanOCR"):
         """
         Args:
-            hunyuan_repo_path: путь к клонированному репозиторию HunyuanOCR
-                               (по умолчанию ищет в ./HunyuanOCR или ./Новая папка/HunyuanOCR)
+            model_path: путь к модели или имя на HF Hub
         """
         try:
-            import sys
-            from pathlib import Path as PathLib
+            from transformers import AutoProcessor, HunYuanVLForConditionalGeneration
             
-            # Ищем репозиторий HunyuanOCR
-            if hunyuan_repo_path:
-                repo_path = PathLib(hunyuan_repo_path)
-            else:
-                # Пробуем стандартные пути
-                possible_paths = [
-                    PathLib("HunyuanOCR/Hunyuan-OCR-master"),
-                    PathLib("Новая папка/HunyuanOCR/Hunyuan-OCR-master"),
-                    PathLib("../HunyuanOCR/Hunyuan-OCR-master"),
-                ]
-                repo_path = None
-                for path in possible_paths:
-                    if path.exists():
-                        repo_path = path
-                        break
-                
-                if not repo_path:
-                    raise FileNotFoundError(
-                        "Репозиторий HunyuanOCR не найден. Установите его:\n"
-                        "git clone https://github.com/Tencent-Hunyuan/HunyuanOCR.git\n"
-                        "cd HunyuanOCR/Hunyuan-OCR-master\n"
-                        "pip install -r requirements.txt"
-                    )
+            logger.info("Инициализация HunyuanOCR (Transformers)...")
             
-            # Добавляем путь в sys.path
-            sys.path.insert(0, str(repo_path))
-            logger.info(f"HunyuanOCR репозиторий найден: {repo_path}")
-            
-            # Импортируем HunyuanOCR
-            try:
-                from inference import HunyuanOCR
-                self.ocr_model = HunyuanOCR()
-                logger.info("HunyuanOCR инициализирован успешно")
-            except ImportError as e:
-                logger.error(f"Не удалось импортировать HunyuanOCR: {e}")
-                raise ImportError(
-                    f"Ошибка импорта HunyuanOCR из {repo_path}. "
-                    "Убедитесь что установлены зависимости: pip install -r requirements.txt"
-                )
-            
-            # Промпт для извлечения документа в Markdown
-            self.prompt = (
-                "Извлеките всю информацию из основного текста изображения документа "
-                "и представьте ее в формате Markdown, игнорируя заголовки и колонтитулы. "
-                "Таблицы должны быть выражены в формате HTML, формулы — в формате LaTeX, "
-                "а разбор должен быть организован в соответствии с порядком чтения."
+            self.processor = AutoProcessor.from_pretrained(model_path, use_fast=False)
+            self.model = HunYuanVLForConditionalGeneration.from_pretrained(
+                model_path,
+                attn_implementation="eager",
+                dtype=torch.bfloat16,
+                device_map="auto"
             )
             
+            self.default_prompt = (
+                "提取文档图片中正文的所有信息用markdown格式表示，其中页眉、页脚部分忽略，表格用html格式表达，文档中公式用latex格式表示，按照阅读顺序组织进行解析。"
+                # Перевод: "Извлеките всю информацию из основного текста изображения документа в формате markdown, 
+                # игнорируя заголовки и колонтитулы, таблицы в формате html, формулы в latex, 
+                # организовав разбор в порядке чтения."
+            )
+            
+            logger.info("HunyuanOCR инициализирован успешно")
+            
+        except ImportError as e:
+            logger.error(f"Не удалось импортировать transformers: {e}")
+            raise ImportError(
+                "Требуется библиотека transformers (версия с поддержкой HunyuanOCR). "
+                "Выполните: pip install git+https://github.com/huggingface/transformers@82a06db03535c49aa987719ed0746a76093b1ec4"
+            )
         except Exception as e:
             logger.error(f"Ошибка инициализации HunyuanOCR: {e}")
             raise
-    
-    def recognize(self, image: Image.Image) -> str:
+
+    def _clean_repeated_substrings(self, text: str) -> str:
+        """Очистка повторяющихся подстрок (из официального скрипта)"""
+        n = len(text)
+        if n < 8000:
+            return text
+        for length in range(2, n // 10 + 1):
+            candidate = text[-length:] 
+            count = 0
+            i = n - length
+            
+            while i >= 0 and text[i:i + length] == candidate:
+                count += 1
+                i -= length
+
+            if count >= 10:
+                return text[:n - length * (count - 1)]  
+
+        return text
+
+    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """
         Распознать текст через HunyuanOCR
         
         Args:
             image: изображение для распознавания
+            prompt: кастомный промпт
         
         Returns:
             Распознанный текст в Markdown формате
         """
         try:
-            # Вызываем HunyuanOCR с промптом
-            result = self.ocr_model.predict(image, prompt=self.prompt)
+            actual_prompt = prompt if prompt else self.default_prompt
             
+            # Подготовка сообщений (список сообщений для одного диалога)
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image},
+                        {"type": "text", "text": actual_prompt},
+                    ],
+                }
+            ]
+            
+            # apply_chat_template принимает список сообщений (диалог)
+            text_prompt = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            
+            texts = [text_prompt]
+            
+            # Подготовка инпутов
+            inputs = self.processor(
+                text=texts,
+                images=image,
+                padding=True,
+                return_tensors="pt",
+            )
+            
+            # Инференс
+            with torch.no_grad():
+                device = next(self.model.parameters()).device
+                inputs = inputs.to(device)
+                
+                generated_ids = self.model.generate(
+                    **inputs, 
+                    max_new_tokens=2048, # Увеличил токенов для больших доков
+                    do_sample=False
+                )
+                
+            # Декодирование
+            if "input_ids" in inputs:
+                input_ids = inputs.input_ids
+            else:
+                input_ids = inputs.inputs
+                
+            generated_ids_trimmed = [
+                out_ids[len(in_ids):] for in_ids, out_ids in zip(input_ids, generated_ids)
+            ]
+            
+            output_text = self.processor.batch_decode(
+                generated_ids_trimmed, 
+                skip_special_tokens=True, 
+                clean_up_tokenization_spaces=False
+            )[0]
+            
+            result = self._clean_repeated_substrings(output_text)
             logger.debug(f"HunyuanOCR: распознано {len(result)} символов")
             return result.strip()
             
@@ -187,11 +230,6 @@ class HunyuanOCRBackend:
 def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "") -> None:
     """
     Запустить OCR для блоков типа TEXT или TABLE
-    
-    Args:
-        blocks: список блоков для обработки
-        ocr_backend: объект, реализующий OCRBackend
-        base_dir: базовая директория для поиска файлов (если image_file относительный путь)
     """
     processed = 0
     skipped = 0
@@ -199,19 +237,18 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
     for block in blocks:
         # Пропускаем блоки типа IMAGE
         if block.block_type == BlockType.IMAGE:
-            logger.debug(f"Блок {block.id} (IMAGE) пропущен - OCR не нужен")
+            # logger.debug(f"Блок {block.id} (IMAGE) пропущен - OCR не нужен")
             skipped += 1
             continue
         
         # Пропускаем блоки без image_file
         if not block.image_file:
-            logger.warning(f"Блок {block.id} не имеет image_file, пропускаем")
+            # logger.warning(f"Блок {block.id} не имеет image_file, пропускаем")
             skipped += 1
             continue
         
         # Проверяем, что тип TEXT или TABLE
         if block.block_type not in (BlockType.TEXT, BlockType.TABLE):
-            logger.debug(f"Блок {block.id} имеет тип {block.block_type}, пропускаем")
             skipped += 1
             continue
         
@@ -231,14 +268,18 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             image = Image.open(image_path)
             
             # Запускаем OCR
-            ocr_text = ocr_backend.recognize(image)
+            # Для блоков используем специфичный промпт если это Hunyuan
+            block_prompt = None
+            if isinstance(ocr_backend, HunyuanOCRBackend):
+                 # Простой промпт для транскрипции фрагмента
+                 block_prompt = "Transcribe the content of this image fragment to Markdown."
+
+            ocr_text = ocr_backend.recognize(image, prompt=block_prompt)
             
             # Сохраняем результат в блок
             block.ocr_text = ocr_text
             processed += 1
             
-            logger.debug(f"Блок {block.id}: OCR выполнен ({len(ocr_text)} символов)")
-        
         except Exception as e:
             logger.error(f"Ошибка OCR для блока {block.id}: {e}")
             skipped += 1
@@ -249,13 +290,6 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
 def create_ocr_engine(backend: str = "tesseract", **kwargs) -> OCRBackend:
     """
     Фабрика для создания OCR движка
-    
-    Args:
-        backend: тип движка ("tesseract", "dummy", "hunyuan")
-        **kwargs: параметры для движка
-    
-    Returns:
-        OCRBackend объект
     """
     if backend == "tesseract":
         return TesseractOCRBackend(**kwargs)
@@ -271,13 +305,6 @@ def create_ocr_engine(backend: str = "tesseract", **kwargs) -> OCRBackend:
 def run_hunyuan_ocr_full_document(page_images: dict, output_path: str) -> str:
     """
     Распознать весь документ с HunyuanOCR и создать единый Markdown файл
-    
-    Args:
-        page_images: словарь {page_num: PIL.Image} со всеми страницами
-        output_path: путь для сохранения результирующего MD файла
-    
-    Returns:
-        Путь к созданному MD файлу
     """
     try:
         logger.info(f"Запуск HunyuanOCR для {len(page_images)} страниц")
@@ -293,6 +320,7 @@ def run_hunyuan_ocr_full_document(page_images: dict, output_path: str) -> str:
             image = page_images[page_num]
             
             # Распознаем страницу
+            # Используем дефолтный промпт для всей страницы
             page_markdown = ocr_engine.recognize(image)
             
             # Добавляем в результат
@@ -314,4 +342,3 @@ def run_hunyuan_ocr_full_document(page_images: dict, output_path: str) -> str:
     except Exception as e:
         logger.error(f"Ошибка при обработке документа HunyuanOCR: {e}", exc_info=True)
         raise
-
