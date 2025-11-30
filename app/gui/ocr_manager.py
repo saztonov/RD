@@ -103,10 +103,11 @@ class OCRManager:
                 crop = page_img.crop((x1, y1, x2, y2))
                 
                 try:
-                    crop_filename = f"page{page_num}_block{block.id}.png"
-                    crop_path = crops_dir / crop_filename
-                    crop.save(crop_path, "PNG")
-                    block.image_file = str(crop_path)
+                    if block.block_type == BlockType.IMAGE:
+                        crop_filename = f"page{page_num}_block{block.id}.png"
+                        crop_path = crops_dir / crop_filename
+                        crop.save(crop_path, "PNG")
+                        block.image_file = str(crop_path)
                     
                     if block.block_type == BlockType.IMAGE:
                         image_prompt = load_prompt("ocr_image_description.txt")
@@ -189,12 +190,11 @@ class OCRManager:
                 crop = page_img.crop((x1, y1, x2, y2))
                 
                 try:
-                    crop_filename = f"page{page_num}_block{block.id}.png"
-                    crop_path = crops_dir / crop_filename
-                    crop.save(crop_path, "PNG")
-                    block.image_file = str(crop_path)
-                    
                     if block.block_type == BlockType.IMAGE:
+                        crop_filename = f"page{page_num}_block{block.id}.png"
+                        crop_path = crops_dir / crop_filename
+                        crop.save(crop_path, "PNG")
+                        block.image_file = str(crop_path)
                         image_prompt = load_prompt("ocr_image_description.txt")
                         block.ocr_text = vlm_engine.recognize(crop, prompt=image_prompt)
                     elif block.block_type in (BlockType.TEXT, BlockType.TABLE):

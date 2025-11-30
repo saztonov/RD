@@ -624,8 +624,8 @@ class MainWindow(QMainWindow):
         
         self.block_ocr_text.setText(block.ocr_text or "")
         
-            # Выделяем в дереве
-            self.blocks_tree_manager.select_block_in_tree(block_idx)
+        # Выделяем в дереве
+        self.blocks_tree_manager.select_block_in_tree(block_idx)
     
     def _on_block_type_changed(self, new_type: str):
         """Изменение типа выбранного блока"""
