@@ -51,6 +51,9 @@ def setup_logging(log_level=logging.DEBUG):
     logging.getLogger('app.gui.stamp_remover_dialog').setLevel(log_level)
     logging.getLogger('app.gui.main_window').setLevel(log_level)
     
+    # Отключаем DEBUG сообщения от PIL
+    logging.getLogger('PIL').setLevel(logging.INFO)
+    
     logger = logging.getLogger(__name__)
     logger.info("=" * 60)
     logger.info("PDF Annotation Tool - запуск приложения")

@@ -34,7 +34,6 @@ class OCRManager:
         
         output_dir = Path(dialog.output_dir)
         mode = dialog.mode
-        engine = dialog.engine
         
         output_dir.mkdir(parents=True, exist_ok=True)
         crops_dir = output_dir / "crops"
@@ -47,15 +46,9 @@ class OCRManager:
         logger.info(f"PDF сохранен: {pdf_output}")
         
         if mode == "blocks":
-            if engine == "local_vlm":
-                self.run_local_vlm_ocr_blocks_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir, crops_dir)
-            else:
-                self.run_chandra_ocr_blocks_with_output(dialog.chandra_method, output_dir, crops_dir)
+            self.run_local_vlm_ocr_blocks_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir, crops_dir)
         else:
-            if engine == "local_vlm":
-                self.run_local_vlm_ocr_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir)
-            else:
-                self.run_chandra_ocr_with_output(dialog.chandra_method, output_dir)
+            self.run_local_vlm_ocr_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir)
     
     def run_local_vlm_ocr_blocks_with_output(self, api_base, model_name, output_dir, crops_dir):
         """Запустить LocalVLM OCR для блоков"""

@@ -21,11 +21,9 @@ class OCRDialog(QDialog):
         self.setMinimumWidth(500)
         
         self.output_dir = None
-        self.mode = "full_page"  # "blocks" или "full_page"
-        self.engine = "local_vlm"  # "local_vlm" или "chandra"
+        self.mode = "blocks"  # "blocks" или "full_page"
         self.vlm_server_url = "http://127.0.0.1:1234/v1"
         self.vlm_model_name = "qwen3-vl-32b-instruct"
-        self.chandra_method = "hf"
         
         self._setup_ui()
     
@@ -39,57 +37,12 @@ class OCRDialog(QDialog):
         
         self.blocks_radio = QRadioButton("По блокам (учитывает вашу разметку)")
         self.full_page_radio = QRadioButton("Все страницы (автоматическая структура)")
-        self.full_page_radio.setChecked(True)
+        self.blocks_radio.setChecked(True)
         
         mode_layout.addWidget(self.blocks_radio)
         mode_layout.addWidget(self.full_page_radio)
         
         layout.addWidget(mode_group)
-        
-        # Движок OCR
-        engine_group = QGroupBox("Движок OCR")
-        engine_layout = QVBoxLayout(engine_group)
-        
-        # VLM
-        self.vlm_radio = QRadioButton("Локальный VLM сервер (Qwen3-VL и др.)")
-        self.vlm_radio.setChecked(True)
-        engine_layout.addWidget(self.vlm_radio)
-        
-        vlm_settings_layout = QVBoxLayout()
-        vlm_settings_layout.setContentsMargins(20, 0, 0, 0)
-        
-        server_layout = QHBoxLayout()
-        server_layout.addWidget(QLabel("URL:"))
-        self.server_edit = QLineEdit("http://127.0.0.1:1234/v1")
-        server_layout.addWidget(self.server_edit)
-        vlm_settings_layout.addLayout(server_layout)
-        
-        model_layout = QHBoxLayout()
-        model_layout.addWidget(QLabel("Модель:"))
-        self.model_edit = QLineEdit("qwen3-vl-32b-instruct")
-        model_layout.addWidget(self.model_edit)
-        vlm_settings_layout.addLayout(model_layout)
-        
-        engine_layout.addLayout(vlm_settings_layout)
-        
-        # Chandra
-        self.chandra_radio = QRadioButton("Chandra OCR")
-        engine_layout.addWidget(self.chandra_radio)
-        
-        chandra_settings_layout = QHBoxLayout()
-        chandra_settings_layout.setContentsMargins(20, 0, 0, 0)
-        
-        self.chandra_hf_radio = QRadioButton("HuggingFace")
-        self.chandra_hf_radio.setChecked(True)
-        self.chandra_vllm_radio = QRadioButton("vLLM")
-        
-        chandra_settings_layout.addWidget(self.chandra_hf_radio)
-        chandra_settings_layout.addWidget(self.chandra_vllm_radio)
-        chandra_settings_layout.addStretch()
-        
-        engine_layout.addLayout(chandra_settings_layout)
-        
-        layout.addWidget(engine_group)
         
         # Папка для результатов
         output_group = QGroupBox("Папка для результатов")
@@ -133,13 +86,6 @@ class OCRDialog(QDialog):
         
         # Сохраняем настройки
         self.mode = "blocks" if self.blocks_radio.isChecked() else "full_page"
-        self.engine = "local_vlm" if self.vlm_radio.isChecked() else "chandra"
-        
-        if self.engine == "local_vlm":
-            self.vlm_server_url = self.server_edit.text().strip()
-            self.vlm_model_name = self.model_edit.text().strip()
-        else:
-            self.chandra_method = "hf" if self.chandra_hf_radio.isChecked() else "vllm"
         
         self.accept()
 

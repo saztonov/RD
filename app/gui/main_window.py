@@ -462,7 +462,7 @@ class MainWindow(QMainWindow):
         # Открываем PDF напрямую (быстро)
         self._load_cleaned_pdf(file_path)
     
-    def _load_cleaned_pdf(self, file_path: str):
+    def _load_cleaned_pdf(self, file_path: str, keep_annotation: bool = False):
         """Загрузить PDF (исходный или очищенный) в основное приложение"""
         # Закрываем старый PDF
         if self.pdf_document:
@@ -478,13 +478,14 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", "Не удалось открыть PDF")
             return
         
-        # Инициализируем документ разметки
-        self.annotation_document = Document(pdf_path=file_path)
-        for page_num in range(self.pdf_document.page_count):
-            dims = self.pdf_document.get_page_dimensions(page_num)
-            if dims:
-                page = Page(page_number=page_num, width=dims[0], height=dims[1])
-                self.annotation_document.pages.append(page)
+        # Инициализируем документ разметки (если не сохраняем существующий)
+        if not keep_annotation:
+            self.annotation_document = Document(pdf_path=file_path)
+            for page_num in range(self.pdf_document.page_count):
+                dims = self.pdf_document.get_page_dimensions(page_num)
+                if dims:
+                    page = Page(page_number=page_num, width=dims[0], height=dims[1])
+                    self.annotation_document.pages.append(page)
         
         # Отображаем первую страницу
         self.current_page = 0
@@ -922,7 +923,13 @@ class MainWindow(QMainWindow):
             
             pdf_path = loaded_doc.pdf_path
             if Path(pdf_path).exists():
-                self._load_cleaned_pdf(pdf_path)
+                self._load_cleaned_pdf(pdf_path, keep_annotation=True)
+            else:
+                # PDF не найден, но блоки все равно нужно отобразить если PDF уже загружен
+                if self.pdf_document:
+                    self.current_page = 0
+                    self._render_current_page()
+                    self._update_ui()
             
             self.blocks_tree_manager.update_blocks_tree()
             self.category_manager.extract_categories_from_document()
