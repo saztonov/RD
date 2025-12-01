@@ -277,6 +277,100 @@ class ChandraOCRBackend:
             return f"[Ошибка Chandra OCR: {e}]"
 
 
+class OpenRouterBackend:
+    """
+    OCR через OpenRouter API (qwen/qwen3-vl-30b-a3b-instruct)
+    """
+    
+    def __init__(self, api_key: str, model_name: str = "qwen/qwen3-vl-30b-a3b-instruct"):
+        """
+        Args:
+            api_key: OpenRouter API ключ
+            model_name: имя модели на OpenRouter
+        """
+        self.api_key = api_key
+        self.model_name = model_name
+        
+        try:
+            import requests
+            self.requests = requests
+        except ImportError:
+            raise ImportError("Требуется установить requests: pip install requests")
+        
+        logger.info(f"OpenRouter инициализирован (модель: {self.model_name})")
+    
+    def _image_to_base64(self, image: Image.Image) -> str:
+        """Конвертировать PIL Image в base64"""
+        max_size = 1500
+        if image.width > max_size or image.height > max_size:
+            ratio = min(max_size / image.width, max_size / image.height)
+            new_size = (int(image.width * ratio), int(image.height * ratio))
+            image = image.resize(new_size, Image.LANCZOS)
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+    
+    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
+        """
+        Распознать текст через OpenRouter API
+        """
+        try:
+            image_b64 = self._image_to_base64(image)
+            
+            user_prompt = prompt if prompt else "Распознай весь текст с этого изображения. Верни только текст, без комментариев."
+            
+            payload = {
+                "model": self.model_name,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an expert design engineer and automation specialist. Your task is to analyze technical drawings and extract data into structured JSON or Markdown formats with 100% accuracy. Do not omit details. Do not hallucinate values."
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{image_b64}"}
+                            }
+                        ]
+                    }
+                ],
+                "max_tokens": 16384,
+                "temperature": 0.1,
+                "top_p": 0.9
+            }
+            
+            response = self.requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                },
+                json=payload,
+                timeout=120
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"OpenRouter API error: {response.status_code} - {response.text}")
+                return f"[Ошибка OpenRouter API: {response.status_code}]"
+            
+            result = response.json()
+            text = result["choices"][0]["message"]["content"].strip()
+            
+            logger.debug(f"OpenRouter OCR: распознано {len(text)} символов")
+            return text
+            
+        except self.requests.exceptions.Timeout:
+            logger.error("OpenRouter OCR: превышен таймаут")
+            return "[Ошибка: превышен таймаут запроса]"
+        except Exception as e:
+            logger.error(f"Ошибка OpenRouter OCR: {e}", exc_info=True)
+            return f"[Ошибка OpenRouter OCR: {e}]"
+
+
 class DummyOCRBackend:
     """
     Заглушка для OCR (для тестирования)
@@ -379,7 +473,7 @@ def create_ocr_engine(backend: str = "local_vlm", **kwargs) -> OCRBackend:
     Фабрика для создания OCR движка
     
     Args:
-        backend: тип движка ('local_vlm', 'chandra' или 'dummy')
+        backend: тип движка ('local_vlm', 'openrouter', 'chandra' или 'dummy')
         **kwargs: дополнительные параметры для движка
     
     Returns:
@@ -387,6 +481,8 @@ def create_ocr_engine(backend: str = "local_vlm", **kwargs) -> OCRBackend:
     """
     if backend == "local_vlm":
         return LocalVLMBackend(**kwargs)
+    elif backend == "openrouter":
+        return OpenRouterBackend(**kwargs)
     elif backend == "chandra":
         return ChandraOCRBackend(**kwargs)
     elif backend == "dummy":
