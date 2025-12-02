@@ -22,6 +22,7 @@ from app.gui.page_viewer import PageViewer
 from app.gui.ocr_manager import OCRManager
 from app.gui.blocks_tree_manager import BlocksTreeManager
 from app.gui.category_manager import CategoryManager
+from app.gui.prompt_manager import PromptManager
 from app.gui.project_manager import ProjectManager
 from app.gui.project_sidebar import ProjectSidebar
 from app.gui.task_manager import TaskManager
@@ -61,6 +62,7 @@ class MainWindow(QMainWindow):
         # Менеджеры (инициализируются после setup_ui)
         self.project_manager = ProjectManager()
         self.task_manager = TaskManager()
+        self.prompt_manager = PromptManager(self)
         self.ocr_manager = None
         self.blocks_tree_manager = None
         self.category_manager = None
@@ -76,6 +78,9 @@ class MainWindow(QMainWindow):
         self.ocr_manager = OCRManager(self, self.task_manager)
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree, self.blocks_tree_by_category)
         self.category_manager = CategoryManager(self, self.categories_list)
+        
+        # Убедимся что базовые промты существуют
+        self.prompt_manager.ensure_default_prompts()
         
         self.setWindowTitle("PDF Annotation Tool")
         self.resize(1200, 800)
@@ -346,6 +351,26 @@ class MainWindow(QMainWindow):
         self.block_type_combo.addItems([t.value for t in BlockType])
         self.block_type_combo.currentTextChanged.connect(self._on_block_type_changed)
         type_layout.addWidget(self.block_type_combo)
+        
+        # Кнопки редактирования промтов для типов
+        self.edit_text_prompt_btn = QPushButton("✏️")
+        self.edit_text_prompt_btn.setMaximumWidth(30)
+        self.edit_text_prompt_btn.setToolTip("Редактировать промт для Текста")
+        self.edit_text_prompt_btn.clicked.connect(lambda: self._edit_type_prompt("text", "Текст"))
+        type_layout.addWidget(self.edit_text_prompt_btn)
+        
+        self.edit_table_prompt_btn = QPushButton("✏️")
+        self.edit_table_prompt_btn.setMaximumWidth(30)
+        self.edit_table_prompt_btn.setToolTip("Редактировать промт для Таблицы")
+        self.edit_table_prompt_btn.clicked.connect(lambda: self._edit_type_prompt("table", "Таблица"))
+        type_layout.addWidget(self.edit_table_prompt_btn)
+        
+        self.edit_image_prompt_btn = QPushButton("✏️")
+        self.edit_image_prompt_btn.setMaximumWidth(30)
+        self.edit_image_prompt_btn.setToolTip("Редактировать промт для Картинки")
+        self.edit_image_prompt_btn.clicked.connect(lambda: self._edit_type_prompt("image", "Картинка"))
+        type_layout.addWidget(self.edit_image_prompt_btn)
+        
         block_layout.addLayout(type_layout)
         
         # Категория
@@ -365,7 +390,15 @@ class MainWindow(QMainWindow):
         block_layout.addLayout(cat_layout)
         
         # Список категорий
-        block_layout.addWidget(QLabel("Категории:"))
+        categories_header = QHBoxLayout()
+        categories_header.addWidget(QLabel("Категории:"))
+        self.edit_category_prompt_btn = QPushButton("✏️ Промт")
+        self.edit_category_prompt_btn.setMaximumWidth(80)
+        self.edit_category_prompt_btn.setToolTip("Редактировать промт выбранной категории")
+        self.edit_category_prompt_btn.clicked.connect(self._edit_selected_category_prompt)
+        categories_header.addWidget(self.edit_category_prompt_btn)
+        block_layout.addLayout(categories_header)
+        
         self.categories_list = QListWidget()
         self.categories_list.setMaximumHeight(80)
         self.categories_list.itemClicked.connect(lambda item: self.category_manager.on_category_clicked(item))
@@ -714,26 +747,31 @@ class MainWindow(QMainWindow):
     
     def _add_category(self):
         """Добавить новую категорию в список"""
-        # Если есть текст в поле, используем его
-        text = self.category_edit.text().strip()
-        if not text:
-            # Иначе открываем диалог
-            text, ok = QInputDialog.getText(self, "Новая категория", "Введите название категории:")
-            if not ok or not text.strip():
-                return
-            text = text.strip()
+        self.category_manager.add_category()
+    
+    def _edit_type_prompt(self, type_name: str, display_name: str):
+        """Редактировать промт для типа блока"""
+        default_prompts = {
+            "text": "Распознай текст на изображении. Сохрани форматирование и структуру.",
+            "table": "Распознай таблицу на изображении. Преобразуй в markdown формат с колонками и строками.",
+            "image": "Опиши содержимое изображения. Укажи все важные детали, объекты и текст если есть."
+        }
         
-        # Добавляем если ещё нет
-        if text and text not in self.categories:
-            self.categories.append(text)
-            self._update_categories_list()
+        self.prompt_manager.edit_prompt(
+            type_name,
+            f"Промт для типа: {display_name}",
+            default_prompts.get(type_name, "")
+        )
+    
+    def _edit_selected_category_prompt(self):
+        """Редактировать промт выбранной категории"""
+        selected_items = self.categories_list.selectedItems()
+        if not selected_items:
+            QMessageBox.information(self, "Выберите категорию", "Сначала выберите категорию из списка")
+            return
         
-        # Устанавливаем как активную категорию
-        self.active_category = text
-        
-        # Применяем к выбранному блоку
-        if self.page_viewer.selected_block_idx is not None:
-            self.category_manager.apply_category_to_selected_block(text)
+        category_name = selected_items[0].text()
+        self.category_manager.edit_category_prompt(category_name)
     
     def _on_tree_block_clicked(self, item: QTreeWidgetItem, column: int):
         """Клик по блоку в дереве - переход на страницу и выделение"""

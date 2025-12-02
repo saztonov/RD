@@ -340,6 +340,63 @@ class R2Storage:
         except ClientError as e:
             logger.error(f"Ошибка генерации presigned URL: {e}")
             return None
+    
+    def upload_text(
+        self,
+        content: str,
+        remote_key: str
+    ) -> bool:
+        """
+        Загрузить текстовый контент в R2
+        
+        Args:
+            content: Текстовое содержимое
+            remote_key: Ключ объекта в R2
+        
+        Returns:
+            True если успешно
+        """
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=remote_key,
+                Body=content.encode('utf-8'),
+                ContentType='text/plain; charset=utf-8'
+            )
+            logger.info(f"✅ Текст загружен в R2: {remote_key}")
+            return True
+        except ClientError as e:
+            logger.error(f"❌ Ошибка загрузки текста в R2: {e}")
+            return False
+    
+    def download_text(
+        self,
+        remote_key: str
+    ) -> Optional[str]:
+        """
+        Скачать текстовый контент из R2
+        
+        Args:
+            remote_key: Ключ объекта
+        
+        Returns:
+            Текст или None при ошибке
+        """
+        try:
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name,
+                Key=remote_key
+            )
+            content = response['Body'].read().decode('utf-8')
+            logger.info(f"✅ Текст загружен из R2: {remote_key}")
+            return content
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            if error_code == 'NoSuchKey':
+                logger.warning(f"⚠️ Файл не найден в R2: {remote_key}")
+            else:
+                logger.error(f"❌ Ошибка загрузки текста из R2: {e}")
+            return None
 
 
 def upload_ocr_to_r2(output_dir: str, project_name: Optional[str] = None) -> bool:

@@ -5,7 +5,9 @@ CategoryManager для MainWindow
 
 import json
 import logging
-from PySide6.QtWidgets import QListWidget, QMessageBox, QInputDialog, QFileDialog
+from PySide6.QtWidgets import QListWidget, QMessageBox, QInputDialog, QFileDialog, QListWidgetItem
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,7 @@ class CategoryManager:
     def __init__(self, parent, categories_list: QListWidget):
         self.parent = parent
         self.categories_list = categories_list
+        self.categories_list.setContextMenuEnabled(True)
     
     def update_categories_list(self):
         """Обновить список категорий"""
@@ -67,11 +70,29 @@ class CategoryManager:
         if text and text not in self.parent.categories:
             self.parent.categories.append(text)
             self.update_categories_list()
+            
+            # Создаем промт для новой категории
+            if hasattr(self.parent, 'prompt_manager'):
+                default_prompt = f"Промт для категории '{text}'. Опиши правила распознавания блоков этой категории."
+                self.parent.prompt_manager.save_prompt(f"category_{text}", default_prompt)
         
         self.parent.active_category = text
         
         if self.parent.page_viewer.selected_block_idx is not None:
             self.apply_category_to_selected_block(text)
+    
+    def edit_category_prompt(self, category_name: str):
+        """Редактировать промт категории"""
+        if not hasattr(self.parent, 'prompt_manager'):
+            QMessageBox.warning(self.parent, "Ошибка", "PromptManager не инициализирован")
+            return
+        
+        default_prompt = f"Промт для категории '{category_name}'. Опиши правила распознавания блоков этой категории."
+        self.parent.prompt_manager.edit_prompt(
+            f"category_{category_name}",
+            f"Редактирование промта: {category_name}",
+            default_prompt
+        )
     
     def extract_categories_from_document(self):
         """Извлечь все категории из документа"""

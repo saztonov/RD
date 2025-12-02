@@ -236,15 +236,23 @@ class OCRManager:
                         crop.save(crop_path, "PNG")
                         block.image_file = str(crop_path)
                     
+                    # Загружаем промты из R2 или используем локальные
                     if block.block_type == BlockType.IMAGE:
-                        image_prompt = load_prompt("ocr_image_description.txt")
+                        image_prompt = self.parent.prompt_manager.load_prompt("image") or load_prompt("ocr_image_description.txt")
                         block.ocr_text = ocr_engine.recognize(crop, prompt=image_prompt)
                     elif block.block_type == BlockType.TABLE:
-                        table_prompt = load_prompt("ocr_table.txt")
+                        table_prompt = self.parent.prompt_manager.load_prompt("table") or load_prompt("ocr_table.txt")
                         block.ocr_text = ocr_engine.recognize(crop, prompt=table_prompt) if table_prompt else ocr_engine.recognize(crop)
                     elif block.block_type == BlockType.TEXT:
-                        text_prompt = load_prompt("ocr_text.txt")
+                        text_prompt = self.parent.prompt_manager.load_prompt("text") or load_prompt("ocr_text.txt")
                         block.ocr_text = ocr_engine.recognize(crop, prompt=text_prompt) if text_prompt else ocr_engine.recognize(crop)
+                    
+                    # Дополнительный промт для категории
+                    if block.category:
+                        category_prompt = self.parent.prompt_manager.load_prompt(f"category_{block.category}")
+                        if category_prompt:
+                            logger.debug(f"Применен промт категории '{block.category}'")
+                            # Можно добавить контекст категории к промту
                         
                 except Exception as e:
                     logger.error(f"Error OCR block {block.id}: {e}")
@@ -336,15 +344,22 @@ class OCRManager:
                         crop.save(crop_path, "PNG")
                         block.image_file = str(crop_path)
                     
+                    # Загружаем промты из R2 или используем локальные
                     if block.block_type == BlockType.IMAGE:
-                        image_prompt = load_prompt("ocr_image_description.txt")
+                        image_prompt = self.parent.prompt_manager.load_prompt("image") or load_prompt("ocr_image_description.txt")
                         block.ocr_text = image_engine.recognize(crop, prompt=image_prompt)
                     elif block.block_type == BlockType.TABLE:
-                        table_prompt = load_prompt("ocr_table.txt")
+                        table_prompt = self.parent.prompt_manager.load_prompt("table") or load_prompt("ocr_table.txt")
                         block.ocr_text = table_engine.recognize(crop, prompt=table_prompt) if table_prompt else table_engine.recognize(crop)
                     elif block.block_type == BlockType.TEXT:
-                        text_prompt = load_prompt("ocr_text.txt")
+                        text_prompt = self.parent.prompt_manager.load_prompt("text") or load_prompt("ocr_text.txt")
                         block.ocr_text = text_engine.recognize(crop, prompt=text_prompt) if text_prompt else text_engine.recognize(crop)
+                    
+                    # Дополнительный промт для категории
+                    if block.category:
+                        category_prompt = self.parent.prompt_manager.load_prompt(f"category_{block.category}")
+                        if category_prompt:
+                            logger.debug(f"Применен промт категории '{block.category}'")
                         
                 except Exception as e:
                     logger.error(f"Error OCR block {block.id}: {e}")
@@ -425,10 +440,16 @@ class OCRManager:
                         crop_path = crops_dir / crop_filename
                         crop.save(crop_path, "PNG")
                         block.image_file = str(crop_path)
-                        image_prompt = load_prompt("ocr_image_description.txt")
+                        image_prompt = self.parent.prompt_manager.load_prompt("image") or load_prompt("ocr_image_description.txt")
                         block.ocr_text = vlm_engine.recognize(crop, prompt=image_prompt)
                     elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
                         block.ocr_text = chandra_engine.recognize(crop)
+                    
+                    # Дополнительный промт для категории
+                    if block.category:
+                        category_prompt = self.parent.prompt_manager.load_prompt(f"category_{block.category}")
+                        if category_prompt:
+                            logger.debug(f"Применен промт категории '{block.category}'")
                         
                 except Exception as e:
                     logger.error(f"Error OCR block {block.id}: {e}")
