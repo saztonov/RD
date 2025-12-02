@@ -15,12 +15,14 @@ logger = logging.getLogger(__name__)
 class OCRDialog(QDialog):
     """Диалог выбора режима OCR и папки для результатов"""
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, task_name: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Настройка OCR")
         self.setMinimumWidth(500)
         
         self.output_dir = None
+        self.base_dir = None
+        self.task_name = task_name
         self.mode = "blocks"  # "blocks" или "full_page"
         self.vlm_server_url = "http://127.0.0.1:1234/v1"
         self.vlm_model_name = "qwen3-vl-32b-instruct"
@@ -121,7 +123,18 @@ class OCRDialog(QDialog):
         
         output_layout.addWidget(QLabel("Будут сохранены:\n• Исходный PDF\n• Разметка (JSON)\n• Кропы и Markdown документ"))
         
+        # Имя задачи (из бокового меню)
+        task_layout = QHBoxLayout()
+        task_layout.addWidget(QLabel("Задание:"))
+        self.task_name_label = QLabel(self.task_name if self.task_name else "(не выбрано)")
+        self.task_name_label.setStyleSheet("font-weight: bold; color: #e0e0e0;")
+        task_layout.addWidget(self.task_name_label)
+        task_layout.addStretch()
+        output_layout.addLayout(task_layout)
+        
+        # Базовая папка
         path_layout = QHBoxLayout()
+        path_layout.addWidget(QLabel("Папка:"))
         self.path_edit = QLineEdit()
         self.path_edit.setReadOnly(True)
         self.path_edit.setPlaceholderText("Выберите папку...")
@@ -132,6 +145,14 @@ class OCRDialog(QDialog):
         path_layout.addWidget(self.browse_btn)
         
         output_layout.addLayout(path_layout)
+        
+        # Итоговый путь
+        result_layout = QHBoxLayout()
+        result_layout.addWidget(QLabel("Итого:"))
+        self.result_path_label = QLabel("")
+        self.result_path_label.setStyleSheet("color: #666; font-style: italic;")
+        result_layout.addWidget(self.result_path_label)
+        output_layout.addLayout(result_layout)
         
         layout.addWidget(output_group)
         
@@ -148,18 +169,38 @@ class OCRDialog(QDialog):
         self.image_model_combo.setEnabled(openrouter_enabled)
     
     def _select_output_dir(self):
-        """Выбор папки для результатов"""
+        """Выбор базовой папки для результатов"""
         dir_path = QFileDialog.getExistingDirectory(self, "Выберите папку для результатов")
         if dir_path:
             self.path_edit.setText(dir_path)
-            self.output_dir = dir_path
+            self.base_dir = dir_path
+            self._update_output_path()
+    
+    def _update_output_path(self):
+        """Обновить итоговый путь"""
+        if self.base_dir and self.task_name:
+            self.output_dir = str(Path(self.base_dir) / self.task_name)
+            self.result_path_label.setText(self.output_dir)
+        elif self.base_dir:
+            self.result_path_label.setText("(задание не выбрано)")
+            self.output_dir = None
+        else:
+            self.result_path_label.setText("")
+            self.output_dir = None
     
     def _accept(self):
         """Проверка и принятие"""
-        if not self.output_dir:
-            from PySide6.QtWidgets import QMessageBox
+        from PySide6.QtWidgets import QMessageBox
+        
+        if not self.base_dir:
             QMessageBox.warning(self, "Ошибка", "Выберите папку для результатов")
             return
+        
+        if not self.task_name:
+            QMessageBox.warning(self, "Ошибка", "Сначала создайте задание в боковом меню")
+            return
+        
+        self.output_dir = str(Path(self.base_dir) / self.task_name)
         
         # Сохраняем настройки
         self.mode = "blocks" if self.blocks_radio.isChecked() else "full_page"

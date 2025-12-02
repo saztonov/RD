@@ -29,9 +29,15 @@ class OCRManager:
             QMessageBox.warning(self.parent, "Внимание", "Сначала откройте PDF")
             return
         
+        # Получаем имя задачи из активного проекта
+        task_name = ""
+        active_project = self.parent.project_manager.get_active_project()
+        if active_project:
+            task_name = active_project.name
+        
         from app.gui.ocr_dialog import OCRDialog
         
-        dialog = OCRDialog(self.parent)
+        dialog = OCRDialog(self.parent, task_name=task_name)
         if dialog.exec() != QDialog.Accepted:
             return
         
