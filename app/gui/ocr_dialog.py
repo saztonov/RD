@@ -3,13 +3,18 @@
 """
 
 import logging
+import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QPushButton, QRadioButton, QLineEdit, QFileDialog,
                                QGroupBox, QDialogButtonBox, QComboBox)
 from PySide6.QtCore import Qt
 from pathlib import Path
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+
+# Загрузка .env для проверки R2
+load_dotenv()
 
 
 class OCRDialog(QDialog):
@@ -122,6 +127,29 @@ class OCRDialog(QDialog):
         output_layout = QVBoxLayout(output_group)
         
         output_layout.addWidget(QLabel("Будут сохранены:\n• Исходный PDF\n• Разметка (JSON)\n• Кропы и Markdown документ"))
+        
+        # R2 Bucket информация
+        r2_bucket = os.getenv("R2_BUCKET_NAME", "")
+        r2_configured = bool(os.getenv("R2_ACCESS_KEY_ID") and os.getenv("R2_SECRET_ACCESS_KEY"))
+        
+        r2_layout = QHBoxLayout()
+        r2_layout.addWidget(QLabel("R2 Bucket:"))
+        if r2_configured and r2_bucket:
+            r2_label = QLabel(f"✓ {r2_bucket}")
+            r2_label.setStyleSheet("font-weight: bold; color: #4CAF50;")
+            r2_layout.addWidget(r2_label)
+            r2_info = QLabel("(автоматическая загрузка в облако)")
+            r2_info.setStyleSheet("color: #888; font-size: 10px;")
+            r2_layout.addWidget(r2_info)
+        else:
+            r2_label = QLabel("✗ не настроен")
+            r2_label.setStyleSheet("color: #999;")
+            r2_layout.addWidget(r2_label)
+            r2_info = QLabel("(только локальное сохранение)")
+            r2_info.setStyleSheet("color: #888; font-size: 10px;")
+            r2_layout.addWidget(r2_info)
+        r2_layout.addStretch()
+        output_layout.addLayout(r2_layout)
         
         # Имя задачи (из бокового меню)
         task_layout = QHBoxLayout()

@@ -12,6 +12,7 @@ from app.ocr import create_ocr_engine, generate_structured_markdown, run_local_v
 from app.annotation_io import AnnotationIO
 from app.models import BlockType
 from app.gui.task_manager import TaskManager, TaskType
+from app.r2_storage import upload_ocr_to_r2
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,30 @@ class OCRManager:
     def __init__(self, parent, task_manager: TaskManager = None):
         self.parent = parent
         self.task_manager = task_manager
+    
+    def _upload_to_r2(self, output_dir: Path):
+        """Загрузить результаты в R2 Storage"""
+        logger.info("=" * 60)
+        logger.info("=== OCRManager: Вызов метода _upload_to_r2 ===")
+        logger.info(f"Output directory: {output_dir}")
+        logger.info(f"Output directory exists: {output_dir.exists()}")
+        
+        try:
+            project_name = output_dir.name
+            logger.info(f"Project name: {project_name}")
+            logger.info(f"Вызов upload_ocr_to_r2('{output_dir}', '{project_name}')")
+            
+            result = upload_ocr_to_r2(str(output_dir), project_name)
+            
+            if result:
+                logger.info("✅ Результаты успешно загружены в R2")
+            else:
+                logger.warning("⚠️ Не удалось загрузить результаты в R2 (проверьте .env и логи выше)")
+                
+        except ValueError as e:
+            logger.error(f"❌ Ошибка инициализации R2 (проверьте .env файл): {e}")
+        except Exception as e:
+            logger.error(f"❌ Неожиданная ошибка загрузки в R2: {type(e).__name__}: {e}", exc_info=True)
     
     def run_ocr_all(self):
         """Запустить OCR для всех блоков (в фоне)"""
@@ -238,6 +263,9 @@ class OCRManager:
         generate_structured_markdown(self.parent.annotation_document.pages, str(md_path))
         logger.info(f"Markdown сохранен: {md_path}")
         
+        # Загрузка в R2
+        self._upload_to_r2(output_dir)
+        
         pdf_name = Path(self.parent.annotation_document.pdf_path).name
         QMessageBox.information(
             self.parent, 
@@ -335,6 +363,9 @@ class OCRManager:
         generate_structured_markdown(self.parent.annotation_document.pages, str(md_path))
         logger.info(f"Markdown сохранен: {md_path}")
         
+        # Загрузка в R2
+        self._upload_to_r2(output_dir)
+        
         pdf_name = Path(self.parent.annotation_document.pdf_path).name
         QMessageBox.information(
             self.parent, 
@@ -416,6 +447,9 @@ class OCRManager:
         generate_structured_markdown(self.parent.annotation_document.pages, str(md_path))
         logger.info(f"Markdown сохранен: {md_path}")
         
+        # Загрузка в R2
+        self._upload_to_r2(output_dir)
+        
         pdf_name = Path(self.parent.annotation_document.pdf_path).name
         QMessageBox.information(
             self.parent, 
@@ -454,6 +488,9 @@ class OCRManager:
             
             json_path = output_dir / "annotation.json"
             AnnotationIO.save_annotation(self.parent.annotation_document, str(json_path))
+            
+            # Загрузка в R2
+            self._upload_to_r2(output_dir)
             
             progress.close()
             
@@ -519,6 +556,9 @@ class OCRManager:
             json_path = output_dir / "annotation.json"
             AnnotationIO.save_annotation(self.parent.annotation_document, str(json_path))
             
+            # Загрузка в R2
+            self._upload_to_r2(output_dir)
+            
             progress.close()
             
             pdf_name = Path(self.parent.annotation_document.pdf_path).name
@@ -557,6 +597,9 @@ class OCRManager:
             
             json_path = output_dir / "annotation.json"
             AnnotationIO.save_annotation(self.parent.annotation_document, str(json_path))
+            
+            # Загрузка в R2
+            self._upload_to_r2(output_dir)
             
             progress.close()
             

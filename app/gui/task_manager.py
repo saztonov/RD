@@ -151,6 +151,15 @@ class OCRWorker(QThread):
                 md_path = output_dir / "document.md"
                 generate_structured_markdown(self.annotation_document.pages, str(md_path))
                 
+                # Загрузка в R2
+                try:
+                    from app.r2_storage import upload_ocr_to_r2
+                    project_name = output_dir.name
+                    logger.info(f"OCRWorker: Загрузка результатов в R2 (проект: {project_name})")
+                    upload_ocr_to_r2(str(output_dir), project_name)
+                except Exception as e:
+                    logger.error(f"OCRWorker: Ошибка загрузки в R2: {e}", exc_info=True)
+                
                 self.finished.emit({'output_dir': str(output_dir), 'updated_pages': self.annotation_document.pages})
             
         except Exception as e:

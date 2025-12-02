@@ -1,0 +1,33 @@
+{
+  "pdf_path": "C:/Users/svarovsky/PycharmProjects/division_draw/Новая папка (2)/12.pdf",
+  "pages": [
+    {
+      "page_number": 0,
+      "width": 3571,
+      "height": 2525,
+      "blocks": [
+        {
+          "id": "1f5a5802-ea7a-4aee-a14e-42ae209a03ed",
+          "page_index": 0,
+          "coords_px": [
+            2058,
+            1321,
+            2423,
+            1503
+          ],
+          "coords_norm": [
+            0.5763091570988519,
+            0.5231683168316832,
+            0.6785214225707085,
+            0.5952475247524752
+          ],
+          "category": "",
+          "block_type": "text",
+          "source": "user",
+          "image_file": null,
+          "ocr_text": "Полоса стальная 25х4\nПолоса стальная 25х4"
+        }
+      ]
+    }
+  ]
+}
