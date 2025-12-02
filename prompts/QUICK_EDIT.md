@@ -94,3 +94,6 @@ cp ocr_image_description.txt ocr_image_description.txt.backup
 - 📖 [Примеры промптов](README.md)
 - 📖 [Marker OCR интеграция](../docs/MARKER_OCR_INTEGRATION.md)
 
+
+
+

@@ -309,3 +309,6 @@ cp -r prompts prompts_backup
 - [Marker OCR интеграция](MARKER_OCR_INTEGRATION.md)
 - [Примеры промптов](../prompts/README.md)
 
+
+
+

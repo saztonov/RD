@@ -27,6 +27,11 @@ class OCRDialog(QDialog):
         self.ocr_backend = "local"  # "local" или "openrouter"
         self.openrouter_model = "qwen/qwen3-vl-30b-a3b-instruct"
         
+        # Модели для разных типов блоков
+        self.text_model = "qwen/qwen3-vl-30b-a3b-instruct"
+        self.table_model = "qwen/qwen3-vl-30b-a3b-instruct"
+        self.image_model = "qwen/qwen3-vl-30b-a3b-instruct"
+        
         self._setup_ui()
     
     def _setup_ui(self):
@@ -71,6 +76,45 @@ class OCRDialog(QDialog):
         
         layout.addWidget(mode_group)
         
+        # Выбор моделей для типов блоков (только для OpenRouter)
+        models_group = QGroupBox("Модели для типов блоков (OpenRouter)")
+        models_layout = QVBoxLayout(models_group)
+        
+        # TEXT
+        text_layout = QHBoxLayout()
+        text_layout.addWidget(QLabel("Текст:"))
+        self.text_model_combo = QComboBox()
+        self.text_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
+        self.text_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
+        self.text_model_combo.setEnabled(False)
+        text_layout.addWidget(self.text_model_combo)
+        models_layout.addLayout(text_layout)
+        
+        # TABLE
+        table_layout = QHBoxLayout()
+        table_layout.addWidget(QLabel("Таблица:"))
+        self.table_model_combo = QComboBox()
+        self.table_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
+        self.table_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
+        self.table_model_combo.setEnabled(False)
+        table_layout.addWidget(self.table_model_combo)
+        models_layout.addLayout(table_layout)
+        
+        # IMAGE
+        image_layout = QHBoxLayout()
+        image_layout.addWidget(QLabel("Картинка:"))
+        self.image_model_combo = QComboBox()
+        self.image_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
+        self.image_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
+        self.image_model_combo.setEnabled(False)
+        image_layout.addWidget(self.image_model_combo)
+        models_layout.addLayout(image_layout)
+        
+        layout.addWidget(models_group)
+        
+        # Связываем с выбором OpenRouter
+        self.openrouter_radio.toggled.connect(lambda checked: self._update_models_enabled(checked))
+        
         # Папка для результатов
         output_group = QGroupBox("Папка для результатов")
         output_layout = QVBoxLayout(output_group)
@@ -97,6 +141,12 @@ class OCRDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
     
+    def _update_models_enabled(self, openrouter_enabled):
+        """Включить/отключить выбор моделей для типов блоков"""
+        self.text_model_combo.setEnabled(openrouter_enabled)
+        self.table_model_combo.setEnabled(openrouter_enabled)
+        self.image_model_combo.setEnabled(openrouter_enabled)
+    
     def _select_output_dir(self):
         """Выбор папки для результатов"""
         dir_path = QFileDialog.getExistingDirectory(self, "Выберите папку для результатов")
@@ -115,6 +165,9 @@ class OCRDialog(QDialog):
         self.mode = "blocks" if self.blocks_radio.isChecked() else "full_page"
         self.ocr_backend = "local" if self.local_radio.isChecked() else "openrouter"
         self.openrouter_model = self.model_combo.currentData()
+        self.text_model = self.text_model_combo.currentData()
+        self.table_model = self.table_model_combo.currentData()
+        self.image_model = self.image_model_combo.currentData()
         
         self.accept()
 

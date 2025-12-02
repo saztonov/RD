@@ -169,3 +169,6 @@ pip install chandra-ocr
 - [`docs/LOCAL_VLM_OCR.md`](LOCAL_VLM_OCR.md) - локальные VLM серверы
 - [`examples/test_marker_ocr_workflow.py`](../examples/test_marker_ocr_workflow.py) - пример кода
 
+
+
+

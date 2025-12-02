@@ -48,17 +48,24 @@ class OCRManager:
         
         if backend == "openrouter":
             if mode == "blocks":
-                self.run_openrouter_ocr_blocks_with_output(output_dir, crops_dir, dialog.openrouter_model)
+                self.run_openrouter_ocr_blocks_with_output(
+                    output_dir, crops_dir, 
+                    dialog.text_model, dialog.table_model, dialog.image_model
+                )
             else:
                 self.run_openrouter_ocr_with_output(output_dir, dialog.openrouter_model)
         else:
             if mode == "blocks":
-                self.run_local_vlm_ocr_blocks_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir, crops_dir)
+                self.run_local_vlm_ocr_blocks_with_output(
+                    dialog.vlm_server_url, dialog.vlm_model_name, output_dir, crops_dir,
+                    dialog.text_model, dialog.table_model, dialog.image_model
+                )
             else:
                 self.run_local_vlm_ocr_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir)
     
-    def run_local_vlm_ocr_blocks_with_output(self, api_base, model_name, output_dir, crops_dir):
-        """Запустить LocalVLM OCR для блоков"""
+    def run_local_vlm_ocr_blocks_with_output(self, api_base, model_name, output_dir, crops_dir, 
+                                             text_model=None, table_model=None, image_model=None):
+        """Запустить LocalVLM OCR для блоков (для локального сервера используется одна модель)"""
         try:
             ocr_engine = create_ocr_engine("local_vlm", api_base=api_base, model_name=model_name)
         except Exception as e:
@@ -143,7 +150,7 @@ class OCRManager:
             f"OCR завершен!\n\nРезультаты сохранены в:\n{output_dir}\n\n• {pdf_name}\n• annotation.json\n• crops/\n• document.md"
         )
     
-    def run_openrouter_ocr_blocks_with_output(self, output_dir, crops_dir, model_name):
+    def run_openrouter_ocr_blocks_with_output(self, output_dir, crops_dir, text_model, table_model, image_model):
         """Запустить OpenRouter OCR для блоков"""
         import os
         from dotenv import load_dotenv
@@ -155,7 +162,9 @@ class OCRManager:
             return
         
         try:
-            ocr_engine = create_ocr_engine("openrouter", api_key=api_key, model_name=model_name)
+            text_engine = create_ocr_engine("openrouter", api_key=api_key, model_name=text_model)
+            table_engine = create_ocr_engine("openrouter", api_key=api_key, model_name=table_model)
+            image_engine = create_ocr_engine("openrouter", api_key=api_key, model_name=image_model)
         except Exception as e:
             QMessageBox.critical(self.parent, "Ошибка OpenRouter OCR", f"Не удалось инициализировать:\n{e}")
             return
@@ -165,7 +174,7 @@ class OCRManager:
             QMessageBox.information(self.parent, "Информация", "Нет блоков для OCR")
             return
 
-        progress = QProgressDialog(f"Распознавание блоков через {model_name}...", "Отмена", 0, total_blocks, self.parent)
+        progress = QProgressDialog("Распознавание блоков через OpenRouter...", "Отмена", 0, total_blocks, self.parent)
         progress.setWindowModality(Qt.WindowModal)
         progress.show()
 
@@ -206,13 +215,13 @@ class OCRManager:
                     
                     if block.block_type == BlockType.IMAGE:
                         image_prompt = load_prompt("ocr_image_description.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=image_prompt)
+                        block.ocr_text = image_engine.recognize(crop, prompt=image_prompt)
                     elif block.block_type == BlockType.TABLE:
                         table_prompt = load_prompt("ocr_table.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=table_prompt) if table_prompt else ocr_engine.recognize(crop)
+                        block.ocr_text = table_engine.recognize(crop, prompt=table_prompt) if table_prompt else table_engine.recognize(crop)
                     elif block.block_type == BlockType.TEXT:
                         text_prompt = load_prompt("ocr_text.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=text_prompt) if text_prompt else ocr_engine.recognize(crop)
+                        block.ocr_text = text_engine.recognize(crop, prompt=text_prompt) if text_prompt else text_engine.recognize(crop)
                         
                 except Exception as e:
                     logger.error(f"Error OCR block {block.id}: {e}")
