@@ -450,6 +450,7 @@ class ProjectSidebar(QWidget):
         self.project_switched.emit(pid)
     
     def _on_file_selected(self, pid: str, idx: int):
+        self.project_manager.set_active_project(pid)
         self.project_manager.set_active_file_in_project(pid, idx)
         self.file_switched.emit(pid, idx)
     

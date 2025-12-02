@@ -1000,7 +1000,10 @@ class MainWindow(QMainWindow):
         self._run_marker_worker(page_range=None, show_success=True)
 
     def _run_marker_worker(self, page_range=None, show_success=True):
-        """Запуск Marker"""
+        """Запуск Marker в фоновом режиме"""
+        import copy
+        from app.gui.task_manager import TaskType
+        
         if not self.annotation_document or not self.pdf_document:
             QMessageBox.warning(self, "Внимание", "Сначала откройте PDF")
             return
@@ -1013,45 +1016,76 @@ class MainWindow(QMainWindow):
                 if img:
                     self.page_images[page_num] = img
 
-        self._progress_dialog = QProgressDialog("Marker анализирует PDF...", "Отмена", 0, 0, self)
-        self._progress_dialog.setWindowModality(Qt.WindowModal)
-        self._progress_dialog.setCancelButton(None)
-        self._progress_dialog.show()
-
-        from app.marker_integration import segment_with_marker
+        # Создаем задачу
+        pdf_name = Path(self.annotation_document.pdf_path).stem
+        page_info = f"стр. {page_range[0]+1}" if page_range and len(page_range) == 1 else "все стр."
+        task_id = self.task_manager.create_task(
+            TaskType.MARKER,
+            f"Marker: {pdf_name} ({page_info})",
+            self.annotation_document.pdf_path
+        )
         
-        try:
-            result = segment_with_marker(
-                self.pdf_document.pdf_path,
-                self.annotation_document.pages,
-                self.page_images,
-                page_range=page_range,
-                category=self.active_category
-            )
-            
-            self._progress_dialog.close()
-            
-            if result:
-                self.annotation_document.pages = result
-                
-                saved_transform = self.page_viewer.transform()
-                saved_zoom = self.page_viewer.zoom_factor
-                
-                self._render_current_page()
-                self.blocks_tree_manager.update_blocks_tree()
-                self.category_manager.extract_categories_from_document()
-                
-                self.page_viewer.setTransform(saved_transform)
-                self.page_viewer.zoom_factor = saved_zoom
-                
-                if show_success:
-                    total_blocks = sum(len(p.blocks) for p in result)
-                    QMessageBox.information(self, "Успех", f"Marker завершен. Всего блоков: {total_blocks}")
-            else:
-                QMessageBox.warning(self, "Ошибка", "Marker не смог обработать PDF")
-        except Exception as e:
-            self._progress_dialog.close()
-            QMessageBox.critical(self, "Ошибка", f"Ошибка Marker: {e}")
+        # Глубокая копия для thread-safety
+        pages_copy = copy.deepcopy(self.annotation_document.pages)
+        page_images_copy = dict(self.page_images)
+        
+        # Сохраняем контекст файла при запуске задачи
+        task_project_id = self._current_project_id
+        task_file_index = self._current_file_index
+        
+        # Обработчики завершения
+        def on_completed(tid):
+            if tid == task_id:
+                task = self.task_manager.get_task(tid)
+                if task and task.result:
+                    updated_pages = task.result
+                    
+                    # Проверяем, тот ли файл сейчас активен
+                    is_same_file = (
+                        self._current_project_id == task_project_id and
+                        self._current_file_index == task_file_index
+                    )
+                    
+                    if is_same_file:
+                        self.annotation_document.pages = updated_pages
+                        
+                        saved_transform = self.page_viewer.transform()
+                        saved_zoom = self.page_viewer.zoom_factor
+                        
+                        self._render_current_page()
+                        self.blocks_tree_manager.update_blocks_tree()
+                        self.category_manager.extract_categories_from_document()
+                        
+                        self.page_viewer.setTransform(saved_transform)
+                        self.page_viewer.zoom_factor = saved_zoom
+                    else:
+                        # Обновляем в кеше, если есть
+                        cache_key = (task_project_id, task_file_index)
+                        if cache_key in self.annotations_cache:
+                            self.annotations_cache[cache_key].pages = updated_pages
+                    
+                    if show_success:
+                        total_blocks = sum(len(p.blocks) for p in updated_pages)
+                        QMessageBox.information(self, "Успех", f"Marker завершен. Всего блоков: {total_blocks}")
+                elif show_success:
+                    QMessageBox.warning(self, "Ошибка", "Marker не смог обработать PDF")
+        
+        def on_failed(tid, error):
+            if tid == task_id:
+                QMessageBox.critical(self, "Ошибка", f"Ошибка Marker: {error}")
+        
+        self.task_manager.task_completed.connect(on_completed)
+        self.task_manager.task_failed.connect(on_failed)
+        
+        # Запуск в фоне
+        self.task_manager.start_marker_task(
+            task_id,
+            self.pdf_document.pdf_path,
+            pages_copy,
+            page_images_copy,
+            page_range,
+            self.active_category
+        )
     
     def _run_ocr_all(self):
         """Запустить OCR для всех блоков"""

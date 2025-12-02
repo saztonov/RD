@@ -103,17 +103,38 @@ class OCRManager:
         annotation_copy = copy.deepcopy(self.parent.annotation_document)
         page_images_copy = dict(self.parent.page_images)
         
+        # Сохраняем контекст файла при запуске задачи
+        task_project_id = self.parent._current_project_id
+        task_file_index = self.parent._current_file_index
+        task_pdf_path = self.parent.annotation_document.pdf_path
+        
         # Подключаем обработчик завершения
         def on_completed(tid):
             if tid == task_id:
                 task = self.task_manager.get_task(tid)
                 if task and task.result:
                     result = task.result
-                    # Обновляем страницы в основном документе
-                    if 'updated_pages' in result:
-                        self.parent.annotation_document.pages = result['updated_pages']
+                    if 'updated_pages' not in result:
+                        return
+                    
+                    updated_pages = result['updated_pages']
+                    
+                    # Проверяем, тот ли файл сейчас активен
+                    is_same_file = (
+                        self.parent._current_project_id == task_project_id and
+                        self.parent._current_file_index == task_file_index
+                    )
+                    
+                    if is_same_file:
+                        # Обновляем текущий документ
+                        self.parent.annotation_document.pages = updated_pages
                         self.parent._render_current_page()
                         self.parent.blocks_tree_manager.update_blocks_tree()
+                    else:
+                        # Обновляем в кеше, если есть
+                        cache_key = (task_project_id, task_file_index)
+                        if cache_key in self.parent.annotations_cache:
+                            self.parent.annotations_cache[cache_key].pages = updated_pages
                     
                     QMessageBox.information(
                         self.parent, 
