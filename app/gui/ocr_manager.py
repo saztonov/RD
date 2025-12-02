@@ -4,12 +4,14 @@ OCR Manager для MainWindow
 """
 
 import logging
+import copy
 from pathlib import Path
 from PySide6.QtWidgets import QProgressDialog, QMessageBox, QDialog
 from PySide6.QtCore import Qt
 from app.ocr import create_ocr_engine, generate_structured_markdown, run_local_vlm_full_document, run_chandra_ocr_full_document, load_prompt
 from app.annotation_io import AnnotationIO
 from app.models import BlockType
+from app.gui.task_manager import TaskManager, TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +19,12 @@ logger = logging.getLogger(__name__)
 class OCRManager:
     """Управление OCR операциями"""
     
-    def __init__(self, parent):
+    def __init__(self, parent, task_manager: TaskManager = None):
         self.parent = parent
+        self.task_manager = task_manager
     
     def run_ocr_all(self):
-        """Запустить OCR для всех блоков"""
+        """Запустить OCR для всех блоков (в фоне)"""
         if not self.parent.annotation_document or not self.parent.pdf_document:
             QMessageBox.warning(self.parent, "Внимание", "Сначала откройте PDF")
             return
@@ -46,6 +49,12 @@ class OCRManager:
         shutil.copy2(self.parent.annotation_document.pdf_path, pdf_output)
         logger.info(f"PDF сохранен: {pdf_output}")
         
+        # Используем TaskManager для фонового выполнения
+        if self.task_manager and mode == "blocks":
+            self._run_ocr_background(output_dir, crops_dir, dialog)
+            return
+        
+        # Fallback на старую реализацию для full_page режима
         if backend == "openrouter":
             if mode == "blocks":
                 self.run_openrouter_ocr_blocks_with_output(
@@ -62,6 +71,65 @@ class OCRManager:
                 )
             else:
                 self.run_local_vlm_ocr_with_output(dialog.vlm_server_url, dialog.vlm_model_name, output_dir)
+    
+    def _run_ocr_background(self, output_dir: Path, crops_dir: Path, dialog):
+        """Запуск OCR в фоновом режиме через TaskManager"""
+        pdf_name = Path(self.parent.annotation_document.pdf_path).stem
+        task_id = self.task_manager.create_task(
+            TaskType.OCR,
+            f"OCR: {pdf_name}",
+            self.parent.annotation_document.pdf_path
+        )
+        
+        # Подготовка конфига
+        config = {
+            'output_dir': str(output_dir),
+            'crops_dir': str(crops_dir),
+            'backend': dialog.ocr_backend,
+            'vlm_server_url': dialog.vlm_server_url,
+            'vlm_model_name': dialog.vlm_model_name,
+            'text_model': dialog.text_model,
+            'table_model': dialog.table_model,
+            'image_model': dialog.image_model,
+        }
+        
+        # Глубокая копия документа для потока
+        annotation_copy = copy.deepcopy(self.parent.annotation_document)
+        page_images_copy = dict(self.parent.page_images)
+        
+        # Подключаем обработчик завершения
+        def on_completed(tid):
+            if tid == task_id:
+                task = self.task_manager.get_task(tid)
+                if task and task.result:
+                    result = task.result
+                    # Обновляем страницы в основном документе
+                    if 'updated_pages' in result:
+                        self.parent.annotation_document.pages = result['updated_pages']
+                        self.parent._render_current_page()
+                        self.parent.blocks_tree_manager.update_blocks_tree()
+                    
+                    QMessageBox.information(
+                        self.parent, 
+                        "Готово", 
+                        f"OCR завершен!\n\nРезультаты: {result.get('output_dir', output_dir)}"
+                    )
+        
+        def on_failed(tid, error):
+            if tid == task_id:
+                QMessageBox.critical(self.parent, "Ошибка OCR", f"Ошибка:\n{error}")
+        
+        self.task_manager.task_completed.connect(on_completed)
+        self.task_manager.task_failed.connect(on_failed)
+        
+        # Запуск
+        self.task_manager.start_ocr_task(
+            task_id,
+            annotation_copy,
+            self.parent.pdf_document,
+            page_images_copy,
+            config
+        )
     
     def run_local_vlm_ocr_blocks_with_output(self, api_base, model_name, output_dir, crops_dir, 
                                              text_model=None, table_model=None, image_model=None):

@@ -89,10 +89,20 @@ class PageViewer(QGraphicsView):
         Установить изображение страницы
         
         Args:
-            pil_image: изображение страницы из PIL
+            pil_image: изображение страницы из PIL (может быть None для очистки)
             page_number: номер страницы
             reset_zoom: сбрасывать ли масштаб (по умолчанию True)
         """
+        # Если изображение None - очищаем сцену
+        if pil_image is None:
+            self.scene.clear()
+            self.page_image = None
+            self.image_item = None
+            self.current_page = page_number
+            self.selected_block_idx = None
+            self.block_items.clear()
+            return
+        
         # Конвертация PIL в QPixmap
         img_bytes = pil_image.tobytes("raw", "RGB")
         qimage = QImage(img_bytes, pil_image.width, pil_image.height, 

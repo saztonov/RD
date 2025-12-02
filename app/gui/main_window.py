@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QFileDialog, QSpinBox,
                                QComboBox, QTextEdit, QGroupBox, QMessageBox, QToolBar,
                                QLineEdit, QTreeWidget, QTreeWidgetItem, QTabWidget,
-                               QListWidget, QInputDialog, QMenu, QAbstractItemView, QProgressDialog, QDialog)
+                               QListWidget, QInputDialog, QMenu, QAbstractItemView, 
+                               QProgressDialog, QDialog)
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QAction, QKeySequence, QActionGroup
 from pathlib import Path
@@ -21,34 +22,16 @@ from app.gui.page_viewer import PageViewer
 from app.gui.ocr_manager import OCRManager
 from app.gui.blocks_tree_manager import BlocksTreeManager
 from app.gui.category_manager import CategoryManager
+from app.gui.project_manager import ProjectManager
+from app.gui.project_sidebar import ProjectSidebar
+from app.gui.task_manager import TaskManager
+from app.gui.task_sidebar import TaskSidebar
 from app.annotation_io import AnnotationIO
 from app.cropping import Cropper
 from app.ocr import create_ocr_engine
 from app.auto_segmentation import AutoSegmentation
 
 logger = logging.getLogger(__name__)
-
-
-class MarkerWorker(QThread):
-    """Фоновый поток для выполнения разметки Marker"""
-    finished = Signal(object)  # Возвращает список обновленных страниц или None
-    error = Signal(str)
-
-    def __init__(self, pdf_path, pages, page_images, page_range=None, category=""):
-        super().__init__()
-        self.pdf_path = pdf_path
-        self.pages = pages
-        self.page_images = page_images
-        self.page_range = page_range
-        self.category = category
-
-    def run(self):
-        try:
-            from app.marker_integration import segment_with_marker
-            result = segment_with_marker(self.pdf_path, self.pages, self.page_images, self.page_range, self.category)
-            self.finished.emit(result)
-        except Exception as e:
-            self.error.emit(str(e))
 
 
 class MainWindow(QMainWindow):
@@ -67,15 +50,22 @@ class MainWindow(QMainWindow):
         self.categories: list = []  # список пользовательских категорий
         self.active_category: str = ""  # активная категория для новых блоков
         self.page_zoom_states: dict = {}  # зум для каждой страницы
+        self.annotations_cache: dict = {}  # кеш аннотаций: (project_id, file_index) -> Document
+        self._current_project_id: Optional[str] = None
+        self._current_file_index: int = -1
         
         # Компоненты
         self.ocr_engine = create_ocr_engine("dummy")
         self.auto_segmentation = AutoSegmentation()
         
         # Менеджеры (инициализируются после setup_ui)
+        self.project_manager = ProjectManager()
+        self.task_manager = TaskManager()
         self.ocr_manager = None
         self.blocks_tree_manager = None
         self.category_manager = None
+        self.project_sidebar = None
+        self.task_sidebar = None
         
         # Настройка UI
         self._setup_menu()
@@ -83,7 +73,7 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         
         # Инициализация менеджеров после создания UI
-        self.ocr_manager = OCRManager(self)
+        self.ocr_manager = OCRManager(self, self.task_manager)
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree, self.blocks_tree_by_category)
         self.category_manager = CategoryManager(self, self.categories_list)
         
@@ -260,6 +250,24 @@ class MainWindow(QMainWindow):
         # Основной layout
         main_layout = QHBoxLayout(central_widget)
         
+        # Боковая панель проектов + задания
+        left_sidebar = QWidget()
+        left_sidebar_layout = QVBoxLayout(left_sidebar)
+        left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        left_sidebar_layout.setSpacing(5)
+        
+        self.project_sidebar = ProjectSidebar(self.project_manager)
+        self.project_sidebar.project_switched.connect(self._on_project_switched)
+        self.project_sidebar.file_switched.connect(self._on_file_switched)
+        left_sidebar_layout.addWidget(self.project_sidebar, stretch=2)
+        
+        self.task_sidebar = TaskSidebar(self.task_manager)
+        left_sidebar_layout.addWidget(self.task_sidebar, stretch=1)
+        
+        left_sidebar.setMaximumWidth(320)
+        left_sidebar.setMinimumWidth(280)
+        main_layout.addWidget(left_sidebar)
+        
         # Левая панель: просмотр страниц
         left_panel = self._create_left_panel()
         main_layout.addWidget(left_panel, stretch=3)
@@ -420,12 +428,85 @@ class MainWindow(QMainWindow):
     
     def _open_pdf(self):
         """Открыть PDF файл"""
+        # Проверяем наличие активного проекта
+        active_project = self.project_manager.get_active_project()
+        if not active_project:
+            reply = QMessageBox.question(
+                self,
+                "Создать задание?",
+                "Нет активного задания. Создать новое?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                name, ok = QInputDialog.getText(self, "Новое задание", "Название:")
+                if ok and name.strip():
+                    project_id = self.project_manager.create_project(name.strip())
+                    active_project = self.project_manager.get_project(project_id)
+                else:
+                    return
+            else:
+                return
+        
         file_path, _ = QFileDialog.getOpenFileName(self, "Открыть PDF", "", "PDF Files (*.pdf)")
         if not file_path:
             return
         
-        # Открываем PDF напрямую (быстро)
-        self._load_cleaned_pdf(file_path)
+        # Добавляем файл в проект
+        self.project_manager.add_file_to_project(active_project.id, file_path)
+        
+        # Открываем добавленный файл
+        file_index = len(active_project.files) - 1
+        self.project_manager.set_active_file_in_project(active_project.id, file_index)
+        self._load_pdf_from_project(active_project.id, file_index)
+    
+    def _load_pdf_from_project(self, project_id: str, file_index: int):
+        """Загрузить PDF из проекта"""
+        project = self.project_manager.get_project(project_id)
+        if not project:
+            return
+        
+        if file_index < 0 or file_index >= len(project.files):
+            return
+        
+        project_file = project.files[file_index]
+        
+        # Закрываем старый PDF
+        if self.pdf_document:
+            self.pdf_document.close()
+        
+        # Очищаем кеш страниц
+        self.page_images.clear()
+        self.page_zoom_states.clear()
+        
+        # Открываем PDF
+        self.pdf_document = PDFDocument(project_file.pdf_path)
+        if not self.pdf_document.open():
+            QMessageBox.critical(self, "Ошибка", "Не удалось открыть PDF")
+            return
+        
+        # Обновляем текущий контекст
+        self._current_project_id = project_id
+        self._current_file_index = file_index
+        
+        # Проверяем кеш аннотаций
+        cache_key = (project_id, file_index)
+        if cache_key in self.annotations_cache:
+            self.annotation_document = self.annotations_cache[cache_key]
+        elif project_file.annotation_path and Path(project_file.annotation_path).exists():
+            self.annotation_document = AnnotationIO.load_annotation(project_file.annotation_path)
+        else:
+            self.annotation_document = Document(pdf_path=project_file.pdf_path)
+            for page_num in range(self.pdf_document.page_count):
+                dims = self.pdf_document.get_page_dimensions(page_num)
+                if dims:
+                    page = Page(page_number=page_num, width=dims[0], height=dims[1])
+                    self.annotation_document.pages.append(page)
+        
+        # Отображаем первую страницу
+        self.current_page = 0
+        self._render_current_page()
+        self._update_ui()
+        self.category_manager.extract_categories_from_document()
     
     def _load_cleaned_pdf(self, file_path: str, keep_annotation: bool = False):
         """Загрузить PDF (исходный или очищенный) в основное приложение"""
@@ -866,6 +947,20 @@ class MainWindow(QMainWindow):
         if not self.annotation_document:
             return
         
+        # Автосохранение в проект если есть активный файл
+        active_project = self.project_manager.get_active_project()
+        if active_project:
+            active_file = active_project.get_active_file()
+            if active_file:
+                # Автоматически сохраняем рядом с PDF
+                pdf_path = Path(active_file.pdf_path)
+                annotation_path = pdf_path.parent / f"{pdf_path.stem}_annotation.json"
+                AnnotationIO.save_annotation(self.annotation_document, str(annotation_path))
+                active_file.annotation_path = str(annotation_path)
+                QMessageBox.information(self, "Успех", f"Разметка сохранена:\n{annotation_path}")
+                return
+        
+        # Иначе спрашиваем путь
         file_path, _ = QFileDialog.getSaveFileName(self, "Сохранить разметку", "blocks.json", 
                                                    "JSON Files (*.json)")
         if file_path:
@@ -897,192 +992,108 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Успех", "Разметка загружена")
     
     def _marker_segment_pdf(self):
-        """Разметка текущей страницы PDF с помощью Marker (в фоне)"""
+        """Разметка текущей страницы PDF с помощью Marker"""
         self._run_marker_worker(page_range=[self.current_page], show_success=False)
 
     def _marker_segment_all_pages(self):
-        """Разметка всех страниц PDF с помощью Marker (в фоне)"""
+        """Разметка всех страниц PDF с помощью Marker"""
         self._run_marker_worker(page_range=None, show_success=True)
 
     def _run_marker_worker(self, page_range=None, show_success=True):
-        """Запуск Marker в фоновом потоке"""
+        """Запуск Marker"""
         if not self.annotation_document or not self.pdf_document:
             QMessageBox.warning(self, "Внимание", "Сначала откройте PDF")
             return
         
-        # Подготовка данных (рендер нужных страниц)
-        # Для текущей страницы рендерим сразу
+        # Рендер страниц
         if page_range and len(page_range) == 1:
             page_num = page_range[0]
             if page_num not in self.page_images:
                 img = self.pdf_document.render_page(page_num)
                 if img:
                     self.page_images[page_num] = img
-        else:
-            # Для всех страниц - рендерим недостающие
-            # Это может занять время, но лучше сделать тут или в треде?
-            # Marker все равно требует картинки.
-            # Если страниц много, рендер может заблокировать UI.
-            # Но Marker worker принимает page_images.
-            # Давайте рендерить по мере необходимости внутри worker?
-            # Нет, marker_integration ожидает dict с images.
-            # Быстрый фикс: рендерим недостающие здесь с прогрессом, или пусть worker рендерит?
-            # У marker_integration нет доступа к методам рендера PDFDocument (только path).
-            # Оставим рендер здесь, но с processEvents если нужно.
-            # Для ускорения UI просто запустим как есть, предполагая что пользователь подождет рендера.
-            pass
 
-        # Диалог прогресса (интерактивный спинер)
         self._progress_dialog = QProgressDialog("Marker анализирует PDF...", "Отмена", 0, 0, self)
         self._progress_dialog.setWindowModality(Qt.WindowModal)
-        self._progress_dialog.setCancelButton(None)  # Нельзя отменить (пока)
+        self._progress_dialog.setCancelButton(None)
         self._progress_dialog.show()
 
-        # Создаем и запускаем воркер
-        self._worker = MarkerWorker(
-            self.pdf_document.pdf_path,
-            self.annotation_document.pages,
-            self.page_images,
-            page_range=page_range,
-            category=self.active_category
-        )
+        from app.marker_integration import segment_with_marker
         
-        self._worker.finished.connect(lambda result: self._on_marker_finished(result, show_success))
-        self._worker.error.connect(self._on_marker_error)
-        self._worker.finished.connect(self._progress_dialog.close)
-        self._worker.error.connect(self._progress_dialog.close)
-        
-        self._worker.start()
-
-    def _on_marker_finished(self, updated_pages, show_success):
-        """Обработка завершения Marker"""
-        if updated_pages:
-            self.annotation_document.pages = updated_pages
+        try:
+            result = segment_with_marker(
+                self.pdf_document.pdf_path,
+                self.annotation_document.pages,
+                self.page_images,
+                page_range=page_range,
+                category=self.active_category
+            )
             
-            # Сохраняем текущий зум
-            saved_transform = self.page_viewer.transform()
-            saved_zoom = self.page_viewer.zoom_factor
+            self._progress_dialog.close()
             
-            self._render_current_page()
-            self.blocks_tree_manager.update_blocks_tree()
-            self.category_manager.extract_categories_from_document()
-            
-            # Восстанавливаем зум
-            self.page_viewer.setTransform(saved_transform)
-            self.page_viewer.zoom_factor = saved_zoom
-            
-            if show_success:
-                total_blocks = sum(len(p.blocks) for p in updated_pages)
-                QMessageBox.information(self, "Успех", f"Marker завершен. Всего блоков: {total_blocks}")
-        else:
-            QMessageBox.warning(self, "Ошибка", "Marker не смог обработать PDF")
-
-    def _on_marker_error(self, error_msg):
-        """Обработка ошибки Marker"""
-        QMessageBox.critical(self, "Ошибка", f"Ошибка Marker: {error_msg}")
+            if result:
+                self.annotation_document.pages = result
+                
+                saved_transform = self.page_viewer.transform()
+                saved_zoom = self.page_viewer.zoom_factor
+                
+                self._render_current_page()
+                self.blocks_tree_manager.update_blocks_tree()
+                self.category_manager.extract_categories_from_document()
+                
+                self.page_viewer.setTransform(saved_transform)
+                self.page_viewer.zoom_factor = saved_zoom
+                
+                if show_success:
+                    total_blocks = sum(len(p.blocks) for p in result)
+                    QMessageBox.information(self, "Успех", f"Marker завершен. Всего блоков: {total_blocks}")
+            else:
+                QMessageBox.warning(self, "Ошибка", "Marker не смог обработать PDF")
+        except Exception as e:
+            self._progress_dialog.close()
+            QMessageBox.critical(self, "Ошибка", f"Ошибка Marker: {e}")
     
     def _run_ocr_all(self):
         """Запустить OCR для всех блоков"""
         self.ocr_manager.run_ocr_all()
-
-        """Запустить LocalVLM OCR для блоков с сохранением результатов в папку"""
-        from PySide6.QtWidgets import QProgressDialog
-        from app.ocr import create_ocr_engine, generate_structured_markdown
-        from app.annotation_io import AnnotationIO
+    
+    def _save_current_annotation_to_cache(self):
+        """Сохранить текущую аннотацию в кеш"""
+        if self._current_project_id and self._current_file_index >= 0 and self.annotation_document:
+            key = (self._current_project_id, self._current_file_index)
+            self.annotations_cache[key] = self.annotation_document
+    
+    def _on_project_switched(self, project_id: str):
+        """Обработка переключения проекта"""
+        # Сохраняем текущую аннотацию перед переключением
+        self._save_current_annotation_to_cache()
         
-        try:
-            ocr_engine = create_ocr_engine("local_vlm", api_base=api_base, model_name=model_name)
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка LocalVLM OCR", f"Не удалось инициализировать:\n{e}")
+        project = self.project_manager.get_project(project_id)
+        if not project:
             return
-            
-        total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
-        if total_blocks == 0:
-            QMessageBox.information(self, "Информация", "Нет блоков для OCR")
-            return
-
-        progress = QProgressDialog(f"Распознавание блоков через {model_name}...", "Отмена", 0, total_blocks, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-
-        processed_count = 0
         
-        for page in self.annotation_document.pages:
-            if progress.wasCanceled():
-                break
-                
-            page_num = page.page_number
-            if page_num not in self.page_images:
-                img = self.pdf_document.render_page(page_num)
-                if img:
-                    self.page_images[page_num] = img
-            
-            page_img = self.page_images.get(page_num)
-            if not page_img:
-                continue
-            
-            for block in page.blocks:
-                if progress.wasCanceled():
-                    break
-                
-                x1, y1, x2, y2 = block.coords_px
-                if x1 >= x2 or y1 >= y2:
-                    processed_count += 1
-                    progress.setValue(processed_count)
-                    continue
-                
-                crop = page_img.crop((x1, y1, x2, y2))
-                
-                try:
-                    # Сохраняем кроп
-                    crop_filename = f"page{page_num}_block{block.id}.png"
-                    crop_path = crops_dir / crop_filename
-                    crop.save(crop_path, "PNG")
-                    block.image_file = str(crop_path)
-                    
-                    if block.block_type == BlockType.IMAGE:
-                        from app.ocr import load_prompt
-                        image_prompt = load_prompt("ocr_image_description.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=image_prompt)
-                    elif block.block_type == BlockType.TABLE:
-                        from app.ocr import load_prompt
-                        table_prompt = load_prompt("ocr_table.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=table_prompt) if table_prompt else ocr_engine.recognize(crop)
-                    elif block.block_type == BlockType.TEXT:
-                        from app.ocr import load_prompt
-                        text_prompt = load_prompt("ocr_text.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=text_prompt) if text_prompt else ocr_engine.recognize(crop)
-                        
-                except Exception as e:
-                    logger.error(f"Error OCR block {block.id}: {e}")
-                    block.ocr_text = f"[Error: {e}]"
-                
-                processed_count += 1
-                progress.setValue(processed_count)
-        
-        progress.close()
-        
-        # 3. Сохраняем разметку JSON
-        json_path = output_dir / "annotation.json"
-        AnnotationIO.save_annotation(self.annotation_document, str(json_path))
-        logger.info(f"Разметка сохранена: {json_path}")
-        
-        # 4. Генерируем Markdown
-        md_path = output_dir / "document.md"
-        generate_structured_markdown(self.annotation_document.pages, str(md_path))
-        logger.info(f"Markdown сохранен: {md_path}")
-        
-        pdf_name = Path(self.annotation_document.pdf_path).name
-        QMessageBox.information(
-            self, 
-            "Готово", 
-            f"OCR завершен!\n\n"
-            f"Результаты сохранены в:\n{output_dir}\n\n"
-            f"• {pdf_name}\n"
-            f"• annotation.json\n"
-            f"• crops/\n"
-            f"• document.md"
-        )
+        # Загружаем активный файл проекта
+        active_file = project.get_active_file()
+        if active_file:
+            self._load_pdf_from_project(project_id, project.active_file_index)
+        else:
+            # Проект без файлов - очищаем интерфейс
+            if self.pdf_document:
+                self.pdf_document.close()
+            self.pdf_document = None
+            self.annotation_document = None
+            self._current_project_id = project_id
+            self._current_file_index = -1
+            self.page_images.clear()
+            self.page_zoom_states.clear()
+            self.page_viewer.set_page_image(None, 0)
+            self._update_ui()
+    
+    def _on_file_switched(self, project_id: str, file_index: int):
+        """Обработка переключения файла в проекте"""
+        # Сохраняем текущую аннотацию перед переключением
+        self._save_current_annotation_to_cache()
+        self._load_pdf_from_project(project_id, file_index)
     
     
     def _generate_structured_markdown(self):
