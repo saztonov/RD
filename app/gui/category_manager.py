@@ -18,7 +18,6 @@ class CategoryManager:
     def __init__(self, parent, categories_list: QListWidget):
         self.parent = parent
         self.categories_list = categories_list
-        self.categories_list.setContextMenuEnabled(True)
     
     def update_categories_list(self):
         """Обновить список категорий"""

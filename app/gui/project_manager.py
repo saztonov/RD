@@ -153,3 +153,4 @@ class ProjectManager(QObject):
         """Получить все проекты"""
         return list(self.projects.values())
 
+
