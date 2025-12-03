@@ -191,8 +191,8 @@ class MarkerWorker(QThread):
             if self._cancelled:
                 return
             
-            from app.marker_integration import segment_with_marker
-            result = segment_with_marker(self.pdf_path, self.pages, self.page_images, self.page_range, self.category)
+            from app.segmentation_api import segment_with_api
+            result = segment_with_api(self.pdf_path, self.pages, self.page_images, self.page_range, self.category)
             
             if not self._cancelled:
                 self.finished.emit(result)

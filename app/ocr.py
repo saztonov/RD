@@ -68,26 +68,24 @@ class OCRBackend(Protocol):
 
 class LocalVLMBackend:
     """
-    OCR через локальный VLM сервер (Qwen3-VL, LLaVA и др.)
-    Использует OpenAI-совместимый API
+    OCR через ngrok endpoint (проксирует в LM Studio)
     """
     
-    def __init__(self, api_base: str = "http://127.0.0.1:1234/v1", model_name: str = "qwen3-vl-32b-instruct"):
+    def __init__(self, api_base: str = None, model_name: str = "qwen3-vl-32b-instruct"):
         """
         Args:
-            api_base: URL сервера (например http://127.0.0.1:1234/v1)
+            api_base: игнорируется (используется ngrok endpoint)
             model_name: имя модели на сервере
         """
-        self.api_base = api_base.rstrip('/')
         self.model_name = model_name
         
         try:
-            import requests
-            self.requests = requests
+            import httpx
+            self.httpx = httpx
         except ImportError:
-            raise ImportError("Требуется установить requests: pip install requests")
+            raise ImportError("Требуется установить httpx: pip install httpx")
         
-        logger.info(f"LocalVLM инициализирован (сервер: {self.api_base}, модель: {self.model_name})")
+        logger.info(f"LocalVLM инициализирован (модель: {self.model_name})")
     
     def _image_to_base64(self, image: Image.Image) -> str:
         """Конвертировать PIL Image в base64"""
@@ -105,7 +103,7 @@ class LocalVLMBackend:
     
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """
-        Распознать текст через локальный VLM сервер
+        Распознать текст через ngrok endpoint
         
         Args:
             image: изображение для распознавания
@@ -115,6 +113,8 @@ class LocalVLMBackend:
             Распознанный текст
         """
         try:
+            from app.config import get_lm_base_url
+            
             # Дефолтный промпт для OCR из файла
             if not prompt:
                 prompt = load_prompt("ocr_full_page.txt")
@@ -122,8 +122,8 @@ class LocalVLMBackend:
             # Конвертируем изображение в base64
             img_base64 = self._image_to_base64(image)
             
-            # Формируем запрос в OpenAI формате
-            url = f"{self.api_base}/chat/completions"
+            # Формируем запрос
+            url = get_lm_base_url()
             
             payload = {
                 "model": self.model_name,
@@ -152,34 +152,26 @@ class LocalVLMBackend:
                 "presence_penalty": 0.0
             }
             
-            # Отправляем запрос
-            response = self.requests.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=90
-            )
+            # Отправляем запрос через httpx
+            with self.httpx.Client(timeout=600.0) as client:
+                response = client.post(url, json=payload)
+                response.raise_for_status()
+                result = response.json()
             
-            if response.status_code != 200:
-                logger.error(f"VLM сервер ошибка: {response.status_code} - {response.text}")
-                return f"[Ошибка VLM: HTTP {response.status_code}]"
-            
-            # Парсим ответ
-            result = response.json()
             text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             
             if not text:
-                logger.error(f"Пустой ответ от VLM сервера: {result}")
+                logger.error(f"Пустой ответ от сервера: {result}")
                 return "[Ошибка: пустой ответ от сервера]"
             
             logger.debug(f"VLM OCR: распознано {len(text)} символов")
             return text.strip()
             
-        except self.requests.exceptions.ConnectionError:
-            logger.error(f"Не удалось подключиться к VLM серверу: {self.api_base}")
+        except self.httpx.ConnectError:
+            logger.error(f"Не удалось подключиться к серверу")
             return "[Ошибка: сервер недоступен]"
-        except self.requests.exceptions.Timeout:
-            logger.error("VLM сервер: превышен таймаут")
+        except self.httpx.TimeoutException:
+            logger.error("Превышен таймаут")
             return "[Ошибка: таймаут сервера]"
         except Exception as e:
             logger.error(f"Ошибка VLM OCR: {e}", exc_info=True)
@@ -675,7 +667,7 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
         raise
 
 
-def run_local_vlm_full_document(page_images: dict, output_path: str, api_base: str = "http://127.0.0.1:1234/v1", model_name: str = "qwen3-vl-32b-instruct") -> str:
+def run_local_vlm_full_document(page_images: dict, output_path: str, api_base: str = None, model_name: str = "qwen3-vl-32b-instruct") -> str:
     """
     Распознать весь документ через локальный VLM сервер
     

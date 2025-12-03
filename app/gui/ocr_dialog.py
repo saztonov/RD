@@ -29,7 +29,7 @@ class OCRDialog(QDialog):
         self.base_dir = None
         self.task_name = task_name
         self.mode = "blocks"  # "blocks" или "full_page"
-        self.vlm_server_url = "http://127.0.0.1:1234/v1"
+        self.vlm_server_url = ""  # Не используется (ngrok endpoint)
         self.vlm_model_name = "qwen3-vl-32b-instruct"
         self.ocr_backend = "local"  # "local" или "openrouter"
         self.openrouter_model = "qwen/qwen3-vl-30b-a3b-instruct"

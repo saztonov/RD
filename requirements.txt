@@ -11,8 +11,8 @@ Pillow>=10.0.0
 # OCR - Chandra (опционально)
 # chandra-ocr
 
-# OCR - Локальные VLM серверы
-requests>=2.31.0
+# HTTP Client для API запросов
+httpx>=0.27.0
 
 # Environment Variables
 python-dotenv>=1.0.0
@@ -25,6 +25,3 @@ numpy>=1.24.0
 
 # Build
 pyinstaller>=6.0.0
-
-# Marker - PDF to Markdown
-marker-pdf

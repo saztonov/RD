@@ -392,7 +392,7 @@ class OCRManager:
         """Запустить Chandra OCR для блоков"""
         try:
             chandra_engine = create_ocr_engine("chandra", method=method)
-            vlm_engine = create_ocr_engine("local_vlm", api_base="http://127.0.0.1:1234/v1", model_name="qwen3-vl-32b-instruct")
+            vlm_engine = create_ocr_engine("local_vlm", model_name="qwen3-vl-32b-instruct")
         except Exception as e:
             QMessageBox.critical(self.parent, "Ошибка OCR", f"Не удалось инициализировать:\n{e}")
             return

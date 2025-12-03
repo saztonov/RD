@@ -187,3 +187,4 @@ R2_SECRET_ACCESS_KEY: ✗ НЕ УКАЗАН
 **Требования:** boto3>=1.28.0, python-dotenv>=1.0.0
 
 
+

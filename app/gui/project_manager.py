@@ -154,3 +154,4 @@ class ProjectManager(QObject):
         return list(self.projects.values())
 
 
+

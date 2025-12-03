@@ -6,6 +6,11 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Optional
 from PIL import Image
+import httpx
+import asyncio
+import base64
+from io import BytesIO
+from app.config import get_lm_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -27,41 +32,24 @@ class DummyOCREngine(OCREngine):
 
 
 class LocalVLMEngine(OCREngine):
-    """OCR через локальный VLM сервер (OpenAI-совместимый API)"""
+    """OCR через ngrok endpoint (проксирует в LM Studio)"""
     
-    def __init__(self, api_base: str = "http://127.0.0.1:1234/v1", model_name: str = "qwen3-vl-32b-instruct"):
-        self.api_base = api_base
+    def __init__(self, api_base: str = None, model_name: str = "qwen3-vl-32b-instruct"):
+        # api_base игнорируется, всегда используем ngrok
         self.model_name = model_name
-        self._client = None
-    
-    def _get_client(self):
-        """Lazy initialization клиента"""
-        if self._client is None:
-            try:
-                from openai import OpenAI
-                self._client = OpenAI(base_url=self.api_base, api_key="not-needed")
-            except ImportError:
-                raise ImportError(
-                    "Для LocalVLM требуется библиотека openai.\n"
-                    "Установите: pip install openai"
-                )
-        return self._client
     
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
-        """Распознать текст через VLM API"""
-        import base64
-        from io import BytesIO
-        
+        """Распознать текст через ngrok endpoint"""
         buffer = BytesIO()
         image.save(buffer, format="PNG")
         image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
         
         user_prompt = prompt if prompt else "Распознай весь текст с этого изображения. Верни только текст, без комментариев."
         
-        client = self._get_client()
-        response = client.chat.completions.create(
-            model=self.model_name,
-            messages=[
+        url = get_lm_base_url()
+        payload = {
+            "model": self.model_name,
+            "messages": [
                 {
                     "role": "system",
                     "content": "You are an expert design engineer and automation specialist. Your task is to analyze technical drawings and extract data into structured JSON or Markdown formats with 100% accuracy. Do not omit details. Do not hallucinate values."
@@ -77,14 +65,31 @@ class LocalVLMEngine(OCREngine):
                     ]
                 }
             ],
-            max_tokens=16384,
-            temperature=0.1,
-            top_p=0.9,
-            frequency_penalty=0.0,
-            presence_penalty=0.0
-        )
+            "max_tokens": 16384,
+            "temperature": 0.1,
+            "top_p": 0.9,
+            "frequency_penalty": 0.0,
+            "presence_penalty": 0.0
+        }
         
-        return response.choices[0].message.content.strip()
+        try:
+            # Синхронная версия для совместимости
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(self._async_recognize(url, payload))
+            loop.close()
+            return result
+        except Exception as e:
+            logger.error(f"LocalVLM error: {e}", exc_info=True)
+            return f"[Error: {e}]"
+    
+    async def _async_recognize(self, url: str, payload: dict) -> str:
+        """Асинхронное распознавание"""
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            result = response.json()
+            return result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
 
 
 class OpenRouterVLMEngine(OCREngine):
@@ -202,4 +207,3 @@ def create_ocr_engine(engine_type: str, **kwargs) -> OCREngine:
         return ChandraOCREngine(**kwargs)
     else:
         raise ValueError(f"Неизвестный тип OCR engine: {engine_type}")
-

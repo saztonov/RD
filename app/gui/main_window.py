@@ -1030,15 +1030,15 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Успех", "Разметка загружена")
     
     def _marker_segment_pdf(self):
-        """Разметка текущей страницы PDF с помощью Marker"""
+        """Разметка текущей страницы PDF через API"""
         self._run_marker_worker(page_range=[self.current_page], show_success=False)
 
     def _marker_segment_all_pages(self):
-        """Разметка всех страниц PDF с помощью Marker"""
+        """Разметка всех страниц PDF через API"""
         self._run_marker_worker(page_range=None, show_success=True)
 
     def _run_marker_worker(self, page_range=None, show_success=True):
-        """Запуск Marker в фоновом режиме"""
+        """Запуск API сегментации в фоновом режиме"""
         import copy
         from app.gui.task_manager import TaskType
         
@@ -1104,13 +1104,13 @@ class MainWindow(QMainWindow):
                     
                     if show_success:
                         total_blocks = sum(len(p.blocks) for p in updated_pages)
-                        QMessageBox.information(self, "Успех", f"Marker завершен. Всего блоков: {total_blocks}")
+                        QMessageBox.information(self, "Успех", f"Сегментация завершена. Всего блоков: {total_blocks}")
                 elif show_success:
-                    QMessageBox.warning(self, "Ошибка", "Marker не смог обработать PDF")
+                    QMessageBox.warning(self, "Ошибка", "Не удалось обработать PDF")
         
         def on_failed(tid, error):
             if tid == task_id:
-                QMessageBox.critical(self, "Ошибка", f"Ошибка Marker: {error}")
+                QMessageBox.critical(self, "Ошибка", f"Ошибка сегментации: {error}")
         
         self.task_manager.task_completed.connect(on_completed)
         self.task_manager.task_failed.connect(on_failed)
