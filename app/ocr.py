@@ -15,6 +15,27 @@ from app.models import Block, BlockType
 logger = logging.getLogger(__name__)
 
 
+def image_to_base64(image: Image.Image, max_size: int = 1500) -> str:
+    """
+    Конвертировать PIL Image в base64 с опциональным ресайзом
+    
+    Args:
+        image: PIL изображение
+        max_size: максимальный размер стороны
+    
+    Returns:
+        Base64 строка
+    """
+    if image.width > max_size or image.height > max_size:
+        ratio = min(max_size / image.width, max_size / image.height)
+        new_size = (int(image.width * ratio), int(image.height * ratio))
+        image = image.resize(new_size, Image.LANCZOS)
+    
+    buffer = io.BytesIO()
+    image.save(buffer, format='PNG', optimize=True)
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+
 # Папка с промптами
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
@@ -75,18 +96,6 @@ class LocalVLMBackend:
             raise ImportError("Требуется установить httpx: pip install httpx")
         logger.info(f"LocalVLM инициализирован (модель: {self.model_name})")
     
-    def _image_to_base64(self, image: Image.Image) -> str:
-        """Конвертировать PIL Image в base64"""
-        max_size = 1500
-        if image.width > max_size or image.height > max_size:
-            ratio = min(max_size / image.width, max_size / image.height)
-            new_size = (int(image.width * ratio), int(image.height * ratio))
-            image = image.resize(new_size, Image.LANCZOS)
-        
-        buffer = io.BytesIO()
-        image.save(buffer, format='PNG', optimize=True)
-        return base64.b64encode(buffer.getvalue()).decode('utf-8')
-    
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """Распознать текст через ngrok endpoint"""
         try:
@@ -95,7 +104,7 @@ class LocalVLMBackend:
             if not prompt:
                 prompt = load_prompt("ocr_full_page.txt")
             
-            img_base64 = self._image_to_base64(image)
+            img_base64 = image_to_base64(image)
             url = get_lm_base_url()
             
             payload = {
@@ -157,22 +166,10 @@ class OpenRouterBackend:
             raise ImportError("Требуется установить requests: pip install requests")
         logger.info(f"OpenRouter инициализирован (модель: {self.model_name})")
     
-    def _image_to_base64(self, image: Image.Image) -> str:
-        """Конвертировать PIL Image в base64"""
-        max_size = 1500
-        if image.width > max_size or image.height > max_size:
-            ratio = min(max_size / image.width, max_size / image.height)
-            new_size = (int(image.width * ratio), int(image.height * ratio))
-            image = image.resize(new_size, Image.LANCZOS)
-        
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
-    
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """Распознать текст через OpenRouter API"""
         try:
-            image_b64 = self._image_to_base64(image)
+            image_b64 = image_to_base64(image)
             user_prompt = prompt if prompt else "Распознай весь текст с этого изображения. Верни только текст, без комментариев."
             
             payload = {

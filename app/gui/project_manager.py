@@ -155,6 +155,3 @@ class ProjectManager(QObject):
 
 
 
-
-
-
