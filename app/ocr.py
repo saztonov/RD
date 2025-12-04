@@ -64,29 +64,19 @@ class OCRBackend(Protocol):
 
 
 class LocalVLMBackend:
-    """
-    OCR через ngrok endpoint (проксирует в LM Studio)
-    """
+    """OCR через ngrok endpoint (проксирует в LM Studio)"""
     
     def __init__(self, api_base: str = None, model_name: str = "qwen3-vl-32b-instruct"):
-        """
-        Args:
-            api_base: игнорируется (используется ngrok endpoint)
-            model_name: имя модели на сервере
-        """
         self.model_name = model_name
-        
         try:
             import httpx
             self.httpx = httpx
         except ImportError:
             raise ImportError("Требуется установить httpx: pip install httpx")
-        
         logger.info(f"LocalVLM инициализирован (модель: {self.model_name})")
     
     def _image_to_base64(self, image: Image.Image) -> str:
         """Конвертировать PIL Image в base64"""
-        # Сжимаем если изображение больше 1500px
         max_size = 1500
         if image.width > max_size or image.height > max_size:
             ratio = min(max_size / image.width, max_size / image.height)
@@ -95,31 +85,17 @@ class LocalVLMBackend:
         
         buffer = io.BytesIO()
         image.save(buffer, format='PNG', optimize=True)
-        img_bytes = buffer.getvalue()
-        return base64.b64encode(img_bytes).decode('utf-8')
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
     
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
-        """
-        Распознать текст через ngrok endpoint
-        
-        Args:
-            image: изображение для распознавания
-            prompt: промпт для модели (если None, загружается из prompts/ocr_full_page.txt)
-        
-        Returns:
-            Распознанный текст
-        """
+        """Распознать текст через ngrok endpoint"""
         try:
             from app.config import get_lm_base_url
             
-            # Дефолтный промпт для OCR из файла
             if not prompt:
                 prompt = load_prompt("ocr_full_page.txt")
             
-            # Конвертируем изображение в base64
             img_base64 = self._image_to_base64(image)
-            
-            # Формируем запрос
             url = get_lm_base_url()
             
             payload = {
@@ -133,12 +109,7 @@ class LocalVLMBackend:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{img_base64}"
-                                }
-                            }
+                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
                         ]
                     }
                 ],
@@ -149,14 +120,12 @@ class LocalVLMBackend:
                 "presence_penalty": 0.0
             }
             
-            # Отправляем запрос через httpx
             with self.httpx.Client(timeout=600.0) as client:
                 response = client.post(url, json=payload)
                 response.raise_for_status()
                 result = response.json()
             
             text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            
             if not text:
                 logger.error(f"Пустой ответ от сервера: {result}")
                 return "[Ошибка: пустой ответ от сервера]"
@@ -165,7 +134,7 @@ class LocalVLMBackend:
             return text.strip()
             
         except self.httpx.ConnectError:
-            logger.error(f"Не удалось подключиться к серверу")
+            logger.error("Не удалось подключиться к серверу")
             return "[Ошибка: сервер недоступен]"
         except self.httpx.TimeoutException:
             logger.error("Превышен таймаут")
@@ -176,25 +145,16 @@ class LocalVLMBackend:
 
 
 class OpenRouterBackend:
-    """
-    OCR через OpenRouter API (qwen/qwen3-vl-30b-a3b-instruct)
-    """
+    """OCR через OpenRouter API"""
     
     def __init__(self, api_key: str, model_name: str = "qwen/qwen3-vl-30b-a3b-instruct"):
-        """
-        Args:
-            api_key: OpenRouter API ключ
-            model_name: имя модели на OpenRouter
-        """
         self.api_key = api_key
         self.model_name = model_name
-        
         try:
             import requests
             self.requests = requests
         except ImportError:
             raise ImportError("Требуется установить requests: pip install requests")
-        
         logger.info(f"OpenRouter инициализирован (модель: {self.model_name})")
     
     def _image_to_base64(self, image: Image.Image) -> str:
@@ -210,12 +170,9 @@ class OpenRouterBackend:
         return base64.b64encode(buffer.getvalue()).decode("utf-8")
     
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
-        """
-        Распознать текст через OpenRouter API
-        """
+        """Распознать текст через OpenRouter API"""
         try:
             image_b64 = self._image_to_base64(image)
-            
             user_prompt = prompt if prompt else "Распознай весь текст с этого изображения. Верни только текст, без комментариев."
             
             payload = {
@@ -229,10 +186,7 @@ class OpenRouterBackend:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": user_prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{image_b64}"}
-                            }
+                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
                         ]
                     }
                 ],
@@ -243,10 +197,7 @@ class OpenRouterBackend:
             
             response = self.requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
+                headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
                 json=payload,
                 timeout=120
             )
@@ -257,7 +208,6 @@ class OpenRouterBackend:
             
             result = response.json()
             text = result["choices"][0]["message"]["content"].strip()
-            
             logger.debug(f"OpenRouter OCR: распознано {len(text)} символов")
             return text
             
@@ -270,12 +220,8 @@ class OpenRouterBackend:
 
 
 class DummyOCRBackend:
-    """
-    Заглушка для OCR (для тестирования)
-    """
-    
+    """Заглушка для OCR"""
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
-        """Возвращает заглушку"""
         return "[OCR placeholder - OCR engine not configured]"
 
 

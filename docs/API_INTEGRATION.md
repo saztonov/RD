@@ -121,7 +121,7 @@ updated_pages = segment_with_api(
 ### OCR через LLM
 
 ```python
-from app.ocr_engines import create_ocr_engine
+from app.ocr import create_ocr_engine
 
 # Создание engine (автоматически использует ngrok)
 engine = create_ocr_engine("local_vlm", model_name="qwen3-vl-32b-instruct")

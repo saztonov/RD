@@ -465,8 +465,8 @@ class OCRManager:
         progress.show()
         
         try:
-            from app.ocr_engines import create_ocr_engine as create_engine
-            ocr_engine = create_engine("openrouter", api_key=api_key, model_name=model_name)
+            from app.ocr import create_ocr_engine
+            ocr_engine = create_ocr_engine("openrouter", api_key=api_key, model_name=model_name)
             
             import base64
             from io import BytesIO
