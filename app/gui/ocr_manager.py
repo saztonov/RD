@@ -183,21 +183,14 @@ class OCRManager:
             config
         )
     
-    def run_local_vlm_ocr_blocks_with_output(self, api_base, model_name, output_dir, crops_dir, 
-                                             text_model=None, table_model=None, image_model=None):
-        """Запустить LocalVLM OCR для блоков (для локального сервера используется одна модель)"""
-        try:
-            ocr_engine = create_ocr_engine("local_vlm", api_base=api_base, model_name=model_name)
-        except Exception as e:
-            QMessageBox.critical(self.parent, "Ошибка LocalVLM OCR", f"Не удалось инициализировать:\n{e}")
-            return
-            
+    def _run_ocr_blocks_sync(self, engines: dict, output_dir: Path, crops_dir: Path, title: str):
+        """Общая логика синхронного OCR для блоков"""
         total_blocks = sum(len(p.blocks) for p in self.parent.annotation_document.pages)
         if total_blocks == 0:
             QMessageBox.information(self.parent, "Информация", "Нет блоков для OCR")
             return
 
-        progress = QProgressDialog(f"Распознавание блоков через {model_name}...", "Отмена", 0, total_blocks, self.parent)
+        progress = QProgressDialog(f"Распознавание блоков через {title}...", "Отмена", 0, total_blocks, self.parent)
         progress.setWindowModality(Qt.WindowModal)
         progress.show()
 
@@ -236,23 +229,9 @@ class OCRManager:
                         crop.save(crop_path, "PNG")
                         block.image_file = str(crop_path)
                     
-                    # Загружаем промты из R2 или используем локальные
-                    if block.block_type == BlockType.IMAGE:
-                        image_prompt = self.parent.prompt_manager.load_prompt("image") or load_prompt("ocr_image_description.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=image_prompt)
-                    elif block.block_type == BlockType.TABLE:
-                        table_prompt = self.parent.prompt_manager.load_prompt("table") or load_prompt("ocr_table.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=table_prompt) if table_prompt else ocr_engine.recognize(crop)
-                    elif block.block_type == BlockType.TEXT:
-                        text_prompt = self.parent.prompt_manager.load_prompt("text") or load_prompt("ocr_text.txt")
-                        block.ocr_text = ocr_engine.recognize(crop, prompt=text_prompt) if text_prompt else ocr_engine.recognize(crop)
-                    
-                    # Дополнительный промт для категории
-                    if block.category:
-                        category_prompt = self.parent.prompt_manager.load_prompt(f"category_{block.category}")
-                        if category_prompt:
-                            logger.debug(f"Применен промт категории '{block.category}'")
-                            # Можно добавить контекст категории к промту
+                    engine = engines.get(block.block_type.value, engines.get('default'))
+                    prompt = self._get_prompt_for_block(block)
+                    block.ocr_text = engine.recognize(crop, prompt=prompt) if prompt else engine.recognize(crop)
                         
                 except Exception as e:
                     logger.error(f"Error OCR block {block.id}: {e}")
@@ -262,7 +241,20 @@ class OCRManager:
                 progress.setValue(processed_count)
         
         progress.close()
-        
+        self._save_ocr_results(output_dir)
+    
+    def _get_prompt_for_block(self, block):
+        """Получить промт для блока"""
+        prompt_map = {
+            BlockType.IMAGE: ("image", "ocr_image_description.txt"),
+            BlockType.TABLE: ("table", "ocr_table.txt"),
+            BlockType.TEXT: ("text", "ocr_text.txt"),
+        }
+        key, fallback = prompt_map.get(block.block_type, ("text", "ocr_text.txt"))
+        return self.parent.prompt_manager.load_prompt(key) or load_prompt(fallback)
+    
+    def _save_ocr_results(self, output_dir: Path):
+        """Сохранить результаты OCR"""
         json_path = output_dir / "annotation.json"
         AnnotationIO.save_annotation(self.parent.annotation_document, str(json_path))
         logger.info(f"Разметка сохранена: {json_path}")
@@ -271,7 +263,6 @@ class OCRManager:
         generate_structured_markdown(self.parent.annotation_document.pages, str(md_path))
         logger.info(f"Markdown сохранен: {md_path}")
         
-        # Загрузка в R2
         self._upload_to_r2(output_dir)
         
         pdf_name = Path(self.parent.annotation_document.pdf_path).name
@@ -280,6 +271,17 @@ class OCRManager:
             "Готово", 
             f"OCR завершен!\n\nРезультаты сохранены в:\n{output_dir}\n\n• {pdf_name}\n• annotation.json\n• crops/\n• document.md"
         )
+    
+    def run_local_vlm_ocr_blocks_with_output(self, api_base, model_name, output_dir, crops_dir, 
+                                             text_model=None, table_model=None, image_model=None):
+        """Запустить LocalVLM OCR для блоков"""
+        try:
+            engine = create_ocr_engine("local_vlm", api_base=api_base, model_name=model_name)
+            engines = {'default': engine, 'text': engine, 'table': engine, 'image': engine}
+        except Exception as e:
+            QMessageBox.critical(self.parent, "Ошибка LocalVLM OCR", f"Не удалось инициализировать:\n{e}")
+            return
+        self._run_ocr_blocks_sync(engines, output_dir, crops_dir, model_name)
     
     def run_openrouter_ocr_blocks_with_output(self, output_dir, crops_dir, text_model, table_model, image_model):
         """Запустить OpenRouter OCR для блоков"""
@@ -293,103 +295,19 @@ class OCRManager:
             return
         
         try:
-            text_engine = create_ocr_engine("openrouter", api_key=api_key, model_name=text_model)
-            table_engine = create_ocr_engine("openrouter", api_key=api_key, model_name=table_model)
-            image_engine = create_ocr_engine("openrouter", api_key=api_key, model_name=image_model)
+            engines = {
+                'text': create_ocr_engine("openrouter", api_key=api_key, model_name=text_model),
+                'table': create_ocr_engine("openrouter", api_key=api_key, model_name=table_model),
+                'image': create_ocr_engine("openrouter", api_key=api_key, model_name=image_model),
+                'default': create_ocr_engine("openrouter", api_key=api_key, model_name=text_model),
+            }
         except Exception as e:
             QMessageBox.critical(self.parent, "Ошибка OpenRouter OCR", f"Не удалось инициализировать:\n{e}")
             return
-            
-        total_blocks = sum(len(p.blocks) for p in self.parent.annotation_document.pages)
-        if total_blocks == 0:
-            QMessageBox.information(self.parent, "Информация", "Нет блоков для OCR")
-            return
-
-        progress = QProgressDialog("Распознавание блоков через OpenRouter...", "Отмена", 0, total_blocks, self.parent)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-
-        processed_count = 0
-        
-        for page in self.parent.annotation_document.pages:
-            if progress.wasCanceled():
-                break
-                
-            page_num = page.page_number
-            if page_num not in self.parent.page_images:
-                img = self.parent.pdf_document.render_page(page_num)
-                if img:
-                    self.parent.page_images[page_num] = img
-            
-            page_img = self.parent.page_images.get(page_num)
-            if not page_img:
-                continue
-            
-            for block in page.blocks:
-                if progress.wasCanceled():
-                    break
-                
-                x1, y1, x2, y2 = block.coords_px
-                if x1 >= x2 or y1 >= y2:
-                    processed_count += 1
-                    progress.setValue(processed_count)
-                    continue
-                
-                crop = page_img.crop((x1, y1, x2, y2))
-                
-                try:
-                    if block.block_type == BlockType.IMAGE:
-                        crop_filename = f"page{page_num}_block{block.id}.png"
-                        crop_path = crops_dir / crop_filename
-                        crop.save(crop_path, "PNG")
-                        block.image_file = str(crop_path)
-                    
-                    # Загружаем промты из R2 или используем локальные
-                    if block.block_type == BlockType.IMAGE:
-                        image_prompt = self.parent.prompt_manager.load_prompt("image") or load_prompt("ocr_image_description.txt")
-                        block.ocr_text = image_engine.recognize(crop, prompt=image_prompt)
-                    elif block.block_type == BlockType.TABLE:
-                        table_prompt = self.parent.prompt_manager.load_prompt("table") or load_prompt("ocr_table.txt")
-                        block.ocr_text = table_engine.recognize(crop, prompt=table_prompt) if table_prompt else table_engine.recognize(crop)
-                    elif block.block_type == BlockType.TEXT:
-                        text_prompt = self.parent.prompt_manager.load_prompt("text") or load_prompt("ocr_text.txt")
-                        block.ocr_text = text_engine.recognize(crop, prompt=text_prompt) if text_prompt else text_engine.recognize(crop)
-                    
-                    # Дополнительный промт для категории
-                    if block.category:
-                        category_prompt = self.parent.prompt_manager.load_prompt(f"category_{block.category}")
-                        if category_prompt:
-                            logger.debug(f"Применен промт категории '{block.category}'")
-                        
-                except Exception as e:
-                    logger.error(f"Error OCR block {block.id}: {e}")
-                    block.ocr_text = f"[Error: {e}]"
-                
-                processed_count += 1
-                progress.setValue(processed_count)
-        
-        progress.close()
-        
-        json_path = output_dir / "annotation.json"
-        AnnotationIO.save_annotation(self.parent.annotation_document, str(json_path))
-        logger.info(f"Разметка сохранена: {json_path}")
-        
-        md_path = output_dir / "document.md"
-        generate_structured_markdown(self.parent.annotation_document.pages, str(md_path))
-        logger.info(f"Markdown сохранен: {md_path}")
-        
-        # Загрузка в R2
-        self._upload_to_r2(output_dir)
-        
-        pdf_name = Path(self.parent.annotation_document.pdf_path).name
-        QMessageBox.information(
-            self.parent, 
-            "Готово", 
-            f"OCR завершен!\n\nРезультаты сохранены в:\n{output_dir}\n\n• {pdf_name}\n• annotation.json\n• crops/\n• document.md"
-        )
+        self._run_ocr_blocks_sync(engines, output_dir, crops_dir, "OpenRouter")
     
-    def run_local_vlm_ocr_with_output(self, api_base, model_name, output_dir):
-        """Запустить LocalVLM OCR для всего документа"""
+    def _prepare_page_images(self):
+        """Подготовить изображения всех страниц"""
         progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.parent.annotation_document.pages), self.parent)
         progress.setWindowModality(Qt.WindowModal)
         progress.show()
@@ -401,8 +319,11 @@ class OCRManager:
                 if img:
                     self.parent.page_images[page_num] = img
             progress.setValue(i + 1)
-        
         progress.close()
+    
+    def run_local_vlm_ocr_with_output(self, api_base, model_name, output_dir):
+        """Запустить LocalVLM OCR для всего документа"""
+        self._prepare_page_images()
         
         progress = QProgressDialog(f"Распознавание с {model_name}...", None, 0, 0, self.parent)
         progress.setWindowModality(Qt.WindowModal)
@@ -410,27 +331,15 @@ class OCRManager:
         
         try:
             md_path = output_dir / "document.md"
-            result_path = run_local_vlm_full_document(
-                self.parent.page_images, 
-                str(md_path), 
-                api_base=api_base,
-                model_name=model_name
-            )
+            run_local_vlm_full_document(self.parent.page_images, str(md_path), api_base=api_base, model_name=model_name)
             
             json_path = output_dir / "annotation.json"
             AnnotationIO.save_annotation(self.parent.annotation_document, str(json_path))
-            
-            # Загрузка в R2
             self._upload_to_r2(output_dir)
-            
             progress.close()
             
             pdf_name = Path(self.parent.annotation_document.pdf_path).name
-            QMessageBox.information(
-                self.parent, 
-                "Успех", 
-                f"OCR завершен!\n\nРезультаты сохранены в:\n{output_dir}\n\n• {pdf_name}\n• annotation.json\n• document.md"
-            )
+            QMessageBox.information(self.parent, "Успех", f"OCR завершен!\n\nРезультаты: {output_dir}\n\n• {pdf_name}\n• annotation.json\n• document.md")
         except Exception as e:
             progress.close()
             QMessageBox.critical(self.parent, "Ошибка", f"Ошибка LocalVLM OCR:\n{e}")
@@ -446,58 +355,28 @@ class OCRManager:
             QMessageBox.critical(self.parent, "Ошибка", "OPENROUTER_API_KEY не найден в .env файле")
             return
         
-        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.parent.annotation_document.pages), self.parent)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        for i, page in enumerate(self.parent.annotation_document.pages):
-            page_num = page.page_number
-            if page_num not in self.parent.page_images:
-                img = self.parent.pdf_document.render_page(page_num)
-                if img:
-                    self.parent.page_images[page_num] = img
-            progress.setValue(i + 1)
-        
-        progress.close()
+        self._prepare_page_images()
         
         progress = QProgressDialog(f"Распознавание с {model_name}...", None, 0, 0, self.parent)
         progress.setWindowModality(Qt.WindowModal)
         progress.show()
         
         try:
-            from app.ocr import create_ocr_engine
             ocr_engine = create_ocr_engine("openrouter", api_key=api_key, model_name=model_name)
             
-            import base64
-            from io import BytesIO
-            
-            md_parts = []
-            for page_num, page_img in sorted(self.parent.page_images.items()):
-                buffer = BytesIO()
-                page_img.save(buffer, format="PNG")
-                image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-                
-                text = ocr_engine.recognize(page_img)
-                md_parts.append(f"# Страница {page_num}\n\n{text}\n\n---\n")
+            md_parts = [f"# Страница {pn + 1}\n\n{ocr_engine.recognize(img)}\n\n---\n" 
+                        for pn, img in sorted(self.parent.page_images.items())]
             
             md_path = output_dir / "document.md"
-            with open(md_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(md_parts))
+            md_path.write_text("\n".join(md_parts), encoding="utf-8")
             
             json_path = output_dir / "annotation.json"
             AnnotationIO.save_annotation(self.parent.annotation_document, str(json_path))
-            
-            # Загрузка в R2
             self._upload_to_r2(output_dir)
-            
             progress.close()
             
             pdf_name = Path(self.parent.annotation_document.pdf_path).name
-            QMessageBox.information(
-                self.parent, 
-                "Успех", 
-                f"OCR завершен!\n\nРезультаты сохранены в:\n{output_dir}\n\n• {pdf_name}\n• annotation.json\n• document.md"
-            )
+            QMessageBox.information(self.parent, "Успех", f"OCR завершен!\n\nРезультаты: {output_dir}\n\n• {pdf_name}\n• annotation.json\n• document.md")
         except Exception as e:
             progress.close()
             QMessageBox.critical(self.parent, "Ошибка", f"Ошибка OpenRouter OCR:\n{e}")

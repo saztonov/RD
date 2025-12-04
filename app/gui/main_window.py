@@ -27,8 +27,9 @@ from app.gui.project_manager import ProjectManager
 from app.gui.project_sidebar import ProjectSidebar
 from app.gui.task_manager import TaskManager
 from app.gui.task_sidebar import TaskSidebar
+from app.gui.navigation_manager import NavigationManager
+from app.gui.marker_manager import MarkerManager
 from app.annotation_io import AnnotationIO
-from app.cropping import Cropper
 from app.ocr import create_ocr_engine
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,8 @@ class MainWindow(QMainWindow):
         self.category_manager = None
         self.project_sidebar = None
         self.task_sidebar = None
+        self.navigation_manager = None
+        self.marker_manager = None
         
         # Настройка UI
         self._setup_menu()
@@ -76,6 +79,8 @@ class MainWindow(QMainWindow):
         self.ocr_manager = OCRManager(self, self.task_manager)
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree, self.blocks_tree_by_category)
         self.category_manager = CategoryManager(self, self.categories_list)
+        self.navigation_manager = NavigationManager(self)
+        self.marker_manager = MarkerManager(self)
         
         # Убедимся что базовые промты существуют
         self.prompt_manager.ensure_default_prompts()
@@ -619,29 +624,11 @@ class MainWindow(QMainWindow):
     
     def _prev_page(self):
         """Предыдущая страница"""
-        if self.current_page > 0:
-            # Сохраняем зум текущей страницы
-            self.page_zoom_states[self.current_page] = (
-                self.page_viewer.transform(),
-                self.page_viewer.zoom_factor
-            )
-            
-            self.current_page -= 1
-            self._render_current_page()
-            self._update_ui()
+        self.navigation_manager.prev_page()
     
     def _next_page(self):
         """Следующая страница"""
-        if self.pdf_document and self.current_page < self.pdf_document.page_count - 1:
-            # Сохраняем зум текущей страницы
-            self.page_zoom_states[self.current_page] = (
-                self.page_viewer.transform(),
-                self.page_viewer.zoom_factor
-            )
-            
-            self.current_page += 1
-            self._render_current_page()
-            self._update_ui()
+        self.navigation_manager.next_page()
     
     def _on_block_drawn(self, x1: int, y1: int, x2: int, y2: int):
         """
@@ -743,10 +730,6 @@ class MainWindow(QMainWindow):
             block.category = category
             self.blocks_tree_manager.update_blocks_tree()
     
-    def _add_category(self):
-        """Добавить новую категорию в список"""
-        self.category_manager.add_category()
-    
     def _edit_type_prompt(self, type_name: str, display_name: str):
         """Редактировать промт для типа блока"""
         default_prompts = {
@@ -831,11 +814,6 @@ class MainWindow(QMainWindow):
         if data and isinstance(data, dict) and data.get("type") == "block":
             self.category_edit.setFocus()
             self.category_edit.selectAll()
-    
-    def _delete_selected_block(self):
-        """Удалить выбранный блок"""
-        if self.page_viewer.selected_block_idx is not None:
-            self._on_block_deleted(self.page_viewer.selected_block_idx)
     
     def _on_block_editing(self, block_idx: int):
         """Обработка двойного клика для редактирования блока"""
@@ -958,25 +936,19 @@ class MainWindow(QMainWindow):
     
     def _zoom_in(self):
         """Увеличить масштаб"""
-        if hasattr(self.page_viewer, 'scale'):
-            self.page_viewer.scale(1.15, 1.15)
-            self.page_viewer.zoom_factor *= 1.15
+        self.navigation_manager.zoom_in()
     
     def _zoom_out(self):
         """Уменьшить масштаб"""
-        if hasattr(self.page_viewer, 'scale'):
-            self.page_viewer.scale(1/1.15, 1/1.15)
-            self.page_viewer.zoom_factor /= 1.15
+        self.navigation_manager.zoom_out()
     
     def _zoom_reset(self):
         """Сбросить масштаб"""
-        if hasattr(self.page_viewer, 'reset_zoom'):
-            self.page_viewer.reset_zoom()
+        self.navigation_manager.zoom_reset()
     
     def _fit_to_view(self):
         """Подогнать к окну"""
-        if hasattr(self.page_viewer, 'fit_to_view'):
-            self.page_viewer.fit_to_view()
+        self.navigation_manager.fit_to_view()
     
     def _save_annotation(self):
         """Сохранить разметку в JSON"""
@@ -1029,99 +1001,11 @@ class MainWindow(QMainWindow):
     
     def _marker_segment_pdf(self):
         """Разметка текущей страницы PDF через API"""
-        self._run_marker_worker(page_range=[self.current_page], show_success=False)
+        self.marker_manager.segment_current_page()
 
     def _marker_segment_all_pages(self):
         """Разметка всех страниц PDF через API"""
-        self._run_marker_worker(page_range=None, show_success=True)
-
-    def _run_marker_worker(self, page_range=None, show_success=True):
-        """Запуск API сегментации в фоновом режиме"""
-        import copy
-        from app.gui.task_manager import TaskType
-        
-        if not self.annotation_document or not self.pdf_document:
-            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF")
-            return
-        
-        # Рендер страниц
-        if page_range and len(page_range) == 1:
-            page_num = page_range[0]
-            if page_num not in self.page_images:
-                img = self.pdf_document.render_page(page_num)
-                if img:
-                    self.page_images[page_num] = img
-
-        # Создаем задачу
-        pdf_name = Path(self.annotation_document.pdf_path).stem
-        page_info = f"стр. {page_range[0]+1}" if page_range and len(page_range) == 1 else "все стр."
-        task_id = self.task_manager.create_task(
-            TaskType.MARKER,
-            f"Marker: {pdf_name} ({page_info})",
-            self.annotation_document.pdf_path
-        )
-        
-        # Глубокая копия для thread-safety
-        pages_copy = copy.deepcopy(self.annotation_document.pages)
-        page_images_copy = dict(self.page_images)
-        
-        # Сохраняем контекст файла при запуске задачи
-        task_project_id = self._current_project_id
-        task_file_index = self._current_file_index
-        
-        # Обработчики завершения
-        def on_completed(tid):
-            if tid == task_id:
-                task = self.task_manager.get_task(tid)
-                if task and task.result:
-                    updated_pages = task.result
-                    
-                    # Проверяем, тот ли файл сейчас активен
-                    is_same_file = (
-                        self._current_project_id == task_project_id and
-                        self._current_file_index == task_file_index
-                    )
-                    
-                    if is_same_file:
-                        self.annotation_document.pages = updated_pages
-                        
-                        saved_transform = self.page_viewer.transform()
-                        saved_zoom = self.page_viewer.zoom_factor
-                        
-                        self._render_current_page()
-                        self.blocks_tree_manager.update_blocks_tree()
-                        self.category_manager.extract_categories_from_document()
-                        
-                        self.page_viewer.setTransform(saved_transform)
-                        self.page_viewer.zoom_factor = saved_zoom
-                    else:
-                        # Обновляем в кеше, если есть
-                        cache_key = (task_project_id, task_file_index)
-                        if cache_key in self.annotations_cache:
-                            self.annotations_cache[cache_key].pages = updated_pages
-                    
-                    if show_success:
-                        total_blocks = sum(len(p.blocks) for p in updated_pages)
-                        QMessageBox.information(self, "Успех", f"Сегментация завершена. Всего блоков: {total_blocks}")
-                elif show_success:
-                    QMessageBox.warning(self, "Ошибка", "Не удалось обработать PDF")
-        
-        def on_failed(tid, error):
-            if tid == task_id:
-                QMessageBox.critical(self, "Ошибка", f"Ошибка сегментации: {error}")
-        
-        self.task_manager.task_completed.connect(on_completed)
-        self.task_manager.task_failed.connect(on_failed)
-        
-        # Запуск в фоне
-        self.task_manager.start_marker_task(
-            task_id,
-            self.pdf_document.pdf_path,
-            pages_copy,
-            page_images_copy,
-            page_range,
-            self.active_category
-        )
+        self.marker_manager.segment_all_pages()
     
     def _run_ocr_all(self):
         """Запустить OCR для всех блоков"""
@@ -1164,44 +1048,6 @@ class MainWindow(QMainWindow):
         # Сохраняем текущую аннотацию перед переключением
         self._save_current_annotation_to_cache()
         self._load_pdf_from_project(project_id, file_index)
-    
-    
-    def _generate_structured_markdown(self):
-        """Генерация структурированного Markdown документа из размеченных блоков"""
-        if not self.annotation_document:
-            return
-        
-        from app.ocr import generate_structured_markdown
-        
-        # Выбираем путь для сохранения
-        output_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Сохранить структурированный документ",
-            "recognized_document.md",
-            "Markdown Files (*.md)"
-        )
-        
-        if not output_path:
-            return
-        
-        try:
-            result_path = generate_structured_markdown(
-                self.annotation_document.pages,
-                output_path
-            )
-            
-            QMessageBox.information(
-                self,
-                "Успех",
-                f"Структурированный Markdown документ создан:\n{result_path}\n\n"
-                f"Изображения сохранены с кропами и описаниями."
-            )
-        except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Ошибка",
-                f"Ошибка генерации структурированного markdown:\n{e}"
-            )
     
     def _remove_stamps(self):
         """Удаление электронных штампов из PDF"""
