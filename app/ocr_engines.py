@@ -154,47 +154,6 @@ class OpenRouterVLMEngine(OCREngine):
         return response.choices[0].message.content.strip()
 
 
-class ChandraOCREngine(OCREngine):
-    """OCR через Chandra (surya-ocr)"""
-    
-    def __init__(self, method: str = "hf"):
-        self.method = method
-        self._model = None
-        self._processor = None
-    
-    def _load_model(self):
-        """Lazy loading модели"""
-        if self._model is None or self._processor is None:
-            try:
-                if self.method == "hf":
-                    from transformers import AutoProcessor, AutoModelForImageTextToText
-                    model_name = "vidore/GOT_CPU"
-                    self._processor = AutoProcessor.from_pretrained(model_name)
-                    self._model = AutoModelForImageTextToText.from_pretrained(model_name)
-                else:
-                    from chandra_ocr import ChandraOCRModel
-                    self._model = ChandraOCRModel()
-            except ImportError as e:
-                raise ImportError(
-                    f"Для Chandra OCR требуется установка библиотек.\n"
-                    f"Ошибка: {e}\n"
-                    "Установите: pip install chandra-ocr или transformers"
-                )
-    
-    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
-        """Распознать текст через Chandra"""
-        self._load_model()
-        
-        if self.method == "hf":
-            inputs = self._processor(images=image, return_tensors="pt")
-            generated_ids = self._model.generate(**inputs, max_new_tokens=2048)
-            result = self._processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-            return result.strip()
-        else:
-            result = self._model.recognize(image)
-            return result.strip()
-
-
 def create_ocr_engine(engine_type: str, **kwargs) -> OCREngine:
     """Создать OCR engine по типу"""
     if engine_type == "dummy":
@@ -203,7 +162,5 @@ def create_ocr_engine(engine_type: str, **kwargs) -> OCREngine:
         return LocalVLMEngine(**kwargs)
     elif engine_type == "openrouter":
         return OpenRouterVLMEngine(**kwargs)
-    elif engine_type == "chandra":
-        return ChandraOCREngine(**kwargs)
     else:
         raise ValueError(f"Неизвестный тип OCR engine: {engine_type}")

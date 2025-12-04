@@ -1,12 +1,9 @@
 """
-OCR обработка через различные движки
-Поддержка Chandra OCR и локальных VLM серверов (Qwen3-VL и др.)
+OCR обработка через API движки
+Поддержка LocalVLM (через ngrok) и OpenRouter API
 """
 
 import logging
-import tempfile
-import subprocess
-import shutil
 import json
 import base64
 import io
@@ -176,97 +173,6 @@ class LocalVLMBackend:
         except Exception as e:
             logger.error(f"Ошибка VLM OCR: {e}", exc_info=True)
             return f"[Ошибка VLM OCR: {e}]"
-
-
-class ChandraOCRBackend:
-    """
-    OCR через Chandra (datalab-to/chandra)
-    Использует CLI интерфейс через subprocess
-    """
-    
-    def __init__(self, method: str = "hf", vllm_api_base: str = "http://localhost:8000/v1"):
-        """
-        Args:
-            method: метод инференса ('hf' или 'vllm')
-            vllm_api_base: URL vLLM сервера (если method='vllm')
-        """
-        self.method = method
-        self.vllm_api_base = vllm_api_base
-        
-        # Проверяем установку chandra
-        if not shutil.which("chandra"):
-            raise ImportError(
-                "Требуется установить chandra-ocr:\n"
-                "pip install chandra-ocr"
-            )
-        
-        logger.info(f"ChandraOCR инициализирован (метод: {method})")
-    
-    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
-        """
-        Распознать текст через Chandra
-        
-        Args:
-            image: изображение для распознавания
-            prompt: игнорируется (Chandra не использует промпты)
-        
-        Returns:
-            Распознанный текст в Markdown формате
-        """
-        try:
-            # Создаем временные файлы
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_path = Path(tmp_dir)
-                
-                # Сохраняем изображение
-                img_path = tmp_path / "input.png"
-                image.save(img_path, 'PNG')
-                
-                # Директория для вывода
-                output_dir = tmp_path / "output"
-                output_dir.mkdir()
-                
-                # Запускаем Chandra через CLI
-                cmd = [
-                    "chandra",
-                    str(img_path),
-                    str(output_dir),
-                    "--method", self.method,
-                    "--no-images"  # Не извлекаем изображения для отдельных блоков
-                ]
-                
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=300  # 5 минут таймаут
-                )
-                
-                if result.returncode != 0:
-                    logger.error(f"Chandra CLI ошибка: {result.stderr}")
-                    return f"[Ошибка Chandra OCR: {result.stderr}]"
-                
-                # Читаем результат - Chandra создает подпапку с именем файла
-                md_file = output_dir / "input" / "input.md"
-                if not md_file.exists():
-                    # Пробуем альтернативный путь
-                    md_files = list(output_dir.rglob("*.md"))
-                    if md_files:
-                        md_file = md_files[0]
-                    else:
-                        logger.error(f"Не найден .md файл в {output_dir}")
-                        return "[Ошибка: результат не найден]"
-                
-                text = md_file.read_text(encoding='utf-8')
-                logger.debug(f"Chandra OCR: распознано {len(text)} символов")
-                return text.strip()
-                
-        except subprocess.TimeoutExpired:
-            logger.error("Chandra OCR: превышен таймаут")
-            return "[Ошибка: таймаут распознавания]"
-        except Exception as e:
-            logger.error(f"Ошибка Chandra OCR: {e}", exc_info=True)
-            return f"[Ошибка Chandra OCR: {e}]"
 
 
 class OpenRouterBackend:
@@ -465,7 +371,7 @@ def create_ocr_engine(backend: str = "local_vlm", **kwargs) -> OCRBackend:
     Фабрика для создания OCR движка
     
     Args:
-        backend: тип движка ('local_vlm', 'openrouter', 'chandra' или 'dummy')
+        backend: тип движка ('local_vlm', 'openrouter' или 'dummy')
         **kwargs: дополнительные параметры для движка
     
     Returns:
@@ -475,113 +381,11 @@ def create_ocr_engine(backend: str = "local_vlm", **kwargs) -> OCRBackend:
         return LocalVLMBackend(**kwargs)
     elif backend == "openrouter":
         return OpenRouterBackend(**kwargs)
-    elif backend == "chandra":
-        return ChandraOCRBackend(**kwargs)
     elif backend == "dummy":
         return DummyOCRBackend()
     else:
         logger.warning(f"Неизвестный backend '{backend}', используется dummy")
         return DummyOCRBackend()
-
-
-def run_chandra_ocr_full_document(page_images: dict, output_path: str, method: str = "hf") -> str:
-    """
-    Распознать весь документ с Chandra OCR и создать единый Markdown файл
-    
-    Args:
-        page_images: словарь {page_num: PIL.Image}
-        output_path: путь для сохранения результата
-        method: метод инференса ('hf' или 'vllm')
-    
-    Returns:
-        Путь к сохраненному файлу
-    """
-    try:
-        logger.info(f"Запуск Chandra OCR для {len(page_images)} страниц")
-        
-        output_file = Path(output_path)
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Создаем временную директорию
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            input_dir = tmp_path / "input"
-            output_dir = tmp_path / "output"
-            input_dir.mkdir()
-            output_dir.mkdir()
-            
-            # Сохраняем страницы как изображения
-            for page_num in sorted(page_images.keys()):
-                image = page_images[page_num]
-                img_path = input_dir / f"page_{page_num:04d}.png"
-                image.save(img_path, 'PNG')
-            
-            # Запускаем Chandra для каждой страницы
-            markdown_parts = []
-            
-            for page_num in sorted(page_images.keys()):
-                logger.info(f"Обработка страницы {page_num + 1}/{len(page_images)}")
-                
-                img_path = input_dir / f"page_{page_num:04d}.png"
-                page_output_dir = output_dir / f"page_{page_num:04d}"
-                page_output_dir.mkdir()
-                
-                # CLI команда
-                cmd = [
-                    "chandra",
-                    str(img_path),
-                    str(page_output_dir),
-                    "--method", method,
-                    "--include-images"  # Включаем извлечение изображений
-                ]
-                
-                try:
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
-                    
-                    if result.returncode != 0:
-                        logger.error(f"Ошибка на странице {page_num}: {result.stderr}")
-                        markdown_parts.append(f"# Страница {page_num + 1}\n\n[Ошибка распознавания]\n\n---\n\n")
-                        continue
-                    
-                    # Читаем результат
-                    md_files = list(page_output_dir.rglob("*.md"))
-                    if md_files:
-                        page_text = md_files[0].read_text(encoding='utf-8')
-                        markdown_parts.append(f"# Страница {page_num + 1}\n\n{page_text}\n\n---\n\n")
-                        
-                        # Копируем изображения если есть
-                        images_src = page_output_dir / f"page_{page_num:04d}" / "images"
-                        if images_src.exists():
-                            images_dst = output_file.parent / "images"
-                            images_dst.mkdir(exist_ok=True)
-                            for img_file in images_src.iterdir():
-                                new_name = f"page{page_num}_{img_file.name}"
-                                shutil.copy2(img_file, images_dst / new_name)
-                    else:
-                        logger.warning(f"Не найден .md файл для страницы {page_num}")
-                        markdown_parts.append(f"# Страница {page_num + 1}\n\n[Результат не найден]\n\n---\n\n")
-                
-                except subprocess.TimeoutExpired:
-                    logger.error(f"Таймаут на странице {page_num}")
-                    markdown_parts.append(f"# Страница {page_num + 1}\n\n[Таймаут]\n\n---\n\n")
-            
-            # Объединяем результаты
-            full_markdown = "".join(markdown_parts)
-            
-            # Сохраняем
-            output_file.write_text(full_markdown, encoding='utf-8')
-            
-            logger.info(f"Markdown документ сохранен: {output_file}")
-            return str(output_file)
-        
-    except Exception as e:
-        logger.error(f"Ошибка при обработке документа Chandra OCR: {e}", exc_info=True)
-        raise
 
 
 def generate_structured_markdown(pages: List, output_path: str, images_dir: str = "images") -> str:

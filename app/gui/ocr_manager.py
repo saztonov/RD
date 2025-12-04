@@ -8,7 +8,7 @@ import copy
 from pathlib import Path
 from PySide6.QtWidgets import QProgressDialog, QMessageBox, QDialog
 from PySide6.QtCore import Qt
-from app.ocr import create_ocr_engine, generate_structured_markdown, run_local_vlm_full_document, run_chandra_ocr_full_document, load_prompt
+from app.ocr import create_ocr_engine, generate_structured_markdown, run_local_vlm_full_document, load_prompt
 from app.annotation_io import AnnotationIO
 from app.models import BlockType
 from app.gui.task_manager import TaskManager, TaskType
@@ -388,96 +388,6 @@ class OCRManager:
             f"OCR завершен!\n\nРезультаты сохранены в:\n{output_dir}\n\n• {pdf_name}\n• annotation.json\n• crops/\n• document.md"
         )
     
-    def run_chandra_ocr_blocks_with_output(self, method, output_dir, crops_dir):
-        """Запустить Chandra OCR для блоков"""
-        try:
-            chandra_engine = create_ocr_engine("chandra", method=method)
-            vlm_engine = create_ocr_engine("local_vlm", model_name="qwen3-vl-32b-instruct")
-        except Exception as e:
-            QMessageBox.critical(self.parent, "Ошибка OCR", f"Не удалось инициализировать:\n{e}")
-            return
-            
-        total_blocks = sum(len(p.blocks) for p in self.parent.annotation_document.pages)
-        if total_blocks == 0:
-            QMessageBox.information(self.parent, "Информация", "Нет блоков для OCR")
-            return
-
-        progress = QProgressDialog("Распознавание блоков (Chandra + VLM)...", "Отмена", 0, total_blocks, self.parent)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-
-        processed_count = 0
-        
-        for page in self.parent.annotation_document.pages:
-            if progress.wasCanceled():
-                break
-                
-            page_num = page.page_number
-            if page_num not in self.parent.page_images:
-                img = self.parent.pdf_document.render_page(page_num)
-                if img:
-                    self.parent.page_images[page_num] = img
-            
-            page_img = self.parent.page_images.get(page_num)
-            if not page_img:
-                continue
-            
-            for block in page.blocks:
-                if progress.wasCanceled():
-                    break
-                
-                x1, y1, x2, y2 = block.coords_px
-                if x1 >= x2 or y1 >= y2:
-                    processed_count += 1
-                    progress.setValue(processed_count)
-                    continue
-                
-                crop = page_img.crop((x1, y1, x2, y2))
-                
-                try:
-                    if block.block_type == BlockType.IMAGE:
-                        crop_filename = f"page{page_num}_block{block.id}.png"
-                        crop_path = crops_dir / crop_filename
-                        crop.save(crop_path, "PNG")
-                        block.image_file = str(crop_path)
-                        image_prompt = self.parent.prompt_manager.load_prompt("image") or load_prompt("ocr_image_description.txt")
-                        block.ocr_text = vlm_engine.recognize(crop, prompt=image_prompt)
-                    elif block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                        block.ocr_text = chandra_engine.recognize(crop)
-                    
-                    # Дополнительный промт для категории
-                    if block.category:
-                        category_prompt = self.parent.prompt_manager.load_prompt(f"category_{block.category}")
-                        if category_prompt:
-                            logger.debug(f"Применен промт категории '{block.category}'")
-                        
-                except Exception as e:
-                    logger.error(f"Error OCR block {block.id}: {e}")
-                    block.ocr_text = f"[Error: {e}]"
-                
-                processed_count += 1
-                progress.setValue(processed_count)
-        
-        progress.close()
-        
-        json_path = output_dir / "annotation.json"
-        AnnotationIO.save_annotation(self.parent.annotation_document, str(json_path))
-        logger.info(f"Разметка сохранена: {json_path}")
-        
-        md_path = output_dir / "document.md"
-        generate_structured_markdown(self.parent.annotation_document.pages, str(md_path))
-        logger.info(f"Markdown сохранен: {md_path}")
-        
-        # Загрузка в R2
-        self._upload_to_r2(output_dir)
-        
-        pdf_name = Path(self.parent.annotation_document.pdf_path).name
-        QMessageBox.information(
-            self.parent, 
-            "Готово", 
-            f"OCR завершен!\n\nРезультаты сохранены в:\n{output_dir}\n\n• {pdf_name}\n• annotation.json\n• crops/\n• document.md"
-        )
-    
     def run_local_vlm_ocr_with_output(self, api_base, model_name, output_dir):
         """Запустить LocalVLM OCR для всего документа"""
         progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.parent.annotation_document.pages), self.parent)
@@ -592,52 +502,4 @@ class OCRManager:
             progress.close()
             QMessageBox.critical(self.parent, "Ошибка", f"Ошибка OpenRouter OCR:\n{e}")
     
-    def run_chandra_ocr_with_output(self, method, output_dir):
-        """Запустить Chandra OCR для всего документа"""
-        progress = QProgressDialog("Подготовка страниц...", None, 0, len(self.parent.annotation_document.pages), self.parent)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        for i, page in enumerate(self.parent.annotation_document.pages):
-            page_num = page.page_number
-            if page_num not in self.parent.page_images:
-                img = self.parent.pdf_document.render_page(page_num)
-                if img:
-                    self.parent.page_images[page_num] = img
-            progress.setValue(i + 1)
-        
-        progress.close()
-        
-        progress = QProgressDialog("Распознавание с Chandra OCR...", None, 0, 0, self.parent)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
-        
-        try:
-            md_path = output_dir / "document.md"
-            result_path = run_chandra_ocr_full_document(self.parent.page_images, str(md_path), method=method)
-            
-            json_path = output_dir / "annotation.json"
-            AnnotationIO.save_annotation(self.parent.annotation_document, str(json_path))
-            
-            # Загрузка в R2
-            self._upload_to_r2(output_dir)
-            
-            progress.close()
-            
-            pdf_name = Path(self.parent.annotation_document.pdf_path).name
-            QMessageBox.information(
-                self.parent, 
-                "Успех", 
-                f"OCR завершен!\n\nРезультаты сохранены в:\n{output_dir}\n\n• {pdf_name}\n• annotation.json\n• document.md"
-            )
-        except ImportError as e:
-            progress.close()
-            QMessageBox.critical(
-                self.parent, 
-                "Ошибка импорта Chandra OCR", 
-                f"{e}\n\nТребуется установить chandra-ocr:\npip install chandra-ocr"
-            )
-        except Exception as e:
-            progress.close()
-            QMessageBox.critical(self.parent, "Ошибка", f"Ошибка Chandra OCR:\n{e}")
 

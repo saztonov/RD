@@ -30,7 +30,6 @@ from app.gui.task_sidebar import TaskSidebar
 from app.annotation_io import AnnotationIO
 from app.cropping import Cropper
 from app.ocr import create_ocr_engine
-from app.auto_segmentation import AutoSegmentation
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,6 @@ class MainWindow(QMainWindow):
         
         # Компоненты
         self.ocr_engine = create_ocr_engine("dummy")
-        self.auto_segmentation = AutoSegmentation()
         
         # Менеджеры (инициализируются после setup_ui)
         self.project_manager = ProjectManager()

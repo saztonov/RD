@@ -139,3 +139,4 @@ text = engine.recognize(image, prompt="Распознай текст")
 - `httpx>=0.27.0` - HTTP клиент с поддержкой async/sync
 
 
+
