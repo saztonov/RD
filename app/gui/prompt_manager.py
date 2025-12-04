@@ -20,7 +20,7 @@ class PromptManager:
     def __init__(self, parent):
         self.parent = parent
         self.r2_storage: Optional[R2Storage] = None
-        self._init_r2()
+        # self._init_r2()  # Отключено тестирование R2 при запуске
     
     def _init_r2(self):
         """Инициализация R2 Storage"""

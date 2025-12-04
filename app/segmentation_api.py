@@ -51,7 +51,17 @@ def segment_pdf_sync(pdf_bytes: bytes) -> Dict[str, Any]:
     with httpx.Client(timeout=600.0) as client:
         response = client.post(url, files=files)
         response.raise_for_status()
-        return response.json()
+        result = response.json()
+        
+        # Детальное логирование для отладки
+        if isinstance(result, dict):
+            logger.debug(f"API response keys: {list(result.keys())}")
+        else:
+            logger.debug(f"API response type: {type(result)}")
+            
+        logger.debug(f"API response sample: {str(result)[:500]}")
+        
+        return result
 
 
 def segment_with_api(pdf_path: str, pages: List[Page], 
@@ -86,7 +96,7 @@ def segment_with_api(pdf_path: str, pages: List[Page],
                 fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf")
                 os.close(fd)
                 
-                new_doc.save(temp_pdf_path)
+                new_doc.save(temp_pdf_path, deflate=False, garbage=0, clean=False)
                 new_doc.close()
                 doc.close()
                 
@@ -107,10 +117,32 @@ def segment_with_api(pdf_path: str, pages: List[Page],
         # Отправляем на API
         result = segment_pdf_sync(pdf_bytes)
         
-        logger.info(f"API обработал PDF, страниц: {len(result.get('pages', []))}")
+        # Детальное логирование ответа
+        if isinstance(result, dict):
+            logger.info(f"API ответ: ключи={list(result.keys())}")
+            # Проверяем разные форматы ответа
+            if 'pages' in result:
+                api_pages = result['pages']
+            elif 'children' in result:
+                # Формат Marker с корневым children
+                logger.info("Используем 'children' как список страниц")
+                api_pages = result['children']
+            else:
+                api_pages = []
+        elif isinstance(result, list):
+            logger.info(f"API ответ: список из {len(result)} элементов")
+            api_pages = result
+        else:
+            logger.warning(f"Неожиданный формат ответа API: {type(result)}")
+            api_pages = []
+
+        logger.info(f"API обработал PDF, страниц: {len(api_pages)}")
+        
+        if len(api_pages) == 0:
+            logger.warning(f"API вернул пустой список страниц. Полный ответ: {result}")
         
         # Извлечение блоков из каждой страницы
-        api_pages = result.get('pages', [])
+        # api_pages already set above
         
         for i, page_data in enumerate(api_pages):
             # Определяем реальный индекс страницы
@@ -138,13 +170,15 @@ def segment_with_api(pdf_path: str, pages: List[Page],
             
             # Фильтруем блоки: не добавляем те, которые пересекаются с существующими
             added_count = 0
+            skipped_overlap = 0
             for new_block in new_blocks:
                 if not _is_overlapping_with_existing(new_block, page.blocks):
                     page.blocks.append(new_block)
                     added_count += 1
+                else:
+                    skipped_overlap += 1
             
-            if added_count > 0:
-                logger.info(f"Страница {real_page_idx}: добавлено {added_count} блоков (найдено {len(new_blocks)})")
+            logger.info(f"Страница {real_page_idx}: добавлено {added_count} блоков, пропущено {skipped_overlap}, всего найдено {len(new_blocks)}")
         
         return pages
         
@@ -164,7 +198,7 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
                                    page_width: float, page_height: float,
                                    category: str = "") -> List[Block]:
     """
-    Извлечение блоков из ответа API
+    Извлечение блоков из ответа API с рекурсивной обработкой вложенных элементов
     
     Args:
         page_data: данные страницы от API
@@ -179,57 +213,123 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
     blocks = []
     
     try:
-        # API возвращает блоки в формате:
-        # {"blocks": [{"bbox": [x1, y1, x2, y2], "type": "Text|Table|Image", ...}, ...]}
-        api_blocks = page_data.get('blocks', [])
+        logger.debug(f"Page {page_idx} data keys: {list(page_data.keys())}")
         
-        # Получаем размеры страницы от API (в PDF points)
-        api_width = page_data.get('width', page_width)
-        api_height = page_data.get('height', page_height)
+        # API возвращает Marker формат с 'children'
+        api_blocks = page_data.get('children', [])
+        
+        if not api_blocks:
+            logger.warning(f"Страница {page_idx}: нет children")
+            return blocks
+        
+        # Получаем bbox страницы для масштабирования
+        page_bbox = page_data.get('bbox', [0, 0, page_width, page_height])
+        api_width = page_bbox[2] - page_bbox[0]
+        api_height = page_bbox[3] - page_bbox[1]
         
         # Масштабирование координат из PDF points в пиксели
         scale_x = page_width / api_width if api_width > 0 else 1.0
         scale_y = page_height / api_height if api_height > 0 else 1.0
         
-        logger.debug(f"Страница {page_idx}: блоков: {len(api_blocks)}, scale: {scale_x:.2f}x{scale_y:.2f}")
+        logger.debug(f"Страница {page_idx}: блоков верхнего уровня: {len(api_blocks)}, scale: {scale_x:.2f}x{scale_y:.2f}")
         
-        for idx, api_block in enumerate(api_blocks):
-            try:
-                bbox = api_block.get('bbox')
-                if not bbox or len(bbox) != 4:
-                    continue
-                
+        # Исключаем только низкоуровневые элементы (Line/Span)
+        EXCLUDED_TYPES = {'Line', 'Span'}
+        
+        # Счетчики для отладки
+        skipped_by_type = {}
+        skipped_no_bbox = 0
+        processed_count = 0
+        all_types_found = set()
+        
+        # Рекурсивная функция для обработки вложенных блоков
+        def process_block_recursive(api_block: Dict[str, Any], depth: int = 0):
+            nonlocal processed_count, skipped_by_type, skipped_no_bbox, all_types_found
+            
+            block_type_str = api_block.get('block_type', '')
+            if block_type_str:
+                all_types_found.add(block_type_str)
+            
+            # Пропускаем только Line и Span
+            if block_type_str in EXCLUDED_TYPES:
+                skipped_by_type[block_type_str] = skipped_by_type.get(block_type_str, 0) + 1
+                return
+            
+            bbox = api_block.get('bbox')
+            if bbox and len(bbox) == 4:
                 # Масштабируем координаты
                 x1 = bbox[0] * scale_x
                 y1 = bbox[1] * scale_y
                 x2 = bbox[2] * scale_x
                 y2 = bbox[3] * scale_y
                 
-                # Определяем тип блока
-                block_type_str = api_block.get('type', 'Text')
-                block_type = _map_block_type(block_type_str)
-                
-                # Создаем блок
-                block = Block.create(
-                    page_index=page_idx,
-                    coords_px=(int(x1), int(y1), int(x2), int(y2)),
-                    page_width=page_width,
-                    page_height=page_height,
-                    category=category,
-                    block_type=block_type,
-                    source=BlockSource.AUTO
-                )
-                
-                blocks.append(block)
-                
+                # Проверяем валидность координат
+                if x2 > x1 and y2 > y1:
+                    # Определяем тип блока
+                    block_type = _map_block_type(block_type_str)
+                    
+                    # Создаем блок
+                    block = Block.create(
+                        page_index=page_idx,
+                        coords_px=(int(x1), int(y1), int(x2), int(y2)),
+                        page_width=page_width,
+                        page_height=page_height,
+                        category=category,
+                        block_type=block_type,
+                        source=BlockSource.AUTO
+                    )
+                    
+                    blocks.append(block)
+                    processed_count += 1
+                    logger.debug(f"{'  ' * depth}Добавлен блок: type={block_type_str}, coords=({int(x1)},{int(y1)},{int(x2)},{int(y2)})")
+            else:
+                skipped_no_bbox += 1
+                logger.debug(f"{'  ' * depth}Пропущен блок (нет bbox): type={block_type_str}")
+            
+            # Рекурсивно обрабатываем вложенные children
+            children = api_block.get('children', [])
+            if children:
+                logger.debug(f"{'  ' * depth}Обработка {len(children)} вложенных блоков для {block_type_str}")
+                for child in children:
+                    try:
+                        process_block_recursive(child, depth + 1)
+                    except Exception as child_err:
+                        logger.warning(f"Ошибка обработки вложенного блока: {child_err}")
+        
+        # Обрабатываем все блоки верхнего уровня рекурсивно
+        for idx, api_block in enumerate(api_blocks):
+            try:
+                process_block_recursive(api_block)
             except Exception as block_err:
                 logger.warning(f"Ошибка блока {idx}: {block_err}")
                 continue
     
+        # Дедупликация блоков (удаляем полностью идентичные)
+        unique_blocks = []
+        seen_coords = set()
+        for block in blocks:
+            coords_tuple = block.coords_px
+            if coords_tuple not in seen_coords:
+                seen_coords.add(coords_tuple)
+                unique_blocks.append(block)
+        
+        duplicates_removed = len(blocks) - len(unique_blocks)
+        if duplicates_removed > 0:
+            logger.info(f"Страница {page_idx}: удалено {duplicates_removed} дубликатов")
+        
+        # Логируем статистику
+        logger.info(f"Страница {page_idx}: обработано {processed_count} блоков, уникальных {len(unique_blocks)}")
+        logger.info(f"Страница {page_idx}: найденные типы блоков: {sorted(all_types_found)}")
+        if skipped_by_type:
+            logger.info(f"Страница {page_idx}: пропущено по типу: {skipped_by_type}")
+        if skipped_no_bbox > 0:
+            logger.info(f"Страница {page_idx}: пропущено без bbox: {skipped_no_bbox}")
+        
     except Exception as e:
         logger.error(f"Ошибка извлечения блоков со страницы {page_idx}: {e}")
+        return blocks
     
-    return blocks
+    return unique_blocks
 
 
 def _map_block_type(type_str: str) -> BlockType:
@@ -253,7 +353,7 @@ def _map_block_type(type_str: str) -> BlockType:
 
 
 def _is_overlapping_with_existing(new_block: Block, existing_blocks: List[Block], 
-                                   threshold: float = 0.3) -> bool:
+                                   threshold: float = 0.7) -> bool:
     """
     Проверка пересечения нового блока с существующими.
     Возвращает True, если есть значительное пересечение.

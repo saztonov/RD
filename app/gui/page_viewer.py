@@ -309,7 +309,7 @@ class PageViewer(QGraphicsView):
         
         else:
             # Обновляем курсор при наведении на хэндлы
-            if self.selected_block_idx is not None:
+            if self.selected_block_idx is not None and 0 <= self.selected_block_idx < len(self.current_blocks):
                 block = self.current_blocks[self.selected_block_idx]
                 x1, y1, x2, y2 = block.coords_px
                 block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
@@ -356,7 +356,7 @@ class PageViewer(QGraphicsView):
             
             elif self.moving_block or self.resizing_block:
                 # Завершение перемещения или изменения размера
-                if self.selected_block_idx is not None:
+                if self.selected_block_idx is not None and 0 <= self.selected_block_idx < len(self.current_blocks):
                     block = self.current_blocks[self.selected_block_idx]
                     x1, y1, x2, y2 = block.coords_px
                     self.blockMoved.emit(self.selected_block_idx, x1, y1, x2, y2)

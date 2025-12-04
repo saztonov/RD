@@ -300,6 +300,8 @@ class TaskManager(QObject):
             self.tasks[task_id].status = TaskStatus.SUCCESS
             self.tasks[task_id].completed_at = datetime.now()
             self.tasks[task_id].result = result
+            # Принудительно ставим 100% при успешном завершении
+            self.tasks[task_id].progress = self.tasks[task_id].max_progress
             self.task_completed.emit(task_id)
             self.task_updated.emit(task_id)
         
