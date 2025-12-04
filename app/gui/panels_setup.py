@@ -1,0 +1,222 @@
+"""
+Миксин для создания панелей UI
+"""
+
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+                               QLabel, QComboBox, QGroupBox, QLineEdit,
+                               QTreeWidget, QTabWidget, QListWidget, QAbstractItemView)
+from PySide6.QtCore import Qt
+from app.models import BlockType
+from app.gui.page_viewer import PageViewer
+from app.gui.project_sidebar import ProjectSidebar
+from app.gui.task_sidebar import TaskSidebar
+
+
+class PanelsSetupMixin:
+    """Миксин для создания панелей интерфейса"""
+    
+    def _setup_ui(self):
+        """Настройка интерфейса"""
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        main_layout = QHBoxLayout(central_widget)
+        
+        # Боковая панель проектов + задания
+        left_sidebar = self._create_left_sidebar()
+        main_layout.addWidget(left_sidebar)
+        
+        # Левая панель: просмотр страниц
+        left_panel = self._create_left_panel()
+        main_layout.addWidget(left_panel, stretch=3)
+        
+        # Правая панель: инструменты и свойства блоков
+        right_panel = self._create_right_panel()
+        main_layout.addWidget(right_panel, stretch=1)
+    
+    def _create_left_sidebar(self) -> QWidget:
+        """Создать боковую панель проектов"""
+        left_sidebar = QWidget()
+        left_sidebar_layout = QVBoxLayout(left_sidebar)
+        left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        left_sidebar_layout.setSpacing(5)
+        
+        self.project_sidebar = ProjectSidebar(self.project_manager)
+        self.project_sidebar.project_switched.connect(self._on_project_switched)
+        self.project_sidebar.file_switched.connect(self._on_file_switched)
+        left_sidebar_layout.addWidget(self.project_sidebar, stretch=2)
+        
+        self.task_sidebar = TaskSidebar(self.task_manager)
+        left_sidebar_layout.addWidget(self.task_sidebar, stretch=1)
+        
+        left_sidebar.setMaximumWidth(320)
+        left_sidebar.setMinimumWidth(280)
+        return left_sidebar
+    
+    def _create_left_panel(self) -> QWidget:
+        """Создать левую панель с просмотром страниц"""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        
+        self.page_viewer = PageViewer()
+        self.page_viewer.blockDrawn.connect(self._on_block_drawn)
+        self.page_viewer.block_selected.connect(self._on_block_selected)
+        self.page_viewer.blockEditing.connect(self._on_block_editing)
+        self.page_viewer.blockDeleted.connect(self._on_block_deleted)
+        self.page_viewer.blockMoved.connect(self._on_block_moved)
+        self.page_viewer.page_changed.connect(self._on_page_changed)
+        layout.addWidget(self.page_viewer)
+        
+        return panel
+    
+    def _create_right_panel(self) -> QWidget:
+        """Создать правую панель с инструментами"""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        
+        # Группа: список блоков
+        blocks_group = self._create_blocks_group()
+        layout.addWidget(blocks_group)
+        
+        # Группа: свойства блока
+        block_group = self._create_block_properties_group()
+        layout.addWidget(block_group)
+        
+        # Группа: действия
+        actions_group = self._create_actions_group()
+        layout.addWidget(actions_group)
+        
+        return panel
+    
+    def _create_blocks_group(self) -> QGroupBox:
+        """Создать группу списка блоков"""
+        blocks_group = QGroupBox("Все блоки")
+        blocks_layout = QVBoxLayout(blocks_group)
+        
+        self.blocks_tabs = QTabWidget()
+        
+        # Вкладка 1: Страница → Категория → Блок
+        self.blocks_tree = QTreeWidget()
+        self.blocks_tree.setHeaderLabels(["Название", "Тип"])
+        self.blocks_tree.setColumnWidth(0, 150)
+        self.blocks_tree.setSortingEnabled(True)
+        self.blocks_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.blocks_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.blocks_tree.customContextMenuRequested.connect(
+            lambda pos: self.blocks_tree_manager.on_tree_context_menu(pos))
+        self.blocks_tree.itemClicked.connect(self._on_tree_block_clicked)
+        self.blocks_tree.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
+        self.blocks_tree.installEventFilter(self)
+        self.blocks_tabs.addTab(self.blocks_tree, "Страница")
+        
+        # Вкладка 2: Категория → Блок → Страница
+        self.blocks_tree_by_category = QTreeWidget()
+        self.blocks_tree_by_category.setHeaderLabels(["Название", "Тип"])
+        self.blocks_tree_by_category.setColumnWidth(0, 150)
+        self.blocks_tree_by_category.setSortingEnabled(True)
+        self.blocks_tree_by_category.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.blocks_tree_by_category.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.blocks_tree_by_category.customContextMenuRequested.connect(
+            lambda pos: self.blocks_tree_manager.on_tree_context_menu(pos))
+        self.blocks_tree_by_category.itemClicked.connect(self._on_tree_block_clicked)
+        self.blocks_tree_by_category.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
+        self.blocks_tree_by_category.installEventFilter(self)
+        self.blocks_tabs.addTab(self.blocks_tree_by_category, "Категория")
+        
+        blocks_layout.addWidget(self.blocks_tabs)
+        return blocks_group
+    
+    def _create_block_properties_group(self) -> QGroupBox:
+        """Создать группу свойств блока"""
+        block_group = QGroupBox("Свойства блока")
+        block_layout = QVBoxLayout(block_group)
+        
+        # Тип блока
+        type_layout = QHBoxLayout()
+        type_layout.addWidget(QLabel("Тип:"))
+        self.block_type_combo = QComboBox()
+        self.block_type_combo.addItems([t.value for t in BlockType])
+        self.block_type_combo.currentTextChanged.connect(self._on_block_type_changed)
+        type_layout.addWidget(self.block_type_combo)
+        
+        # Кнопки редактирования промтов
+        self.edit_text_prompt_btn = QPushButton("✏️")
+        self.edit_text_prompt_btn.setMaximumWidth(30)
+        self.edit_text_prompt_btn.setToolTip("Редактировать промт для Текста")
+        self.edit_text_prompt_btn.clicked.connect(lambda: self._edit_type_prompt("text", "Текст"))
+        type_layout.addWidget(self.edit_text_prompt_btn)
+        
+        self.edit_table_prompt_btn = QPushButton("✏️")
+        self.edit_table_prompt_btn.setMaximumWidth(30)
+        self.edit_table_prompt_btn.setToolTip("Редактировать промт для Таблицы")
+        self.edit_table_prompt_btn.clicked.connect(lambda: self._edit_type_prompt("table", "Таблица"))
+        type_layout.addWidget(self.edit_table_prompt_btn)
+        
+        self.edit_image_prompt_btn = QPushButton("✏️")
+        self.edit_image_prompt_btn.setMaximumWidth(30)
+        self.edit_image_prompt_btn.setToolTip("Редактировать промт для Картинки")
+        self.edit_image_prompt_btn.clicked.connect(lambda: self._edit_type_prompt("image", "Картинка"))
+        type_layout.addWidget(self.edit_image_prompt_btn)
+        
+        block_layout.addLayout(type_layout)
+        
+        # Категория
+        cat_layout = QHBoxLayout()
+        cat_layout.addWidget(QLabel("Категория:"))
+        self.category_edit = QLineEdit()
+        self.category_edit.setPlaceholderText("Введите категорию...")
+        self.category_edit.editingFinished.connect(self._on_category_changed)
+        cat_layout.addWidget(self.category_edit)
+        
+        self.add_category_btn = QPushButton("➕")
+        self.add_category_btn.setMaximumWidth(30)
+        self.add_category_btn.setToolTip("Добавить новую категорию")
+        self.add_category_btn.clicked.connect(lambda: self.category_manager.add_category())
+        cat_layout.addWidget(self.add_category_btn)
+        block_layout.addLayout(cat_layout)
+        
+        # Список категорий
+        categories_header = QHBoxLayout()
+        categories_header.addWidget(QLabel("Категории:"))
+        self.edit_category_prompt_btn = QPushButton("✏️ Промт")
+        self.edit_category_prompt_btn.setMaximumWidth(80)
+        self.edit_category_prompt_btn.setToolTip("Редактировать промт выбранной категории")
+        self.edit_category_prompt_btn.clicked.connect(self._edit_selected_category_prompt)
+        categories_header.addWidget(self.edit_category_prompt_btn)
+        block_layout.addLayout(categories_header)
+        
+        self.categories_list = QListWidget()
+        self.categories_list.setMaximumHeight(80)
+        self.categories_list.itemClicked.connect(
+            lambda item: self.category_manager.on_category_clicked(item))
+        block_layout.addWidget(self.categories_list)
+        
+        return block_group
+    
+    def _create_actions_group(self) -> QGroupBox:
+        """Создать группу действий"""
+        actions_group = QGroupBox("Действия")
+        actions_layout = QVBoxLayout(actions_group)
+        
+        self.remove_stamps_btn = QPushButton("🗑️ Удалить штампы")
+        self.remove_stamps_btn.clicked.connect(self._remove_stamps)
+        actions_layout.addWidget(self.remove_stamps_btn)
+        
+        actions_layout.addWidget(QLabel(""))
+        
+        self.marker_all_btn = QPushButton("Marker (все стр.)")
+        self.marker_all_btn.clicked.connect(self._marker_segment_all_pages)
+        actions_layout.addWidget(self.marker_all_btn)
+        
+        self.marker_segment_btn = QPushButton("Marker разметка")
+        self.marker_segment_btn.clicked.connect(self._marker_segment_pdf)
+        actions_layout.addWidget(self.marker_segment_btn)
+        
+        actions_layout.addWidget(QLabel(""))
+        
+        self.run_ocr_btn = QPushButton("Запустить OCR")
+        self.run_ocr_btn.clicked.connect(self._run_ocr_all)
+        actions_layout.addWidget(self.run_ocr_btn)
+        
+        return actions_group
+
