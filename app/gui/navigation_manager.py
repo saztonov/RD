@@ -20,7 +20,7 @@ class NavigationManager:
     def prev_page(self):
         """Предыдущая страница"""
         if self.parent.current_page > 0:
-            self._save_current_zoom()
+            self.save_current_zoom()
             self.parent.current_page -= 1
             self.parent._render_current_page()
             self.parent._update_ui()
@@ -28,7 +28,7 @@ class NavigationManager:
     def next_page(self):
         """Следующая страница"""
         if self.parent.pdf_document and self.parent.current_page < self.parent.pdf_document.page_count - 1:
-            self._save_current_zoom()
+            self.save_current_zoom()
             self.parent.current_page += 1
             self.parent._render_current_page()
             self.parent._update_ui()
@@ -36,17 +36,47 @@ class NavigationManager:
     def go_to_page(self, page_num: int):
         """Перейти на указанную страницу"""
         if self.parent.pdf_document and 0 <= page_num < self.parent.pdf_document.page_count:
-            self._save_current_zoom()
+            self.save_current_zoom()
             self.parent.current_page = page_num
             self.parent._render_current_page()
             self.parent._update_ui()
     
-    def _save_current_zoom(self):
+    def save_current_zoom(self):
         """Сохранить зум текущей страницы"""
         self.parent.page_zoom_states[self.parent.current_page] = (
             self.parent.page_viewer.transform(),
             self.parent.page_viewer.zoom_factor
         )
+    
+    def restore_zoom(self, page_num: int = None):
+        """Восстановить zoom для страницы"""
+        if page_num is None:
+            page_num = self.parent.current_page
+        
+        if page_num in self.parent.page_zoom_states:
+            saved_transform, saved_zoom = self.parent.page_zoom_states[page_num]
+            self.parent.page_viewer.setTransform(saved_transform)
+            self.parent.page_viewer.zoom_factor = saved_zoom
+        elif self.parent.page_zoom_states:
+            last_page = max(self.parent.page_zoom_states.keys())
+            saved_transform, saved_zoom = self.parent.page_zoom_states[last_page]
+            self.parent.page_viewer.setTransform(saved_transform)
+            self.parent.page_viewer.zoom_factor = saved_zoom
+        else:
+            self.parent.page_viewer.resetTransform()
+            self.parent.page_viewer.zoom_factor = 1.0
+    
+    def load_page_image(self, page_num: int, reset_zoom: bool = False):
+        """Загрузить изображение страницы"""
+        if page_num not in self.parent.page_images:
+            img = self.parent.pdf_document.render_page(page_num)
+            if img:
+                self.parent.page_images[page_num] = img
+        
+        if page_num in self.parent.page_images:
+            self.parent.page_viewer.set_page_image(
+                self.parent.page_images[page_num], page_num, reset_zoom=reset_zoom
+            )
     
     def zoom_in(self):
         """Увеличить масштаб"""

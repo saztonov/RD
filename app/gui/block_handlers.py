@@ -177,31 +177,11 @@ class BlockHandlersMixin:
         block_idx = data["idx"]
         
         if self.current_page != page_num:
-            self.page_zoom_states[self.current_page] = (
-                self.page_viewer.transform(),
-                self.page_viewer.zoom_factor
-            )
+            self.navigation_manager.save_current_zoom()
         
         self.current_page = page_num
-        
-        if self.current_page in self.page_images:
-            self.page_viewer.set_page_image(self.page_images[self.current_page],
-                                            self.current_page, reset_zoom=False)
-        else:
-            img = self.pdf_document.render_page(self.current_page)
-            if img:
-                self.page_images[self.current_page] = img
-                self.page_viewer.set_page_image(img, self.current_page, reset_zoom=False)
-        
-        if self.current_page in self.page_zoom_states:
-            saved_transform, saved_zoom = self.page_zoom_states[self.current_page]
-            self.page_viewer.setTransform(saved_transform)
-            self.page_viewer.zoom_factor = saved_zoom
-        elif self.page_zoom_states:
-            last_page = max(self.page_zoom_states.keys())
-            saved_transform, saved_zoom = self.page_zoom_states[last_page]
-            self.page_viewer.setTransform(saved_transform)
-            self.page_viewer.zoom_factor = saved_zoom
+        self.navigation_manager.load_page_image(self.current_page)
+        self.navigation_manager.restore_zoom()
         
         current_page_data = self._get_or_create_page(self.current_page)
         self.page_viewer.set_blocks(current_page_data.blocks if current_page_data else [])
@@ -229,15 +209,11 @@ class BlockHandlersMixin:
     
     def _edit_type_prompt(self, type_name: str, display_name: str):
         """Редактировать промт для типа блока"""
-        default_prompts = {
-            "text": "Распознай текст на изображении. Сохрани форматирование и структуру.",
-            "table": "Распознай таблицу на изображении. Преобразуй в markdown формат.",
-            "image": "Опиши содержимое изображения. Укажи все важные детали."
-        }
+        from app.gui.prompt_manager import PromptManager
         self.prompt_manager.edit_prompt(
             type_name,
             f"Промт для типа: {display_name}",
-            default_prompts.get(type_name, "")
+            PromptManager.DEFAULT_PROMPTS.get(type_name, "")
         )
     
     def _edit_selected_category_prompt(self):
@@ -296,17 +272,7 @@ class BlockHandlersMixin:
                             block_idx = data["idx"]
                             
                             self.current_page = page_num
-                            
-                            if self.current_page in self.page_images:
-                                self.page_viewer.set_page_image(
-                                    self.page_images[self.current_page],
-                                    self.current_page, reset_zoom=False)
-                            else:
-                                img = self.pdf_document.render_page(self.current_page)
-                                if img:
-                                    self.page_images[self.current_page] = img
-                                    self.page_viewer.set_page_image(
-                                        img, self.current_page, reset_zoom=False)
+                            self.navigation_manager.load_page_image(self.current_page)
                             
                             current_page_data = self._get_or_create_page(self.current_page)
                             self.page_viewer.set_blocks(

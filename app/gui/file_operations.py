@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 class FileOperationsMixin:
     """Миксин для операций с файлами"""
     
+    def _create_empty_annotation(self, pdf_path: str) -> Document:
+        """Создать пустой документ аннотации со страницами"""
+        doc = Document(pdf_path=pdf_path)
+        for page_num in range(self.pdf_document.page_count):
+            dims = self.pdf_document.get_page_dimensions(page_num)
+            if dims:
+                page = Page(page_number=page_num, width=dims[0], height=dims[1])
+                doc.pages.append(page)
+        return doc
+    
     def _open_pdf(self):
         """Открыть PDF файл"""
         active_project = self.project_manager.get_active_project()
@@ -71,12 +81,7 @@ class FileOperationsMixin:
         elif project_file.annotation_path and Path(project_file.annotation_path).exists():
             self.annotation_document = AnnotationIO.load_annotation(project_file.annotation_path)
         else:
-            self.annotation_document = Document(pdf_path=project_file.pdf_path)
-            for page_num in range(self.pdf_document.page_count):
-                dims = self.pdf_document.get_page_dimensions(page_num)
-                if dims:
-                    page = Page(page_number=page_num, width=dims[0], height=dims[1])
-                    self.annotation_document.pages.append(page)
+            self.annotation_document = self._create_empty_annotation(project_file.pdf_path)
         
         self.current_page = 0
         self._render_current_page()
@@ -97,12 +102,7 @@ class FileOperationsMixin:
             return
         
         if not keep_annotation:
-            self.annotation_document = Document(pdf_path=file_path)
-            for page_num in range(self.pdf_document.page_count):
-                dims = self.pdf_document.get_page_dimensions(page_num)
-                if dims:
-                    page = Page(page_number=page_num, width=dims[0], height=dims[1])
-                    self.annotation_document.pages.append(page)
+            self.annotation_document = self._create_empty_annotation(file_path)
         
         self.current_page = 0
         self._render_current_page()

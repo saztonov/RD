@@ -78,27 +78,10 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         if not self.pdf_document:
             return
         
-        if self.current_page not in self.page_images:
-            img = self.pdf_document.render_page(self.current_page)
-            if img:
-                self.page_images[self.current_page] = img
+        self.navigation_manager.load_page_image(self.current_page)
         
         if self.current_page in self.page_images:
-            self.page_viewer.set_page_image(self.page_images[self.current_page], 
-                                            self.current_page, reset_zoom=False)
-            
-            if self.current_page in self.page_zoom_states:
-                saved_transform, saved_zoom = self.page_zoom_states[self.current_page]
-                self.page_viewer.setTransform(saved_transform)
-                self.page_viewer.zoom_factor = saved_zoom
-            elif self.page_zoom_states:
-                last_page = max(self.page_zoom_states.keys())
-                saved_transform, saved_zoom = self.page_zoom_states[last_page]
-                self.page_viewer.setTransform(saved_transform)
-                self.page_viewer.zoom_factor = saved_zoom
-            else:
-                self.page_viewer.resetTransform()
-                self.page_viewer.zoom_factor = 1.0
+            self.navigation_manager.restore_zoom()
             
             current_page_data = self._get_or_create_page(self.current_page)
             self.page_viewer.set_blocks(current_page_data.blocks if current_page_data else [])

@@ -17,6 +17,12 @@ class PromptManager:
     
     PROMPTS_PREFIX = "prompts"
     
+    DEFAULT_PROMPTS = {
+        "text": "Распознай текст на изображении. Сохрани форматирование и структуру.",
+        "table": "Распознай таблицу на изображении. Преобразуй в markdown формат с колонками и строками.",
+        "image": "Опиши содержимое изображения. Укажи все важные детали, объекты и текст если есть."
+    }
+    
     def __init__(self, parent):
         self.parent = parent
         self.r2_storage: Optional[R2Storage] = None
@@ -116,14 +122,7 @@ class PromptManager:
         if not self.r2_storage:
             return
         
-        # Дефолтные промты для типов
-        defaults = {
-            "text": "Распознай текст на изображении. Сохрани форматирование и структуру.",
-            "table": "Распознай таблицу на изображении. Преобразуй в markdown формат с колонками и строками.",
-            "image": "Опиши содержимое изображения. Укажи все важные детали, объекты и текст если есть."
-        }
-        
-        for name, content in defaults.items():
+        for name, content in self.DEFAULT_PROMPTS.items():
             existing = self.load_prompt(name)
             if existing is None:
                 self.save_prompt(name, content)
