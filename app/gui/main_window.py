@@ -135,6 +135,9 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
     def _on_project_switched(self, project_id: str):
         """Обработка переключения проекта"""
         self._save_current_annotation_to_cache()
+        # Сохранить текущий зум перед переключением
+        if hasattr(self, 'navigation_manager') and self.navigation_manager:
+            self.navigation_manager.save_current_zoom()
         
         project = self.project_manager.get_project(project_id)
         if not project:
@@ -151,11 +154,50 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self._current_project_id = project_id
             self._current_file_index = -1
             self.page_images.clear()
-            self.page_zoom_states.clear()
             self.page_viewer.set_page_image(None, 0)
             self._update_ui()
     
     def _on_file_switched(self, project_id: str, file_index: int):
         """Обработка переключения файла в проекте"""
         self._save_current_annotation_to_cache()
+        # Сохранить текущий зум перед переключением
+        if hasattr(self, 'navigation_manager') and self.navigation_manager:
+            self.navigation_manager.save_current_zoom()
         self._load_pdf_from_project(project_id, file_index)
+    
+    def _on_file_removed(self, project_id: str, file_index: int):
+        """Обработка удаления файла из проекта"""
+        # Очищаем кеш для удалённого файла
+        cache_key = (project_id, file_index)
+        if cache_key in self.annotations_cache:
+            del self.annotations_cache[cache_key]
+        
+        # Очищаем зумы для удалённого файла
+        zoom_keys_to_remove = [k for k in self.page_zoom_states.keys() 
+                               if k[0] == project_id and k[1] == file_index]
+        for key in zoom_keys_to_remove:
+            del self.page_zoom_states[key]
+        
+        # Если удалён текущий активный файл
+        if self._current_project_id == project_id and self._current_file_index == file_index:
+            # Загружаем следующий доступный файл или очищаем интерфейс
+            project = self.project_manager.get_project(project_id)
+            if project and project.files:
+                active_file = project.get_active_file()
+                if active_file:
+                    self._load_pdf_from_project(project_id, project.active_file_index)
+                else:
+                    self._clear_interface()
+            else:
+                self._clear_interface()
+    
+    def _clear_interface(self):
+        """Очистить интерфейс при отсутствии файлов"""
+        if self.pdf_document:
+            self.pdf_document.close()
+        self.pdf_document = None
+        self.annotation_document = None
+        self._current_file_index = -1
+        self.page_images.clear()
+        self.page_viewer.set_page_image(None, 0)
+        self._update_ui()

@@ -44,6 +44,7 @@ class PanelsSetupMixin:
         self.project_sidebar = ProjectSidebar(self.project_manager)
         self.project_sidebar.project_switched.connect(self._on_project_switched)
         self.project_sidebar.file_switched.connect(self._on_file_switched)
+        self.project_manager.file_removed.connect(self._on_file_removed)
         left_sidebar_layout.addWidget(self.project_sidebar, stretch=2)
         
         self.task_sidebar = TaskSidebar(self.task_manager)

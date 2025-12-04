@@ -23,6 +23,7 @@ class ProjectItemWidget(QWidget):
         self.project = project
         self.is_expanded = is_expanded
         self._file_buttons = []
+        self._file_widgets = []
         self._setup_ui()
     
     def _setup_ui(self):
@@ -107,6 +108,7 @@ class ProjectItemWidget(QWidget):
         
         # Очищаем старые кнопки - удаляем виджеты немедленно
         self._file_buttons.clear()
+        self._file_widgets.clear()
         while layout.count():
             item = layout.takeAt(0)
             widget = item.widget()
@@ -117,6 +119,14 @@ class ProjectItemWidget(QWidget):
         if self.project.files:
             for i, file in enumerate(self.project.files):
                 file_widget = QWidget()
+                file_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+                
+                # Создаём фиксированную ссылку на виджет для контекстного меню
+                def make_context_handler(idx, widget):
+                    return lambda pos: self._show_file_context_menu(pos, idx, widget)
+                
+                file_widget.customContextMenuRequested.connect(make_context_handler(i, file_widget))
+                
                 file_row = QHBoxLayout(file_widget)
                 file_row.setContentsMargins(28, 0, 4, 0)
                 file_row.setSpacing(4)
@@ -128,13 +138,16 @@ class ProjectItemWidget(QWidget):
                 is_active = (i == self.project.active_file_index)
                 self._apply_file_button_style(file_btn, is_active)
                 
-                # Важно: захватываем project_id в замыкании
-                pid = self.project.id
-                file_btn.clicked.connect(lambda checked, idx=i, p=pid: self.file_selected.emit(p, idx))
+                # Создаём фиксированную функцию для обработки клика
+                def make_click_handler(idx, proj_id):
+                    return lambda: self.file_selected.emit(proj_id, idx)
+                
+                file_btn.clicked.connect(make_click_handler(i, self.project.id))
                 
                 file_row.addWidget(file_btn)
                 layout.addWidget(file_widget)
                 self._file_buttons.append((file_btn, i))
+                self._file_widgets.append((file_widget, i))
         else:
             empty_label = QLabel("Нет файлов")
             empty_label.setStyleSheet("color: #666; font-style: italic; margin-left: 34px; margin-bottom: 4px;")
@@ -189,7 +202,6 @@ class ProjectItemWidget(QWidget):
     def update_project(self, project: Project):
         """Обновить данные проекта без пересоздания UI"""
         old_files_count = len(self._file_buttons)  # Используем реальное кол-во кнопок
-        old_active_index = self.project.active_file_index
         
         self.project = project
         
@@ -210,11 +222,73 @@ class ProjectItemWidget(QWidget):
                 self.files_container.setVisible(True)
                 self.arrow_label.setText("▼")
             self.size_changed.emit()
-        elif old_active_index != project.active_file_index:
-            # Только обновляем стили активности
-            for btn, idx in self._file_buttons:
-                is_active = (idx == project.active_file_index)
-                self._apply_file_button_style(btn, is_active)
+        else:
+            # Всегда обновляем стили активности если количество не изменилось
+            self._update_file_buttons_styles()
+    
+    def _update_file_buttons_styles(self):
+        """Обновить стили всех кнопок файлов"""
+        for btn, idx in self._file_buttons:
+            is_active = (idx == self.project.active_file_index)
+            self._apply_file_button_style(btn, is_active)
+    
+    def _show_file_context_menu(self, pos, file_index: int, widget: QWidget):
+        """Показать контекстное меню для файла"""
+        menu = QMenu(self)
+        
+        act_move_up = menu.addAction("⬆️ Переместить вверх")
+        act_move_up.setEnabled(file_index > 0)
+        
+        act_move_down = menu.addAction("⬇️ Переместить вниз")
+        act_move_down.setEnabled(file_index < len(self.project.files) - 1)
+        
+        menu.addSeparator()
+        act_remove = menu.addAction("🗑️ Удалить файл")
+        
+        result = menu.exec_(widget.mapToGlobal(pos))
+        
+        if result == act_move_up:
+            self._move_file_up(file_index)
+        elif result == act_move_down:
+            self._move_file_down(file_index)
+        elif result == act_remove:
+            reply = QMessageBox.question(
+                self, "Подтверждение",
+                f"Удалить файл '{self.project.files[file_index].pdf_name}'?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                # Эмитим сигнал для удаления файла
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: self._emit_file_removed(self.project.id, file_index))
+    
+    def _emit_file_removed(self, project_id: str, file_index: int):
+        """Эмитировать сигнал об удалении файла (через родительский виджет)"""
+        # Находим родительский ProjectSidebar и вызываем удаление
+        parent = self.parent()
+        while parent and not isinstance(parent, ProjectSidebar):
+            parent = parent.parent()
+        
+        if parent:
+            parent._remove_file_from_project(project_id, file_index)
+    
+    def _move_file_up(self, file_index: int):
+        """Переместить файл вверх"""
+        parent = self.parent()
+        while parent and not isinstance(parent, ProjectSidebar):
+            parent = parent.parent()
+        
+        if parent:
+            parent._move_file_up_in_project(self.project.id, file_index)
+    
+    def _move_file_down(self, file_index: int):
+        """Переместить файл вниз"""
+        parent = self.parent()
+        while parent and not isinstance(parent, ProjectSidebar):
+            parent = parent.parent()
+        
+        if parent:
+            parent._move_file_down_in_project(self.project.id, file_index)
     
     def sizeHint(self) -> QSize:
         """Правильный расчет размера"""
@@ -347,18 +421,20 @@ class ProjectSidebar(QWidget):
             QMessageBox.warning(self, "Внимание", "Сначала создайте или выберите задание")
             return
         
-        path, _ = QFileDialog.getOpenFileName(self, "Открыть PDF", "", "PDF Files (*.pdf)")
-        if not path:
+        paths, _ = QFileDialog.getOpenFileNames(self, "Открыть PDF", "", "PDF Files (*.pdf)")
+        if not paths:
             return
         
-        # Добавляем файл
-        self.project_manager.add_file_to_project(active.id, path)
+        # Добавляем все выбранные файлы
+        for path in paths:
+            self.project_manager.add_file_to_project(active.id, path)
         
-        # Получаем обновленный проект для правильного индекса
+        # Получаем обновленный проект
         updated_project = self.project_manager.get_project(active.id)
         if not updated_project:
             return
         
+        # Активируем последний добавленный файл
         idx = len(updated_project.files) - 1
         self.project_manager.set_active_file_in_project(active.id, idx)
         
@@ -453,6 +529,18 @@ class ProjectSidebar(QWidget):
         self.project_manager.set_active_project(pid)
         self.project_manager.set_active_file_in_project(pid, idx)
         self.file_switched.emit(pid, idx)
+    
+    def _remove_file_from_project(self, pid: str, file_index: int):
+        """Удалить файл из проекта"""
+        self.project_manager.remove_file_from_project(pid, file_index)
+    
+    def _move_file_up_in_project(self, pid: str, file_index: int):
+        """Переместить файл вверх в проекте"""
+        self.project_manager.move_file_up_in_project(pid, file_index)
+    
+    def _move_file_down_in_project(self, pid: str, file_index: int):
+        """Переместить файл вниз в проекте"""
+        self.project_manager.move_file_down_in_project(pid, file_index)
     
     def _show_context_menu(self, pos):
         item = self.projects_list.itemAt(pos)

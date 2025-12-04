@@ -63,6 +63,28 @@ class Project:
         """Установить активный файл"""
         if 0 <= index < len(self.files):
             self.active_file_index = index
+    
+    def move_file_up(self, index: int) -> bool:
+        """Переместить файл вверх"""
+        if index > 0 and index < len(self.files):
+            self.files[index], self.files[index - 1] = self.files[index - 1], self.files[index]
+            if self.active_file_index == index:
+                self.active_file_index = index - 1
+            elif self.active_file_index == index - 1:
+                self.active_file_index = index
+            return True
+        return False
+    
+    def move_file_down(self, index: int) -> bool:
+        """Переместить файл вниз"""
+        if index >= 0 and index < len(self.files) - 1:
+            self.files[index], self.files[index + 1] = self.files[index + 1], self.files[index]
+            if self.active_file_index == index:
+                self.active_file_index = index + 1
+            elif self.active_file_index == index + 1:
+                self.active_file_index = index
+            return True
+        return False
 
 
 class ProjectManager(QObject):
@@ -147,6 +169,18 @@ class ProjectManager(QObject):
         project = self.get_project(project_id)
         if project:
             project.set_active_file(file_index)
+            self.project_updated.emit(project_id)
+    
+    def move_file_up_in_project(self, project_id: str, file_index: int):
+        """Переместить файл вверх в проекте"""
+        project = self.get_project(project_id)
+        if project and project.move_file_up(file_index):
+            self.project_updated.emit(project_id)
+    
+    def move_file_down_in_project(self, project_id: str, file_index: int):
+        """Переместить файл вниз в проекте"""
+        project = self.get_project(project_id)
+        if project and project.move_file_down(file_index):
             self.project_updated.emit(project_id)
     
     def get_all_projects(self) -> List[Project]:

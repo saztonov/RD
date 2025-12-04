@@ -44,11 +44,15 @@ class FileOperationsMixin:
             else:
                 return
         
-        file_path, _ = QFileDialog.getOpenFileName(self, "Открыть PDF", "", "PDF Files (*.pdf)")
-        if not file_path:
+        file_paths, _ = QFileDialog.getOpenFileNames(self, "Открыть PDF", "", "PDF Files (*.pdf)")
+        if not file_paths:
             return
         
-        self.project_manager.add_file_to_project(active_project.id, file_path)
+        # Добавляем все выбранные файлы
+        for file_path in file_paths:
+            self.project_manager.add_file_to_project(active_project.id, file_path)
+        
+        # Загружаем последний добавленный файл
         file_index = len(active_project.files) - 1
         self.project_manager.set_active_file_in_project(active_project.id, file_index)
         self._load_pdf_from_project(active_project.id, file_index)
@@ -65,7 +69,6 @@ class FileOperationsMixin:
             self.pdf_document.close()
         
         self.page_images.clear()
-        self.page_zoom_states.clear()
         
         self.pdf_document = PDFDocument(project_file.pdf_path)
         if not self.pdf_document.open():
@@ -94,7 +97,6 @@ class FileOperationsMixin:
             self.pdf_document.close()
         
         self.page_images.clear()
-        self.page_zoom_states.clear()
         
         self.pdf_document = PDFDocument(file_path)
         if not self.pdf_document.open():
