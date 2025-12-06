@@ -11,10 +11,34 @@ from PIL import Image
 
 
 class BlockType(Enum):
-    """Типы блоков разметки"""
+    """Типы блоков разметки (все типы Marker)"""
+    # Основные структурные
     TEXT = "text"
+    SECTION_HEADER = "section_header"
+    PAGE_HEADER = "page_header"
+    PAGE_FOOTER = "page_footer"
+    TABLE_OF_CONTENTS = "table_of_contents"
+    FOOTNOTE = "footnote"
+    
+    # Специализированный контент
     TABLE = "table"
-    IMAGE = "image"
+    FIGURE = "figure"
+    IMAGE = "image"  # Picture
+    CODE = "code"
+    EQUATION = "equation"
+    TEXT_INLINE_MATH = "text_inline_math"
+    FORM = "form"
+    HANDWRITING = "handwriting"
+    
+    # Группирующие элементы
+    LIST_GROUP = "list_group"
+    LIST_ITEM = "list_item"
+    TABLE_GROUP = "table_group"
+    FIGURE_GROUP = "figure_group"
+    PICTURE_GROUP = "picture_group"
+    
+    # Мелкие элементы
+    CAPTION = "caption"
 
 
 class BlockSource(Enum):
@@ -184,13 +208,19 @@ class Block:
     @classmethod
     def from_dict(cls, data: dict) -> 'Block':
         """Десериализация из словаря"""
+        # Безопасное получение block_type с fallback на TEXT
+        try:
+            block_type = BlockType(data["block_type"])
+        except ValueError:
+            block_type = BlockType.TEXT  # Fallback для неизвестных типов
+        
         return cls(
             id=data["id"],
             page_index=data["page_index"],
             coords_px=tuple(data["coords_px"]),
             coords_norm=tuple(data["coords_norm"]),
             category=data.get("category", ""),
-            block_type=BlockType(data["block_type"]),
+            block_type=block_type,
             source=BlockSource(data["source"]),
             image_file=data.get("image_file"),
             ocr_text=data.get("ocr_text")

@@ -89,9 +89,17 @@ class NavigationManager:
                 self.parent.page_images[page_num] = img
         
         if page_num in self.parent.page_images:
-            self.parent.page_viewer.set_page_image(
-                self.parent.page_images[page_num], page_num, reset_zoom=reset_zoom
-            )
+            img = self.parent.page_images[page_num]
+            
+            # Синхронизируем размеры Page с реальным изображением
+            if self.parent.annotation_document and page_num < len(self.parent.annotation_document.pages):
+                page = self.parent.annotation_document.pages[page_num]
+                if page.width != img.width or page.height != img.height:
+                    logger.debug(f"Обновление размеров Page {page_num}: {page.width}x{page.height} -> {img.width}x{img.height}")
+                    page.width = img.width
+                    page.height = img.height
+            
+            self.parent.page_viewer.set_page_image(img, page_num, reset_zoom=reset_zoom)
     
     def zoom_in(self):
         """Увеличить масштаб"""

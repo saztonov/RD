@@ -304,11 +304,11 @@ class R2Storage:
                 Bucket=self.bucket_name,
                 Key=remote_key
             )
-            logger.info(f"Объект удален из R2: {remote_key}")
+            logger.info(f"✅ Объект удален из R2: {remote_key}")
             return True
             
         except ClientError as e:
-            logger.error(f"Ошибка удаления объекта: {e}")
+            logger.error(f"❌ Ошибка удаления объекта: {e}")
             return False
     
     def generate_presigned_url(
@@ -397,6 +397,30 @@ class R2Storage:
             else:
                 logger.error(f"❌ Ошибка загрузки текста из R2: {e}")
             return None
+    
+    def list_by_prefix(self, prefix: str) -> list[str]:
+        """
+        Получить список ключей с определенным префиксом
+        
+        Args:
+            prefix: Префикс для поиска
+        
+        Returns:
+            Список ключей
+        """
+        try:
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket_name,
+                Prefix=prefix
+            )
+            
+            if 'Contents' not in response:
+                return []
+            
+            return [obj['Key'] for obj in response['Contents']]
+        except ClientError as e:
+            logger.error(f"❌ Ошибка получения списка из R2: {e}")
+            return []
 
 
 def upload_ocr_to_r2(output_dir: str, project_name: Optional[str] = None) -> bool:

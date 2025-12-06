@@ -1,5 +1,5 @@
 """
-Сегментация PDF через ngrok API endpoint
+Сегментация PDF через PaddleOCR PP-StructureV3 API
 """
 
 from pathlib import Path
@@ -84,13 +84,21 @@ def segment_with_api(pdf_path: str, pages: List[Page],
     temp_pdf_path = None
     target_pdf_path = pdf_path
     
+    # Открываем оригинальный PDF для получения размеров страниц
+    original_doc = fitz.open(pdf_path)
+    pdf_page_dimensions = {}  # {real_page_idx: (pdf_width, pdf_height)}
+    
     try:
+        # Сохраняем размеры страниц в PDF points
+        for page_idx in range(len(original_doc)):
+            page = original_doc[page_idx]
+            pdf_page_dimensions[page_idx] = (page.rect.width, page.rect.height)
+        
         # Если указан диапазон страниц, создаем временный PDF
         if page_range is not None:
             try:
-                doc = fitz.open(pdf_path)
                 new_doc = fitz.open()
-                new_doc.insert_pdf(doc, from_page=page_range[0], to_page=page_range[-1])
+                new_doc.insert_pdf(original_doc, from_page=page_range[0], to_page=page_range[-1])
                 
                 # Создаем временный файл
                 fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf")
@@ -98,7 +106,6 @@ def segment_with_api(pdf_path: str, pages: List[Page],
                 
                 new_doc.save(temp_pdf_path, deflate=False, garbage=0, clean=False)
                 new_doc.close()
-                doc.close()
                 
                 target_pdf_path = temp_pdf_path
                 logger.info(f"Создан временный PDF для {len(page_range)} страниц: {temp_pdf_path}")
@@ -107,6 +114,11 @@ def segment_with_api(pdf_path: str, pages: List[Page],
                 if temp_pdf_path and os.path.exists(temp_pdf_path):
                     os.unlink(temp_pdf_path)
                 raise
+            finally:
+                original_doc.close()
+        # Если не используем диапазон, закрываем документ здесь
+        else:
+            original_doc.close()
 
         logger.info(f"Отправка PDF на API для сегментации: {target_pdf_path}")
         
@@ -117,26 +129,13 @@ def segment_with_api(pdf_path: str, pages: List[Page],
         # Отправляем на API
         result = segment_pdf_sync(pdf_bytes)
         
-        # Детальное логирование ответа
-        if isinstance(result, dict):
-            logger.info(f"API ответ: ключи={list(result.keys())}")
-            # Проверяем разные форматы ответа
-            if 'pages' in result:
-                api_pages = result['pages']
-            elif 'children' in result:
-                # Формат Marker с корневым children
-                logger.info("Используем 'children' как список страниц")
-                api_pages = result['children']
-            else:
-                api_pages = []
-        elif isinstance(result, list):
-            logger.info(f"API ответ: список из {len(result)} элементов")
-            api_pages = result
-        else:
-            logger.warning(f"Неожиданный формат ответа API: {type(result)}")
-            api_pages = []
-
-        logger.info(f"API обработал PDF, страниц: {len(api_pages)}")
+        # Обработка ответа от PP-StructureV3
+        if not isinstance(result, dict) or 'pages' not in result:
+            logger.error(f"Неожиданный формат ответа API: {type(result)}, keys={list(result.keys()) if isinstance(result, dict) else 'N/A'}")
+            raise ValueError("API вернул некорректный формат данных")
+        
+        api_pages = result['pages']
+        logger.info(f"API обработал PDF, страниц: {len(api_pages)}, page_count: {result.get('page_count', 'N/A')}")
         
         if len(api_pages) == 0:
             logger.warning(f"API вернул пустой список страниц. Полный ответ: {result}")
@@ -159,13 +158,24 @@ def segment_with_api(pdf_path: str, pages: List[Page],
             
             page = pages[real_page_idx]
             
-            # Размеры страницы
-            page_width = page.width
-            page_height = page.height
+            # Размеры страницы: приоритет у реального изображения из page_images
+            if page_images and real_page_idx in page_images:
+                real_img = page_images[real_page_idx]
+                page_width = real_img.width
+                page_height = real_img.height
+                logger.debug(f"Используем размеры из page_images: {page_width}x{page_height}")
+            else:
+                page_width = page.width  # Fallback к размерам из Page
+                page_height = page.height
+                logger.debug(f"Используем размеры из Page: {page_width}x{page_height}")
+            
+            # Размеры страницы в PDF points
+            pdf_width, pdf_height = pdf_page_dimensions.get(real_page_idx, (page_width, page_height))
             
             # Извлекаем блоки из API ответа
             new_blocks = _extract_blocks_from_api_page(
-                page_data, real_page_idx, page_width, page_height, category
+                page_data, real_page_idx, page_width, page_height, 
+                pdf_width, pdf_height, category
             )
             
             # Фильтруем блоки: не добавляем те, которые пересекаются с существующими
@@ -196,15 +206,18 @@ def segment_with_api(pdf_path: str, pages: List[Page],
 
 def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
                                    page_width: float, page_height: float,
+                                   pdf_width: float, pdf_height: float,
                                    category: str = "") -> List[Block]:
     """
-    Извлечение блоков из ответа API с рекурсивной обработкой вложенных элементов
+    Извлечение блоков из ответа PP-StructureV3 API
     
     Args:
-        page_data: данные страницы от API
+        page_data: данные страницы от API (PP-StructureV3 формат)
         page_idx: индекс страницы
-        page_width: ширина страницы в пикселях
-        page_height: высота страницы в пикселях
+        page_width: ширина страницы в пикселях (рендеренное изображение)
+        page_height: высота страницы в пикселях (рендеренное изображение)
+        pdf_width: ширина страницы в PDF points (из оригинального документа)
+        pdf_height: высота страницы в PDF points (из оригинального документа)
         category: категория для блоков
     
     Returns:
@@ -215,49 +228,62 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
     try:
         logger.debug(f"Page {page_idx} data keys: {list(page_data.keys())}")
         
-        # API возвращает Marker формат с 'children'
-        api_blocks = page_data.get('children', [])
+        # PP-StructureV3 возвращает формат с 'blocks'
+        api_blocks = page_data.get('blocks', [])
         
         if not api_blocks:
-            logger.warning(f"Страница {page_idx}: нет children")
+            logger.warning(f"Страница {page_idx}: нет blocks")
             return blocks
         
-        # Получаем bbox страницы для масштабирования
-        page_bbox = page_data.get('bbox', [0, 0, page_width, page_height])
-        api_width = page_bbox[2] - page_bbox[0]
-        api_height = page_bbox[3] - page_bbox[1]
+        logger.debug(f"Страница {page_idx}: блоков: {len(api_blocks)}")
         
-        # Масштабирование координат из PDF points в пиксели
-        scale_x = page_width / api_width if api_width > 0 else 1.0
-        scale_y = page_height / api_height if api_height > 0 else 1.0
+        # PP-Structure возвращает bbox в пикселях своего внутреннего изображения
+        # Нужно вычислить размеры изображения PP-Structure и масштабировать к нашим размерам
         
-        logger.debug(f"Страница {page_idx}: блоков верхнего уровня: {len(api_blocks)}, scale: {scale_x:.2f}x{scale_y:.2f}")
+        # Вычисляем максимальные координаты bbox для оценки размеров изображения PP-Structure
+        max_x = 0
+        max_y = 0
+        for block in api_blocks:
+            bbox = block.get('bbox')
+            if bbox and len(bbox) == 4:
+                max_x = max(max_x, bbox[2])
+                max_y = max(max_y, bbox[3])
         
-        # Исключаем только низкоуровневые элементы (Line/Span)
-        EXCLUDED_TYPES = {'Line', 'Span'}
+        # PP-Structure создаёт изображения из PDF с определённым zoom/DPI
+        # Вычисляем размеры изображения PP-Structure из максимальных bbox
+        # Максимальные bbox обычно близки к размерам изображения (блоки почти до краёв)
+        # Добавляем минимальный запас 1% на возможные отступы
+        if max_x > 0 and max_y > 0:
+            ppstructure_width = max_x * 1.01
+            ppstructure_height = max_y * 1.01
+        else:
+            # Fallback: используем наши размеры (без масштабирования)
+            ppstructure_width = page_width
+            ppstructure_height = page_height
+        
+        # Вычисляем коэффициенты масштабирования от PP-Structure к нашим размерам
+        scale_x = page_width / ppstructure_width if ppstructure_width > 0 else 1.0
+        scale_y = page_height / ppstructure_height if ppstructure_height > 0 else 1.0
+        
+        logger.info(f"Страница {page_idx}: PP-Structure ~{int(ppstructure_width)}x{int(ppstructure_height)} "
+                   f"(max_bbox={int(max_x)}x{int(max_y)}), "
+                   f"Our {int(page_width)}x{int(page_height)}, "
+                   f"Scale {scale_x:.3f}x{scale_y:.3f}")
         
         # Счетчики для отладки
-        skipped_by_type = {}
         skipped_no_bbox = 0
         processed_count = 0
-        all_types_found = set()
+        all_labels_found = set()
         
-        # Рекурсивная функция для обработки вложенных блоков
-        def process_block_recursive(api_block: Dict[str, Any], depth: int = 0):
-            nonlocal processed_count, skipped_by_type, skipped_no_bbox, all_types_found
-            
-            block_type_str = api_block.get('block_type', '')
-            if block_type_str:
-                all_types_found.add(block_type_str)
-            
-            # Пропускаем только Line и Span
-            if block_type_str in EXCLUDED_TYPES:
-                skipped_by_type[block_type_str] = skipped_by_type.get(block_type_str, 0) + 1
-                return
+        for api_block in api_blocks:
+            label = api_block.get('label', '')
+            if label:
+                all_labels_found.add(label)
             
             bbox = api_block.get('bbox')
             if bbox and len(bbox) == 4:
-                # Масштабируем координаты
+                # PP-Structure bbox в пикселях их изображения: [x1, y1, x2, y2]
+                # Масштабируем к нашим размерам
                 x1 = bbox[0] * scale_x
                 y1 = bbox[1] * scale_y
                 x2 = bbox[2] * scale_x
@@ -265,8 +291,8 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
                 
                 # Проверяем валидность координат
                 if x2 > x1 and y2 > y1:
-                    # Определяем тип блока
-                    block_type = _map_block_type(block_type_str)
+                    # Определяем тип блока из label
+                    block_type = _map_ppstructure_label(label)
                     
                     # Создаем блок
                     block = Block.create(
@@ -281,28 +307,10 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
                     
                     blocks.append(block)
                     processed_count += 1
-                    logger.debug(f"{'  ' * depth}Добавлен блок: type={block_type_str}, coords=({int(x1)},{int(y1)},{int(x2)},{int(y2)})")
+                    logger.debug(f"Блок: label={label}, PP-bbox={bbox}, scaled=({int(x1)},{int(y1)},{int(x2)},{int(y2)})")
             else:
                 skipped_no_bbox += 1
-                logger.debug(f"{'  ' * depth}Пропущен блок (нет bbox): type={block_type_str}")
-            
-            # Рекурсивно обрабатываем вложенные children
-            children = api_block.get('children', [])
-            if children:
-                logger.debug(f"{'  ' * depth}Обработка {len(children)} вложенных блоков для {block_type_str}")
-                for child in children:
-                    try:
-                        process_block_recursive(child, depth + 1)
-                    except Exception as child_err:
-                        logger.warning(f"Ошибка обработки вложенного блока: {child_err}")
-        
-        # Обрабатываем все блоки верхнего уровня рекурсивно
-        for idx, api_block in enumerate(api_blocks):
-            try:
-                process_block_recursive(api_block)
-            except Exception as block_err:
-                logger.warning(f"Ошибка блока {idx}: {block_err}")
-                continue
+                logger.debug(f"Пропущен блок (нет bbox): label={label}")
     
         # Дедупликация блоков (удаляем полностью идентичные)
         unique_blocks = []
@@ -319,9 +327,7 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
         
         # Логируем статистику
         logger.info(f"Страница {page_idx}: обработано {processed_count} блоков, уникальных {len(unique_blocks)}")
-        logger.info(f"Страница {page_idx}: найденные типы блоков: {sorted(all_types_found)}")
-        if skipped_by_type:
-            logger.info(f"Страница {page_idx}: пропущено по типу: {skipped_by_type}")
+        logger.info(f"Страница {page_idx}: найденные типы блоков: {sorted(all_labels_found)}")
         if skipped_no_bbox > 0:
             logger.info(f"Страница {page_idx}: пропущено без bbox: {skipped_no_bbox}")
         
@@ -332,24 +338,43 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
     return unique_blocks
 
 
-def _map_block_type(type_str: str) -> BlockType:
+def _map_ppstructure_label(label: str) -> BlockType:
     """
-    Преобразование строки типа блока от API в BlockType
+    Преобразование label от PP-StructureV3 в BlockType
     
-    Args:
-        type_str: строка типа ("Text", "Table", "Image", "Figure" и т.д.)
-    
-    Returns:
-        BlockType
+    PP-Structure labels: header, doc_title, text, number, footer, table, image
     """
-    type_lower = type_str.lower()
+    # Точное соответствие типов
+    label_mapping = {
+        'text': BlockType.TEXT,
+        'header': BlockType.PAGE_HEADER,
+        'doc_title': BlockType.SECTION_HEADER,
+        'number': BlockType.PAGE_FOOTER,
+        'footer': BlockType.PAGE_FOOTER,
+        'table': BlockType.TABLE,
+        'image': BlockType.IMAGE,
+        'figure': BlockType.FIGURE,
+    }
     
-    if 'table' in type_lower:
+    label_lower = label.lower().replace('_', '').replace('-', '')
+    
+    # Проверяем точное соответствие
+    for key, value in label_mapping.items():
+        key_normalized = key.replace('_', '').replace('-', '')
+        if label_lower == key_normalized:
+            return value
+    
+    # Fallback для неизвестных типов
+    if 'table' in label_lower:
         return BlockType.TABLE
-    elif 'image' in type_lower or 'figure' in type_lower or 'picture' in type_lower:
+    elif 'image' in label_lower or 'figure' in label_lower:
         return BlockType.IMAGE
-    else:
-        return BlockType.TEXT
+    elif 'header' in label_lower or 'title' in label_lower:
+        return BlockType.SECTION_HEADER
+    elif 'footer' in label_lower or 'number' in label_lower:
+        return BlockType.PAGE_FOOTER
+    
+    return BlockType.TEXT
 
 
 def _is_overlapping_with_existing(new_block: Block, existing_blocks: List[Block], 

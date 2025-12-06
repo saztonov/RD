@@ -244,7 +244,14 @@ class OCRManager:
         self._save_ocr_results(output_dir)
     
     def _get_prompt_for_block(self, block):
-        """Получить промт для блока"""
+        """Получить промт для блока (приоритет: категория -> тип блока)"""
+        # Приоритет 1: Промпт категории
+        if block.category and block.category.strip():
+            category_prompt = self.parent.prompt_manager.load_prompt(f"category_{block.category.strip()}")
+            if category_prompt:
+                return category_prompt
+        
+        # Приоритет 2: Промпт типа блока
         prompt_map = {
             BlockType.IMAGE: ("image", "ocr_image_description.txt"),
             BlockType.TABLE: ("table", "ocr_table.txt"),

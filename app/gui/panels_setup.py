@@ -190,6 +190,8 @@ class PanelsSetupMixin:
         self.categories_list.setMaximumHeight(80)
         self.categories_list.itemClicked.connect(
             lambda item: self.category_manager.on_category_clicked(item))
+        self.categories_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.categories_list.customContextMenuRequested.connect(self._show_category_context_menu)
         block_layout.addWidget(self.categories_list)
         
         return block_group
@@ -220,4 +222,45 @@ class PanelsSetupMixin:
         actions_layout.addWidget(self.run_ocr_btn)
         
         return actions_group
+    
+    def _edit_type_prompt(self, prompt_type: str, display_name: str):
+        """Редактировать промт типа блока"""
+        if hasattr(self, 'prompt_manager'):
+            default_prompt = self.prompt_manager.DEFAULT_PROMPTS.get(prompt_type, "")
+            self.prompt_manager.edit_prompt(
+                prompt_type,
+                f"Редактирование промта: {display_name}",
+                default_prompt
+            )
+    
+    def _edit_selected_category_prompt(self):
+        """Редактировать промт выбранной категории"""
+        selected_items = self.categories_list.selectedItems()
+        if not selected_items:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Внимание", "Выберите категорию из списка")
+            return
+        
+        category_name = selected_items[0].text()
+        if hasattr(self, 'category_manager'):
+            self.category_manager.edit_category_prompt(category_name)
+    
+    def _show_category_context_menu(self, position):
+        """Показать контекстное меню для категории"""
+        from PySide6.QtWidgets import QMenu
+        
+        item = self.categories_list.itemAt(position)
+        if not item:
+            return
+        
+        menu = QMenu()
+        category_name = item.text()
+        
+        edit_prompt_action = menu.addAction("✏️ Редактировать промт")
+        edit_prompt_action.triggered.connect(lambda: self.category_manager.edit_category_prompt(category_name))
+        
+        delete_action = menu.addAction("🗑️ Удалить категорию")
+        delete_action.triggered.connect(lambda: self.category_manager.delete_category(category_name))
+        
+        menu.exec(self.categories_list.mapToGlobal(position))
 

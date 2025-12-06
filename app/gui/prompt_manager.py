@@ -17,6 +17,13 @@ class PromptManager:
     
     PROMPTS_PREFIX = "prompts"
     
+    # Стандартные категории с промптами
+    STANDARD_CATEGORIES = {
+        "Текст": "text",
+        "Таблица": "table",
+        "Картинка": "image"
+    }
+    
     DEFAULT_PROMPTS = {
         "text": "Распознай текст на изображении. Сохрани форматирование и структуру.",
         "table": "Распознай таблицу на изображении. Преобразуй в markdown формат с колонками и строками.",
@@ -26,7 +33,7 @@ class PromptManager:
     def __init__(self, parent):
         self.parent = parent
         self.r2_storage: Optional[R2Storage] = None
-        # self._init_r2()  # Отключено тестирование R2 при запуске
+        self._init_r2()
     
     def _init_r2(self):
         """Инициализация R2 Storage"""
@@ -117,14 +124,150 @@ class PromptManager:
         
         return False
     
-    def ensure_default_prompts(self):
-        """Убедиться что базовые промты существуют"""
+    def _load_local_prompt(self, filename: str) -> Optional[str]:
+        """Загрузить промт из локального файла prompts/"""
+        from pathlib import Path
+        try:
+            prompt_path = Path(__file__).parent.parent.parent / "prompts" / filename
+            if prompt_path.exists():
+                return prompt_path.read_text(encoding='utf-8').strip()
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось загрузить локальный промт {filename}: {e}")
+        return None
+    
+    def ensure_default_prompts(self, force_reload: bool = False):
+        """
+        Убедиться что базовые промты существуют
+        
+        Args:
+            force_reload: Принудительно перезагрузить из локальных файлов
+        """
         if not self.r2_storage:
             return
         
-        for name, content in self.DEFAULT_PROMPTS.items():
+        # Загружаем промты типов блоков из локальных файлов
+        for name in self.DEFAULT_PROMPTS.keys():
+            # Проверяем существующий промт
             existing = self.load_prompt(name)
-            if existing is None:
+            
+            # Загружаем из локального файла
+            local_prompt = self._load_local_prompt(f"{name}.txt")
+            
+            if local_prompt:
+                # Если есть локальный файл - используем его (при force_reload или отсутствии в R2)
+                if force_reload or existing is None:
+                    self.save_prompt(name, local_prompt)
+                    logger.info(f"✅ Загружен промт {name} из локального файла в R2")
+            elif existing is None:
+                # Если нет ни локального, ни в R2 - используем дефолтный
+                content = self.DEFAULT_PROMPTS[name]
                 self.save_prompt(name, content)
                 logger.info(f"✅ Создан дефолтный промт: {name}")
+    
+    def ensure_standard_categories(self) -> list[str]:
+        """
+        Убедиться что стандартные категории существуют
+        
+        Returns:
+            Список стандартных категорий
+        """
+        if not self.r2_storage:
+            return list(self.STANDARD_CATEGORIES.keys())
+        
+        standard_cats = []
+        
+        for category_name, prompt_type in self.STANDARD_CATEGORIES.items():
+            standard_cats.append(category_name)
+            
+            # Проверяем промт категории
+            prompt_name = self.get_category_prompt_name(category_name)
+            existing = self.load_prompt(prompt_name)
+            
+            if existing is None:
+                # Загружаем промт из локального файла или используем дефолтный
+                local_prompt = self._load_local_prompt(f"{prompt_type}.txt")
+                content = local_prompt or self.DEFAULT_PROMPTS.get(prompt_type, "")
+                
+                if content:
+                    self.save_prompt(prompt_name, content)
+                    logger.info(f"✅ Создан промт для стандартной категории: {category_name}")
+        
+        return standard_cats
+    
+    def load_categories_from_r2(self) -> list[str]:
+        """
+        Загрузить список категорий из R2
+        
+        Returns:
+            Список названий категорий
+        """
+        if not self.r2_storage:
+            return list(self.STANDARD_CATEGORIES.keys())
+        
+        # Загружаем список категорий из специального файла
+        categories_key = "prompts/categories_list.txt"
+        content = self.r2_storage.download_text(categories_key)
+        
+        if content:
+            categories = [line.strip() for line in content.split('\n') if line.strip()]
+            logger.info(f"✅ Загружено {len(categories)} категорий из R2")
+            return categories
+        
+        # Если список не найден - создаем стандартные категории
+        logger.info("⚠️ Список категорий не найден в R2, создаем стандартные")
+        standard_cats = self.ensure_standard_categories()
+        
+        # Сохраняем стандартные категории в R2
+        if standard_cats:
+            self.save_categories_to_r2(standard_cats)
+        
+        return standard_cats
+    
+    def save_categories_to_r2(self, categories: list[str]) -> bool:
+        """
+        Сохранить список категорий в R2
+        
+        Args:
+            categories: Список категорий
+        
+        Returns:
+            True если успешно
+        """
+        if not self.r2_storage:
+            return False
+        
+        categories_key = "prompts/categories_list.txt"
+        content = '\n'.join(categories)
+        
+        result = self.r2_storage.upload_text(content, categories_key)
+        if result:
+            logger.info(f"✅ Сохранено {len(categories)} категорий в R2")
+        return result
+    
+    def get_category_prompt_name(self, category: str) -> str:
+        """Получить имя промпта для категории"""
+        return f"category_{category}"
+    
+    def delete_prompt(self, name: str) -> bool:
+        """
+        Удалить промт из R2
+        
+        Args:
+            name: Имя промпта
+        
+        Returns:
+            True если успешно
+        """
+        if not self.r2_storage:
+            return False
+        
+        key = self.get_prompt_key(name)
+        result = self.r2_storage.delete_object(key)
+        
+        if result:
+            logger.info(f"✅ Промт удален: {name}")
+        else:
+            logger.error(f"❌ Ошибка удаления промта: {name}")
+        
+        return result
 

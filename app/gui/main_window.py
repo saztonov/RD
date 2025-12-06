@@ -68,7 +68,9 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.navigation_manager = NavigationManager(self)
         self.marker_manager = MarkerManager(self)
         
-        self.prompt_manager.ensure_default_prompts()
+        # Инициализация промптов и стандартных категорий
+        self.prompt_manager.ensure_default_prompts(force_reload=True)  # Загружаем из prompts/
+        self.prompt_manager.ensure_standard_categories()
         
         self.setWindowTitle("PDF Annotation Tool")
         self.resize(1200, 800)

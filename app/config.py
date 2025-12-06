@@ -8,12 +8,12 @@ NGROK_BASE_URL = "https://louvred-madie-gigglier.ngrok-free.dev"
 
 def get_marker_base_url() -> str:
     """
-    Получить URL для разметки PDF через Marker
+    Получить URL для разметки PDF через PaddleOCR PP-StructureV3
     
     Returns:
         URL endpoint для сегментации PDF
     """
-    return f"{NGROK_BASE_URL}/api/v1/segment"
+    return f"{NGROK_BASE_URL}/ppstructure"
 
 
 def get_lm_base_url() -> str:

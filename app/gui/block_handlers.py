@@ -17,15 +17,22 @@ class BlockHandlersMixin:
             return None
         
         while len(self.annotation_document.pages) <= page_num:
-            if self.pdf_document:
-                dims = self.pdf_document.get_page_dimensions(len(self.annotation_document.pages))
+            new_page_num = len(self.annotation_document.pages)
+            
+            # Приоритет: реальное изображение > get_page_dimensions > fallback
+            if new_page_num in self.page_images:
+                img = self.page_images[new_page_num]
+                page = Page(page_number=new_page_num, width=img.width, height=img.height)
+            elif self.pdf_document:
+                dims = self.pdf_document.get_page_dimensions(new_page_num)
                 if dims:
-                    page = Page(page_number=len(self.annotation_document.pages),
-                                width=dims[0], height=dims[1])
+                    page = Page(page_number=new_page_num, width=dims[0], height=dims[1])
                 else:
-                    page = Page(page_number=len(self.annotation_document.pages),
-                                width=595, height=842)
-                self.annotation_document.pages.append(page)
+                    page = Page(page_number=new_page_num, width=595, height=842)
+            else:
+                page = Page(page_number=new_page_num, width=595, height=842)
+            
+            self.annotation_document.pages.append(page)
         
         return self.annotation_document.pages[page_num]
     

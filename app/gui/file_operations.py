@@ -19,10 +19,17 @@ class FileOperationsMixin:
         """Создать пустой документ аннотации со страницами"""
         doc = Document(pdf_path=pdf_path)
         for page_num in range(self.pdf_document.page_count):
-            dims = self.pdf_document.get_page_dimensions(page_num)
-            if dims:
-                page = Page(page_number=page_num, width=dims[0], height=dims[1])
-                doc.pages.append(page)
+            # Приоритет: реальное изображение > get_page_dimensions
+            if page_num in self.page_images:
+                img = self.page_images[page_num]
+                page = Page(page_number=page_num, width=img.width, height=img.height)
+            else:
+                dims = self.pdf_document.get_page_dimensions(page_num)
+                if dims:
+                    page = Page(page_number=page_num, width=dims[0], height=dims[1])
+                else:
+                    page = Page(page_number=page_num, width=595, height=842)
+            doc.pages.append(page)
         return doc
     
     def _open_pdf(self):
