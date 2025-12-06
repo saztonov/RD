@@ -237,36 +237,29 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
         
         logger.debug(f"Страница {page_idx}: блоков: {len(api_blocks)}")
         
-        # PP-Structure возвращает bbox в пикселях своего внутреннего изображения
-        # Нужно вычислить размеры изображения PP-Structure и масштабировать к нашим размерам
+        # Получаем точные размеры изображения PP-Structure из ответа API
+        api_image_width = page_data.get('image_width')
+        api_image_height = page_data.get('image_height')
         
-        # Вычисляем максимальные координаты bbox для оценки размеров изображения PP-Structure
-        max_x = 0
-        max_y = 0
-        for block in api_blocks:
-            bbox = block.get('bbox')
-            if bbox and len(bbox) == 4:
-                max_x = max(max_x, bbox[2])
-                max_y = max(max_y, bbox[3])
-        
-        # PP-Structure создаёт изображения из PDF с определённым zoom/DPI
-        # Вычисляем размеры изображения PP-Structure из максимальных bbox
-        # Максимальные bbox обычно близки к размерам изображения (блоки почти до краёв)
-        # Добавляем минимальный запас 1% на возможные отступы
-        if max_x > 0 and max_y > 0:
-            ppstructure_width = max_x * 1.01
-            ppstructure_height = max_y * 1.01
+        if api_image_width and api_image_height:
+            # Используем точные размеры от сервера
+            ppstructure_width = float(api_image_width)
+            ppstructure_height = float(api_image_height)
+            logger.info(f"Страница {page_idx}: используем точные размеры API: {int(ppstructure_width)}x{int(ppstructure_height)}")
         else:
-            # Fallback: используем наши размеры (без масштабирования)
-            ppstructure_width = page_width
-            ppstructure_height = page_height
+            # Fallback: вычисляем размеры по известному DPI сервера (180 по умолчанию)
+            # PDF points * DPI / 72 = пиксели
+            server_dpi = 180  # Должен соответствовать PDF_DPI на сервере
+            ppstructure_width = pdf_width * server_dpi / 72.0
+            ppstructure_height = pdf_height * server_dpi / 72.0
+            logger.info(f"Страница {page_idx}: вычисляем размеры PP-Structure по DPI={server_dpi}: "
+                       f"{int(ppstructure_width)}x{int(ppstructure_height)}")
         
         # Вычисляем коэффициенты масштабирования от PP-Structure к нашим размерам
         scale_x = page_width / ppstructure_width if ppstructure_width > 0 else 1.0
         scale_y = page_height / ppstructure_height if ppstructure_height > 0 else 1.0
         
-        logger.info(f"Страница {page_idx}: PP-Structure ~{int(ppstructure_width)}x{int(ppstructure_height)} "
-                   f"(max_bbox={int(max_x)}x{int(max_y)}), "
+        logger.info(f"Страница {page_idx}: PP-Structure {int(ppstructure_width)}x{int(ppstructure_height)}, "
                    f"Our {int(page_width)}x{int(page_height)}, "
                    f"Scale {scale_x:.3f}x{scale_y:.3f}")
         
