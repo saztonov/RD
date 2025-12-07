@@ -47,7 +47,6 @@ def setup_logging(log_level=logging.DEBUG):
     logging.getLogger('app.pdf_utils').setLevel(log_level)
     logging.getLogger('app.ocr').setLevel(log_level)
     logging.getLogger('app.pdf_structure').setLevel(log_level)
-    logging.getLogger('app.gui.stamp_remover_dialog').setLevel(log_level)
     logging.getLogger('app.gui.main_window').setLevel(log_level)
     
     # Отключаем DEBUG сообщения от PIL

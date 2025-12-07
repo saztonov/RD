@@ -1,1 +1,15 @@
 python -m app.main
+
+
+docker compose down
+docker compose up -d --build
+
+curl.exe http://localhost:8000/health
+curl.exe http://localhost:8501/health
+
+
+docker compose logs marker_api -f
+docker compose logs paddle_ppstructure -f
+
+curl.exe -X POST "http://localhost:8000/ppstructure" `
+  -F "file=@C:\Users\svarovsky\Desktop\test.pdf"

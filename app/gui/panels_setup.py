@@ -201,11 +201,6 @@ class PanelsSetupMixin:
         actions_group = QGroupBox("Действия")
         actions_layout = QVBoxLayout(actions_group)
         
-        self.remove_stamps_btn = QPushButton("🗑️ Удалить штампы")
-        self.remove_stamps_btn.clicked.connect(self._remove_stamps)
-        actions_layout.addWidget(self.remove_stamps_btn)
-        
-        actions_layout.addWidget(QLabel(""))
         
         self.marker_all_btn = QPushButton("Marker (все стр.)")
         self.marker_all_btn.clicked.connect(self._marker_segment_all_pages)

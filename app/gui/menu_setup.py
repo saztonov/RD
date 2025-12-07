@@ -44,13 +44,6 @@ class MenuSetupMixin:
         # Меню "Инструменты"
         tools_menu = menubar.addMenu("&Инструменты")
         
-        stamp_remove_action = QAction("🗑️ Удалить штампы", self)
-        stamp_remove_action.setShortcut(QKeySequence("Ctrl+D"))
-        stamp_remove_action.triggered.connect(self._remove_stamps)
-        tools_menu.addAction(stamp_remove_action)
-        
-        tools_menu.addSeparator()
-        
         marker_all_action = QAction("&Marker (все стр.)", self)
         marker_all_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
         marker_all_action.triggered.connect(self._marker_segment_all_pages)

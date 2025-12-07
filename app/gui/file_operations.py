@@ -4,7 +4,7 @@
 
 import logging
 from pathlib import Path
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QInputDialog, QDialog
+from PySide6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 from app.models import Document, Page
 from app.pdf_utils import PDFDocument
 from app.annotation_io import AnnotationIO
@@ -167,34 +167,4 @@ class FileOperationsMixin:
         if self._current_project_id and self._current_file_index >= 0 and self.annotation_document:
             key = (self._current_project_id, self._current_file_index)
             self.annotations_cache[key] = self.annotation_document
-    
-    def _remove_stamps(self):
-        """Удаление электронных штампов из PDF"""
-        logger.info("Запуск удаления штампов")
-        
-        if not self.pdf_document or not self.annotation_document:
-            QMessageBox.warning(self, "Внимание", "Сначала откройте PDF")
-            return
-        
-        try:
-            from app.gui.stamp_remover_dialog import StampRemoverDialog
-            
-            current_pdf_path = self.annotation_document.pdf_path
-            dialog = StampRemoverDialog(current_pdf_path, self)
-            
-            if dialog.exec() == QDialog.Accepted:
-                if dialog.cleaned_pdf_path:
-                    reply = QMessageBox.question(
-                        self, "Перезагрузить PDF",
-                        "Загрузить очищенный PDF?\n\nВсе несохраненные изменения будут потеряны.",
-                        QMessageBox.Yes | QMessageBox.No
-                    )
-                    if reply == QMessageBox.Yes:
-                        self._load_cleaned_pdf(dialog.cleaned_pdf_path)
-                else:
-                    QMessageBox.information(self, "Информация", "Изменений не было")
-        
-        except Exception as e:
-            logger.error(f"Ошибка удаления штампов: {e}", exc_info=True)
-            QMessageBox.critical(self, "Ошибка", f"Ошибка удаления штампов:\n{e}")
 

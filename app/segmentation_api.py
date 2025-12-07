@@ -287,6 +287,9 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
                     # Определяем тип блока из label
                     block_type = _map_ppstructure_label(label)
                     
+                    # Детальное логирование для отладки маппинга
+                    logger.debug(f"Label mapping: '{label}' -> {block_type.value}")
+                    
                     # Создаем блок
                     block = Block.create(
                         page_index=page_idx,
@@ -320,7 +323,15 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
         
         # Логируем статистику
         logger.info(f"Страница {page_idx}: обработано {processed_count} блоков, уникальных {len(unique_blocks)}")
-        logger.info(f"Страница {page_idx}: найденные типы блоков: {sorted(all_labels_found)}")
+        logger.info(f"Страница {page_idx}: найденные labels от API: {sorted(all_labels_found)}")
+        
+        # Статистика по типам после маппинга
+        type_counts = {}
+        for block in unique_blocks:
+            bt = block.block_type.value
+            type_counts[bt] = type_counts.get(bt, 0) + 1
+        logger.info(f"Страница {page_idx}: блоки по типам: {type_counts}")
+        
         if skipped_no_bbox > 0:
             logger.info(f"Страница {page_idx}: пропущено без bbox: {skipped_no_bbox}")
         
@@ -333,40 +344,112 @@ def _extract_blocks_from_api_page(page_data: Dict[str, Any], page_idx: int,
 
 def _map_ppstructure_label(label: str) -> BlockType:
     """
-    Преобразование label от PP-StructureV3 в BlockType
+    Преобразование label от PP-StructureV3/PP-DocLayout в BlockType
     
-    PP-Structure labels: header, doc_title, text, number, footer, table, image
+    PP-DocLayout categories (23):
+    - document_title, paragraph_title, text, page_number, abstract
+    - table, table_of_contents, reference, footnote, header, footer
+    - algorithm, formula, formula_number, figure, figure_caption
+    - table_caption, equation, list, index, seal, chart
+    - handwritten_text, signature
     """
-    # Точное соответствие типов
-    label_mapping = {
-        'text': BlockType.TEXT,
-        'header': BlockType.PAGE_HEADER,
-        'doc_title': BlockType.SECTION_HEADER,
-        'number': BlockType.PAGE_FOOTER,
-        'footer': BlockType.PAGE_FOOTER,
-        'table': BlockType.TABLE,
-        'image': BlockType.IMAGE,
+    label_lower = label.lower().strip()
+    
+    # Точное соответствие типов (приоритет)
+    exact_mapping = {
+        # Изображения и графика (ВАЖНО: проверяем первыми!)
         'figure': BlockType.FIGURE,
+        'image': BlockType.IMAGE,
+        'picture': BlockType.IMAGE,
+        'chart': BlockType.FIGURE,
+        'seal': BlockType.IMAGE,
+        'signature': BlockType.IMAGE,
+        
+        # Таблицы
+        'table': BlockType.TABLE,
+        
+        # Заголовки
+        'document_title': BlockType.SECTION_HEADER,
+        'doc_title': BlockType.SECTION_HEADER,
+        'paragraph_title': BlockType.SECTION_HEADER,
+        'title': BlockType.SECTION_HEADER,
+        
+        # Текстовые элементы
+        'text': BlockType.TEXT,
+        'paragraph': BlockType.TEXT,
+        'abstract': BlockType.TEXT,
+        'reference': BlockType.TEXT,
+        'algorithm': BlockType.CODE,
+        'list': BlockType.LIST_ITEM,
+        'index': BlockType.TABLE_OF_CONTENTS,
+        'table_of_contents': BlockType.TABLE_OF_CONTENTS,
+        'toc': BlockType.TABLE_OF_CONTENTS,
+        
+        # Подписи
+        'figure_caption': BlockType.CAPTION,
+        'table_caption': BlockType.CAPTION,
+        'caption': BlockType.CAPTION,
+        
+        # Формулы
+        'formula': BlockType.EQUATION,
+        'equation': BlockType.EQUATION,
+        'formula_number': BlockType.TEXT,
+        
+        # Колонтитулы
+        'header': BlockType.PAGE_HEADER,
+        'footer': BlockType.PAGE_FOOTER,
+        'page_number': BlockType.PAGE_FOOTER,
+        'number': BlockType.PAGE_FOOTER,
+        
+        # Сноски
+        'footnote': BlockType.FOOTNOTE,
+        
+        # Рукописный текст
+        'handwritten_text': BlockType.HANDWRITING,
+        'handwriting': BlockType.HANDWRITING,
     }
     
-    label_lower = label.lower().replace('_', '').replace('-', '')
-    
     # Проверяем точное соответствие
-    for key, value in label_mapping.items():
-        key_normalized = key.replace('_', '').replace('-', '')
-        if label_lower == key_normalized:
+    if label_lower in exact_mapping:
+        return exact_mapping[label_lower]
+    
+    # Нормализация (удаляем подчеркивания и дефисы)
+    label_normalized = label_lower.replace('_', '').replace('-', '').replace(' ', '')
+    
+    for key, value in exact_mapping.items():
+        key_normalized = key.replace('_', '').replace('-', '').replace(' ', '')
+        if label_normalized == key_normalized:
             return value
     
-    # Fallback для неизвестных типов
-    if 'table' in label_lower:
+    # Fallback на основе подстрок (порядок важен!)
+    # Сначала проверяем графические элементы
+    if any(kw in label_lower for kw in ['figure', 'image', 'picture', 'photo', 'chart', 'diagram', 'seal', 'logo', 'icon']):
+        return BlockType.FIGURE
+    
+    # Затем таблицы
+    if 'table' in label_lower and 'caption' not in label_lower:
         return BlockType.TABLE
-    elif 'image' in label_lower or 'figure' in label_lower:
-        return BlockType.IMAGE
-    elif 'header' in label_lower or 'title' in label_lower:
+    
+    # Формулы
+    if any(kw in label_lower for kw in ['formula', 'equation', 'math']):
+        return BlockType.EQUATION
+    
+    # Заголовки
+    if any(kw in label_lower for kw in ['title', 'heading']):
         return BlockType.SECTION_HEADER
-    elif 'footer' in label_lower or 'number' in label_lower:
+    
+    # Подписи
+    if 'caption' in label_lower:
+        return BlockType.CAPTION
+    
+    # Колонтитулы
+    if 'header' in label_lower:
+        return BlockType.PAGE_HEADER
+    if any(kw in label_lower for kw in ['footer', 'pagenumber', 'page_number']):
         return BlockType.PAGE_FOOTER
     
+    # По умолчанию - текст
+    logger.debug(f"Неизвестный label '{label}' -> TEXT")
     return BlockType.TEXT
 
 
