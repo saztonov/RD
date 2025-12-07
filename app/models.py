@@ -11,34 +11,10 @@ from PIL import Image
 
 
 class BlockType(Enum):
-    """Типы блоков разметки (все типы Marker)"""
-    # Основные структурные
+    """Типы блоков разметки (3 основных типа)"""
     TEXT = "text"
-    SECTION_HEADER = "section_header"
-    PAGE_HEADER = "page_header"
-    PAGE_FOOTER = "page_footer"
-    TABLE_OF_CONTENTS = "table_of_contents"
-    FOOTNOTE = "footnote"
-    
-    # Специализированный контент
     TABLE = "table"
-    FIGURE = "figure"
-    IMAGE = "image"  # Picture
-    CODE = "code"
-    EQUATION = "equation"
-    TEXT_INLINE_MATH = "text_inline_math"
-    FORM = "form"
-    HANDWRITING = "handwriting"
-    
-    # Группирующие элементы
-    LIST_GROUP = "list_group"
-    LIST_ITEM = "list_item"
-    TABLE_GROUP = "table_group"
-    FIGURE_GROUP = "figure_group"
-    PICTURE_GROUP = "picture_group"
-    
-    # Мелкие элементы
-    CAPTION = "caption"
+    IMAGE = "image"
 
 
 class BlockSource(Enum):

@@ -173,7 +173,7 @@ class MarkerWorker(QThread):
     finished = Signal(object)
     error = Signal(str)
     
-    def __init__(self, task_id, pdf_path, pages, page_images, page_range, category):
+    def __init__(self, task_id, pdf_path, pages, page_images, page_range, category, engine="paddle"):
         super().__init__()
         self.task_id = task_id
         self.pdf_path = pdf_path
@@ -181,6 +181,7 @@ class MarkerWorker(QThread):
         self.page_images = page_images
         self.page_range = page_range
         self.category = category
+        self.engine = engine
         self._cancelled = False
     
     def cancel(self):
@@ -191,8 +192,18 @@ class MarkerWorker(QThread):
             if self._cancelled:
                 return
             
-            from app.segmentation_api import segment_with_api
-            result = segment_with_api(self.pdf_path, self.pages, self.page_images, self.page_range, self.category)
+            if self.engine == "merged":
+                from app.segmentation_api import segment_merged
+                result = segment_merged(
+                    self.pdf_path, self.pages, self.page_images,
+                    self.page_range, self.category
+                )
+            else:
+                from app.segmentation_api import segment_with_api
+                result = segment_with_api(
+                    self.pdf_path, self.pages, self.page_images, 
+                    self.page_range, self.category, self.engine
+                )
             
             if not self._cancelled:
                 self.finished.emit(result)
@@ -249,7 +260,7 @@ class TaskManager(QObject):
         self.workers[task_id] = worker
         worker.start()
     
-    def start_marker_task(self, task_id: str, pdf_path, pages, page_images, page_range, category):
+    def start_marker_task(self, task_id: str, pdf_path, pages, page_images, page_range, category, engine="paddle"):
         """Запустить Marker задание"""
         if task_id not in self.tasks:
             return
@@ -258,7 +269,7 @@ class TaskManager(QObject):
         task.status = TaskStatus.RUNNING
         self.task_updated.emit(task_id)
         
-        worker = MarkerWorker(task_id, pdf_path, pages, page_images, page_range, category)
+        worker = MarkerWorker(task_id, pdf_path, pages, page_images, page_range, category, engine)
         worker.finished.connect(lambda result: self._on_task_finished(task_id, result))
         worker.error.connect(lambda error: self._on_task_error(task_id, error))
         

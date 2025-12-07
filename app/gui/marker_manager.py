@@ -20,15 +20,41 @@ class MarkerManager:
     def __init__(self, parent: 'MainWindow'):
         self.parent = parent
     
+    # === Paddle (PP-StructureV3) ===
+    def segment_current_page_paddle(self):
+        """Разметка текущей страницы через Paddle"""
+        self._run_marker_worker(page_range=[self.parent.current_page], show_success=False, engine="paddle")
+    
+    def segment_all_pages_paddle(self):
+        """Разметка всех страниц через Paddle"""
+        self._run_marker_worker(page_range=None, show_success=True, engine="paddle")
+    
+    # === Surya ===
+    def segment_current_page_surya(self):
+        """Разметка текущей страницы через Surya"""
+        self._run_marker_worker(page_range=[self.parent.current_page], show_success=False, engine="surya")
+    
+    def segment_all_pages_surya(self):
+        """Разметка всех страниц через Surya"""
+        self._run_marker_worker(page_range=None, show_success=True, engine="surya")
+    
+    # === Merged (Surya + Paddle) ===
+    def segment_current_page_merged(self):
+        """Разметка текущей страницы совмещением Surya + Paddle"""
+        self._run_marker_worker(page_range=[self.parent.current_page], show_success=False, engine="merged")
+    
+    def segment_all_pages_merged(self):
+        """Разметка всех страниц совмещением Surya + Paddle"""
+        self._run_marker_worker(page_range=None, show_success=True, engine="merged")
+    
+    # === Устаревшие методы (совместимость) ===
     def segment_current_page(self):
-        """Разметка текущей страницы"""
-        self._run_marker_worker(page_range=[self.parent.current_page], show_success=False)
+        self.segment_current_page_paddle()
     
     def segment_all_pages(self):
-        """Разметка всех страниц"""
-        self._run_marker_worker(page_range=None, show_success=True)
+        self.segment_all_pages_paddle()
     
-    def _run_marker_worker(self, page_range: Optional[List[int]] = None, show_success: bool = True):
+    def _run_marker_worker(self, page_range: Optional[List[int]] = None, show_success: bool = True, engine: str = "paddle"):
         """Запуск API сегментации в фоновом режиме"""
         from app.gui.task_manager import TaskType
         
@@ -47,9 +73,10 @@ class MarkerManager:
         # Создаем задачу
         pdf_name = Path(self.parent.annotation_document.pdf_path).stem
         page_info = f"стр. {page_range[0]+1}" if page_range and len(page_range) == 1 else "все стр."
+        engine_label = "Surya" if engine == "surya" else "Paddle"
         task_id = self.parent.task_manager.create_task(
             TaskType.MARKER,
-            f"Marker: {pdf_name} ({page_info})",
+            f"{engine_label}: {pdf_name} ({page_info})",
             self.parent.annotation_document.pdf_path
         )
         
@@ -108,6 +135,7 @@ class MarkerManager:
             pages_copy,
             page_images_copy,
             page_range,
-            self.parent.active_category
+            self.parent.active_category,
+            engine
         )
 

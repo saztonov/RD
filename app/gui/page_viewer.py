@@ -202,33 +202,9 @@ class PageViewer(QGraphicsView):
     def _get_block_color(self, block_type: BlockType) -> QColor:
         """Получить цвет для типа блока"""
         colors = {
-            # Основные структурные
-            BlockType.TEXT: QColor(0, 255, 0),            # зелёный
-            BlockType.SECTION_HEADER: QColor(255, 0, 255), # магента
-            BlockType.PAGE_HEADER: QColor(128, 0, 128),   # фиолетовый
-            BlockType.PAGE_FOOTER: QColor(128, 0, 128),   # фиолетовый
-            BlockType.TABLE_OF_CONTENTS: QColor(0, 128, 128), # бирюзовый
-            BlockType.FOOTNOTE: QColor(128, 128, 0),      # оливковый
-            
-            # Специализированный контент
-            BlockType.TABLE: QColor(0, 0, 255),           # синий
-            BlockType.FIGURE: QColor(255, 165, 0),        # оранжевый
-            BlockType.IMAGE: QColor(255, 140, 0),         # тёмно-оранжевый
-            BlockType.CODE: QColor(0, 128, 0),            # тёмно-зелёный
-            BlockType.EQUATION: QColor(255, 0, 0),        # красный
-            BlockType.TEXT_INLINE_MATH: QColor(200, 0, 0), # тёмно-красный
-            BlockType.FORM: QColor(0, 191, 255),          # голубой
-            BlockType.HANDWRITING: QColor(255, 20, 147),  # розовый
-            
-            # Группирующие
-            BlockType.LIST_GROUP: QColor(50, 205, 50),    # лаймовый
-            BlockType.LIST_ITEM: QColor(34, 139, 34),     # зелёный лес
-            BlockType.TABLE_GROUP: QColor(30, 144, 255),  # синий Доджерс
-            BlockType.FIGURE_GROUP: QColor(255, 127, 80), # коралловый
-            BlockType.PICTURE_GROUP: QColor(255, 99, 71), # томатный
-            
-            # Мелкие элементы
-            BlockType.CAPTION: QColor(218, 165, 32),      # золотой
+            BlockType.TEXT: QColor(0, 255, 0),    # зелёный
+            BlockType.TABLE: QColor(0, 0, 255),   # синий
+            BlockType.IMAGE: QColor(255, 140, 0), # оранжевый
         }
         return colors.get(block_type, QColor(128, 128, 128))
     
@@ -256,6 +232,22 @@ class PageViewer(QGraphicsView):
             
             # Проверяем, попали ли в существующий блок
             clicked_block = self._find_block_at_position(scene_pos)
+            
+            # Если не попали в блок, проверяем хэндл выбранного блока
+            if clicked_block is None and self.selected_block_idx is not None:
+                if 0 <= self.selected_block_idx < len(self.current_blocks):
+                    block = self.current_blocks[self.selected_block_idx]
+                    x1, y1, x2, y2 = block.coords_px
+                    block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
+                    resize_handle = self._get_resize_handle(scene_pos, block_rect)
+                    
+                    if resize_handle:
+                        # Начинаем изменение размера выбранного блока
+                        self.resizing_block = True
+                        self.resize_handle = resize_handle
+                        self.move_start_pos = scene_pos
+                        self.original_block_rect = block_rect
+                        return
             
             if clicked_block is not None:
                 self.selected_block_idx = clicked_block

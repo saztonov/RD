@@ -201,14 +201,43 @@ class PanelsSetupMixin:
         actions_group = QGroupBox("Действия")
         actions_layout = QVBoxLayout(actions_group)
         
+        # Surya
+        self.surya_segment_btn = QPushButton("Surya разметка")
+        self.surya_segment_btn.clicked.connect(self._surya_segment_pdf)
+        actions_layout.addWidget(self.surya_segment_btn)
         
-        self.marker_all_btn = QPushButton("Marker (все стр.)")
-        self.marker_all_btn.clicked.connect(self._marker_segment_all_pages)
-        actions_layout.addWidget(self.marker_all_btn)
+        self.surya_all_btn = QPushButton("Surya (все страницы)")
+        self.surya_all_btn.clicked.connect(self._surya_segment_all_pages)
+        actions_layout.addWidget(self.surya_all_btn)
         
-        self.marker_segment_btn = QPushButton("Marker разметка")
-        self.marker_segment_btn.clicked.connect(self._marker_segment_pdf)
-        actions_layout.addWidget(self.marker_segment_btn)
+        actions_layout.addWidget(QLabel(""))
+        
+        # Paddle
+        self.paddle_segment_btn = QPushButton("Paddle разметка")
+        self.paddle_segment_btn.clicked.connect(self._paddle_segment_pdf)
+        actions_layout.addWidget(self.paddle_segment_btn)
+        
+        self.paddle_all_btn = QPushButton("Paddle (все страницы)")
+        self.paddle_all_btn.clicked.connect(self._paddle_segment_all_pages)
+        actions_layout.addWidget(self.paddle_all_btn)
+        
+        actions_layout.addWidget(QLabel(""))
+        
+        # Merged (Surya + Paddle)
+        self.merged_segment_btn = QPushButton("🔀 Surya+Paddle (лучший)")
+        self.merged_segment_btn.clicked.connect(self._merged_segment_pdf)
+        actions_layout.addWidget(self.merged_segment_btn)
+        
+        self.merged_all_btn = QPushButton("🔀 Merged (все страницы)")
+        self.merged_all_btn.clicked.connect(self._merged_segment_all_pages)
+        actions_layout.addWidget(self.merged_all_btn)
+        
+        actions_layout.addWidget(QLabel(""))
+        
+        # Очистка
+        self.clear_page_btn = QPushButton("Очистить разметку")
+        self.clear_page_btn.clicked.connect(self._clear_current_page)
+        actions_layout.addWidget(self.clear_page_btn)
         
         actions_layout.addWidget(QLabel(""))
         

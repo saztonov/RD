@@ -14,6 +14,11 @@ from pathlib import Path
 # Настройка логирования
 logger = logging.getLogger(__name__)
 
+# DPI для рендеринга PDF (должен совпадать с сервером)
+# Сервер использует PDF_DPI=300, zoom = DPI/72
+PDF_RENDER_DPI = 300
+PDF_RENDER_ZOOM = PDF_RENDER_DPI / 72.0  # ≈ 4.167
+
 
 def open_pdf(path: str) -> fitz.Document:
     """
@@ -56,7 +61,7 @@ def open_pdf(path: str) -> fitz.Document:
 def render_page_to_image(
     doc: fitz.Document, 
     page_index: int, 
-    zoom: float = 3.0
+    zoom: float = PDF_RENDER_ZOOM
 ) -> Image.Image:
     """
     Рендеринг страницы PDF в изображение PIL
@@ -115,7 +120,7 @@ def render_page_to_image(
 
 def render_all_pages(
     doc: fitz.Document, 
-    zoom: float = 3.0
+    zoom: float = PDF_RENDER_ZOOM
 ) -> List[Image.Image]:
     """
     Рендеринг всех страниц PDF в изображения PIL
@@ -213,7 +218,7 @@ class PDFDocument:
             self.doc = None
             logger.debug(f"PDF документ закрыт: {self.pdf_path}")
     
-    def render_page(self, page_number: int, zoom: float = 3.0) -> Optional[Image.Image]:
+    def render_page(self, page_number: int, zoom: float = PDF_RENDER_ZOOM) -> Optional[Image.Image]:
         """
         Рендеринг страницы в изображение PIL
         
@@ -234,7 +239,7 @@ class PDFDocument:
             logger.error(f"Ошибка рендеринга страницы {page_number}: {e}")
             return None
     
-    def render_all(self, zoom: float = 3.0) -> List[Image.Image]:
+    def render_all(self, zoom: float = PDF_RENDER_ZOOM) -> List[Image.Image]:
         """
         Рендеринг всех страниц документа
         
@@ -254,7 +259,7 @@ class PDFDocument:
             logger.error(f"Ошибка рендеринга всех страниц: {e}")
             return []
     
-    def get_page_dimensions(self, page_number: int, zoom: float = 3.0) -> Optional[tuple]:
+    def get_page_dimensions(self, page_number: int, zoom: float = PDF_RENDER_ZOOM) -> Optional[tuple]:
         """
         Получить размеры страницы после рендеринга
         

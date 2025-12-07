@@ -44,15 +44,29 @@ class MenuSetupMixin:
         # Меню "Инструменты"
         tools_menu = menubar.addMenu("&Инструменты")
         
-        marker_all_action = QAction("&Marker (все стр.)", self)
-        marker_all_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
-        marker_all_action.triggered.connect(self._marker_segment_all_pages)
-        tools_menu.addAction(marker_all_action)
+        # Surya (Surya + Paddle layout)
+        surya_all_action = QAction("&Surya (все стр.)", self)
+        surya_all_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        surya_all_action.triggered.connect(self._surya_segment_all_pages)
+        tools_menu.addAction(surya_all_action)
         
-        marker_action = QAction("&Marker разметка", self)
-        marker_action.setShortcut(QKeySequence("Ctrl+M"))
-        marker_action.triggered.connect(self._marker_segment_pdf)
-        tools_menu.addAction(marker_action)
+        surya_action = QAction("S&urya разметка", self)
+        surya_action.setShortcut(QKeySequence("Ctrl+U"))
+        surya_action.triggered.connect(self._surya_segment_pdf)
+        tools_menu.addAction(surya_action)
+        
+        tools_menu.addSeparator()
+        
+        # Paddle (PP-StructureV3)
+        paddle_all_action = QAction("&Paddle (все стр.)", self)
+        paddle_all_action.setShortcut(QKeySequence("Ctrl+Shift+P"))
+        paddle_all_action.triggered.connect(self._paddle_segment_all_pages)
+        tools_menu.addAction(paddle_all_action)
+        
+        paddle_action = QAction("&Paddle разметка", self)
+        paddle_action.setShortcut(QKeySequence("Ctrl+P"))
+        paddle_action.triggered.connect(self._paddle_segment_pdf)
+        tools_menu.addAction(paddle_action)
         
         tools_menu.addSeparator()
         

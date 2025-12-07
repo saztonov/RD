@@ -6,23 +6,18 @@
 NGROK_BASE_URL = "https://louvred-madie-gigglier.ngrok-free.dev"
 
 
-def get_marker_base_url() -> str:
-    """
-    Получить URL для разметки PDF через PaddleOCR PP-StructureV3
-    
-    Returns:
-        URL endpoint для сегментации PDF
-    """
-    return f"{NGROK_BASE_URL}/ppstructure"
+def get_layout_url() -> str:
+    """URL для layout (Surya + Paddle)"""
+    return f"{NGROK_BASE_URL}/layout"
 
 
 def get_lm_base_url() -> str:
-    """
-    Получить URL для LLM запросов (LM Studio proxy)
-    
-    Returns:
-        URL endpoint для chat completions
-    """
-    return f"{NGROK_BASE_URL}/api/v1/lm/chat"
+    """URL для LLM запросов"""
+    return f"{NGROK_BASE_URL}/v1/chat/completions"
+
+
+# Алиас для обратной совместимости
+def get_marker_base_url() -> str:
+    return get_paddle_url()
 
 
