@@ -122,15 +122,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         """Подогнать к окну"""
         self.navigation_manager.fit_to_view()
     
-    # === Surya ===
-    def _surya_segment_pdf(self):
-        """Разметка текущей страницы через Surya"""
-        self.marker_manager.segment_current_page_surya()
-
-    def _surya_segment_all_pages(self):
-        """Разметка всех страниц через Surya"""
-        self.marker_manager.segment_all_pages_surya()
-    
     # === Paddle ===
     def _paddle_segment_pdf(self):
         """Разметка текущей страницы через Paddle"""
@@ -139,15 +130,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
     def _paddle_segment_all_pages(self):
         """Разметка всех страниц через Paddle"""
         self.marker_manager.segment_all_pages_paddle()
-    
-    # === Merged (Surya + Paddle) ===
-    def _merged_segment_pdf(self):
-        """Разметка текущей страницы совмещением Surya + Paddle"""
-        self.marker_manager.segment_current_page_merged()
-
-    def _merged_segment_all_pages(self):
-        """Разметка всех страниц совмещением Surya + Paddle"""
-        self.marker_manager.segment_all_pages_merged()
     
     # === Устаревшие (совместимость) ===
     def _marker_segment_pdf(self):

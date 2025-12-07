@@ -62,6 +62,7 @@ class PanelsSetupMixin:
         self.page_viewer = PageViewer()
         self.page_viewer.blockDrawn.connect(self._on_block_drawn)
         self.page_viewer.block_selected.connect(self._on_block_selected)
+        self.page_viewer.blocks_selected.connect(self._on_blocks_selected)
         self.page_viewer.blockEditing.connect(self._on_block_editing)
         self.page_viewer.blockDeleted.connect(self._on_block_deleted)
         self.page_viewer.blockMoved.connect(self._on_block_moved)
@@ -100,7 +101,7 @@ class PanelsSetupMixin:
         self.blocks_tree = QTreeWidget()
         self.blocks_tree.setHeaderLabels(["Название", "Тип"])
         self.blocks_tree.setColumnWidth(0, 150)
-        self.blocks_tree.setSortingEnabled(True)
+        self.blocks_tree.setSortingEnabled(False)  # Отключаем встроенную сортировку
         self.blocks_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.blocks_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.blocks_tree.customContextMenuRequested.connect(
@@ -114,7 +115,7 @@ class PanelsSetupMixin:
         self.blocks_tree_by_category = QTreeWidget()
         self.blocks_tree_by_category.setHeaderLabels(["Название", "Тип"])
         self.blocks_tree_by_category.setColumnWidth(0, 150)
-        self.blocks_tree_by_category.setSortingEnabled(True)
+        self.blocks_tree_by_category.setSortingEnabled(False)  # Отключаем встроенную сортировку
         self.blocks_tree_by_category.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.blocks_tree_by_category.setContextMenuPolicy(Qt.CustomContextMenu)
         self.blocks_tree_by_category.customContextMenuRequested.connect(
@@ -201,17 +202,6 @@ class PanelsSetupMixin:
         actions_group = QGroupBox("Действия")
         actions_layout = QVBoxLayout(actions_group)
         
-        # Surya
-        self.surya_segment_btn = QPushButton("Surya разметка")
-        self.surya_segment_btn.clicked.connect(self._surya_segment_pdf)
-        actions_layout.addWidget(self.surya_segment_btn)
-        
-        self.surya_all_btn = QPushButton("Surya (все страницы)")
-        self.surya_all_btn.clicked.connect(self._surya_segment_all_pages)
-        actions_layout.addWidget(self.surya_all_btn)
-        
-        actions_layout.addWidget(QLabel(""))
-        
         # Paddle
         self.paddle_segment_btn = QPushButton("Paddle разметка")
         self.paddle_segment_btn.clicked.connect(self._paddle_segment_pdf)
@@ -220,17 +210,6 @@ class PanelsSetupMixin:
         self.paddle_all_btn = QPushButton("Paddle (все страницы)")
         self.paddle_all_btn.clicked.connect(self._paddle_segment_all_pages)
         actions_layout.addWidget(self.paddle_all_btn)
-        
-        actions_layout.addWidget(QLabel(""))
-        
-        # Merged (Surya + Paddle)
-        self.merged_segment_btn = QPushButton("🔀 Surya+Paddle (лучший)")
-        self.merged_segment_btn.clicked.connect(self._merged_segment_pdf)
-        actions_layout.addWidget(self.merged_segment_btn)
-        
-        self.merged_all_btn = QPushButton("🔀 Merged (все страницы)")
-        self.merged_all_btn.clicked.connect(self._merged_segment_all_pages)
-        actions_layout.addWidget(self.merged_all_btn)
         
         actions_layout.addWidget(QLabel(""))
         

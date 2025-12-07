@@ -29,24 +29,6 @@ class MarkerManager:
         """Разметка всех страниц через Paddle"""
         self._run_marker_worker(page_range=None, show_success=True, engine="paddle")
     
-    # === Surya ===
-    def segment_current_page_surya(self):
-        """Разметка текущей страницы через Surya"""
-        self._run_marker_worker(page_range=[self.parent.current_page], show_success=False, engine="surya")
-    
-    def segment_all_pages_surya(self):
-        """Разметка всех страниц через Surya"""
-        self._run_marker_worker(page_range=None, show_success=True, engine="surya")
-    
-    # === Merged (Surya + Paddle) ===
-    def segment_current_page_merged(self):
-        """Разметка текущей страницы совмещением Surya + Paddle"""
-        self._run_marker_worker(page_range=[self.parent.current_page], show_success=False, engine="merged")
-    
-    def segment_all_pages_merged(self):
-        """Разметка всех страниц совмещением Surya + Paddle"""
-        self._run_marker_worker(page_range=None, show_success=True, engine="merged")
-    
     # === Устаревшие методы (совместимость) ===
     def segment_current_page(self):
         self.segment_current_page_paddle()
@@ -73,7 +55,7 @@ class MarkerManager:
         # Создаем задачу
         pdf_name = Path(self.parent.annotation_document.pdf_path).stem
         page_info = f"стр. {page_range[0]+1}" if page_range and len(page_range) == 1 else "все стр."
-        engine_label = "Surya" if engine == "surya" else "Paddle"
+        engine_label = "Paddle"
         task_id = self.parent.task_manager.create_task(
             TaskType.MARKER,
             f"{engine_label}: {pdf_name} ({page_info})",

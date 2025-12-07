@@ -1,5 +1,5 @@
 """
-Сегментация PDF через API: Paddle PP-StructureV3 и Surya Layout
+Сегментация PDF через API: Paddle PP-StructureV3
 """
 
 from pathlib import Path
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def segment_pdf_layout(pdf_bytes: bytes) -> Dict[str, Any]:
-    """Сегментация через /layout (возвращает Surya + Paddle данные)"""
+    """Сегментация через /layout (возвращает Paddle данные)"""
     url = get_layout_url()
     files = {"file": ("document.pdf", pdf_bytes, "application/pdf")}
     
@@ -48,7 +48,7 @@ def segment_with_api(pdf_path: str, pages: List[Page],
         page_images: словарь изображений страниц (опционально)
         page_range: список индексов страниц для обработки
         category: категория для создаваемых блоков
-        engine: "paddle" (PP-StructureV3) или "surya" (Surya+Paddle)
+        engine: "paddle" (PP-StructureV3)
     
     Returns:
         Обновленный список страниц или None при ошибке
@@ -144,15 +144,10 @@ def segment_with_api(pdf_path: str, pages: List[Page],
             # Размеры страницы в PDF points
             pdf_width, pdf_height = pdf_page_dimensions.get(real_page_idx, (page_width, page_height))
             
-            # Извлекаем блоки из API ответа (один endpoint, разный парсинг)
-            if engine == "surya":
-                new_blocks = _extract_blocks_from_surya_page(
-                    page_data, real_page_idx, page_width, page_height, category
-                )
-            else:
-                new_blocks = _extract_blocks_from_paddle_raw(
-                    page_data, real_page_idx, page_width, page_height, category
-                )
+            # Извлекаем блоки из API ответа
+            new_blocks = _extract_blocks_from_paddle_raw(
+                page_data, real_page_idx, page_width, page_height, category
+            )
             
             # Фильтруем блоки: не добавляем те, которые пересекаются с существующими
             added_count = 0
@@ -178,147 +173,6 @@ def segment_with_api(pdf_path: str, pages: List[Page],
                 os.unlink(temp_pdf_path)
             except Exception as e:
                 logger.warning(f"Не удалось удалить временный файл {temp_pdf_path}: {e}")
-
-
-def _extract_blocks_from_surya_page(page_data: Dict[str, Any], page_idx: int,
-                                     page_width: float, page_height: float,
-                                     category: str = "") -> List[Block]:
-    """Извлечение блоков из ответа Surya /layout API"""
-    blocks = []
-    
-    try:
-        api_blocks = page_data.get('blocks', [])
-        if not api_blocks:
-            logger.warning(f"Страница {page_idx}: нет blocks от Surya")
-            return blocks
-        
-        # Размеры из ответа API (размер изображения на сервере)
-        api_width = page_data.get('width', page_width)
-        api_height = page_data.get('height', page_height)
-        
-        # Проверяем image_bbox из surya_page_raw - Surya может использовать другой размер внутренне
-        surya_raw = page_data.get('surya_page_raw') or {}
-        image_bbox = surya_raw.get('image_bbox')
-        if image_bbox and len(image_bbox) == 4:
-            # image_bbox = [x1, y1, x2, y2], обычно [0, 0, width, height]
-            surya_internal_width = image_bbox[2] - image_bbox[0]
-            surya_internal_height = image_bbox[3] - image_bbox[1]
-            if surya_internal_width > 0 and surya_internal_height > 0:
-                # Surya вернул координаты относительно этого размера
-                logger.info(f"Страница {page_idx}: Surya image_bbox = {image_bbox}")
-                api_width = surya_internal_width
-                api_height = surya_internal_height
-        
-        scale_x = page_width / api_width if api_width > 0 else 1.0
-        scale_y = page_height / api_height if api_height > 0 else 1.0
-        
-        logger.info(f"Страница {page_idx}: Surya {int(api_width)}x{int(api_height)}, "
-                   f"Our {int(page_width)}x{int(page_height)}, Scale {scale_x:.3f}x{scale_y:.3f}")
-        
-        # Padding снизу для компенсации обрезки (в % от высоты блока)
-        BOTTOM_PADDING_PERCENT = 0.05  # 5% от высоты блока
-        
-        skipped_labels = 0
-        for api_block in api_blocks:
-            bbox = api_block.get('bbox')
-            if not bbox or len(bbox) != 4:
-                continue
-            
-            # Label из surya
-            surya_info = api_block.get('surya', {})
-            label = surya_info.get('label', '')
-            
-            # Пропускаем строки и мелкие элементы - оставляем только блоки
-            if not _is_block_label(label):
-                skipped_labels += 1
-                continue
-            
-            # bbox уже в формате [x1, y1, x2, y2]
-            x1 = bbox[0] * scale_x
-            y1 = bbox[1] * scale_y
-            x2 = bbox[2] * scale_x
-            y2 = bbox[3] * scale_y
-            
-            if x2 <= x1 or y2 <= y1:
-                continue
-            
-            block_type = _map_surya_label(label)
-            
-            # Добавляем padding снизу для текста и таблиц
-            if block_type in (BlockType.TEXT, BlockType.TABLE):
-                block_height = y2 - y1
-                padding = block_height * BOTTOM_PADDING_PERCENT
-                y2 = min(y2 + padding, page_height)  # Не выходим за границы
-            
-            block = Block.create(
-                page_index=page_idx,
-                coords_px=(int(x1), int(y1), int(x2), int(y2)),
-                page_width=page_width,
-                page_height=page_height,
-                category=category,
-                block_type=block_type,
-                source=BlockSource.AUTO
-            )
-            blocks.append(block)
-        
-        if skipped_labels > 0:
-            logger.info(f"Страница {page_idx}: пропущено {skipped_labels} строчных элементов")
-        
-        logger.info(f"Страница {page_idx}: извлечено {len(blocks)} блоков от Surya")
-        
-    except Exception as e:
-        logger.error(f"Ошибка извлечения блоков Surya на странице {page_idx}: {e}")
-    
-    return blocks
-
-
-def _map_surya_label(label: str) -> BlockType:
-    """Преобразование label от Surya в BlockType"""
-    label_lower = (label or '').lower().strip()
-    
-    # Таблицы
-    if label_lower in {'table', 'table-of-contents'}:
-        return BlockType.TABLE
-    
-    # Картинки/графика
-    if label_lower in {'picture', 'figure', 'image', 'chart'}:
-        return BlockType.IMAGE
-    
-    # Всё остальное - текст
-    return BlockType.TEXT
-
-
-# Labels от Surya которые являются БЛОКАМИ (не строками)
-SURYA_BLOCK_LABELS = {
-    'text', 'title', 'section-header', 'page-header', 'page-footer',
-    'table', 'table-of-contents',
-    'picture', 'figure', 'image', 'chart',
-    'list', 'list-item',
-    'caption', 'footnote',
-    'form', 'key-value-region',
-}
-
-# Labels которые нужно игнорировать (строки, мелкие элементы)
-SURYA_SKIP_LABELS = {
-    'line', 'span', 'word', 'textinlinemath', 'text-inline-math',
-    'formula', 'page-number', 'handwriting',
-}
-
-
-def _is_block_label(label: str) -> bool:
-    """Проверка, является ли label блочным элементом (не строкой)"""
-    label_lower = (label or '').lower().strip()
-    
-    # Пропускаем явно мелкие элементы
-    if label_lower in SURYA_SKIP_LABELS:
-        return False
-    
-    # Принимаем известные блочные элементы
-    if label_lower in SURYA_BLOCK_LABELS:
-        return True
-    
-    # По умолчанию принимаем неизвестные label как блоки
-    return True
 
 
 def _extract_blocks_from_paddle_raw(page_data: Dict[str, Any], page_idx: int,
@@ -621,184 +475,4 @@ def _get_block_priority(block: Block) -> int:
     return 1
 
 
-def _select_best_block(block1: Block, block2: Block) -> Block:
-    """
-    Выбрать лучший блок:
-    1. TEXT vs IMAGE → TEXT (Surya точнее определяет текст)
-    2. TABLE > всё остальное
-    3. При равном типе — больший по площади
-    """
-    t1, t2 = block1.block_type, block2.block_type
-    
-    # TEXT vs IMAGE → TEXT побеждает
-    if t1 == BlockType.TEXT and t2 == BlockType.IMAGE:
-        return block1
-    if t2 == BlockType.TEXT and t1 == BlockType.IMAGE:
-        return block2
-    
-    # TABLE побеждает всё
-    if t1 == BlockType.TABLE and t2 != BlockType.TABLE:
-        return block1
-    if t2 == BlockType.TABLE and t1 != BlockType.TABLE:
-        return block2
-    
-    # Равный тип — берём больший
-    return block1 if _get_block_area(block1) >= _get_block_area(block2) else block2
-
-
-def _has_overlap(coords1: tuple, coords2: tuple) -> bool:
-    """Проверка пересечения двух bbox"""
-    return not (coords1[2] <= coords2[0] or coords2[2] <= coords1[0] or
-                coords1[3] <= coords2[1] or coords2[3] <= coords1[1])
-
-
-def merge_surya_paddle_blocks(surya_blocks: List[Block], paddle_blocks: List[Block], 
-                               iou_threshold: float = 0.3) -> List[Block]:
-    """
-    Совмещение блоков Surya и Paddle без наложений.
-    
-    Правила:
-    1. Блоки не накладываются
-    2. Крупный блок побеждает мелкий
-    3. Таблица > Картинка > Текст
-    """
-    all_blocks = surya_blocks + paddle_blocks
-    
-    # Сортируем: сначала по приоритету типа (desc), потом по площади (desc)
-    all_blocks.sort(key=lambda b: (_get_block_priority(b), _get_block_area(b)), reverse=True)
-    
-    merged = []
-    
-    for block in all_blocks:
-        dominated = False
-        blocks_to_remove = []
-        
-        for i, existing in enumerate(merged):
-            if not _has_overlap(block.coords_px, existing.coords_px):
-                continue
-            
-            # Есть пересечение — выбираем лучший
-            best = _select_best_block(block, existing)
-            
-            if best.id == existing.id:
-                # Существующий лучше — пропускаем новый
-                dominated = True
-                break
-            else:
-                # Новый лучше — удаляем существующий
-                blocks_to_remove.append(i)
-        
-        # Удаляем побеждённые блоки
-        for i in reversed(blocks_to_remove):
-            merged.pop(i)
-        
-        if not dominated:
-            merged.append(block)
-    
-    logger.info(f"Merged: Surya={len(surya_blocks)}, Paddle={len(paddle_blocks)} -> {len(merged)} blocks")
-    return merged
-
-
-def segment_merged(pdf_path: str, pages: List[Page], 
-                   page_images: Optional[dict] = None,
-                   page_range: Optional[List[int]] = None,
-                   category: str = "") -> Optional[List[Page]]:
-    """
-    Совмещённая разметка: Surya + Paddle с выбором лучших блоков.
-    """
-    temp_pdf_path = None
-    target_pdf_path = pdf_path
-    
-    original_doc = fitz.open(pdf_path)
-    pdf_page_dimensions = {}
-    
-    try:
-        for page_idx in range(len(original_doc)):
-            page = original_doc[page_idx]
-            pdf_page_dimensions[page_idx] = (page.rect.width, page.rect.height)
-        
-        if page_range is not None:
-            try:
-                new_doc = fitz.open()
-                new_doc.insert_pdf(original_doc, from_page=page_range[0], to_page=page_range[-1])
-                
-                fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf")
-                os.close(fd)
-                new_doc.save(temp_pdf_path, deflate=False, garbage=0, clean=False)
-                new_doc.close()
-                
-                target_pdf_path = temp_pdf_path
-            except Exception as e:
-                logger.error(f"Ошибка создания временного PDF: {e}")
-                if temp_pdf_path and os.path.exists(temp_pdf_path):
-                    os.unlink(temp_pdf_path)
-                raise
-            finally:
-                original_doc.close()
-        else:
-            original_doc.close()
-        
-        with open(target_pdf_path, 'rb') as f:
-            pdf_bytes = f.read()
-        
-        result = segment_pdf_layout(pdf_bytes)
-        
-        if not isinstance(result, dict) or 'pages' not in result:
-            raise ValueError("API вернул некорректный формат данных")
-        
-        api_pages = result['pages']
-        logger.info(f"Merged API: получено {len(api_pages)} страниц")
-        
-        for i, page_data in enumerate(api_pages):
-            if page_range is not None:
-                if i >= len(page_range):
-                    break
-                real_page_idx = page_range[i]
-            else:
-                real_page_idx = i
-            
-            if real_page_idx >= len(pages):
-                continue
-            
-            page = pages[real_page_idx]
-            
-            if page_images and real_page_idx in page_images:
-                real_img = page_images[real_page_idx]
-                page_width = real_img.width
-                page_height = real_img.height
-            else:
-                page_width = page.width
-                page_height = page.height
-            
-            # Получаем блоки от обоих движков
-            surya_blocks = _extract_blocks_from_surya_page(
-                page_data, real_page_idx, page_width, page_height, category
-            )
-            paddle_blocks = _extract_blocks_from_paddle_raw(
-                page_data, real_page_idx, page_width, page_height, category
-            )
-            
-            # Совмещаем и выбираем лучшие
-            merged_blocks = merge_surya_paddle_blocks(surya_blocks, paddle_blocks)
-            
-            # Фильтруем пересечения с существующими
-            added_count = 0
-            for new_block in merged_blocks:
-                if not _is_overlapping_with_existing(new_block, page.blocks):
-                    page.blocks.append(new_block)
-                    added_count += 1
-            
-            logger.info(f"Страница {real_page_idx}: добавлено {added_count} merged блоков")
-        
-        return pages
-        
-    except Exception as e:
-        logger.error(f"Ошибка merged сегментации: {e}", exc_info=True)
-        raise
-    finally:
-        if temp_pdf_path and os.path.exists(temp_pdf_path):
-            try:
-                os.unlink(temp_pdf_path)
-            except Exception as e:
-                logger.warning(f"Не удалось удалить временный файл: {e}")
 

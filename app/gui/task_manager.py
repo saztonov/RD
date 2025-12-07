@@ -192,18 +192,11 @@ class MarkerWorker(QThread):
             if self._cancelled:
                 return
             
-            if self.engine == "merged":
-                from app.segmentation_api import segment_merged
-                result = segment_merged(
-                    self.pdf_path, self.pages, self.page_images,
-                    self.page_range, self.category
-                )
-            else:
-                from app.segmentation_api import segment_with_api
-                result = segment_with_api(
-                    self.pdf_path, self.pages, self.page_images, 
-                    self.page_range, self.category, self.engine
-                )
+            from app.segmentation_api import segment_with_api
+            result = segment_with_api(
+                self.pdf_path, self.pages, self.page_images, 
+                self.page_range, self.category, self.engine
+            )
             
             if not self._cancelled:
                 self.finished.emit(result)

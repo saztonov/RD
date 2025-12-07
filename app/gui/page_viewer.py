@@ -3,9 +3,9 @@
 Отображение страницы с возможностью рисовать прямоугольники для разметки
 """
 
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem, QMenu
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem, QMenu, QGraphicsTextItem
 from PySide6.QtCore import Qt, QRectF, QPointF, Signal
-from PySide6.QtGui import QPixmap, QPainter, QPen, QImage, QColor, QWheelEvent, QBrush, QAction
+from PySide6.QtGui import QPixmap, QPainter, QPen, QImage, QColor, QWheelEvent, QBrush, QAction, QFont
 from PIL import Image
 from typing import Optional, List, Dict
 from app.models import Block, BlockType, BlockSource
@@ -26,6 +26,7 @@ class PageViewer(QGraphicsView):
     
     blockDrawn = Signal(int, int, int, int)  # x1, y1, x2, y2
     block_selected = Signal(int)
+    blocks_selected = Signal(list)  # список индексов выбранных блоков
     blockEditing = Signal(int)  # индекс блока для редактирования
     blockDeleted = Signal(int)  # индекс блока, который удалили
     blockMoved = Signal(int, int, int, int, int)  # индекс, x1, y1, x2, y2
@@ -43,14 +44,18 @@ class PageViewer(QGraphicsView):
         self.image_item: Optional[QGraphicsPixmapItem] = None
         self.current_blocks: List[Block] = []
         self.block_items: Dict[str, QGraphicsRectItem] = {}  # id блока -> QGraphicsRectItem
+        self.block_labels: Dict[str, QGraphicsTextItem] = {}  # id блока -> QGraphicsTextItem
         self.resize_handles: List[QGraphicsRectItem] = []  # хэндлы изменения размера
         self.current_page: int = 0
         
         # Состояние рисования
         self.drawing = False
+        self.selecting = False  # режим множественного выделения
+        self.right_button_pressed = False  # ПКМ зажата
         self.start_point: Optional[QPointF] = None
         self.rubber_band_item: Optional[QGraphicsRectItem] = None  # временный прямоугольник
         self.selected_block_idx: Optional[int] = None
+        self.selected_block_indices: List[int] = []  # список выбранных блоков
         
         # Состояние перемещения/изменения размера
         self.moving_block = False
@@ -118,6 +123,7 @@ class PageViewer(QGraphicsView):
         # Сбрасываем выбранный блок при смене страницы
         self.selected_block_idx = None
         self.block_items.clear()
+        self.block_labels.clear()
         
         # Сбрасываем масштаб только если указано
         if reset_zoom:
@@ -140,6 +146,9 @@ class PageViewer(QGraphicsView):
         for item in self.block_items.values():
             self.scene.removeItem(item)
         self.block_items.clear()
+        for label in self.block_labels.values():
+            self.scene.removeItem(label)
+        self.block_labels.clear()
         self._clear_resize_handles()
     
     def _clear_resize_handles(self):
@@ -177,6 +186,11 @@ class PageViewer(QGraphicsView):
             pen.setStyle(Qt.DashLine)
             pen.setWidth(3)
         
+        # Выделяем блок из множественного выделения синим цветом
+        if idx in self.selected_block_indices:
+            pen.setColor(QColor(0, 0, 255))  # синий
+            pen.setWidth(4)
+        
         # Выделяем выбранный блок
         if idx == self.selected_block_idx:
             pen.setWidth(4)
@@ -194,6 +208,21 @@ class PageViewer(QGraphicsView):
         
         self.scene.addItem(rect_item)
         self.block_items[block.id] = rect_item
+        
+        # Добавляем номер блока в правом верхнем углу
+        label = QGraphicsTextItem(str(idx + 1))
+        font = QFont("Arial", 12, QFont.Bold)
+        label.setFont(font)
+        label.setDefaultTextColor(QColor(255, 0, 0))  # Ярко-красный
+        
+        # Игнорируем трансформации view для постоянного размера
+        label.setFlag(label.GraphicsItemFlag.ItemIgnoresTransformations, True)
+        
+        # Позиционируем в правом верхнем углу блока
+        label.setPos(x2 - 20, y1 + 2)
+        
+        self.scene.addItem(label)
+        self.block_labels[block.id] = label
         
         # Рисуем хэндлы для выделенного блока
         if idx == self.selected_block_idx:
@@ -223,6 +252,10 @@ class PageViewer(QGraphicsView):
         # Применяем масштабирование
         self.zoom_factor *= factor
         self.scale(factor, factor)
+        
+        # Перерисовываем блоки для корректного отображения меток
+        if self.current_blocks:
+            self._redraw_blocks()
     
     def mousePressEvent(self, event):
         """Обработка нажатия мыши"""
@@ -232,6 +265,22 @@ class PageViewer(QGraphicsView):
             
             # Проверяем, попали ли в существующий блок
             clicked_block = self._find_block_at_position(scene_pos)
+            
+            # Режим Ctrl - добавление к выделению (как в AutoCAD)
+            if event.modifiers() & Qt.ControlModifier:
+                if clicked_block is not None:
+                    # Добавляем/убираем блок из множественного выделения
+                    if clicked_block in self.selected_block_indices:
+                        self.selected_block_indices.remove(clicked_block)
+                    else:
+                        self.selected_block_indices.append(clicked_block)
+                    
+                    # Испускаем сигнал множественного выделения
+                    if self.selected_block_indices:
+                        self.blocks_selected.emit(self.selected_block_indices)
+                    
+                    self._redraw_blocks()
+                return
             
             # Если не попали в блок, проверяем хэндл выбранного блока
             if clicked_block is None and self.selected_block_idx is not None:
@@ -251,6 +300,7 @@ class PageViewer(QGraphicsView):
             
             if clicked_block is not None:
                 self.selected_block_idx = clicked_block
+                self.selected_block_indices = []  # очищаем множественное выделение
                 self.block_selected.emit(clicked_block)
                 
                 # Определяем, куда кликнули: на хэндл изменения размера или в центр
@@ -277,6 +327,7 @@ class PageViewer(QGraphicsView):
                 # Начинаем рисовать новый блок (rubber band)
                 self.drawing = True
                 self.start_point = scene_pos
+                self.selected_block_indices = []  # очищаем множественное выделение
                 
                 # Создаём временный rubber band rect
                 self.rubber_band_item = QGraphicsRectItem(QRectF(scene_pos, scene_pos))
@@ -287,14 +338,17 @@ class PageViewer(QGraphicsView):
                 self.scene.addItem(self.rubber_band_item)
         
         elif event.button() == Qt.RightButton:
-            # Сохраняем позицию для контекстного меню
+            # Преобразуем координаты в координаты сцены
             scene_pos = self.mapToScene(event.pos())
             self.context_menu_pos = scene_pos
+            self.right_button_pressed = True
+            self.start_point = scene_pos
             
             # Проверяем, попали ли в существующий блок
             clicked_block = self._find_block_at_position(scene_pos)
             if clicked_block is not None:
                 self.selected_block_idx = clicked_block
+                self.selected_block_indices = []  # очищаем множественное выделение
                 self.block_selected.emit(clicked_block)
                 self._redraw_blocks()
         
@@ -307,7 +361,26 @@ class PageViewer(QGraphicsView):
         """Обработка движения мыши - рисование rubber band, перемещение или изменение размера"""
         scene_pos = self.mapToScene(event.pos())
         
-        if self.drawing and self.start_point and self.rubber_band_item:
+        # Проверяем начало рамки выбора через ПКМ
+        if self.right_button_pressed and not self.selecting and self.start_point:
+            # Если мышь сдвинулась на достаточное расстояние, начинаем рамку выбора
+            distance = (scene_pos - self.start_point).manhattanLength()
+            if distance > 5:
+                self.selecting = True
+                # Создаём временную рамку выбора
+                self.rubber_band_item = QGraphicsRectItem(QRectF(self.start_point, scene_pos))
+                pen = QPen(QColor(0, 120, 255), 2, Qt.DashLine)
+                brush = QBrush(QColor(0, 120, 255, 30))
+                self.rubber_band_item.setPen(pen)
+                self.rubber_band_item.setBrush(brush)
+                self.scene.addItem(self.rubber_band_item)
+        
+        if self.selecting and self.start_point and self.rubber_band_item:
+            # Рамка выбора (множественное выделение)
+            rect = QRectF(self.start_point, scene_pos).normalized()
+            self.rubber_band_item.setRect(rect)
+        
+        elif self.drawing and self.start_point and self.rubber_band_item:
             # Рисование нового блока
             rect = QRectF(self.start_point, scene_pos).normalized()
             self.rubber_band_item.setRect(rect)
@@ -388,16 +461,45 @@ class PageViewer(QGraphicsView):
             super().mouseReleaseEvent(event)
         
         elif event.button() == Qt.RightButton:
-            # Показываем контекстное меню
-            if self.selected_block_idx is not None:
-                self._show_context_menu(event.globalPos())
+            self.right_button_pressed = False
+            
+            if self.selecting:
+                # Завершение режима множественного выделения (ПКМ)
+                self.selecting = False
+                
+                if self.rubber_band_item:
+                    rect = self.rubber_band_item.rect()
+                    
+                    # Удаляем рамку выбора
+                    self.scene.removeItem(self.rubber_band_item)
+                    self.rubber_band_item = None
+                    
+                    # Находим все блоки, попавшие в рамку
+                    if rect.width() > 5 and rect.height() > 5:
+                        selected_indices = self._find_blocks_in_rect(rect)
+                        if selected_indices:
+                            self.selected_block_indices = selected_indices
+                            self.blocks_selected.emit(selected_indices)
+                            self._redraw_blocks()
+            else:
+                # Показываем контекстное меню если не было рамки выбора
+                if self.selected_block_idx is not None:
+                    self._show_context_menu(event.globalPos())
+            
+            # Очищаем состояние
+            self.start_point = None
     
     def keyPressEvent(self, event):
-        """Обработка нажатия клавиши Delete"""
+        """Обработка нажатия клавиш"""
         if event.key() == Qt.Key_Delete:
             if self.selected_block_idx is not None:
                 self.blockDeleted.emit(self.selected_block_idx)
                 self.selected_block_idx = None
+        elif event.key() == Qt.Key_Escape:
+            # Сброс выделения
+            self.selected_block_idx = None
+            self.selected_block_indices = []
+            self._redraw_blocks()
         else:
             super().keyPressEvent(event)
     
@@ -435,6 +537,25 @@ class PageViewer(QGraphicsView):
                 return idx
         
         return None
+    
+    def _find_blocks_in_rect(self, rect: QRectF) -> List[int]:
+        """
+        Найти все блоки, попадающие в прямоугольник
+        
+        Returns:
+            Список индексов блоков
+        """
+        selected_indices = []
+        
+        for idx, block in enumerate(self.current_blocks):
+            x1, y1, x2, y2 = block.coords_px
+            block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
+            
+            # Проверяем пересечение или вхождение
+            if rect.intersects(block_rect):
+                selected_indices.append(idx)
+        
+        return selected_indices
     
     def _redraw_blocks(self):
         """Перерисовать все блоки (например, после смены выделения)"""

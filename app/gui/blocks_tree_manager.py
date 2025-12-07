@@ -4,7 +4,7 @@ BlocksTreeManager для MainWindow
 """
 
 import logging
-from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QMessageBox, QInputDialog, QMenu
+from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QInputDialog, QMenu
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from app.models import BlockType
@@ -50,11 +50,15 @@ class BlocksTreeManager:
                 cat_item.setData(0, Qt.UserRole, {"type": "category", "page": page_num})
                 cat_item.setExpanded(True)
                 
-                for idx, block in categories[cat_name]:
+                # Сортируем блоки по индексу
+                sorted_blocks = sorted(categories[cat_name], key=lambda x: x[0])
+                for idx, block in sorted_blocks:
                     block_item = QTreeWidgetItem(cat_item)
                     block_item.setText(0, f"Блок {idx + 1}")
                     block_item.setText(1, block.block_type.value)
                     block_item.setData(0, Qt.UserRole, {"type": "block", "page": page_num, "idx": idx})
+                    # Сохраняем числовое значение для правильной сортировки
+                    block_item.setData(0, Qt.UserRole + 1, idx)
         
         self.update_blocks_tree_by_category()
     
@@ -80,11 +84,15 @@ class BlocksTreeManager:
             cat_item.setData(0, Qt.UserRole, {"type": "category"})
             cat_item.setExpanded(True)
             
-            for page_num, idx, block in categories[cat_name]:
+            # Сортируем блоки по странице и индексу
+            sorted_blocks = sorted(categories[cat_name], key=lambda x: (x[0], x[1]))
+            for page_num, idx, block in sorted_blocks:
                 block_item = QTreeWidgetItem(cat_item)
                 block_item.setText(0, f"Блок {idx + 1} (стр. {page_num + 1})")
                 block_item.setText(1, block.block_type.value)
                 block_item.setData(0, Qt.UserRole, {"type": "block", "page": page_num, "idx": idx})
+                # Сохраняем числовое значение для правильной сортировки
+                block_item.setData(0, Qt.UserRole + 1, idx + page_num * 10000)
     
     def select_block_in_tree(self, block_idx: int):
         """Выделить блок в дереве"""
@@ -112,9 +120,41 @@ class BlocksTreeManager:
                     self.blocks_tree_by_category.setCurrentItem(block_item)
                     return
     
+    def select_blocks_in_tree(self, block_indices: list):
+        """Выделить несколько блоков в дереве"""
+        # Очищаем текущее выделение
+        self.blocks_tree.clearSelection()
+        self.blocks_tree_by_category.clearSelection()
+        
+        # Выделяем блоки в первой вкладке (по страницам)
+        for i in range(self.blocks_tree.topLevelItemCount()):
+            page_item = self.blocks_tree.topLevelItem(i)
+            page_data = page_item.data(0, Qt.UserRole)
+            if not page_data or page_data.get("page") != self.parent.current_page:
+                continue
+            
+            for j in range(page_item.childCount()):
+                cat_item = page_item.child(j)
+                for k in range(cat_item.childCount()):
+                    block_item = cat_item.child(k)
+                    data = block_item.data(0, Qt.UserRole)
+                    if data and data.get("idx") in block_indices and data.get("page") == self.parent.current_page:
+                        block_item.setSelected(True)
+        
+        # Выделяем блоки во второй вкладке (по категориям)
+        for i in range(self.blocks_tree_by_category.topLevelItemCount()):
+            cat_item = self.blocks_tree_by_category.topLevelItem(i)
+            for j in range(cat_item.childCount()):
+                block_item = cat_item.child(j)
+                data = block_item.data(0, Qt.UserRole)
+                if data and data.get("idx") in block_indices and data.get("page") == self.parent.current_page:
+                    block_item.setSelected(True)
+    
     def on_tree_context_menu(self, position):
         """Контекстное меню для дерева блоков"""
         tree = self.parent.sender()
+        if tree is None:
+            tree = self.blocks_tree
         selected_items = tree.selectedItems()
         
         selected_blocks = []
@@ -159,7 +199,6 @@ class BlocksTreeManager:
         
         self.parent._render_current_page()
         self.update_blocks_tree()
-        QMessageBox.information(self.parent, "Успех", f"Тип '{block_type.value}' применён к {len(blocks_data)} блокам")
     
     def apply_category_to_blocks(self, blocks_data: list, category: str):
         """Применить категорию к нескольким блокам"""
@@ -177,7 +216,6 @@ class BlocksTreeManager:
         
         self.parent._render_current_page()
         self.update_blocks_tree()
-        QMessageBox.information(self.parent, "Успех", f"Категория '{category}' применена к {len(blocks_data)} блокам")
     
     def apply_new_category_to_blocks(self, blocks_data: list):
         """Применить новую категорию к нескольким блокам"""
