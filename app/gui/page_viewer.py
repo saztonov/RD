@@ -512,13 +512,19 @@ class PageViewer(QGraphicsView):
         """Показать контекстное меню"""
         menu = QMenu(self)
         
-        edit_action = menu.addAction("✏️ Редактировать")
+        edit_action = menu.addAction("Редактировать")
         edit_action.triggered.connect(lambda: self.blockEditing.emit(self.selected_block_idx))
         
-        delete_action = menu.addAction("🗑️ Удалить блок")
-        delete_action.triggered.connect(lambda: self.blockDeleted.emit(self.selected_block_idx))
+        delete_action = menu.addAction("Удалить блок")
+        delete_action.triggered.connect(lambda: self._delete_selected_block())
         
         menu.exec(global_pos)
+    
+    def _delete_selected_block(self):
+        """Удалить выбранный блок"""
+        if self.selected_block_idx is not None:
+            self.blockDeleted.emit(self.selected_block_idx)
+            self.selected_block_idx = None
     
     def _find_block_at_position(self, scene_pos: QPointF) -> Optional[int]:
         """

@@ -307,6 +307,82 @@ class BlockHandlersMixin:
             self.blocks_tree_manager.update_blocks_tree()
             QMessageBox.information(self, "Успех", "Разметка страницы очищена")
     
+    def _move_block_up(self):
+        """Переместить выбранный блок вверх"""
+        tree = self.blocks_tabs.currentWidget()
+        if tree is None:
+            return
+        
+        current_item = tree.currentItem()
+        if not current_item:
+            return
+        
+        data = current_item.data(0, Qt.UserRole)
+        if not data or not isinstance(data, dict) or data.get("type") != "block":
+            return
+        
+        page_num = data["page"]
+        block_idx = data["idx"]
+        
+        if not self.annotation_document or page_num >= len(self.annotation_document.pages):
+            return
+        
+        page = self.annotation_document.pages[page_num]
+        
+        # Проверяем, можем ли перемещать вверх
+        if block_idx <= 0:
+            return
+        
+        # Меняем местами блоки
+        page.blocks[block_idx], page.blocks[block_idx - 1] = page.blocks[block_idx - 1], page.blocks[block_idx]
+        
+        # Обновляем viewer и tree
+        self.page_viewer.set_blocks(page.blocks)
+        self.blocks_tree_manager.update_blocks_tree()
+        
+        # Выбираем новую позицию блока
+        self.blocks_tree_manager.select_block_in_tree(block_idx - 1)
+        self.page_viewer.selected_block_idx = block_idx - 1
+        self.page_viewer._redraw_blocks()
+    
+    def _move_block_down(self):
+        """Переместить выбранный блок вниз"""
+        tree = self.blocks_tabs.currentWidget()
+        if tree is None:
+            return
+        
+        current_item = tree.currentItem()
+        if not current_item:
+            return
+        
+        data = current_item.data(0, Qt.UserRole)
+        if not data or not isinstance(data, dict) or data.get("type") != "block":
+            return
+        
+        page_num = data["page"]
+        block_idx = data["idx"]
+        
+        if not self.annotation_document or page_num >= len(self.annotation_document.pages):
+            return
+        
+        page = self.annotation_document.pages[page_num]
+        
+        # Проверяем, можем ли перемещать вниз
+        if block_idx >= len(page.blocks) - 1:
+            return
+        
+        # Меняем местами блоки
+        page.blocks[block_idx], page.blocks[block_idx + 1] = page.blocks[block_idx + 1], page.blocks[block_idx]
+        
+        # Обновляем viewer и tree
+        self.page_viewer.set_blocks(page.blocks)
+        self.blocks_tree_manager.update_blocks_tree()
+        
+        # Выбираем новую позицию блока
+        self.blocks_tree_manager.select_block_in_tree(block_idx + 1)
+        self.page_viewer.selected_block_idx = block_idx + 1
+        self.page_viewer._redraw_blocks()
+    
     def keyPressEvent(self, event):
         """Обработка нажатия клавиш"""
         if event.key() == Qt.Key_Left:

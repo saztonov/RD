@@ -95,6 +95,18 @@ class PanelsSetupMixin:
         blocks_group = QGroupBox("Все блоки")
         blocks_layout = QVBoxLayout(blocks_group)
         
+        # Кнопки перемещения блоков
+        move_buttons_layout = QHBoxLayout()
+        self.move_block_up_btn = QPushButton("↑ Вверх")
+        self.move_block_up_btn.clicked.connect(self._move_block_up)
+        move_buttons_layout.addWidget(self.move_block_up_btn)
+        
+        self.move_block_down_btn = QPushButton("↓ Вниз")
+        self.move_block_down_btn.clicked.connect(self._move_block_down)
+        move_buttons_layout.addWidget(self.move_block_down_btn)
+        
+        blocks_layout.addLayout(move_buttons_layout)
+        
         self.blocks_tabs = QTabWidget()
         
         # Вкладка 1: Страница → Категория → Блок
