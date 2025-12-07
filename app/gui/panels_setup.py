@@ -65,6 +65,7 @@ class PanelsSetupMixin:
         self.page_viewer.blocks_selected.connect(self._on_blocks_selected)
         self.page_viewer.blockEditing.connect(self._on_block_editing)
         self.page_viewer.blockDeleted.connect(self._on_block_deleted)
+        self.page_viewer.blocks_deleted.connect(self._on_blocks_deleted)
         self.page_viewer.blockMoved.connect(self._on_block_moved)
         self.page_viewer.page_changed.connect(self._on_page_changed)
         layout.addWidget(self.page_viewer)

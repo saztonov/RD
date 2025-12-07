@@ -41,6 +41,8 @@ class BlockHandlersMixin:
         if not self.annotation_document:
             return
         
+        self._save_undo_state()
+        
         checked_action = self.block_type_group.checkedAction()
         block_type = checked_action.data() if checked_action else BlockType.TEXT
         
@@ -101,6 +103,7 @@ class BlockHandlersMixin:
         
         if self.page_viewer.selected_block_idx is not None and \
            0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
+            self._save_undo_state()
             block = current_page_data.blocks[self.page_viewer.selected_block_idx]
             try:
                 block.block_type = BlockType(new_type)
@@ -123,6 +126,7 @@ class BlockHandlersMixin:
         
         if self.page_viewer.selected_block_idx is not None and \
            0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
+            self._save_undo_state()
             block = current_page_data.blocks[self.page_viewer.selected_block_idx]
             block.category = category
             self.blocks_tree_manager.update_blocks_tree()
@@ -152,6 +156,8 @@ class BlockHandlersMixin:
             return
         
         if 0 <= block_idx < len(current_page_data.blocks):
+            self._save_undo_state()
+            
             self.page_viewer.selected_block_idx = None
             del current_page_data.blocks[block_idx]
             
@@ -165,6 +171,39 @@ class BlockHandlersMixin:
             
             self.page_viewer.set_blocks(current_page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()
+    
+    def _on_blocks_deleted(self, block_indices: list):
+        """Обработка удаления множественных блоков"""
+        if not self.annotation_document or not block_indices:
+            return
+        
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
+        
+        self._save_undo_state()
+        
+        # Сортируем индексы в обратном порядке для корректного удаления
+        sorted_indices = sorted(block_indices, reverse=True)
+        
+        for block_idx in sorted_indices:
+            if 0 <= block_idx < len(current_page_data.blocks):
+                del current_page_data.blocks[block_idx]
+        
+        # Очищаем выделение
+        self.page_viewer.selected_block_idx = None
+        self.page_viewer.selected_block_indices = []
+        
+        self.category_edit.blockSignals(True)
+        self.category_edit.setText("")
+        self.category_edit.blockSignals(False)
+        
+        self.block_type_combo.blockSignals(True)
+        self.block_type_combo.setCurrentIndex(0)
+        self.block_type_combo.blockSignals(False)
+        
+        self.page_viewer.set_blocks(current_page_data.blocks)
+        self.blocks_tree_manager.update_blocks_tree()
     
     def _on_block_moved(self, block_idx: int, x1: int, y1: int, x2: int, y2: int):
         """Обработка перемещения/изменения размера блока"""
@@ -302,6 +341,7 @@ class BlockHandlersMixin:
         )
         
         if reply == QMessageBox.Yes:
+            self._save_undo_state()
             current_page_data.blocks.clear()
             self.page_viewer.set_blocks([])
             self.blocks_tree_manager.update_blocks_tree()
@@ -332,6 +372,8 @@ class BlockHandlersMixin:
         # Проверяем, можем ли перемещать вверх
         if block_idx <= 0:
             return
+        
+        self._save_undo_state()
         
         # Меняем местами блоки
         page.blocks[block_idx], page.blocks[block_idx - 1] = page.blocks[block_idx - 1], page.blocks[block_idx]
@@ -371,6 +413,8 @@ class BlockHandlersMixin:
         if block_idx >= len(page.blocks) - 1:
             return
         
+        self._save_undo_state()
+        
         # Меняем местами блоки
         page.blocks[block_idx], page.blocks[block_idx + 1] = page.blocks[block_idx + 1], page.blocks[block_idx]
         
@@ -385,7 +429,15 @@ class BlockHandlersMixin:
     
     def keyPressEvent(self, event):
         """Обработка нажатия клавиш"""
-        if event.key() == Qt.Key_Left:
+        # Ctrl+Z для отмены
+        if event.key() == Qt.Key_Z and event.modifiers() & Qt.ControlModifier:
+            self._undo()
+            return
+        # Ctrl+Y для повтора
+        elif event.key() == Qt.Key_Y and event.modifiers() & Qt.ControlModifier:
+            self._redo()
+            return
+        elif event.key() == Qt.Key_Left:
             self._prev_page()
             return
         elif event.key() == Qt.Key_Right:

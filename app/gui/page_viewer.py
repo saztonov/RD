@@ -29,6 +29,7 @@ class PageViewer(QGraphicsView):
     blocks_selected = Signal(list)  # список индексов выбранных блоков
     blockEditing = Signal(int)  # индекс блока для редактирования
     blockDeleted = Signal(int)  # индекс блока, который удалили
+    blocks_deleted = Signal(list)  # список индексов блоков для удаления
     blockMoved = Signal(int, int, int, int, int)  # индекс, x1, y1, x2, y2
     page_changed = Signal(int)
     
@@ -292,6 +293,7 @@ class PageViewer(QGraphicsView):
                     
                     if resize_handle:
                         # Начинаем изменение размера выбранного блока
+                        self.parent().window()._save_undo_state()
                         self.resizing_block = True
                         self.resize_handle = resize_handle
                         self.move_start_pos = scene_pos
@@ -312,12 +314,14 @@ class PageViewer(QGraphicsView):
                 
                 if resize_handle:
                     # Начинаем изменение размера
+                    self.parent().window()._save_undo_state()
                     self.resizing_block = True
                     self.resize_handle = resize_handle
                     self.move_start_pos = scene_pos
                     self.original_block_rect = block_rect
                 else:
                     # Начинаем перемещение
+                    self.parent().window()._save_undo_state()
                     self.moving_block = True
                     self.move_start_pos = scene_pos
                     self.original_block_rect = block_rect
@@ -492,7 +496,13 @@ class PageViewer(QGraphicsView):
     def keyPressEvent(self, event):
         """Обработка нажатия клавиш"""
         if event.key() == Qt.Key_Delete:
-            if self.selected_block_idx is not None:
+            # Если есть множественное выделение
+            if self.selected_block_indices:
+                self.blocks_deleted.emit(self.selected_block_indices)
+                self.selected_block_indices = []
+                self.selected_block_idx = None
+            # Если выбран один блок
+            elif self.selected_block_idx is not None:
                 self.blockDeleted.emit(self.selected_block_idx)
                 self.selected_block_idx = None
         elif event.key() == Qt.Key_Escape:
