@@ -4,7 +4,8 @@
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QLabel, QComboBox, QGroupBox, QLineEdit,
-                               QTreeWidget, QTabWidget, QListWidget, QAbstractItemView)
+                               QTreeWidget, QTabWidget, QListWidget, QAbstractItemView,
+                               QTreeWidgetItem)
 from PySide6.QtCore import Qt
 from app.models import BlockType
 from app.gui.page_viewer import PageViewer
@@ -85,6 +86,10 @@ class PanelsSetupMixin:
         block_group = self._create_block_properties_group()
         layout.addWidget(block_group)
         
+        # Группа: промты
+        prompts_group = self._create_prompts_group()
+        layout.addWidget(prompts_group)
+        
         # Группа: действия
         actions_group = self._create_actions_group()
         layout.addWidget(actions_group)
@@ -142,38 +147,9 @@ class PanelsSetupMixin:
         return blocks_group
     
     def _create_block_properties_group(self) -> QGroupBox:
-        """Создать группу свойств блока"""
-        block_group = QGroupBox("Свойства блока")
+        """Создать группу категорий"""
+        block_group = QGroupBox("Категории")
         block_layout = QVBoxLayout(block_group)
-        
-        # Тип блока
-        type_layout = QHBoxLayout()
-        type_layout.addWidget(QLabel("Тип:"))
-        self.block_type_combo = QComboBox()
-        self.block_type_combo.addItems([t.value for t in BlockType])
-        self.block_type_combo.currentTextChanged.connect(self._on_block_type_changed)
-        type_layout.addWidget(self.block_type_combo)
-        
-        # Кнопки редактирования промтов
-        self.edit_text_prompt_btn = QPushButton("✏️")
-        self.edit_text_prompt_btn.setMaximumWidth(30)
-        self.edit_text_prompt_btn.setToolTip("Редактировать промт для Текста")
-        self.edit_text_prompt_btn.clicked.connect(lambda: self._edit_type_prompt("text", "Текст"))
-        type_layout.addWidget(self.edit_text_prompt_btn)
-        
-        self.edit_table_prompt_btn = QPushButton("✏️")
-        self.edit_table_prompt_btn.setMaximumWidth(30)
-        self.edit_table_prompt_btn.setToolTip("Редактировать промт для Таблицы")
-        self.edit_table_prompt_btn.clicked.connect(lambda: self._edit_type_prompt("table", "Таблица"))
-        type_layout.addWidget(self.edit_table_prompt_btn)
-        
-        self.edit_image_prompt_btn = QPushButton("✏️")
-        self.edit_image_prompt_btn.setMaximumWidth(30)
-        self.edit_image_prompt_btn.setToolTip("Редактировать промт для Картинки")
-        self.edit_image_prompt_btn.clicked.connect(lambda: self._edit_type_prompt("image", "Картинка"))
-        type_layout.addWidget(self.edit_image_prompt_btn)
-        
-        block_layout.addLayout(type_layout)
         
         # Категория
         cat_layout = QHBoxLayout()
@@ -191,17 +167,8 @@ class PanelsSetupMixin:
         block_layout.addLayout(cat_layout)
         
         # Список категорий
-        categories_header = QHBoxLayout()
-        categories_header.addWidget(QLabel("Категории:"))
-        self.edit_category_prompt_btn = QPushButton("✏️ Промт")
-        self.edit_category_prompt_btn.setMaximumWidth(80)
-        self.edit_category_prompt_btn.setToolTip("Редактировать промт выбранной категории")
-        self.edit_category_prompt_btn.clicked.connect(self._edit_selected_category_prompt)
-        categories_header.addWidget(self.edit_category_prompt_btn)
-        block_layout.addLayout(categories_header)
-        
         self.categories_list = QListWidget()
-        self.categories_list.setMaximumHeight(80)
+        self.categories_list.setMaximumHeight(150)
         self.categories_list.itemClicked.connect(
             lambda item: self.category_manager.on_category_clicked(item))
         self.categories_list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -209,6 +176,99 @@ class PanelsSetupMixin:
         block_layout.addWidget(self.categories_list)
         
         return block_group
+    
+    def _create_prompts_group(self) -> QGroupBox:
+        """Создать группу промтов"""
+        prompts_group = QGroupBox("Промты")
+        prompts_layout = QVBoxLayout(prompts_group)
+        
+        # Список промтов (аналогично блокам)
+        self.prompts_tree = QTreeWidget()
+        self.prompts_tree.setHeaderLabels(["Название", "Тип"])
+        self.prompts_tree.setColumnWidth(0, 150)
+        self.prompts_tree.setSortingEnabled(False)
+        self.prompts_tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.prompts_tree.setMaximumHeight(200)
+        self.prompts_tree.itemSelectionChanged.connect(self._on_prompt_selection_changed)
+        prompts_layout.addWidget(self.prompts_tree)
+        
+        # Кнопка редактирования промта
+        self.edit_prompt_btn = QPushButton("Промт")
+        self.edit_prompt_btn.setEnabled(False)
+        self.edit_prompt_btn.clicked.connect(self._edit_selected_prompt)
+        prompts_layout.addWidget(self.edit_prompt_btn)
+        
+        # Заполняем список начальными данными
+        self._populate_prompts_tree()
+        
+        return prompts_group
+    
+    def _populate_prompts_tree(self):
+        """Заполнить список промтов"""
+        self.prompts_tree.clear()
+        
+        # Добавляем типы блоков
+        block_types = [
+            ("Текст", "Блок"),
+            ("Таблица", "Блок"),
+            ("Картинка", "Блок")
+        ]
+        
+        for name, type_str in block_types:
+            item = QTreeWidgetItem(self.prompts_tree)
+            item.setText(0, name)
+            item.setText(1, type_str)
+        
+        # Добавляем категории
+        if hasattr(self, 'categories'):
+            for category in sorted(self.categories):
+                item = QTreeWidgetItem(self.prompts_tree)
+                item.setText(0, category)
+                item.setText(1, "Категория")
+    
+    def update_prompts_table(self):
+        """Обновить список промтов (публичный метод)"""
+        if hasattr(self, 'prompts_tree'):
+            self._populate_prompts_tree()
+    
+    def _on_prompt_selection_changed(self):
+        """Обработчик изменения выбора в списке промтов"""
+        selected = self.prompts_tree.selectedItems()
+        self.edit_prompt_btn.setEnabled(len(selected) > 0)
+    
+    def _edit_selected_prompt(self):
+        """Редактировать выбранный промт"""
+        current_item = self.prompts_tree.currentItem()
+        if not current_item:
+            return
+        
+        name = current_item.text(0)
+        prompt_type = current_item.text(1)
+        
+        if not hasattr(self, 'prompt_manager'):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Ошибка", "PromptManager не инициализирован")
+            return
+        
+        if prompt_type == "Блок":
+            # Редактируем промт типа блока
+            type_map = {
+                "Текст": "text",
+                "Таблица": "table",
+                "Картинка": "image"
+            }
+            prompt_key = type_map.get(name)
+            if prompt_key:
+                default_prompt = self.prompt_manager.DEFAULT_PROMPTS.get(prompt_key, "")
+                self.prompt_manager.edit_prompt(
+                    prompt_key,
+                    f"Редактирование промта: {name}",
+                    default_prompt
+                )
+        elif prompt_type == "Категория":
+            # Редактируем промт категории
+            if hasattr(self, 'category_manager'):
+                self.category_manager.edit_category_prompt(name)
     
     def _create_actions_group(self) -> QGroupBox:
         """Создать группу действий"""
@@ -238,28 +298,6 @@ class PanelsSetupMixin:
         actions_layout.addWidget(self.run_ocr_btn)
         
         return actions_group
-    
-    def _edit_type_prompt(self, prompt_type: str, display_name: str):
-        """Редактировать промт типа блока"""
-        if hasattr(self, 'prompt_manager'):
-            default_prompt = self.prompt_manager.DEFAULT_PROMPTS.get(prompt_type, "")
-            self.prompt_manager.edit_prompt(
-                prompt_type,
-                f"Редактирование промта: {display_name}",
-                default_prompt
-            )
-    
-    def _edit_selected_category_prompt(self):
-        """Редактировать промт выбранной категории"""
-        selected_items = self.categories_list.selectedItems()
-        if not selected_items:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Внимание", "Выберите категорию из списка")
-            return
-        
-        category_name = selected_items[0].text()
-        if hasattr(self, 'category_manager'):
-            self.category_manager.edit_category_prompt(category_name)
     
     def _show_category_context_menu(self, position):
         """Показать контекстное меню для категории"""

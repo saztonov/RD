@@ -75,10 +75,6 @@ class BlockHandlersMixin:
         
         block = current_page_data.blocks[block_idx]
         
-        self.block_type_combo.blockSignals(True)
-        self.block_type_combo.setCurrentText(block.block_type.value)
-        self.block_type_combo.blockSignals(False)
-        
         self.category_edit.blockSignals(True)
         self.category_edit.setText(block.category)
         self.category_edit.blockSignals(False)
@@ -91,26 +87,6 @@ class BlockHandlersMixin:
             return
         
         self.blocks_tree_manager.select_blocks_in_tree(block_indices)
-    
-    def _on_block_type_changed(self, new_type: str):
-        """Изменение типа выбранного блока"""
-        if not self.annotation_document:
-            return
-        
-        current_page_data = self._get_or_create_page(self.current_page)
-        if not current_page_data:
-            return
-        
-        if self.page_viewer.selected_block_idx is not None and \
-           0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
-            self._save_undo_state()
-            block = current_page_data.blocks[self.page_viewer.selected_block_idx]
-            try:
-                block.block_type = BlockType(new_type)
-                self.page_viewer._redraw_blocks()
-                self.blocks_tree_manager.update_blocks_tree()
-            except ValueError:
-                pass
     
     def _on_category_changed(self):
         """Изменение категории выбранного блока"""
@@ -165,10 +141,6 @@ class BlockHandlersMixin:
             self.category_edit.setText("")
             self.category_edit.blockSignals(False)
             
-            self.block_type_combo.blockSignals(True)
-            self.block_type_combo.setCurrentIndex(0)
-            self.block_type_combo.blockSignals(False)
-            
             self.page_viewer.set_blocks(current_page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()
     
@@ -197,10 +169,6 @@ class BlockHandlersMixin:
         self.category_edit.blockSignals(True)
         self.category_edit.setText("")
         self.category_edit.blockSignals(False)
-        
-        self.block_type_combo.blockSignals(True)
-        self.block_type_combo.setCurrentIndex(0)
-        self.block_type_combo.blockSignals(False)
         
         self.page_viewer.set_blocks(current_page_data.blocks)
         self.blocks_tree_manager.update_blocks_tree()
@@ -304,25 +272,6 @@ class BlockHandlersMixin:
             self.current_page = new_page
             self._render_current_page()
             self._update_ui()
-    
-    def _edit_type_prompt(self, type_name: str, display_name: str):
-        """Редактировать промт для типа блока"""
-        from app.gui.prompt_manager import PromptManager
-        self.prompt_manager.edit_prompt(
-            type_name,
-            f"Промт для типа: {display_name}",
-            PromptManager.DEFAULT_PROMPTS.get(type_name, "")
-        )
-    
-    def _edit_selected_category_prompt(self):
-        """Редактировать промт выбранной категории"""
-        selected_items = self.categories_list.selectedItems()
-        if not selected_items:
-            QMessageBox.information(self, "Выберите категорию",
-                                    "Сначала выберите категорию из списка")
-            return
-        category_name = selected_items[0].text()
-        self.category_manager.edit_category_prompt(category_name)
     
     def _clear_current_page(self):
         """Очистить все блоки с текущей страницы"""

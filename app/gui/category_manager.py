@@ -34,6 +34,10 @@ class CategoryManager:
         self.categories_list.clear()
         for cat in sorted(self.parent.categories):
             self.categories_list.addItem(cat)
+        
+        # Обновляем таблицу промтов
+        if hasattr(self.parent, 'update_prompts_table'):
+            self.parent.update_prompts_table()
     
     def on_category_clicked(self, item):
         """Применить категорию к выбранному блоку при клике"""
