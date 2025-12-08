@@ -8,7 +8,7 @@ import copy
 from pathlib import Path
 from PySide6.QtWidgets import QProgressDialog, QMessageBox, QDialog
 from PySide6.QtCore import Qt
-from app.ocr import create_ocr_engine, generate_structured_markdown, run_local_vlm_full_document, load_prompt
+from app.ocr import create_ocr_engine, generate_structured_markdown, run_local_vlm_full_document
 from app.annotation_io import AnnotationIO
 from app.models import BlockType
 from app.gui.task_manager import TaskManager, TaskType
@@ -112,7 +112,7 @@ class OCRManager:
             self.parent.annotation_document.pdf_path
         )
         
-        # Подготовка конфига
+        # Подготовка конфига с загрузчиком промптов из R2
         config = {
             'output_dir': str(output_dir),
             'crops_dir': str(crops_dir),
@@ -122,6 +122,8 @@ class OCRManager:
             'text_model': dialog.text_model,
             'table_model': dialog.table_model,
             'image_model': dialog.image_model,
+            'prompt_loader': self.parent.prompt_manager.load_prompt if hasattr(self.parent, 'prompt_manager') else None,
+            'use_batch_ocr': getattr(dialog, 'use_batch_ocr', True),
         }
         
         # Глубокая копия документа для потока
@@ -244,7 +246,7 @@ class OCRManager:
         self._save_ocr_results(output_dir)
     
     def _get_prompt_for_block(self, block):
-        """Получить промт для блока (приоритет: категория -> тип блока)"""
+        """Получить промт для блока из R2 (приоритет: категория -> тип блока)"""
         # Приоритет 1: Промпт категории
         if block.category and block.category.strip():
             category_prompt = self.parent.prompt_manager.load_prompt(f"category_{block.category.strip()}")
@@ -253,12 +255,12 @@ class OCRManager:
         
         # Приоритет 2: Промпт типа блока
         prompt_map = {
-            BlockType.IMAGE: ("image", "ocr_image_description.txt"),
-            BlockType.TABLE: ("table", "ocr_table.txt"),
-            BlockType.TEXT: ("text", "ocr_text.txt"),
+            BlockType.IMAGE: "image",
+            BlockType.TABLE: "table",
+            BlockType.TEXT: "text",
         }
-        key, fallback = prompt_map.get(block.block_type, ("text", "ocr_text.txt"))
-        return self.parent.prompt_manager.load_prompt(key) or load_prompt(fallback)
+        key = prompt_map.get(block.block_type, "text")
+        return self.parent.prompt_manager.load_prompt(key)
     
     def _save_ocr_results(self, output_dir: Path):
         """Сохранить результаты OCR"""

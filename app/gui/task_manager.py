@@ -49,7 +49,7 @@ class Task:
 
 
 class OCRWorker(QThread):
-    """Фоновый поток для OCR"""
+    """Фоновый поток для OCR с поддержкой batch-оптимизации"""
     progress = Signal(int, int)  # current, total
     finished = Signal(object)  # result
     error = Signal(str)
@@ -67,8 +67,127 @@ class OCRWorker(QThread):
         self._cancelled = True
     
     def run(self):
+        # Выбираем режим: batch (оптимизированный) или legacy
+        use_batch = self.config.get('use_batch_ocr', True)
+        
+        if use_batch:
+            self._run_batch_ocr()
+        else:
+            self._run_legacy_ocr()
+    
+    def _run_batch_ocr(self):
+        """Оптимизированный batch OCR с экономией токенов"""
         try:
-            from app.ocr import create_ocr_engine, generate_structured_markdown, load_prompt
+            from app.ocr_batch import BatchOCREngine, estimate_token_savings
+            from app.ocr import generate_structured_markdown
+            from app.annotation_io import AnnotationIO
+            from app.models import BlockType
+            import httpx
+            
+            output_dir = Path(self.config['output_dir'])
+            crops_dir = output_dir / "crops"
+            crops_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Подготовка API клиента и URL
+            if self.config['backend'] == 'openrouter':
+                import os
+                from dotenv import load_dotenv
+                load_dotenv()
+                api_key = os.getenv("OPENROUTER_API_KEY")
+                api_url = "https://openrouter.ai/api/v1/chat/completions"
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                model_name = self.config.get('text_model', 'qwen/qwen3-vl-30b-a3b-instruct')
+            else:
+                from app.config import get_lm_base_url
+                api_url = get_lm_base_url()
+                headers = {"Content-Type": "application/json"}
+                model_name = self.config.get('vlm_model_name', 'qwen3-vl-32b-instruct')
+            
+            # Собираем все блоки с кропами (отсортированы по позиции в документе)
+            blocks_with_crops = []
+            for page in self.annotation_document.pages:
+                if self._cancelled:
+                    return
+                
+                page_num = page.page_number
+                if page_num not in self.page_images:
+                    img = self.pdf_document.render_page(page_num)
+                    if img:
+                        self.page_images[page_num] = img
+                
+                page_img = self.page_images.get(page_num)
+                if not page_img:
+                    continue
+                
+                # Сортируем блоки страницы по вертикальной позиции (сверху вниз)
+                sorted_blocks = sorted(page.blocks, key=lambda b: b.coords_px[1])
+                
+                for block in sorted_blocks:
+                    x1, y1, x2, y2 = block.coords_px
+                    if x1 >= x2 or y1 >= y2:
+                        continue
+                    
+                    crop = page_img.crop((x1, y1, x2, y2))
+                    
+                    # Сохраняем IMAGE кропы
+                    if block.block_type == BlockType.IMAGE:
+                        crop_filename = f"page{page_num}_block{block.id}.png"
+                        crop_path = crops_dir / crop_filename
+                        crop.save(crop_path, "PNG")
+                        block.image_file = str(crop_path)
+                    
+                    blocks_with_crops.append((block, crop, page_num))
+            
+            total_blocks = len(blocks_with_crops)
+            if total_blocks == 0:
+                self.finished.emit({'output_dir': str(output_dir), 'updated_pages': self.annotation_document.pages})
+                return
+            
+            # Создаем batch engine
+            with httpx.Client(timeout=600.0, headers=headers) as client:
+                batch_engine = BatchOCREngine(client, model_name, use_context=True)
+                
+                # Группируем по промпту
+                prompt_loader = self.config.get('prompt_loader')
+                groups = batch_engine.group_blocks_by_prompt(blocks_with_crops, prompt_loader)
+                
+                # Логируем экономию
+                avg_batch = min(BatchOCREngine.MAX_IMAGES_PER_REQUEST, total_blocks / max(len(groups), 1))
+                savings = estimate_token_savings(total_blocks, len(groups), avg_batch)
+                logger.info(f"Batch OCR: {savings['baseline_requests']} → {savings['optimized_requests']} запросов "
+                           f"(экономия ~{savings['savings_percent']}% токенов)")
+                
+                # Обрабатываем группы
+                processed_count = 0
+                for group in groups:
+                    if self._cancelled:
+                        return
+                    
+                    def on_batch_progress(current, total):
+                        nonlocal processed_count
+                        self.progress.emit(processed_count + current, total_blocks)
+                    
+                    results = batch_engine.process_group_batched(group, api_url, on_batch_progress)
+                    
+                    # Применяем результаты к блокам
+                    for item in group.items:
+                        if item.block.id in results:
+                            item.block.ocr_text = results[item.block.id]
+                    
+                    processed_count += len(group.items)
+                    self.progress.emit(processed_count, total_blocks)
+            
+            if not self._cancelled:
+                self._save_results(output_dir)
+                
+        except Exception as e:
+            logger.error(f"Batch OCR Worker error: {e}", exc_info=True)
+            self.error.emit(str(e))
+    
+    def _run_legacy_ocr(self):
+        """Legacy режим: один блок = один запрос"""
+        try:
+            from app.ocr import create_ocr_engine, generate_structured_markdown
             from app.annotation_io import AnnotationIO
             from app.models import BlockType
             
@@ -127,15 +246,27 @@ class OCRWorker(QThread):
                             crop.save(crop_path, "PNG")
                             block.image_file = str(crop_path)
                         
+                        prompt_loader = self.config.get('prompt_loader')
+                        prompt_text = None
+                        
+                        if prompt_loader:
+                            if block.category:
+                                prompt_text = prompt_loader(f"category_{block.category}")
+                            
+                            if not prompt_text:
+                                if block.block_type == BlockType.IMAGE:
+                                    prompt_text = prompt_loader("image")
+                                elif block.block_type == BlockType.TABLE:
+                                    prompt_text = prompt_loader("table")
+                                elif block.block_type == BlockType.TEXT:
+                                    prompt_text = prompt_loader("text")
+                        
                         if block.block_type == BlockType.IMAGE:
-                            image_prompt = load_prompt("ocr_image_description.txt")
-                            block.ocr_text = image_engine.recognize(crop, prompt=image_prompt)
+                            block.ocr_text = image_engine.recognize(crop, prompt=prompt_text)
                         elif block.block_type == BlockType.TABLE:
-                            table_prompt = load_prompt("ocr_table.txt")
-                            block.ocr_text = table_engine.recognize(crop, prompt=table_prompt) if table_prompt else table_engine.recognize(crop)
+                            block.ocr_text = table_engine.recognize(crop, prompt=prompt_text)
                         elif block.block_type == BlockType.TEXT:
-                            text_prompt = load_prompt("ocr_text.txt")
-                            block.ocr_text = text_engine.recognize(crop, prompt=text_prompt) if text_prompt else text_engine.recognize(crop)
+                            block.ocr_text = text_engine.recognize(crop, prompt=prompt_text)
                     except Exception as e:
                         logger.error(f"Error OCR block {block.id}: {e}")
                         block.ocr_text = f"[Error: {e}]"
@@ -144,27 +275,32 @@ class OCRWorker(QThread):
                     self.progress.emit(processed_count, total_blocks)
             
             if not self._cancelled:
-                # Сохранение результатов
-                json_path = output_dir / "annotation.json"
-                AnnotationIO.save_annotation(self.annotation_document, str(json_path))
-                
-                md_path = output_dir / "document.md"
-                generate_structured_markdown(self.annotation_document.pages, str(md_path))
-                
-                # Загрузка в R2
-                try:
-                    from app.r2_storage import upload_ocr_to_r2
-                    project_name = output_dir.name
-                    logger.info(f"OCRWorker: Загрузка результатов в R2 (проект: {project_name})")
-                    upload_ocr_to_r2(str(output_dir), project_name)
-                except Exception as e:
-                    logger.error(f"OCRWorker: Ошибка загрузки в R2: {e}", exc_info=True)
-                
-                self.finished.emit({'output_dir': str(output_dir), 'updated_pages': self.annotation_document.pages})
+                self._save_results(output_dir)
             
         except Exception as e:
             logger.error(f"OCR Worker error: {e}", exc_info=True)
             self.error.emit(str(e))
+    
+    def _save_results(self, output_dir: Path):
+        """Сохранение результатов OCR"""
+        from app.ocr import generate_structured_markdown
+        from app.annotation_io import AnnotationIO
+        
+        json_path = output_dir / "annotation.json"
+        AnnotationIO.save_annotation(self.annotation_document, str(json_path))
+        
+        md_path = output_dir / "document.md"
+        generate_structured_markdown(self.annotation_document.pages, str(md_path))
+        
+        try:
+            from app.r2_storage import upload_ocr_to_r2
+            project_name = output_dir.name
+            logger.info(f"OCRWorker: Загрузка результатов в R2 (проект: {project_name})")
+            upload_ocr_to_r2(str(output_dir), project_name)
+        except Exception as e:
+            logger.error(f"OCRWorker: Ошибка загрузки в R2: {e}", exc_info=True)
+        
+        self.finished.emit({'output_dir': str(output_dir), 'updated_pages': self.annotation_document.pages})
 
 
 class MarkerWorker(QThread):

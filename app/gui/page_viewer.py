@@ -351,10 +351,12 @@ class PageViewer(QGraphicsView):
             # Проверяем, попали ли в существующий блок
             clicked_block = self._find_block_at_position(scene_pos)
             if clicked_block is not None:
-                self.selected_block_idx = clicked_block
-                self.selected_block_indices = []  # очищаем множественное выделение
-                self.block_selected.emit(clicked_block)
-                self._redraw_blocks()
+                # Если кликнули на блок, который УЖЕ в множественном выделении - не сбрасываем
+                if clicked_block not in self.selected_block_indices:
+                    self.selected_block_idx = clicked_block
+                    self.selected_block_indices = []  # очищаем множественное выделение
+                    self.block_selected.emit(clicked_block)
+                    self._redraw_blocks()
         
         elif event.button() == Qt.MiddleButton:
             # Средняя кнопка мыши для перетаскивания
@@ -487,7 +489,7 @@ class PageViewer(QGraphicsView):
                             self._redraw_blocks()
             else:
                 # Показываем контекстное меню если не было рамки выбора
-                if self.selected_block_idx is not None:
+                if self.selected_block_idx is not None or self.selected_block_indices:
                     self._show_context_menu(event.globalPos())
             
             # Очищаем состояние
@@ -520,13 +522,54 @@ class PageViewer(QGraphicsView):
     
     def _show_context_menu(self, global_pos):
         """Показать контекстное меню"""
+        from app.models import BlockType
+        
         menu = QMenu(self)
         
-        edit_action = menu.addAction("Редактировать")
-        edit_action.triggered.connect(lambda: self.blockEditing.emit(self.selected_block_idx))
+        # Определяем выбранные блоки
+        selected_blocks = []
+        if self.selected_block_indices:
+            # Если есть множественное выделение
+            for idx in self.selected_block_indices:
+                selected_blocks.append({"idx": idx})
+        elif self.selected_block_idx is not None:
+            # Если выбран один блок
+            selected_blocks.append({"idx": self.selected_block_idx})
         
-        delete_action = menu.addAction("Удалить блок")
-        delete_action.triggered.connect(lambda: self._delete_selected_block())
+        if not selected_blocks:
+            return
+        
+        # Получаем главное окно для доступа к категориям
+        main_window = self.parent().window()
+        
+        # Меню изменения типа
+        type_menu = menu.addMenu(f"Изменить тип ({len(selected_blocks)} блоков)")
+        for block_type in BlockType:
+            action = type_menu.addAction(block_type.value)
+            action.triggered.connect(lambda checked, bt=block_type, blocks=selected_blocks: 
+                                    self._apply_type_to_blocks(blocks, bt))
+        
+        # Меню изменения категории
+        cat_menu = menu.addMenu(f"Изменить категорию ({len(selected_blocks)} блоков)")
+        for cat in sorted(main_window.categories):
+            action = cat_menu.addAction(cat)
+            action.triggered.connect(lambda checked, c=cat, blocks=selected_blocks: 
+                                    self._apply_category_to_blocks(blocks, c))
+        
+        new_cat_action = cat_menu.addAction("Новая категория...")
+        new_cat_action.triggered.connect(lambda blocks=selected_blocks: 
+                                         self._apply_new_category_to_blocks(blocks))
+        
+        menu.addSeparator()
+        
+        # Только для одного блока
+        if len(selected_blocks) == 1:
+            edit_action = menu.addAction("Редактировать")
+            edit_action.triggered.connect(lambda: self.blockEditing.emit(self.selected_block_idx))
+        
+        # Удаление
+        delete_action = menu.addAction(f"Удалить ({len(selected_blocks)} блоков)")
+        delete_action.triggered.connect(lambda blocks=selected_blocks: self._delete_blocks(blocks))
         
         menu.exec(global_pos)
     
@@ -535,6 +578,80 @@ class PageViewer(QGraphicsView):
         if self.selected_block_idx is not None:
             self.blockDeleted.emit(self.selected_block_idx)
             self.selected_block_idx = None
+    
+    def _delete_blocks(self, blocks_data: list):
+        """Удалить несколько блоков"""
+        if len(blocks_data) == 1:
+            self.blockDeleted.emit(blocks_data[0]["idx"])
+        else:
+            indices = [b["idx"] for b in blocks_data]
+            self.blocks_deleted.emit(indices)
+    
+    def _apply_type_to_blocks(self, blocks_data: list, block_type):
+        """Применить тип к нескольким блокам"""
+        from app.models import BlockType
+        
+        main_window = self.parent().window()
+        if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:
+            return
+        
+        current_page = main_window.current_page
+        if current_page >= len(main_window.annotation_document.pages):
+            return
+        
+        page = main_window.annotation_document.pages[current_page]
+        
+        for data in blocks_data:
+            block_idx = data["idx"]
+            if block_idx < len(page.blocks):
+                page.blocks[block_idx].block_type = block_type
+        
+        # Обновляем отображение
+        main_window._render_current_page()
+        if hasattr(main_window, 'blocks_tree_manager'):
+            main_window.blocks_tree_manager.update_blocks_tree()
+    
+    def _apply_category_to_blocks(self, blocks_data: list, category: str):
+        """Применить категорию к нескольким блокам"""
+        main_window = self.parent().window()
+        if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:
+            return
+        
+        current_page = main_window.current_page
+        if current_page >= len(main_window.annotation_document.pages):
+            return
+        
+        page = main_window.annotation_document.pages[current_page]
+        
+        for data in blocks_data:
+            block_idx = data["idx"]
+            if block_idx < len(page.blocks):
+                page.blocks[block_idx].category = category
+        
+        # Обновляем отображение
+        main_window._render_current_page()
+        if hasattr(main_window, 'blocks_tree_manager'):
+            main_window.blocks_tree_manager.update_blocks_tree()
+    
+    def _apply_new_category_to_blocks(self, blocks_data: list):
+        """Применить новую категорию к нескольким блокам"""
+        from PySide6.QtWidgets import QInputDialog
+        
+        main_window = self.parent().window()
+        text, ok = QInputDialog.getText(main_window, "Новая категория", "Введите название категории:")
+        if not ok or not text.strip():
+            return
+        
+        category = text.strip()
+        
+        # Добавляем категорию если новая
+        if category and category not in main_window.categories:
+            main_window.categories.append(category)
+            if hasattr(main_window, 'category_manager'):
+                main_window.category_manager.update_categories_list()
+        
+        # Применяем
+        self._apply_category_to_blocks(blocks_data, category)
     
     def _find_block_at_position(self, scene_pos: QPointF) -> Optional[int]:
         """

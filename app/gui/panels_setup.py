@@ -251,7 +251,7 @@ class PanelsSetupMixin:
             return
         
         if prompt_type == "Блок":
-            # Редактируем промт типа блока
+            # Редактируем промт типа блока (из R2)
             type_map = {
                 "Текст": "text",
                 "Таблица": "table",
@@ -259,14 +259,13 @@ class PanelsSetupMixin:
             }
             prompt_key = type_map.get(name)
             if prompt_key:
-                default_prompt = self.prompt_manager.DEFAULT_PROMPTS.get(prompt_key, "")
                 self.prompt_manager.edit_prompt(
                     prompt_key,
                     f"Редактирование промта: {name}",
-                    default_prompt
+                    ""  # Промт загрузится из R2
                 )
         elif prompt_type == "Категория":
-            # Редактируем промт категории
+            # Редактируем промт категории (из R2)
             if hasattr(self, 'category_manager'):
                 self.category_manager.edit_category_prompt(name)
     

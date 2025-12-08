@@ -36,33 +36,6 @@ def image_to_base64(image: Image.Image, max_size: int = 1500) -> str:
     return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 
-# Папка с промптами
-PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
-
-
-def load_prompt(prompt_file: str) -> str:
-    """
-    Загрузить промпт из файла в папке prompts/
-    
-    Args:
-        prompt_file: имя файла (например "ocr_text.txt")
-    
-    Returns:
-        Текст промпта или дефолтный текст при ошибке
-    """
-    try:
-        prompt_path = PROMPTS_DIR / prompt_file
-        
-        if prompt_path.exists():
-            text = prompt_path.read_text(encoding='utf-8').strip()
-            logger.debug(f"Промпт загружен из {prompt_file}")
-            return text
-        else:
-            logger.warning(f"Файл промпта не найден: {prompt_path}")
-            return ""
-    except Exception as e:
-        logger.error(f"Ошибка загрузки промпта {prompt_file}: {e}")
-        return ""
 
 
 class OCRBackend(Protocol):
@@ -101,8 +74,9 @@ class LocalVLMBackend:
         try:
             from app.config import get_lm_base_url
             
+            # Промпт должен приходить из R2, если нет - минимальная инструкция
             if not prompt:
-                prompt = load_prompt("ocr_full_page.txt")
+                prompt = "Распознай содержимое изображения."
             
             img_base64 = image_to_base64(image)
             url = get_lm_base_url()
@@ -156,9 +130,12 @@ class LocalVLMBackend:
 class OpenRouterBackend:
     """OCR через OpenRouter API"""
     
+    _providers_cache: dict = {}  # Кэш провайдеров по моделям
+    
     def __init__(self, api_key: str, model_name: str = "qwen/qwen3-vl-30b-a3b-instruct"):
         self.api_key = api_key
         self.model_name = model_name
+        self._provider_order: Optional[List[str]] = None
         try:
             import requests
             self.requests = requests
@@ -166,11 +143,84 @@ class OpenRouterBackend:
             raise ImportError("Требуется установить requests: pip install requests")
         logger.info(f"OpenRouter инициализирован (модель: {self.model_name})")
     
+    def _fetch_cheapest_providers(self) -> Optional[List[str]]:
+        """Получить список провайдеров отсортированных по цене (от дешевого к дорогому)"""
+        if self.model_name in OpenRouterBackend._providers_cache:
+            return OpenRouterBackend._providers_cache[self.model_name]
+        
+        try:
+            response = self.requests.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=30
+            )
+            if response.status_code != 200:
+                logger.warning(f"Не удалось получить список моделей: {response.status_code}")
+                return None
+            
+            models_data = response.json().get("data", [])
+            
+            # Ищем нужную модель
+            model_info = None
+            for m in models_data:
+                if m.get("id") == self.model_name:
+                    model_info = m
+                    break
+            
+            if not model_info:
+                logger.warning(f"Модель {self.model_name} не найдена в списке")
+                return None
+            
+            # Получаем pricing по провайдерам
+            pricing = model_info.get("endpoint", {}).get("pricing", {})
+            if not pricing:
+                # Fallback на старую структуру
+                pricing = model_info.get("pricing", {})
+            
+            # Если pricing - словарь с провайдерами
+            providers_pricing = []
+            if isinstance(pricing, dict) and "providers" in pricing:
+                for provider_id, pdata in pricing.get("providers", {}).items():
+                    prompt_cost = float(pdata.get("prompt", 0) or 0)
+                    completion_cost = float(pdata.get("completion", 0) or 0)
+                    total = prompt_cost + completion_cost
+                    providers_pricing.append((provider_id, total))
+            elif isinstance(pricing, list):
+                # pricing может быть списком объектов с provider_id
+                for pdata in pricing:
+                    provider_id = pdata.get("provider_id") or pdata.get("provider")
+                    if provider_id:
+                        prompt_cost = float(pdata.get("prompt", 0) or 0)
+                        completion_cost = float(pdata.get("completion", 0) or 0)
+                        total = prompt_cost + completion_cost
+                        providers_pricing.append((provider_id, total))
+            
+            if not providers_pricing:
+                logger.info("Pricing по провайдерам не найден, используется дефолт")
+                return None
+            
+            # Сортируем по цене (от дешевого)
+            providers_pricing.sort(key=lambda x: x[1])
+            provider_order = [p[0] for p in providers_pricing]
+            
+            logger.info(f"Провайдеры для {self.model_name} (по цене): {provider_order}")
+            OpenRouterBackend._providers_cache[self.model_name] = provider_order
+            return provider_order
+            
+        except Exception as e:
+            logger.warning(f"Ошибка получения провайдеров: {e}")
+            return None
+    
     def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
         """Распознать текст через OpenRouter API"""
         try:
+            # Получаем порядок провайдеров (кэшируется)
+            if self._provider_order is None:
+                self._provider_order = self._fetch_cheapest_providers() or []
+            
             image_b64 = image_to_base64(image)
-            user_prompt = prompt if prompt else "Распознай весь текст с этого изображения. Верни только текст, без комментариев."
+            # Промпт должен приходить из R2, если нет - минимальная инструкция
+            user_prompt = prompt if prompt else "Распознай содержимое изображения."
             
             payload = {
                 "model": self.model_name,
@@ -191,6 +241,10 @@ class OpenRouterBackend:
                 "temperature": 0.1,
                 "top_p": 0.9
             }
+            
+            # Добавляем provider.order если есть
+            if self._provider_order:
+                payload["provider"] = {"order": self._provider_order}
             
             response = self.requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
@@ -224,11 +278,10 @@ class DummyOCRBackend:
 
 def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "", 
                        image_description_backend: Optional[OCRBackend] = None,
-                       index_file: Optional[str] = None) -> None:
+                       index_file: Optional[str] = None,
+                       prompt_loader=None) -> None:
     """
-    Запустить OCR для блоков с учетом типа:
-    - TEXT/TABLE: распознавание текста
-    - IMAGE: детальное описание на русском языке
+    Запустить OCR для блоков с учетом типа и категории
     
     Args:
         blocks: список блоков для обработки
@@ -236,6 +289,7 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
         base_dir: базовая директория для поиска image_file
         image_description_backend: движок для описания изображений (если None, используется ocr_backend)
         index_file: путь к файлу индекса для IMAGE блоков (если указан, создается индекс)
+        prompt_loader: функция для загрузки промптов из R2 (принимает имя промпта, возвращает текст)
     """
     processed = 0
     skipped = 0
@@ -265,11 +319,25 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             # Загружаем изображение
             image = Image.open(image_path)
             
+            # Получаем промпт из R2
+            prompt_text = None
+            if prompt_loader:
+                # Сначала пытаемся загрузить промпт категории
+                if block.category:
+                    prompt_text = prompt_loader(f"category_{block.category}")
+                
+                # Если нет промпта категории, используем промпт типа блока
+                if not prompt_text:
+                    if block.block_type == BlockType.IMAGE:
+                        prompt_text = prompt_loader("image")
+                    elif block.block_type == BlockType.TABLE:
+                        prompt_text = prompt_loader("table")
+                    elif block.block_type == BlockType.TEXT:
+                        prompt_text = prompt_loader("text")
+            
             # Обрабатываем в зависимости от типа блока
             if block.block_type == BlockType.IMAGE:
-                # Для изображений - детальное описание из промпта
-                image_prompt = load_prompt("ocr_image_description.txt")
-                ocr_text = image_description_backend.recognize(image, prompt=image_prompt)
+                ocr_text = image_description_backend.recognize(image, prompt=prompt_text)
                 block.ocr_text = ocr_text
                 
                 # Если указан index_file, обновляем индекс
@@ -281,22 +349,12 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
                 processed += 1
                 
             elif block.block_type == BlockType.TABLE:
-                # Для таблиц - специальный промпт
-                table_prompt = load_prompt("ocr_table.txt")
-                if table_prompt:
-                    ocr_text = ocr_backend.recognize(image, prompt=table_prompt)
-                else:
-                    ocr_text = ocr_backend.recognize(image)
+                ocr_text = ocr_backend.recognize(image, prompt=prompt_text)
                 block.ocr_text = ocr_text
                 processed += 1
                 
             elif block.block_type == BlockType.TEXT:
-                # Для текста - специальный промпт
-                text_prompt = load_prompt("ocr_text.txt")
-                if text_prompt:
-                    ocr_text = ocr_backend.recognize(image, prompt=text_prompt)
-                else:
-                    ocr_text = ocr_backend.recognize(image)
+                ocr_text = ocr_backend.recognize(image, prompt=prompt_text)
                 block.ocr_text = ocr_text
                 processed += 1
             else:

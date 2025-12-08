@@ -6,7 +6,7 @@ import logging
 import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QPushButton, QRadioButton, QLineEdit, QFileDialog,
-                               QGroupBox, QDialogButtonBox, QComboBox)
+                               QGroupBox, QDialogButtonBox, QComboBox, QCheckBox)
 from PySide6.QtCore import Qt
 from pathlib import Path
 from dotenv import load_dotenv
@@ -38,6 +38,9 @@ class OCRDialog(QDialog):
         self.text_model = "qwen/qwen3-vl-30b-a3b-instruct"
         self.table_model = "qwen/qwen3-vl-30b-a3b-instruct"
         self.image_model = "qwen/qwen3-vl-30b-a3b-instruct"
+        
+        # Batch оптимизация
+        self.use_batch_ocr = True
         
         self._setup_ui()
     
@@ -80,6 +83,15 @@ class OCRDialog(QDialog):
         
         mode_layout.addWidget(self.blocks_radio)
         mode_layout.addWidget(self.full_page_radio)
+        
+        # Batch оптимизация
+        self.batch_checkbox = QCheckBox("Batch-оптимизация (экономия ~40-60% токенов)")
+        self.batch_checkbox.setChecked(True)
+        self.batch_checkbox.setToolTip(
+            "Группирует блоки с одинаковым промптом и отправляет несколько изображений в одном запросе.\n"
+            "Экономит токены за счет уменьшения повторений system prompt."
+        )
+        mode_layout.addWidget(self.batch_checkbox)
         
         layout.addWidget(mode_group)
         
@@ -237,6 +249,7 @@ class OCRDialog(QDialog):
         self.text_model = self.text_model_combo.currentData()
         self.table_model = self.table_model_combo.currentData()
         self.image_model = self.image_model_combo.currentData()
+        self.use_batch_ocr = self.batch_checkbox.isChecked()
         
         self.accept()
 

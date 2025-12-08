@@ -84,20 +84,9 @@ class CategoryManager:
             self.parent.categories.append(text)
             self.update_categories_list()
             
-            # Создаем промт для новой категории (только если это не стандартная)
+            # Создаем placeholder промт в R2 для новой категории
             if hasattr(self.parent, 'prompt_manager'):
-                is_standard = text in self.parent.prompt_manager.STANDARD_CATEGORIES
-                
-                if not is_standard:
-                    # Для новых категорий - уникальный промт
-                    default_prompt = f"Промт для категории '{text}'.\n\nОпиши правила распознавания блоков этой категории.\n\nФормат вывода:\n- Что распознавать\n- Как структурировать\n- Что игнорировать"
-                else:
-                    # Для стандартных - используем существующий
-                    prompt_type = self.parent.prompt_manager.STANDARD_CATEGORIES[text]
-                    default_prompt = self.parent.prompt_manager._load_local_prompt(f"{prompt_type}.txt")
-                    if not default_prompt:
-                        default_prompt = self.parent.prompt_manager.DEFAULT_PROMPTS.get(prompt_type, "")
-                
+                default_prompt = f"Промт для категории '{text}'.\n\nОпиши правила распознавания блоков этой категории.\n\nФормат вывода:\n- Что распознавать\n- Как структурировать\n- Что игнорировать"
                 prompt_name = self.parent.prompt_manager.get_category_prompt_name(text)
                 self.parent.prompt_manager.save_prompt(prompt_name, default_prompt)
             
@@ -115,23 +104,13 @@ class CategoryManager:
             self.parent.prompt_manager.save_categories_to_r2(self.parent.categories)
     
     def delete_category(self, category_name: str):
-        """Удалить категорию и её промт"""
+        """Удалить категорию и её промт из R2"""
         from PySide6.QtWidgets import QMessageBox
-        
-        # Проверяем, не стандартная ли это категория
-        if hasattr(self.parent, 'prompt_manager'):
-            if category_name in self.parent.prompt_manager.STANDARD_CATEGORIES:
-                QMessageBox.warning(
-                    self.parent,
-                    "Нельзя удалить",
-                    f"Категория '{category_name}' - стандартная, её нельзя удалить.\nМожно только редактировать промт."
-                )
-                return
         
         reply = QMessageBox.question(
             self.parent,
             "Удаление категории",
-            f"Удалить категорию '{category_name}' и её промт?",
+            f"Удалить категорию '{category_name}' и её промт из R2?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -153,7 +132,7 @@ class CategoryManager:
             QMessageBox.information(
                 self.parent,
                 "Успех",
-                f"Категория '{category_name}' удалена"
+                f"Категория '{category_name}' удалена из R2"
             )
     
     def edit_category_prompt(self, category_name: str):
