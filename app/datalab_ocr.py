@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Константы склейки
 TARGET_WIDTH = 2500       # Ширина результата
 BLOCK_PADDING = 100       # Отступ между блоками
-MAX_HEIGHT = 12000        # Максимальная высота батча
+MAX_HEIGHT = 10000        # Максимальная высота батча
 MAX_FILE_SIZE_MB = 200    # Лимит размера файла
 
 
