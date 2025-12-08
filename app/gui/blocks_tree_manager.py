@@ -174,6 +174,12 @@ class BlocksTreeManager:
             action.triggered.connect(lambda checked, bt=block_type: self.apply_type_to_blocks(selected_blocks, bt))
         
         cat_menu = menu.addMenu(f"Применить категорию ({len(selected_blocks)} блоков)")
+        
+        # Пункт "Без категории" - сброс на стандартный промпт типа блока
+        no_cat_action = cat_menu.addAction("Без категории")
+        no_cat_action.triggered.connect(lambda: self.apply_category_to_blocks(selected_blocks, ""))
+        cat_menu.addSeparator()
+        
         for cat in sorted(self.parent.categories):
             action = cat_menu.addAction(cat)
             action.triggered.connect(lambda checked, c=cat: self.apply_category_to_blocks(selected_blocks, c))

@@ -5,7 +5,7 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QLabel, QComboBox, QGroupBox, QLineEdit,
                                QTreeWidget, QTabWidget, QListWidget, QAbstractItemView,
-                               QTreeWidgetItem)
+                               QTreeWidgetItem, QSplitter, QHeaderView)
 from PySide6.QtCore import Qt
 from app.models import BlockType
 from app.gui.page_viewer import PageViewer
@@ -22,24 +22,36 @@ class PanelsSetupMixin:
         self.setCentralWidget(central_widget)
         
         main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Главный сплиттер для изменения размеров панелей
+        main_splitter = QSplitter(Qt.Horizontal)
         
         # Боковая панель проектов + задания
         left_sidebar = self._create_left_sidebar()
-        main_layout.addWidget(left_sidebar)
+        main_splitter.addWidget(left_sidebar)
         
         # Левая панель: просмотр страниц
         left_panel = self._create_left_panel()
-        main_layout.addWidget(left_panel, stretch=3)
+        main_splitter.addWidget(left_panel)
         
         # Правая панель: инструменты и свойства блоков
         right_panel = self._create_right_panel()
-        main_layout.addWidget(right_panel, stretch=1)
+        main_splitter.addWidget(right_panel)
+        
+        # Устанавливаем начальные размеры (левая боковая 280, центр 600, правая 320)
+        main_splitter.setSizes([280, 600, 320])
+        main_splitter.setStretchFactor(0, 0)  # Боковая панель не растягивается
+        main_splitter.setStretchFactor(1, 1)  # Центр растягивается
+        main_splitter.setStretchFactor(2, 0)  # Правая панель не растягивается
+        
+        main_layout.addWidget(main_splitter)
     
     def _create_left_sidebar(self) -> QWidget:
         """Создать боковую панель проектов"""
         left_sidebar = QWidget()
         left_sidebar_layout = QVBoxLayout(left_sidebar)
-        left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        left_sidebar_layout.setContentsMargins(5, 5, 5, 5)
         left_sidebar_layout.setSpacing(5)
         
         self.project_sidebar = ProjectSidebar(self.project_manager)
@@ -51,8 +63,7 @@ class PanelsSetupMixin:
         self.task_sidebar = TaskSidebar(self.task_manager)
         left_sidebar_layout.addWidget(self.task_sidebar, stretch=1)
         
-        left_sidebar.setMaximumWidth(320)
-        left_sidebar.setMinimumWidth(280)
+        left_sidebar.setMinimumWidth(200)
         return left_sidebar
     
     def _create_left_panel(self) -> QWidget:
@@ -182,18 +193,29 @@ class PanelsSetupMixin:
         prompts_group = QGroupBox("Промты")
         prompts_layout = QVBoxLayout(prompts_group)
         
-        # Список промтов (аналогично блокам)
+        # Список промтов с колонками: #, Название, Тип, Обновлено
         self.prompts_tree = QTreeWidget()
-        self.prompts_tree.setHeaderLabels(["Название", "Тип"])
-        self.prompts_tree.setColumnWidth(0, 150)
-        self.prompts_tree.setSortingEnabled(False)
+        self.prompts_tree.setHeaderLabels(["#", "Название", "Тип", "Обновлено"])
+        self.prompts_tree.setColumnWidth(0, 30)
+        self.prompts_tree.setColumnWidth(1, 120)
+        self.prompts_tree.setColumnWidth(2, 70)
+        self.prompts_tree.setColumnWidth(3, 100)
+        self.prompts_tree.setSortingEnabled(True)
+        self.prompts_tree.sortByColumn(1, Qt.AscendingOrder)
         self.prompts_tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.prompts_tree.setMaximumHeight(200)
         self.prompts_tree.itemSelectionChanged.connect(self._on_prompt_selection_changed)
+        self.prompts_tree.itemDoubleClicked.connect(lambda: self._edit_selected_prompt())
+        
+        # Настройка заголовка для сортировки
+        header = self.prompts_tree.header()
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
+        
         prompts_layout.addWidget(self.prompts_tree)
         
         # Кнопка редактирования промта
-        self.edit_prompt_btn = QPushButton("Промт")
+        self.edit_prompt_btn = QPushButton("✏️ Редактировать промт")
         self.edit_prompt_btn.setEnabled(False)
         self.edit_prompt_btn.clicked.connect(self._edit_selected_prompt)
         prompts_layout.addWidget(self.edit_prompt_btn)
@@ -204,27 +226,62 @@ class PanelsSetupMixin:
         return prompts_group
     
     def _populate_prompts_tree(self):
-        """Заполнить список промтов"""
+        """Заполнить список промтов с данными из R2"""
         self.prompts_tree.clear()
+        
+        # Получаем промты с метаданными из R2
+        prompts_data = []
+        if hasattr(self, 'prompt_manager') and self.prompt_manager.r2_storage:
+            prompts_data = self.prompt_manager.list_prompts_with_metadata()
+        
+        # Создаем словарь дат по именам
+        dates_map = {}
+        for p in prompts_data:
+            dates_map[p['name']] = p.get('last_modified')
+        
+        row_num = 1
         
         # Добавляем типы блоков
         block_types = [
-            ("Текст", "Блок"),
-            ("Таблица", "Блок"),
-            ("Картинка", "Блок")
+            ("Текст", "text", "Блок"),
+            ("Таблица", "table", "Блок"),
+            ("Картинка", "image", "Блок")
         ]
         
-        for name, type_str in block_types:
+        for display_name, key, type_str in block_types:
             item = QTreeWidgetItem(self.prompts_tree)
-            item.setText(0, name)
-            item.setText(1, type_str)
+            item.setText(0, str(row_num))
+            item.setText(1, display_name)
+            item.setText(2, type_str)
+            
+            # Дата обновления
+            last_mod = dates_map.get(key)
+            if last_mod:
+                item.setText(3, last_mod.strftime("%d.%m.%Y %H:%M"))
+            else:
+                item.setText(3, "—")
+            
+            item.setData(0, Qt.UserRole, key)  # Сохраняем ключ
+            row_num += 1
         
         # Добавляем категории
         if hasattr(self, 'categories'):
             for category in sorted(self.categories):
                 item = QTreeWidgetItem(self.prompts_tree)
-                item.setText(0, category)
-                item.setText(1, "Категория")
+                item.setText(0, str(row_num))
+                item.setText(1, category)
+                item.setText(2, "Категория")
+                
+                # Дата обновления
+                cat_key = f"category_{category}"
+                last_mod = dates_map.get(cat_key)
+                if last_mod:
+                    item.setText(3, last_mod.strftime("%d.%m.%Y %H:%M"))
+                else:
+                    item.setText(3, "—")
+                
+                item.setData(0, Qt.UserRole, cat_key)
+                row_num += 1
     
     def update_prompts_table(self):
         """Обновить список промтов (публичный метод)"""
@@ -242,8 +299,9 @@ class PanelsSetupMixin:
         if not current_item:
             return
         
-        name = current_item.text(0)
-        prompt_type = current_item.text(1)
+        display_name = current_item.text(1)
+        prompt_type = current_item.text(2)
+        prompt_key = current_item.data(0, Qt.UserRole)
         
         if not hasattr(self, 'prompt_manager'):
             from PySide6.QtWidgets import QMessageBox
@@ -252,22 +310,18 @@ class PanelsSetupMixin:
         
         if prompt_type == "Блок":
             # Редактируем промт типа блока (из R2)
-            type_map = {
-                "Текст": "text",
-                "Таблица": "table",
-                "Картинка": "image"
-            }
-            prompt_key = type_map.get(name)
             if prompt_key:
                 self.prompt_manager.edit_prompt(
                     prompt_key,
-                    f"Редактирование промта: {name}",
-                    ""  # Промт загрузится из R2
+                    f"Редактирование промта: {display_name}",
+                    None  # Промт загрузится из R2
                 )
+                self._populate_prompts_tree()  # Обновляем список после редактирования
         elif prompt_type == "Категория":
             # Редактируем промт категории (из R2)
             if hasattr(self, 'category_manager'):
-                self.category_manager.edit_category_prompt(name)
+                self.category_manager.edit_category_prompt(display_name)
+                self._populate_prompts_tree()  # Обновляем список после редактирования
     
     def _create_actions_group(self) -> QGroupBox:
         """Создать группу действий"""
@@ -300,7 +354,7 @@ class PanelsSetupMixin:
     
     def _show_category_context_menu(self, position):
         """Показать контекстное меню для категории"""
-        from PySide6.QtWidgets import QMenu
+        from PySide6.QtWidgets import QMenu, QInputDialog
         
         item = self.categories_list.itemAt(position)
         if not item:
@@ -309,11 +363,69 @@ class PanelsSetupMixin:
         menu = QMenu()
         category_name = item.text()
         
-        edit_prompt_action = menu.addAction("✏️ Редактировать промт")
+        rename_action = menu.addAction("✏️ Переименовать")
+        rename_action.triggered.connect(lambda: self._rename_category(category_name))
+        
+        edit_prompt_action = menu.addAction("📝 Редактировать промт")
         edit_prompt_action.triggered.connect(lambda: self.category_manager.edit_category_prompt(category_name))
+        
+        menu.addSeparator()
         
         delete_action = menu.addAction("🗑️ Удалить категорию")
         delete_action.triggered.connect(lambda: self.category_manager.delete_category(category_name))
         
         menu.exec(self.categories_list.mapToGlobal(position))
+    
+    def _rename_category(self, old_name: str):
+        """Переименовать категорию"""
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+        
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Переименовать категорию",
+            "Новое название:",
+            text=old_name
+        )
+        
+        if not ok or not new_name.strip() or new_name.strip() == old_name:
+            return
+        
+        new_name = new_name.strip()
+        
+        # Проверяем что новое имя не существует
+        if new_name in self.categories:
+            QMessageBox.warning(self, "Ошибка", f"Категория '{new_name}' уже существует")
+            return
+        
+        # Загружаем старый промт
+        old_prompt_key = self.prompt_manager.get_category_prompt_name(old_name)
+        prompt_data = self.prompt_manager.load_prompt(old_prompt_key.replace("category_", ""))
+        
+        # Создаем новый промт
+        new_prompt_key = self.prompt_manager.get_category_prompt_name(new_name)
+        if prompt_data:
+            self.prompt_manager.save_prompt(new_prompt_key.replace("category_", ""), prompt_data)
+        
+        # Удаляем старый промт
+        self.prompt_manager.delete_prompt(old_prompt_key.replace("category_", ""))
+        
+        # Обновляем список категорий
+        idx = self.categories.index(old_name)
+        self.categories[idx] = new_name
+        
+        # Обновляем категорию в блоках документа
+        if self.annotation_document:
+            for page in self.annotation_document.pages:
+                for block in page.blocks:
+                    if block.category == old_name:
+                        block.category = new_name
+        
+        # Обновляем UI
+        self.category_manager.update_categories_list()
+        self._populate_prompts_tree()
+        
+        if hasattr(self, 'blocks_tree_manager'):
+            self.blocks_tree_manager.update_blocks_tree()
+        
+        QMessageBox.information(self, "Успех", f"Категория переименована: {old_name} → {new_name}")
 

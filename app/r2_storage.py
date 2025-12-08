@@ -421,6 +421,37 @@ class R2Storage:
         except ClientError as e:
             logger.error(f"❌ Ошибка получения списка из R2: {e}")
             return []
+    
+    def list_objects_with_metadata(self, prefix: str) -> list[dict]:
+        """
+        Получить список объектов с метаданными (LastModified, Size)
+        
+        Args:
+            prefix: Префикс для поиска
+        
+        Returns:
+            Список dict с ключами: Key, LastModified, Size
+        """
+        try:
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket_name,
+                Prefix=prefix
+            )
+            
+            if 'Contents' not in response:
+                return []
+            
+            return [
+                {
+                    'Key': obj['Key'],
+                    'LastModified': obj.get('LastModified'),
+                    'Size': obj.get('Size', 0)
+                }
+                for obj in response['Contents']
+            ]
+        except ClientError as e:
+            logger.error(f"❌ Ошибка получения списка из R2: {e}")
+            return []
 
 
 def upload_ocr_to_r2(output_dir: str, project_name: Optional[str] = None) -> bool:

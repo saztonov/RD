@@ -5,15 +5,18 @@ OCR Manager для MainWindow
 
 import logging
 import copy
+import os
 from pathlib import Path
 from PySide6.QtWidgets import QProgressDialog, QMessageBox, QDialog
 from PySide6.QtCore import Qt
+from dotenv import load_dotenv
 from app.ocr import create_ocr_engine, generate_structured_markdown, run_local_vlm_full_document
 from app.annotation_io import AnnotationIO
 from app.models import BlockType
 from app.gui.task_manager import TaskManager, TaskType
 from app.r2_storage import upload_ocr_to_r2
 
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 
@@ -124,6 +127,10 @@ class OCRManager:
             'image_model': dialog.image_model,
             'prompt_loader': self.parent.prompt_manager.load_prompt if hasattr(self.parent, 'prompt_manager') else None,
             'use_batch_ocr': getattr(dialog, 'use_batch_ocr', True),
+            # Datalab настройки
+            'use_datalab': getattr(dialog, 'use_datalab', False),
+            'datalab_image_backend': getattr(dialog, 'datalab_image_backend', 'local'),
+            'datalab_api_key': os.getenv('DATALAB_API_KEY', ''),
         }
         
         # Глубокая копия документа для потока

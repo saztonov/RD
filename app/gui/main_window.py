@@ -237,6 +237,32 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         """Запустить OCR для всех блоков"""
         self.ocr_manager.run_ocr_all()
     
+    def _sync_from_r2(self):
+        """Синхронизировать категории и промты из R2"""
+        from PySide6.QtWidgets import QMessageBox
+        
+        if not self.prompt_manager.r2_storage:
+            QMessageBox.warning(self, "R2 недоступен", "R2 Storage не настроен. Проверьте .env файл.")
+            return
+        
+        # Загружаем категории из R2
+        categories_from_r2 = self.prompt_manager.load_categories_from_r2()
+        if categories_from_r2:
+            self.categories = categories_from_r2
+        
+        # Обновляем UI
+        if self.category_manager:
+            self.category_manager.update_categories_list()
+        
+        # Проверяем наличие промптов
+        self.prompt_manager.ensure_default_prompts()
+        
+        QMessageBox.information(
+            self,
+            "Синхронизация завершена",
+            f"Загружено категорий: {len(self.categories)}"
+        )
+    
     def _on_project_switched(self, project_id: str):
         """Обработка переключения проекта"""
         self._save_current_annotation_to_cache()

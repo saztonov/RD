@@ -6,7 +6,8 @@ import logging
 import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QPushButton, QRadioButton, QLineEdit, QFileDialog,
-                               QGroupBox, QDialogButtonBox, QComboBox, QCheckBox)
+                               QGroupBox, QDialogButtonBox, QComboBox, QCheckBox,
+                               QButtonGroup)
 from PySide6.QtCore import Qt
 from pathlib import Path
 from dotenv import load_dotenv
@@ -23,7 +24,7 @@ class OCRDialog(QDialog):
     def __init__(self, parent=None, task_name: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Настройка OCR")
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(550)
         
         self.output_dir = None
         self.base_dir = None
@@ -31,7 +32,7 @@ class OCRDialog(QDialog):
         self.mode = "blocks"  # "blocks" или "full_page"
         self.vlm_server_url = ""  # Не используется (ngrok endpoint)
         self.vlm_model_name = "qwen3-vl-32b-instruct"
-        self.ocr_backend = "local"  # "local" или "openrouter"
+        self.ocr_backend = "local"  # "local", "openrouter" или "datalab"
         self.openrouter_model = "qwen/qwen3-vl-30b-a3b-instruct"
         
         # Модели для разных типов блоков
@@ -42,6 +43,10 @@ class OCRDialog(QDialog):
         # Batch оптимизация
         self.use_batch_ocr = True
         
+        # Datalab настройки
+        self.use_datalab = False
+        self.datalab_image_backend = "local"  # "local" или "openrouter" для IMAGE блоков
+        
         self._setup_ui()
     
     def _setup_ui(self):
@@ -49,15 +54,37 @@ class OCRDialog(QDialog):
         layout = QVBoxLayout(self)
         
         # Выбор OCR бэкенда
-        backend_group = QGroupBox("OCR движок")
+        backend_group = QGroupBox("OCR движок для текста и таблиц")
         backend_layout = QVBoxLayout(backend_group)
         
+        self.backend_button_group = QButtonGroup(self)
+        
         self.local_radio = QRadioButton("Локальный VLM сервер")
-        self.openrouter_radio = QRadioButton("OpenRouter")
+        self.openrouter_radio = QRadioButton("OpenRouter (VLM)")
+        self.datalab_radio = QRadioButton("Datalab Marker API (экономия бюджета)")
         self.local_radio.setChecked(True)
+        
+        self.backend_button_group.addButton(self.local_radio, 0)
+        self.backend_button_group.addButton(self.openrouter_radio, 1)
+        self.backend_button_group.addButton(self.datalab_radio, 2)
         
         backend_layout.addWidget(self.local_radio)
         backend_layout.addWidget(self.openrouter_radio)
+        backend_layout.addWidget(self.datalab_radio)
+        
+        # Datalab info
+        datalab_info = QLabel(
+            "💡 Datalab: склейка блоков в одно изображение для экономии кредитов.\n"
+            "   10 блоков = 1 кредит вместо 10"
+        )
+        datalab_info.setStyleSheet("color: #888; font-size: 10px; margin-left: 20px;")
+        backend_layout.addWidget(datalab_info)
+        
+        # Проверка наличия DATALAB_API_KEY
+        datalab_key = os.getenv("DATALAB_API_KEY", "")
+        if not datalab_key:
+            self.datalab_radio.setEnabled(False)
+            self.datalab_radio.setText("Datalab Marker API (DATALAB_API_KEY не найден)")
         
         # Выбор модели OpenRouter
         model_layout = QHBoxLayout()
@@ -72,6 +99,33 @@ class OCRDialog(QDialog):
         self.openrouter_radio.toggled.connect(lambda checked: self.model_combo.setEnabled(checked))
         
         layout.addWidget(backend_group)
+        
+        # Выбор движка для IMAGE блоков (при использовании Datalab)
+        self.image_backend_group = QGroupBox("OCR движок для IMAGE блоков (картинок)")
+        image_backend_layout = QVBoxLayout(self.image_backend_group)
+        
+        self.image_backend_button_group = QButtonGroup(self)
+        
+        self.image_local_radio = QRadioButton("Локальный VLM")
+        self.image_openrouter_radio = QRadioButton("OpenRouter")
+        self.image_local_radio.setChecked(True)
+        
+        self.image_backend_button_group.addButton(self.image_local_radio, 0)
+        self.image_backend_button_group.addButton(self.image_openrouter_radio, 1)
+        
+        image_backend_layout.addWidget(self.image_local_radio)
+        image_backend_layout.addWidget(self.image_openrouter_radio)
+        
+        image_info = QLabel("Картинки требуют VLM для описания, Datalab их не обрабатывает")
+        image_info.setStyleSheet("color: #888; font-size: 10px;")
+        image_backend_layout.addWidget(image_info)
+        
+        # Скрываем по умолчанию, показываем только при выборе Datalab
+        self.image_backend_group.setVisible(False)
+        layout.addWidget(self.image_backend_group)
+        
+        # Связываем видимость с выбором Datalab
+        self.datalab_radio.toggled.connect(self._on_datalab_toggled)
         
         # Режим распознавания
         mode_group = QGroupBox("Режим распознавания")
@@ -202,6 +256,10 @@ class OCRDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
     
+    def _on_datalab_toggled(self, checked):
+        """Показать/скрыть выбор движка для картинок при выборе Datalab"""
+        self.image_backend_group.setVisible(checked)
+    
     def _update_models_enabled(self, openrouter_enabled):
         """Включить/отключить выбор моделей для типов блоков"""
         self.text_model_combo.setEnabled(openrouter_enabled)
@@ -244,7 +302,19 @@ class OCRDialog(QDialog):
         
         # Сохраняем настройки
         self.mode = "blocks" if self.blocks_radio.isChecked() else "full_page"
-        self.ocr_backend = "local" if self.local_radio.isChecked() else "openrouter"
+        
+        # Определяем backend
+        if self.datalab_radio.isChecked():
+            self.ocr_backend = "datalab"
+            self.use_datalab = True
+            self.datalab_image_backend = "local" if self.image_local_radio.isChecked() else "openrouter"
+        elif self.openrouter_radio.isChecked():
+            self.ocr_backend = "openrouter"
+            self.use_datalab = False
+        else:
+            self.ocr_backend = "local"
+            self.use_datalab = False
+        
         self.openrouter_model = self.model_combo.currentData()
         self.text_model = self.text_model_combo.currentData()
         self.table_model = self.table_model_combo.currentData()

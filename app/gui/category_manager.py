@@ -15,11 +15,21 @@ logger = logging.getLogger(__name__)
 class CategoryManager:
     """Управление категориями"""
     
+    # Стандартные категории для типов блоков
+    STANDARD_CATEGORIES = ["Текст", "Таблица", "Картинка"]
+    
     def __init__(self, parent, categories_list: QListWidget):
         self.parent = parent
         self.categories_list = categories_list
+        self._ensure_standard_categories()
         self._load_categories_from_r2()
         self.update_categories_list()
+    
+    def _ensure_standard_categories(self):
+        """Добавить стандартные категории если их нет"""
+        for cat in self.STANDARD_CATEGORIES:
+            if cat not in self.parent.categories:
+                self.parent.categories.append(cat)
     
     def _load_categories_from_r2(self):
         """Загрузить категории из R2 при инициализации"""
@@ -86,7 +96,10 @@ class CategoryManager:
             
             # Создаем placeholder промт в R2 для новой категории
             if hasattr(self.parent, 'prompt_manager'):
-                default_prompt = f"Промт для категории '{text}'.\n\nОпиши правила распознавания блоков этой категории.\n\nФормат вывода:\n- Что распознавать\n- Как структурировать\n- Что игнорировать"
+                default_prompt = {
+                    "system": "You are an expert document analyzer. Extract and structure information accurately.",
+                    "user": f"Analyze this '{text}' block. Extract all relevant information and format it clearly."
+                }
                 prompt_name = self.parent.prompt_manager.get_category_prompt_name(text)
                 self.parent.prompt_manager.save_prompt(prompt_name, default_prompt)
             
@@ -142,7 +155,10 @@ class CategoryManager:
             return
         
         prompt_name = self.parent.prompt_manager.get_category_prompt_name(category_name)
-        default_prompt = f"Промт для категории '{category_name}'. Опиши правила распознавания блоков этой категории."
+        default_prompt = {
+            "system": "You are an expert document analyzer. Extract and structure information accurately.",
+            "user": f"Analyze this '{category_name}' block. Extract all relevant information."
+        }
         self.parent.prompt_manager.edit_prompt(
             prompt_name,
             f"Редактирование промпта: {category_name}",

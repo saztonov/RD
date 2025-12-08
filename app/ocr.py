@@ -43,13 +43,13 @@ class OCRBackend(Protocol):
     Интерфейс для OCR-движков
     """
     
-    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
+    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
         """
         Распознать текст на изображении
         
         Args:
             image: изображение для распознавания
-            prompt: кастомный промпт (опционально)
+            prompt: dict с ключами 'system' и 'user' (опционально)
         
         Returns:
             Распознанный текст
@@ -60,6 +60,9 @@ class OCRBackend(Protocol):
 class LocalVLMBackend:
     """OCR через ngrok endpoint (проксирует в LM Studio)"""
     
+    DEFAULT_SYSTEM = "You are an expert design engineer and automation specialist. Your task is to analyze technical drawings and extract data into structured JSON or Markdown formats with 100% accuracy. Do not omit details. Do not hallucinate values."
+    DEFAULT_USER = "Распознай содержимое изображения."
+    
     def __init__(self, api_base: str = None, model_name: str = "qwen3-vl-32b-instruct"):
         self.model_name = model_name
         try:
@@ -69,14 +72,18 @@ class LocalVLMBackend:
             raise ImportError("Требуется установить httpx: pip install httpx")
         logger.info(f"LocalVLM инициализирован (модель: {self.model_name})")
     
-    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
+    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
         """Распознать текст через ngrok endpoint"""
         try:
             from app.config import get_lm_base_url
             
-            # Промпт должен приходить из R2, если нет - минимальная инструкция
-            if not prompt:
-                prompt = "Распознай содержимое изображения."
+            # Извлекаем system и user из промта
+            if prompt and isinstance(prompt, dict):
+                system_prompt = prompt.get("system", "") or self.DEFAULT_SYSTEM
+                user_prompt = prompt.get("user", "") or self.DEFAULT_USER
+            else:
+                system_prompt = self.DEFAULT_SYSTEM
+                user_prompt = self.DEFAULT_USER
             
             img_base64 = image_to_base64(image)
             url = get_lm_base_url()
@@ -86,12 +93,12 @@ class LocalVLMBackend:
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are an expert design engineer and automation specialist. Your task is to analyze technical drawings and extract data into structured JSON or Markdown formats with 100% accuracy. Do not omit details. Do not hallucinate values."
+                        "content": system_prompt
                     },
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": prompt},
+                            {"type": "text", "text": user_prompt},
                             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
                         ]
                     }
@@ -131,6 +138,9 @@ class OpenRouterBackend:
     """OCR через OpenRouter API"""
     
     _providers_cache: dict = {}  # Кэш провайдеров по моделям
+    
+    DEFAULT_SYSTEM = "You are an expert design engineer and automation specialist. Your task is to analyze technical drawings and extract data into structured JSON or Markdown formats with 100% accuracy. Do not omit details. Do not hallucinate values."
+    DEFAULT_USER = "Распознай содержимое изображения."
     
     def __init__(self, api_key: str, model_name: str = "qwen/qwen3-vl-30b-a3b-instruct"):
         self.api_key = api_key
@@ -211,7 +221,7 @@ class OpenRouterBackend:
             logger.warning(f"Ошибка получения провайдеров: {e}")
             return None
     
-    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
+    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
         """Распознать текст через OpenRouter API"""
         try:
             # Получаем порядок провайдеров (кэшируется)
@@ -219,15 +229,21 @@ class OpenRouterBackend:
                 self._provider_order = self._fetch_cheapest_providers() or []
             
             image_b64 = image_to_base64(image)
-            # Промпт должен приходить из R2, если нет - минимальная инструкция
-            user_prompt = prompt if prompt else "Распознай содержимое изображения."
+            
+            # Извлекаем system и user из промта
+            if prompt and isinstance(prompt, dict):
+                system_prompt = prompt.get("system", "") or self.DEFAULT_SYSTEM
+                user_prompt = prompt.get("user", "") or self.DEFAULT_USER
+            else:
+                system_prompt = self.DEFAULT_SYSTEM
+                user_prompt = self.DEFAULT_USER
             
             payload = {
                 "model": self.model_name,
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are an expert design engineer and automation specialist. Your task is to analyze technical drawings and extract data into structured JSON or Markdown formats with 100% accuracy. Do not omit details. Do not hallucinate values."
+                        "content": system_prompt
                     },
                     {
                         "role": "user",
@@ -272,7 +288,7 @@ class OpenRouterBackend:
 
 class DummyOCRBackend:
     """Заглушка для OCR"""
-    def recognize(self, image: Image.Image, prompt: Optional[str] = None) -> str:
+    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
         return "[OCR placeholder - OCR engine not configured]"
 
 
@@ -289,7 +305,7 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
         base_dir: базовая директория для поиска image_file
         image_description_backend: движок для описания изображений (если None, используется ocr_backend)
         index_file: путь к файлу индекса для IMAGE блоков (если указан, создается индекс)
-        prompt_loader: функция для загрузки промптов из R2 (принимает имя промпта, возвращает текст)
+        prompt_loader: функция для загрузки промптов из R2 (принимает имя промпта, возвращает dict с system/user)
     """
     processed = 0
     skipped = 0
@@ -319,25 +335,25 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             # Загружаем изображение
             image = Image.open(image_path)
             
-            # Получаем промпт из R2
-            prompt_text = None
+            # Получаем промпт из R2 (dict с system/user)
+            prompt_data = None
             if prompt_loader:
                 # Сначала пытаемся загрузить промпт категории
                 if block.category:
-                    prompt_text = prompt_loader(f"category_{block.category}")
+                    prompt_data = prompt_loader(f"category_{block.category}")
                 
                 # Если нет промпта категории, используем промпт типа блока
-                if not prompt_text:
+                if not prompt_data:
                     if block.block_type == BlockType.IMAGE:
-                        prompt_text = prompt_loader("image")
+                        prompt_data = prompt_loader("image")
                     elif block.block_type == BlockType.TABLE:
-                        prompt_text = prompt_loader("table")
+                        prompt_data = prompt_loader("table")
                     elif block.block_type == BlockType.TEXT:
-                        prompt_text = prompt_loader("text")
+                        prompt_data = prompt_loader("text")
             
             # Обрабатываем в зависимости от типа блока
             if block.block_type == BlockType.IMAGE:
-                ocr_text = image_description_backend.recognize(image, prompt=prompt_text)
+                ocr_text = image_description_backend.recognize(image, prompt=prompt_data)
                 block.ocr_text = ocr_text
                 
                 # Если указан index_file, обновляем индекс
@@ -349,12 +365,12 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
                 processed += 1
                 
             elif block.block_type == BlockType.TABLE:
-                ocr_text = ocr_backend.recognize(image, prompt=prompt_text)
+                ocr_text = ocr_backend.recognize(image, prompt=prompt_data)
                 block.ocr_text = ocr_text
                 processed += 1
                 
             elif block.block_type == BlockType.TEXT:
-                ocr_text = ocr_backend.recognize(image, prompt=prompt_text)
+                ocr_text = ocr_backend.recognize(image, prompt=prompt_data)
                 block.ocr_text = ocr_text
                 processed += 1
             else:

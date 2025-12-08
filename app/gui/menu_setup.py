@@ -72,6 +72,13 @@ class MenuSetupMixin:
         import_cat_action.triggered.connect(lambda: self.category_manager.import_categories())
         tools_menu.addAction(import_cat_action)
         
+        tools_menu.addSeparator()
+        
+        sync_r2_action = QAction("🔄 Синхронизация из R2", self)
+        sync_r2_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        sync_r2_action.triggered.connect(self._sync_from_r2)
+        tools_menu.addAction(sync_r2_action)
+        
         # Меню "Вид"
         view_menu = menubar.addMenu("&Вид")
         

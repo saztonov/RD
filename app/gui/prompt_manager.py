@@ -1,8 +1,10 @@
 """
 Менеджер промтов для типов блоков и категорий
-Все промты хранятся ТОЛЬКО в R2 Storage (rd1/prompts/)
+Все промты хранятся ТОЛЬКО в R2 Storage (rd1/prompts/) в JSON формате
+Формат: {"system": "...", "user": "..."}
 """
 
+import json
 import logging
 from typing import Optional
 from PySide6.QtWidgets import QMessageBox, QDialog
@@ -35,10 +37,10 @@ class PromptManager:
             self.r2_storage = None
     
     def get_prompt_key(self, name: str) -> str:
-        """Получить ключ для промта в R2"""
-        return f"{self.PROMPTS_PREFIX}/{name}.txt"
+        """Получить ключ для промта в R2 (JSON формат)"""
+        return f"{self.PROMPTS_PREFIX}/{name}.json"
     
-    def load_prompt(self, name: str) -> Optional[str]:
+    def load_prompt(self, name: str) -> Optional[dict]:
         """
         Загрузить промт из R2
         
@@ -46,22 +48,43 @@ class PromptManager:
             name: Имя промта (например 'text', 'table', 'image' или 'category_XXX')
         
         Returns:
-            Текст промта или None
+            Dict с ключами 'system' и 'user' или None
         """
         if not self.r2_storage:
             logger.warning("R2 недоступен, промт не загружен")
             return None
         
         key = self.get_prompt_key(name)
-        return self.r2_storage.download_text(key)
+        content = self.r2_storage.download_text(key)
+        
+        if content:
+            try:
+                data = json.loads(content)
+                return {
+                    "system": data.get("system", ""),
+                    "user": data.get("user", "")
+                }
+            except json.JSONDecodeError:
+                # Старый формат - простой текст, конвертируем
+                logger.info(f"Конвертация старого формата промта: {name}")
+                return {"system": "", "user": content}
+        
+        # Пробуем загрузить старый .txt формат для миграции
+        old_key = f"{self.PROMPTS_PREFIX}/{name}.txt"
+        old_content = self.r2_storage.download_text(old_key)
+        if old_content:
+            logger.info(f"Миграция промта из .txt: {name}")
+            return {"system": "", "user": old_content}
+        
+        return None
     
-    def save_prompt(self, name: str, content: str) -> bool:
+    def save_prompt(self, name: str, content: dict) -> bool:
         """
         Сохранить промт в R2
         
         Args:
             name: Имя промта
-            content: Текст промта
+            content: Dict с ключами 'system' и 'user'
         
         Returns:
             True если успешно
@@ -75,7 +98,8 @@ class PromptManager:
             return False
         
         key = self.get_prompt_key(name)
-        result = self.r2_storage.upload_text(content, key)
+        json_content = json.dumps(content, ensure_ascii=False, indent=2)
+        result = self.r2_storage.upload_text(json_content, key)
         
         if result:
             logger.info(f"✅ Промт сохранен в R2: {name}")
@@ -84,7 +108,7 @@ class PromptManager:
         
         return result
     
-    def edit_prompt(self, name: str, title: str, default_content: str = "") -> bool:
+    def edit_prompt(self, name: str, title: str, default_content: dict = None) -> bool:
         """
         Открыть диалог редактирования промта из R2
         
@@ -100,19 +124,22 @@ class PromptManager:
         current_prompt = self.load_prompt(name)
         
         if current_prompt is None:
-            current_prompt = default_content or f"Промт для '{name}' не найден в R2.\nСоздайте новый промт здесь."
+            current_prompt = default_content or {
+                "system": "You are an expert assistant for document analysis.",
+                "user": f"Analyze the provided image of '{name}' block."
+            }
         
         # Открываем диалог с указанием ключа R2
         dialog = PromptEditorDialog(self.parent, title, current_prompt, prompt_key=name)
         if dialog.exec() == QDialog.Accepted:
-            new_prompt = dialog.get_prompt_text()
+            new_prompt = dialog.get_prompt_data()
             
             # Сохраняем в R2
             if self.save_prompt(name, new_prompt):
                 QMessageBox.information(
                     self.parent,
                     "Успех",
-                    f"Промт сохранен в R2:\nrd1/prompts/{name}.txt"
+                    f"Промт сохранен в R2:\nrd1/prompts/{name}.json"
                 )
                 return True
         
@@ -131,15 +158,15 @@ class PromptManager:
         
         if missing_prompts:
             logger.warning(f"⚠️ Отсутствуют промпты в R2 (rd1/prompts/): {missing_prompts}")
-            logger.warning(f"⚠️ Загрузите промпты в R2 через scripts/upload_prompts_to_r2.py")
+            logger.warning(f"⚠️ Загрузите промпты в R2 или создайте через UI")
     
     def ensure_standard_categories(self) -> list[str]:
-        """Загрузить категории из R2 (не из кода!)"""
+        """Загрузить категории из R2 (сканирование файлов)"""
         return self.load_categories_from_r2()
     
     def load_categories_from_r2(self) -> list[str]:
         """
-        Загрузить список категорий из R2
+        Загрузить список категорий из R2 путём сканирования файлов category_*.json
         
         Returns:
             Список названий категорий (пустой если R2 недоступен)
@@ -148,38 +175,29 @@ class PromptManager:
             logger.warning("R2 недоступен, категории не загружены")
             return []
         
-        # Загружаем список категорий из специального файла
-        categories_key = "prompts/categories_list.txt"
-        content = self.r2_storage.download_text(categories_key)
+        # Сканируем все файлы в prompts/
+        keys = self.r2_storage.list_by_prefix(f"{self.PROMPTS_PREFIX}/")
         
-        if content:
-            categories = [line.strip() for line in content.split('\n') if line.strip()]
-            logger.info(f"✅ Загружено {len(categories)} категорий из R2")
-            return categories
+        categories = []
+        for key in keys:
+            # Ищем файлы вида prompts/category_XXX.json
+            if key.startswith(f"{self.PROMPTS_PREFIX}/category_") and key.endswith(".json"):
+                # Извлекаем имя категории
+                filename = key.replace(f"{self.PROMPTS_PREFIX}/category_", "").replace(".json", "")
+                if filename:
+                    categories.append(filename)
         
-        logger.info("⚠️ Список категорий не найден в R2 (rd1/prompts/categories_list.txt)")
-        return []
+        logger.info(f"✅ Найдено {len(categories)} категорий в R2")
+        return categories
     
     def save_categories_to_r2(self, categories: list[str]) -> bool:
         """
-        Сохранить список категорий в R2
-        
-        Args:
-            categories: Список категорий
-        
-        Returns:
-            True если успешно
+        Категории сохраняются автоматически при создании промптов.
+        Этот метод оставлен для совместимости.
         """
-        if not self.r2_storage:
-            return False
-        
-        categories_key = "prompts/categories_list.txt"
-        content = '\n'.join(categories)
-        
-        result = self.r2_storage.upload_text(content, categories_key)
-        if result:
-            logger.info(f"✅ Сохранено {len(categories)} категорий в R2")
-        return result
+        # Категории определяются по наличию файлов category_*.json
+        # Нет необходимости в отдельном файле списка
+        return True
     
     def get_category_prompt_name(self, category: str) -> str:
         """Получить имя промпта для категории"""
@@ -221,10 +239,39 @@ class PromptManager:
         keys = self.r2_storage.list_by_prefix(self.PROMPTS_PREFIX + "/")
         prompts = []
         for key in keys:
-            if key.endswith('.txt') and key != "prompts/categories_list.txt":
+            if key.endswith('.json'):
                 # Извлекаем имя промта из ключа
-                name = key.replace(self.PROMPTS_PREFIX + "/", "").replace(".txt", "")
+                name = key.replace(self.PROMPTS_PREFIX + "/", "").replace(".json", "")
                 prompts.append(name)
+        
+        return prompts
+    
+    def list_prompts_with_metadata(self) -> list[dict]:
+        """
+        Получить список всех промптов из R2 с метаданными
+        
+        Returns:
+            Список dict: {name, last_modified, is_category}
+        """
+        if not self.r2_storage:
+            return []
+        
+        objects = self.r2_storage.list_objects_with_metadata(self.PROMPTS_PREFIX + "/")
+        prompts = []
+        
+        for obj in objects:
+            key = obj['Key']
+            if key.endswith('.json'):
+                name = key.replace(self.PROMPTS_PREFIX + "/", "").replace(".json", "")
+                is_category = name.startswith("category_")
+                display_name = name.replace("category_", "") if is_category else name
+                
+                prompts.append({
+                    'name': name,
+                    'display_name': display_name,
+                    'last_modified': obj.get('LastModified'),
+                    'is_category': is_category
+                })
         
         return prompts
 

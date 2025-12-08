@@ -67,13 +67,234 @@ class OCRWorker(QThread):
         self._cancelled = True
     
     def run(self):
-        # Выбираем режим: batch (оптимизированный) или legacy
+        # Выбираем режим: datalab, batch или legacy
+        use_datalab = self.config.get('use_datalab', False)
         use_batch = self.config.get('use_batch_ocr', True)
         
-        if use_batch:
+        if use_datalab:
+            self._run_datalab_ocr()
+        elif use_batch:
             self._run_batch_ocr()
         else:
             self._run_legacy_ocr()
+    
+    def _run_datalab_ocr(self):
+        """Datalab OCR: склейка блоков в одно изображение для экономии"""
+        try:
+            from app.datalab_ocr import (
+                concatenate_blocks, save_optimized_image, 
+                DatalabOCRClient, resize_to_width
+            )
+            from app.ocr import create_ocr_engine, generate_structured_markdown
+            from app.annotation_io import AnnotationIO
+            from app.models import BlockType
+            
+            output_dir = Path(self.config['output_dir'])
+            crops_dir = output_dir / "crops"
+            crops_dir.mkdir(parents=True, exist_ok=True)
+            temp_dir = output_dir / "temp"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            
+            datalab_api_key = self.config.get('datalab_api_key', '')
+            if not datalab_api_key:
+                raise ValueError("DATALAB_API_KEY не указан")
+            
+            client = DatalabOCRClient(datalab_api_key)
+            
+            # Движок для IMAGE блоков (VLM)
+            image_backend = self.config.get('datalab_image_backend', 'local')
+            if image_backend == 'openrouter':
+                import os
+                from dotenv import load_dotenv
+                load_dotenv()
+                api_key = os.getenv("OPENROUTER_API_KEY")
+                image_engine = create_ocr_engine("openrouter", api_key=api_key, 
+                                                  model_name=self.config.get('image_model'))
+            else:
+                from app.config import get_lm_base_url
+                image_engine = create_ocr_engine("local_vlm", 
+                                                  model_name=self.config.get('vlm_model_name', 'qwen3-vl-32b-instruct'))
+            
+            # Разделяем блоки: TEXT/TABLE через Datalab, IMAGE через VLM
+            text_table_blocks = []  # (block, crop, page_num)
+            image_blocks = []       # (block, crop)
+            
+            # Сначала собираем страницы с блоками чтобы не рендерить пустые
+            pages_with_blocks = {}
+            for page in self.annotation_document.pages:
+                if page.blocks:  # Только если есть блоки
+                    pages_with_blocks[page.page_number] = page
+            
+            logger.info(f"Datalab OCR: страниц с блоками: {len(pages_with_blocks)}/{len(self.annotation_document.pages)}")
+            
+            for page_num, page in pages_with_blocks.items():
+                if self._cancelled:
+                    return
+                
+                # Рендерим только страницы с блоками
+                if page_num not in self.page_images:
+                    logger.debug(f"Рендеринг страницы {page_num} (есть {len(page.blocks)} блоков)")
+                    img = self.pdf_document.render_page(page_num)
+                    if img:
+                        self.page_images[page_num] = img
+                
+                page_img = self.page_images.get(page_num)
+                if not page_img:
+                    continue
+                
+                for block in page.blocks:
+                    x1, y1, x2, y2 = block.coords_px
+                    if x1 >= x2 or y1 >= y2:
+                        continue
+                    
+                    crop = page_img.crop((x1, y1, x2, y2))
+                    
+                    if block.block_type == BlockType.IMAGE:
+                        # Сохраняем кроп
+                        crop_filename = f"page{page_num}_block{block.id}.png"
+                        crop_path = crops_dir / crop_filename
+                        crop.save(crop_path, "PNG")
+                        block.image_file = str(crop_path)
+                        image_blocks.append((block, crop))
+                    else:
+                        text_table_blocks.append((block, crop, page_num))
+            
+            total_blocks = len(text_table_blocks) + len(image_blocks)
+            processed_count = 0
+            
+            # Обрабатываем TEXT/TABLE через Datalab (склейка)
+            if text_table_blocks:
+                logger.info(f"Datalab OCR: {len(text_table_blocks)} блоков текста/таблиц")
+                
+                # Извлекаем только кропы для склейки
+                crops_only = [crop for (_, crop, _) in text_table_blocks]
+                
+                # Собираем промпт на основе типов блоков и категорий
+                prompt_loader = self.config.get('prompt_loader')
+                batch_prompt = self._get_datalab_prompt(text_table_blocks, prompt_loader)
+                
+                # Склеиваем
+                batches = concatenate_blocks(crops_only)
+                logger.info(f"Datalab: {len(crops_only)} блоков → {len(batches)} батчей")
+                
+                # Отправляем каждый батч
+                all_results = []
+                for batch_idx, batch_image in enumerate(batches):
+                    if self._cancelled:
+                        return
+                    
+                    self.progress.emit(processed_count, total_blocks)
+                    
+                    # Сохраняем батч
+                    batch_path = temp_dir / f"batch_{batch_idx}.png"
+                    saved_path = save_optimized_image(batch_image, str(batch_path))
+                    
+                    try:
+                        markdown = client.recognize(saved_path, block_prompt=batch_prompt)
+                        all_results.append(markdown)
+                    except Exception as e:
+                        logger.error(f"Datalab batch {batch_idx} error: {e}")
+                        all_results.append(f"[Ошибка: {e}]")
+                    finally:
+                        # Удаляем временные файлы
+                        for p in [batch_path, batch_path.with_suffix('.jpg')]:
+                            if p.exists():
+                                p.unlink()
+                
+                # Объединяем результаты и присваиваем блокам (фильтруем None и пустые)
+                valid_results = [r for r in all_results if r]
+                combined_markdown = "\n\n---\n\n".join(valid_results) if valid_results else ""
+                
+                # Простое распределение: весь markdown идет первому блоку
+                # В идеале нужен парсер для разбивки по блокам, но это сложно
+                # Пока сохраняем общий результат в первый блок
+                if text_table_blocks:
+                    first_block = text_table_blocks[0][0]
+                    first_block.ocr_text = combined_markdown
+                    
+                    # Остальным блокам ставим placeholder
+                    for block, _, _ in text_table_blocks[1:]:
+                        block.ocr_text = "[См. общий результат Datalab выше]"
+                
+                processed_count += len(text_table_blocks)
+                self.progress.emit(processed_count, total_blocks)
+            
+            # Обрабатываем IMAGE блоки через VLM
+            if image_blocks:
+                logger.info(f"VLM OCR: {len(image_blocks)} IMAGE блоков")
+                
+                prompt_loader = self.config.get('prompt_loader')
+                
+                for block, crop in image_blocks:
+                    if self._cancelled:
+                        return
+                    
+                    try:
+                        prompt_data = None
+                        if prompt_loader:
+                            if block.category:
+                                prompt_data = prompt_loader(f"category_{block.category}")
+                            if not prompt_data:
+                                prompt_data = prompt_loader("image")
+                        
+                        block.ocr_text = image_engine.recognize(crop, prompt=prompt_data)
+                    except Exception as e:
+                        logger.error(f"VLM IMAGE block {block.id} error: {e}")
+                        block.ocr_text = f"[Ошибка VLM: {e}]"
+                    
+                    processed_count += 1
+                    self.progress.emit(processed_count, total_blocks)
+            
+            # Очистка temp директории
+            if temp_dir.exists():
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            
+            if not self._cancelled:
+                self._save_results(output_dir)
+                
+        except Exception as e:
+            logger.error(f"Datalab OCR Worker error: {e}", exc_info=True)
+            self.error.emit(str(e))
+    
+    def _get_datalab_prompt(self, blocks_data, prompt_loader) -> str:
+        """Собрать промпт для Datalab на основе типов блоков и категорий"""
+        from app.models import BlockType
+        
+        if not prompt_loader:
+            return None
+        
+        # Собираем уникальные типы и категории
+        block_types = set()
+        categories = set()
+        
+        for block, _, _ in blocks_data:
+            block_types.add(block.block_type)
+            if block.category:
+                categories.add(block.category)
+        
+        # Пытаемся получить промпт категории (приоритет)
+        for cat in categories:
+            prompt_data = prompt_loader(f"category_{cat}")
+            if prompt_data:
+                user_prompt = prompt_data.get('user', '') if isinstance(prompt_data, dict) else str(prompt_data)
+                if user_prompt:
+                    return user_prompt
+        
+        # Или промпт типа блока
+        type_prompts = []
+        for bt in block_types:
+            key = 'table' if bt == BlockType.TABLE else 'text'
+            prompt_data = prompt_loader(key)
+            if prompt_data:
+                user_prompt = prompt_data.get('user', '') if isinstance(prompt_data, dict) else str(prompt_data)
+                if user_prompt:
+                    type_prompts.append(user_prompt)
+        
+        if type_prompts:
+            return "\n".join(type_prompts)
+        
+        return None
     
     def _run_batch_ocr(self):
         """Оптимизированный batch OCR с экономией токенов"""
@@ -104,13 +325,18 @@ class OCRWorker(QThread):
                 model_name = self.config.get('vlm_model_name', 'qwen3-vl-32b-instruct')
             
             # Собираем все блоки с кропами (отсортированы по позиции в документе)
+            # Сначала собираем страницы с блоками чтобы не рендерить пустые
+            pages_with_blocks = {p.page_number: p for p in self.annotation_document.pages if p.blocks}
+            logger.info(f"Batch OCR: страниц с блоками: {len(pages_with_blocks)}/{len(self.annotation_document.pages)}")
+            
             blocks_with_crops = []
-            for page in self.annotation_document.pages:
+            for page_num, page in pages_with_blocks.items():
                 if self._cancelled:
                     return
                 
-                page_num = page.page_number
+                # Рендерим только страницы с блоками
                 if page_num not in self.page_images:
+                    logger.debug(f"Рендеринг страницы {page_num} (есть {len(page.blocks)} блоков)")
                     img = self.pdf_document.render_page(page_num)
                     if img:
                         self.page_images[page_num] = img
@@ -213,12 +439,17 @@ class OCRWorker(QThread):
             total_blocks = sum(len(p.blocks) for p in self.annotation_document.pages)
             processed_count = 0
             
-            for page in self.annotation_document.pages:
+            # Только страницы с блоками
+            pages_with_blocks = {p.page_number: p for p in self.annotation_document.pages if p.blocks}
+            logger.info(f"Legacy OCR: страниц с блоками: {len(pages_with_blocks)}/{len(self.annotation_document.pages)}")
+            
+            for page_num, page in pages_with_blocks.items():
                 if self._cancelled:
                     break
                 
-                page_num = page.page_number
+                # Рендерим только страницы с блоками
                 if page_num not in self.page_images:
+                    logger.debug(f"Рендеринг страницы {page_num} (есть {len(page.blocks)} блоков)")
                     img = self.pdf_document.render_page(page_num)
                     if img:
                         self.page_images[page_num] = img
