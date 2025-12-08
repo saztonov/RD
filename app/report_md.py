@@ -196,34 +196,21 @@ def generate_markdown_reports(base_output_dir: str) -> None:
                 f.write(f"**Category:** {data.get('category', category_name)}\n")
                 f.write(f"**Source PDF:** {data.get('original_pdf', 'Unknown')}\n")
                 f.write(f"**Total Blocks:** {len(blocks_sorted)}\n\n")
-                f.write("---\n\n")
                 
-                # Блоки
+                # Блоки последовательно без разделителей страниц
                 for block in blocks_sorted:
-                    block_id = block.get("id", "unknown")
-                    page_index = block.get("page_index", 0)
                     block_type = block.get("block_type", "unknown")
                     ocr_text = block.get("ocr_text", "")
                     
-                    # Заголовок блока
-                    f.write(f"## Block {block_id} (Page {page_index}, Type: {block_type})\n\n")
-                    
-                    # OCR текст или заглушка
+                    # OCR текст без заголовков блоков
                     if ocr_text:
-                        # Проверяем, является ли текст Markdown-таблицей
                         if block_type == "table" and _is_markdown_table(ocr_text):
-                            # Таблица - пишем как есть
                             f.write(ocr_text)
                             f.write("\n\n")
                         else:
-                            # Обычный текст - экранируем
                             escaped_text = _escape_markdown(ocr_text)
                             f.write(escaped_text)
                             f.write("\n\n")
-                    else:
-                        f.write("*Нет OCR-данных*\n\n")
-                    
-                    f.write("---\n\n")
             
             logger.info(f"Генерирован отчёт для '{category_name}': {summary_path} ({len(blocks_sorted)} блоков)")
         
@@ -248,6 +235,7 @@ class MarkdownReporter:
     def generate_reports(self, document: Document) -> None:
         """
         Генерировать Markdown-отчёты для Document
+        Блоки выводятся последовательно без разделения по страницам
         
         Args:
             document: экземпляр Document
@@ -261,28 +249,22 @@ class MarkdownReporter:
                     category = block.category or "uncategorized"
                     if category not in blocks_by_category:
                         blocks_by_category[category] = []
-                    blocks_by_category[category].append(block)
+                    blocks_by_category[category].append((page.page_number, block))
             
             # Создаём MD-файл для каждой категории
-            for category, blocks in blocks_by_category.items():
+            for category, blocks_with_page in blocks_by_category.items():
                 md_path = self.output_dir / f"{category}.md"
                 
                 with open(md_path, 'w', encoding='utf-8') as f:
-                    # Заголовок
                     f.write(f"# {category}\n\n")
                     f.write(f"**Source PDF:** {document.pdf_path}\n")
-                    f.write(f"**Total Blocks:** {len(blocks)}\n\n")
-                    f.write("---\n\n")
+                    f.write(f"**Total Blocks:** {len(blocks_with_page)}\n\n")
                     
-                    # Сортируем блоки по page_index
-                    blocks_sorted = sorted(blocks, key=lambda b: (b.page_index, b.id))
+                    # Сортируем по странице и вертикальной позиции
+                    blocks_sorted = sorted(blocks_with_page, key=lambda x: (x[0], x[1].coords_px[1]))
                     
-                    # Выводим блоки
-                    for block in blocks_sorted:
-                        f.write(f"## Block {block.id} (Page {block.page_index}, Type: {block.block_type.value})\n\n")
-                        
+                    for page_num, block in blocks_sorted:
                         if block.ocr_text:
-                            # Проверяем тип блока для таблиц
                             if block.block_type.value == "table" and _is_markdown_table(block.ocr_text):
                                 f.write(block.ocr_text)
                                 f.write("\n\n")
@@ -290,19 +272,15 @@ class MarkdownReporter:
                                 escaped_text = _escape_markdown(block.ocr_text)
                                 f.write(escaped_text)
                                 f.write("\n\n")
-                        else:
-                            f.write("*Нет OCR-данных*\n\n")
-                        
-                        f.write("---\n\n")
                 
-                logger.info(f"Генерирован отчёт для '{category}': {md_path} ({len(blocks)} блоков)")
+                logger.info(f"Генерирован отчёт для '{category}': {md_path} ({len(blocks_with_page)} блоков)")
             
             logger.info(f"Генерация MD-отчётов завершена: {len(blocks_by_category)} категорий")
             
-            # Также генерируем общий отчет (все блоки в одном файле)
+            # Общий отчет
             all_blocks = []
-            for blocks in blocks_by_category.values():
-                all_blocks.extend(blocks)
+            for blocks_with_page in blocks_by_category.values():
+                all_blocks.extend(blocks_with_page)
             
             if all_blocks:
                 combined_path = self.output_dir / "combined_full_report.md"
@@ -310,24 +288,17 @@ class MarkdownReporter:
                     f.write(f"# Полный отчет\n\n")
                     f.write(f"**Source PDF:** {document.pdf_path}\n")
                     f.write(f"**Total Blocks:** {len(all_blocks)}\n\n")
-                    f.write("---\n\n")
                     
-                    # Сортируем все блоки по странице и ID
-                    all_blocks_sorted = sorted(all_blocks, key=lambda b: (b.page_index, b.id))
+                    # Сортируем по странице и вертикальной позиции
+                    all_blocks_sorted = sorted(all_blocks, key=lambda x: (x[0], x[1].coords_px[1]))
                     
-                    for block in all_blocks_sorted:
-                        category = block.category or "Uncategorized"
-                        f.write(f"## Block {block.id} (Page {block.page_index}, Type: {block.block_type.value}, Category: {category})\n\n")
-                        
+                    for page_num, block in all_blocks_sorted:
                         if block.ocr_text:
                             if block.block_type.value == "table" and _is_markdown_table(block.ocr_text):
                                 f.write(block.ocr_text)
                             else:
-                                f.write(block.ocr_text) # Не экранируем для combined отчета, чтобы сохранить структуру MD от Hunyuan
-                        else:
-                            f.write("*Нет OCR-данных*\n\n")
-                        
-                        f.write("\n\n---\n\n")
+                                f.write(block.ocr_text)
+                            f.write("\n\n")
                 
                 logger.info(f"Сгенерирован общий отчет: {combined_path}")
 

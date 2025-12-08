@@ -83,7 +83,8 @@ class OCRWorker(QThread):
         try:
             from app.datalab_ocr import (
                 concatenate_blocks, save_optimized_image, 
-                DatalabOCRClient, resize_to_width
+                DatalabOCRClient, resize_to_width,
+                split_large_block, MAX_BLOCK_HEIGHT
             )
             from app.ocr import create_ocr_engine, generate_structured_markdown
             from app.annotation_io import AnnotationIO
@@ -147,17 +148,36 @@ class OCRWorker(QThread):
                     if x1 >= x2 or y1 >= y2:
                         continue
                     
-                    crop = page_img.crop((x1, y1, x2, y2))
-                    
-                    if block.block_type == BlockType.IMAGE:
-                        # Сохраняем кроп
-                        crop_filename = f"page{page_num}_block{block.id}.png"
-                        crop_path = crops_dir / crop_filename
-                        crop.save(crop_path, "PNG")
-                        block.image_file = str(crop_path)
-                        image_blocks.append((block, crop))
+                    # Ограничиваем высоту блока
+                    block_height = y2 - y1
+                    if block_height > MAX_BLOCK_HEIGHT:
+                        # Делим на части
+                        y_start = y1
+                        part_idx = 0
+                        while y_start < y2:
+                            y_end = min(y_start + MAX_BLOCK_HEIGHT, y2)
+                            crop = page_img.crop((x1, y_start, x2, y_end))
+                            if block.block_type == BlockType.IMAGE:
+                                crop_filename = f"page{page_num}_block{block.id}_part{part_idx}.png"
+                                crop_path = crops_dir / crop_filename
+                                crop.save(crop_path, "PNG")
+                                block.image_file = str(crop_path)
+                                image_blocks.append((block, crop))
+                            else:
+                                text_table_blocks.append((block, crop, page_num))
+                            y_start = y_end
+                            part_idx += 1
                     else:
-                        text_table_blocks.append((block, crop, page_num))
+                        crop = page_img.crop((x1, y1, x2, y2))
+                        
+                        if block.block_type == BlockType.IMAGE:
+                            crop_filename = f"page{page_num}_block{block.id}.png"
+                            crop_path = crops_dir / crop_filename
+                            crop.save(crop_path, "PNG")
+                            block.image_file = str(crop_path)
+                            image_blocks.append((block, crop))
+                        else:
+                            text_table_blocks.append((block, crop, page_num))
             
             total_blocks = len(text_table_blocks) + len(image_blocks)
             processed_count = 0
@@ -190,7 +210,12 @@ class OCRWorker(QThread):
                     saved_path = save_optimized_image(batch_image, str(batch_path))
                     
                     try:
-                        markdown = client.recognize(saved_path, block_prompt=batch_prompt)
+                        # Callback для обновления прогресса во время ожидания Datalab
+                        def on_poll_progress(message, attempt, max_attempts):
+                            # Обновляем прогресс с учетом текущего батча
+                            self.progress.emit(processed_count, total_blocks)
+                        
+                        markdown = client.recognize(saved_path, block_prompt=batch_prompt, progress_callback=on_poll_progress)
                         all_results.append(markdown)
                     except Exception as e:
                         logger.error(f"Datalab batch {batch_idx} error: {e}")
@@ -303,6 +328,7 @@ class OCRWorker(QThread):
             from app.ocr import generate_structured_markdown
             from app.annotation_io import AnnotationIO
             from app.models import BlockType
+            from app.datalab_ocr import MAX_BLOCK_HEIGHT
             import httpx
             
             output_dir = Path(self.config['output_dir'])
@@ -353,16 +379,30 @@ class OCRWorker(QThread):
                     if x1 >= x2 or y1 >= y2:
                         continue
                     
-                    crop = page_img.crop((x1, y1, x2, y2))
-                    
-                    # Сохраняем IMAGE кропы
-                    if block.block_type == BlockType.IMAGE:
-                        crop_filename = f"page{page_num}_block{block.id}.png"
-                        crop_path = crops_dir / crop_filename
-                        crop.save(crop_path, "PNG")
-                        block.image_file = str(crop_path)
-                    
-                    blocks_with_crops.append((block, crop, page_num))
+                    # Ограничиваем высоту блока
+                    block_height = y2 - y1
+                    if block_height > MAX_BLOCK_HEIGHT:
+                        y_start = y1
+                        part_idx = 0
+                        while y_start < y2:
+                            y_end = min(y_start + MAX_BLOCK_HEIGHT, y2)
+                            crop = page_img.crop((x1, y_start, x2, y_end))
+                            if block.block_type == BlockType.IMAGE:
+                                crop_filename = f"page{page_num}_block{block.id}_part{part_idx}.png"
+                                crop_path = crops_dir / crop_filename
+                                crop.save(crop_path, "PNG")
+                                block.image_file = str(crop_path)
+                            blocks_with_crops.append((block, crop, page_num))
+                            y_start = y_end
+                            part_idx += 1
+                    else:
+                        crop = page_img.crop((x1, y1, x2, y2))
+                        if block.block_type == BlockType.IMAGE:
+                            crop_filename = f"page{page_num}_block{block.id}.png"
+                            crop_path = crops_dir / crop_filename
+                            crop.save(crop_path, "PNG")
+                            block.image_file = str(crop_path)
+                        blocks_with_crops.append((block, crop, page_num))
             
             total_blocks = len(blocks_with_crops)
             if total_blocks == 0:
@@ -416,6 +456,7 @@ class OCRWorker(QThread):
             from app.ocr import create_ocr_engine, generate_structured_markdown
             from app.annotation_io import AnnotationIO
             from app.models import BlockType
+            from app.datalab_ocr import MAX_BLOCK_HEIGHT
             
             output_dir = Path(self.config['output_dir'])
             crops_dir = output_dir / "crops"
@@ -468,15 +509,7 @@ class OCRWorker(QThread):
                         self.progress.emit(processed_count, total_blocks)
                         continue
                     
-                    crop = page_img.crop((x1, y1, x2, y2))
-                    
                     try:
-                        if block.block_type == BlockType.IMAGE:
-                            crop_filename = f"page{page_num}_block{block.id}.png"
-                            crop_path = crops_dir / crop_filename
-                            crop.save(crop_path, "PNG")
-                            block.image_file = str(crop_path)
-                        
                         prompt_loader = self.config.get('prompt_loader')
                         prompt_text = None
                         
@@ -492,12 +525,52 @@ class OCRWorker(QThread):
                                 elif block.block_type == BlockType.TEXT:
                                     prompt_text = prompt_loader("text")
                         
-                        if block.block_type == BlockType.IMAGE:
-                            block.ocr_text = image_engine.recognize(crop, prompt=prompt_text)
-                        elif block.block_type == BlockType.TABLE:
-                            block.ocr_text = table_engine.recognize(crop, prompt=prompt_text)
-                        elif block.block_type == BlockType.TEXT:
-                            block.ocr_text = text_engine.recognize(crop, prompt=prompt_text)
+                        # Ограничиваем высоту блока
+                        block_height = y2 - y1
+                        if block_height > MAX_BLOCK_HEIGHT:
+                            # Делим на части и объединяем результаты
+                            ocr_parts = []
+                            y_start = y1
+                            part_idx = 0
+                            while y_start < y2:
+                                y_end = min(y_start + MAX_BLOCK_HEIGHT, y2)
+                                crop = page_img.crop((x1, y_start, x2, y_end))
+                                
+                                if block.block_type == BlockType.IMAGE and part_idx == 0:
+                                    crop_filename = f"page{page_num}_block{block.id}.png"
+                                    crop_path = crops_dir / crop_filename
+                                    crop.save(crop_path, "PNG")
+                                    block.image_file = str(crop_path)
+                                
+                                if block.block_type == BlockType.IMAGE:
+                                    part_text = image_engine.recognize(crop, prompt=prompt_text)
+                                elif block.block_type == BlockType.TABLE:
+                                    part_text = table_engine.recognize(crop, prompt=prompt_text)
+                                elif block.block_type == BlockType.TEXT:
+                                    part_text = text_engine.recognize(crop, prompt=prompt_text)
+                                else:
+                                    part_text = ""
+                                
+                                ocr_parts.append(part_text)
+                                y_start = y_end
+                                part_idx += 1
+                            
+                            block.ocr_text = "\n".join(ocr_parts)
+                        else:
+                            crop = page_img.crop((x1, y1, x2, y2))
+                            
+                            if block.block_type == BlockType.IMAGE:
+                                crop_filename = f"page{page_num}_block{block.id}.png"
+                                crop_path = crops_dir / crop_filename
+                                crop.save(crop_path, "PNG")
+                                block.image_file = str(crop_path)
+                            
+                            if block.block_type == BlockType.IMAGE:
+                                block.ocr_text = image_engine.recognize(crop, prompt=prompt_text)
+                            elif block.block_type == BlockType.TABLE:
+                                block.ocr_text = table_engine.recognize(crop, prompt=prompt_text)
+                            elif block.block_type == BlockType.TEXT:
+                                block.ocr_text = text_engine.recognize(crop, prompt=prompt_text)
                     except Exception as e:
                         logger.error(f"Error OCR block {block.id}: {e}")
                         block.ocr_text = f"[Error: {e}]"

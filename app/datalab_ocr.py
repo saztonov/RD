@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 TARGET_WIDTH = 2500       # Ширина результата
 BLOCK_PADDING = 100       # Отступ между блоками
 MAX_HEIGHT = 10000        # Максимальная высота батча
+MAX_BLOCK_HEIGHT = 10000  # Максимальная высота блока (разбивка)
 MAX_FILE_SIZE_MB = 200    # Лимит размера файла
 
 
@@ -34,13 +35,14 @@ class DatalabOCRClient:
         self.api_key = api_key
         self.headers = {"X-Api-Key": api_key}
     
-    def recognize(self, image_path: str, block_prompt: str = None) -> str:
+    def recognize(self, image_path: str, block_prompt: str = None, progress_callback=None) -> str:
         """
         Отправить изображение на распознавание
         
         Args:
             image_path: путь к изображению
             block_prompt: промпт для коррекции блока (block_correction_prompt)
+            progress_callback: функция обратного вызова (message, attempt, max_attempts)
         
         Returns:
             Markdown с распознанным текстом
@@ -93,14 +95,17 @@ class DatalabOCRClient:
             raise Exception("Нет request_check_url в ответе")
         
         # Поллинг результата
-        return self._poll_result(request_check_url)
+        return self._poll_result(request_check_url, progress_callback)
     
-    def _poll_result(self, check_url: str) -> str:
+    def _poll_result(self, check_url: str, progress_callback=None) -> str:
         """Ожидание и получение результата"""
         logger.info(f"Datalab: ожидание результата...")
         
         for attempt in range(self.MAX_POLL_ATTEMPTS):
             time.sleep(self.POLL_INTERVAL)
+            
+            if progress_callback:
+                progress_callback(f"Ожидание результата от Datalab... ({attempt + 1}/{self.MAX_POLL_ATTEMPTS})", attempt, self.MAX_POLL_ATTEMPTS)
             
             try:
                 response = requests.get(check_url, headers=self.headers, timeout=30)
@@ -138,6 +143,33 @@ def resize_to_width(image: Image.Image, target_width: int = TARGET_WIDTH) -> Ima
     return image.resize((target_width, new_height), Image.LANCZOS)
 
 
+def split_large_block(image: Image.Image, max_height: int = MAX_BLOCK_HEIGHT) -> List[Image.Image]:
+    """
+    Разделить большой блок на части по высоте
+    
+    Args:
+        image: исходное изображение блока
+        max_height: максимальная высота части
+    
+    Returns:
+        Список частей изображения
+    """
+    if image.height <= max_height:
+        return [image]
+    
+    parts = []
+    y = 0
+    while y < image.height:
+        # Высота текущей части
+        h = min(max_height, image.height - y)
+        part = image.crop((0, y, image.width, y + h))
+        parts.append(part)
+        y += h
+    
+    logger.info(f"Блок {image.width}x{image.height} разделён на {len(parts)} частей")
+    return parts
+
+
 def concatenate_blocks(
     block_images: List[Image.Image],
     padding: int = BLOCK_PADDING,
@@ -159,8 +191,12 @@ def concatenate_blocks(
     if not block_images:
         return []
     
-    # Ресайзим все блоки
-    resized = [resize_to_width(img, target_width) for img in block_images]
+    # Разделяем большие блоки и ресайзим
+    resized = []
+    for img in block_images:
+        parts = split_large_block(img, MAX_BLOCK_HEIGHT)
+        for part in parts:
+            resized.append(resize_to_width(part, target_width))
     
     batches = []
     current_batch = []
@@ -345,9 +381,21 @@ def run_datalab_ocr_for_blocks(
         if x1 >= x2 or y1 >= y2:
             continue
         
-        crop = page_img.crop((x1, y1, x2, y2))
-        block_images.append(crop)
-        block_info.append(block)
+        # Ограничиваем высоту блока при вырезке
+        block_height = y2 - y1
+        if block_height > MAX_BLOCK_HEIGHT:
+            # Делим на части
+            y_start = y1
+            while y_start < y2:
+                y_end = min(y_start + MAX_BLOCK_HEIGHT, y2)
+                crop = page_img.crop((x1, y_start, x2, y_end))
+                block_images.append(crop)
+                block_info.append(block)
+                y_start = y_end
+        else:
+            crop = page_img.crop((x1, y1, x2, y2))
+            block_images.append(crop)
+            block_info.append(block)
     
     if not block_images:
         return ""

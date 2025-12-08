@@ -408,6 +408,7 @@ def create_ocr_engine(backend: str = "local_vlm", **kwargs) -> OCRBackend:
 def generate_structured_markdown(pages: List, output_path: str, images_dir: str = "images") -> str:
     """
     Генерация markdown документа из размеченных блоков с учетом типов
+    Блоки выводятся последовательно без разделения по страницам
     
     Args:
         pages: список Page объектов с блоками
@@ -423,58 +424,51 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
         
+        # Собираем все блоки со всех страниц
+        all_blocks = []
+        for page in pages:
+            for block in page.blocks:
+                all_blocks.append((page.page_number, block))
+        
+        # Сортируем: сначала по странице, затем по вертикальной позиции
+        all_blocks.sort(key=lambda x: (x[0], x[1].coords_px[1]))
+        
         markdown_parts = []
         
-        for page in pages:
-            page_num = page.page_number
-            markdown_parts.append(f"# Страница {page_num + 1}\n\n")
+        for page_num, block in all_blocks:
+            if not block.ocr_text:
+                continue
             
-            # Сортируем блоки по вертикальной позиции (сверху вниз)
-            sorted_blocks = sorted(page.blocks, key=lambda b: b.coords_px[1])
+            category_prefix = f"**{block.category}**\n\n" if block.category else ""
             
-            for block in sorted_blocks:
-                if not block.ocr_text:
-                    continue
+            if block.block_type == BlockType.IMAGE:
+                # Для изображений: описание + ссылка на кроп
+                markdown_parts.append(f"{category_prefix}")
+                markdown_parts.append(f"*Изображение:*\n\n")
+                markdown_parts.append(f"{block.ocr_text}\n\n")
                 
-                category_prefix = f"**{block.category}**\n\n" if block.category else ""
-                
-                if block.block_type == BlockType.IMAGE:
-                    # Для изображений: описание + ссылка на кроп
-                    markdown_parts.append(f"{category_prefix}")
-                    markdown_parts.append(f"*Изображение:*\n\n")
-                    markdown_parts.append(f"{block.ocr_text}\n\n")
-                    
-                    # Добавляем ссылку на кроп, если есть image_file
-                    if block.image_file:
-                        # Конвертируем путь к кропу в относительный
-                        crop_path = Path(block.image_file)
-                        if crop_path.is_absolute():
-                            # Пытаемся сделать относительным к output_path
-                            try:
-                                rel_path = crop_path.relative_to(output_file.parent)
-                                # Конвертируем в POSIX путь (прямые слэши)
-                                rel_path_str = rel_path.as_posix()
-                                markdown_parts.append(f"![Изображение]({rel_path_str})\n\n")
-                            except ValueError:
-                                # Если не получается сделать относительным, используем абсолютный
-                                crop_path_str = crop_path.as_posix()
-                                markdown_parts.append(f"![Изображение]({crop_path_str})\n\n")
-                        else:
-                            # Конвертируем в POSIX путь (прямые слэши)
+                # Добавляем ссылку на кроп, если есть image_file
+                if block.image_file:
+                    crop_path = Path(block.image_file)
+                    if crop_path.is_absolute():
+                        try:
+                            rel_path = crop_path.relative_to(output_file.parent)
+                            rel_path_str = rel_path.as_posix()
+                            markdown_parts.append(f"![Изображение]({rel_path_str})\n\n")
+                        except ValueError:
                             crop_path_str = crop_path.as_posix()
                             markdown_parts.append(f"![Изображение]({crop_path_str})\n\n")
-                    
-                elif block.block_type == BlockType.TABLE:
-                    # Для таблиц
-                    markdown_parts.append(f"{category_prefix}")
-                    markdown_parts.append(f"{block.ocr_text}\n\n")
-                    
-                elif block.block_type == BlockType.TEXT:
-                    # Для текста
-                    markdown_parts.append(f"{category_prefix}")
-                    markdown_parts.append(f"{block.ocr_text}\n\n")
-            
-            markdown_parts.append("---\n\n")
+                    else:
+                        crop_path_str = crop_path.as_posix()
+                        markdown_parts.append(f"![Изображение]({crop_path_str})\n\n")
+                
+            elif block.block_type == BlockType.TABLE:
+                markdown_parts.append(f"{category_prefix}")
+                markdown_parts.append(f"{block.ocr_text}\n\n")
+                
+            elif block.block_type == BlockType.TEXT:
+                markdown_parts.append(f"{category_prefix}")
+                markdown_parts.append(f"{block.ocr_text}\n\n")
         
         # Объединяем и сохраняем
         full_markdown = "".join(markdown_parts)

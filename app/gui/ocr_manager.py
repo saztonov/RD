@@ -15,6 +15,7 @@ from app.annotation_io import AnnotationIO
 from app.models import BlockType
 from app.gui.task_manager import TaskManager, TaskType
 from app.r2_storage import upload_ocr_to_r2
+from app.datalab_ocr import MAX_BLOCK_HEIGHT
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -229,18 +230,42 @@ class OCRManager:
                     progress.setValue(processed_count)
                     continue
                 
-                crop = page_img.crop((x1, y1, x2, y2))
-                
                 try:
-                    if block.block_type == BlockType.IMAGE:
-                        crop_filename = f"page{page_num}_block{block.id}.png"
-                        crop_path = crops_dir / crop_filename
-                        crop.save(crop_path, "PNG")
-                        block.image_file = str(crop_path)
-                    
                     engine = engines.get(block.block_type.value, engines.get('default'))
                     prompt = self._get_prompt_for_block(block)
-                    block.ocr_text = engine.recognize(crop, prompt=prompt) if prompt else engine.recognize(crop)
+                    
+                    # Ограничиваем высоту блока
+                    block_height = y2 - y1
+                    if block_height > MAX_BLOCK_HEIGHT:
+                        ocr_parts = []
+                        y_start = y1
+                        part_idx = 0
+                        while y_start < y2:
+                            y_end = min(y_start + MAX_BLOCK_HEIGHT, y2)
+                            crop = page_img.crop((x1, y_start, x2, y_end))
+                            
+                            if block.block_type == BlockType.IMAGE and part_idx == 0:
+                                crop_filename = f"page{page_num}_block{block.id}.png"
+                                crop_path = crops_dir / crop_filename
+                                crop.save(crop_path, "PNG")
+                                block.image_file = str(crop_path)
+                            
+                            part_text = engine.recognize(crop, prompt=prompt) if prompt else engine.recognize(crop)
+                            ocr_parts.append(part_text)
+                            y_start = y_end
+                            part_idx += 1
+                        
+                        block.ocr_text = "\n".join(ocr_parts)
+                    else:
+                        crop = page_img.crop((x1, y1, x2, y2))
+                        
+                        if block.block_type == BlockType.IMAGE:
+                            crop_filename = f"page{page_num}_block{block.id}.png"
+                            crop_path = crops_dir / crop_filename
+                            crop.save(crop_path, "PNG")
+                            block.image_file = str(crop_path)
+                        
+                        block.ocr_text = engine.recognize(crop, prompt=prompt) if prompt else engine.recognize(crop)
                         
                 except Exception as e:
                     logger.error(f"Error OCR block {block.id}: {e}")

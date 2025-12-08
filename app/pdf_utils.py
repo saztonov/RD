@@ -14,6 +14,9 @@ from pathlib import Path
 # Настройка логирования
 logger = logging.getLogger(__name__)
 
+# Увеличиваем лимит PIL для больших изображений (A0 при 300 DPI)
+Image.MAX_IMAGE_PIXELS = 500_000_000
+
 # DPI для рендеринга PDF (должен совпадать с сервером)
 # Сервер использует PDF_DPI=300, zoom = DPI/72
 PDF_RENDER_DPI = 300
@@ -95,13 +98,22 @@ def render_page_to_image(
         # Получаем страницу
         page = doc[page_index]
         
+        # Адаптивный zoom для больших страниц (лимит ~400 млн пикселей)
+        rect = page.rect
+        max_pixels = 400_000_000
+        estimated_pixels = (rect.width * zoom) * (rect.height * zoom)
+        effective_zoom = zoom
+        if estimated_pixels > max_pixels:
+            effective_zoom = (max_pixels / (rect.width * rect.height)) ** 0.5
+            logger.warning(f"Страница {page_index} слишком большая, zoom снижен: {zoom:.2f} -> {effective_zoom:.2f}")
+        
         # Создаём матрицу масштабирования (одинаковый zoom по X и Y для сохранения пропорций)
-        mat = fitz.Matrix(zoom, zoom)
+        mat = fitz.Matrix(effective_zoom, effective_zoom)
         
         # Рендерим страницу в pixmap
         pix = page.get_pixmap(matrix=mat)
         
-        logger.debug(f"Страница {page_index} отрендерена: {pix.width}x{pix.height}px, zoom={zoom}")
+        logger.debug(f"Страница {page_index} отрендерена: {pix.width}x{pix.height}px, zoom={effective_zoom}")
         
         # Конвертация в PIL Image
         # Используем tobytes() для получения сырых данных изображения

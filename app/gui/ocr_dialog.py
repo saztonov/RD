@@ -6,9 +6,7 @@ import logging
 import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QPushButton, QRadioButton, QLineEdit, QFileDialog,
-                               QGroupBox, QDialogButtonBox, QComboBox, QCheckBox,
-                               QButtonGroup)
-from PySide6.QtCore import Qt
+                               QGroupBox, QDialogButtonBox, QComboBox, QButtonGroup)
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -59,18 +57,17 @@ class OCRDialog(QDialog):
         
         self.backend_button_group = QButtonGroup(self)
         
+        self.datalab_radio = QRadioButton("Datalab Marker API (экономия бюджета)")
         self.local_radio = QRadioButton("Локальный VLM сервер")
         self.openrouter_radio = QRadioButton("OpenRouter (VLM)")
-        self.datalab_radio = QRadioButton("Datalab Marker API (экономия бюджета)")
-        self.local_radio.setChecked(True)
         
-        self.backend_button_group.addButton(self.local_radio, 0)
-        self.backend_button_group.addButton(self.openrouter_radio, 1)
-        self.backend_button_group.addButton(self.datalab_radio, 2)
+        self.backend_button_group.addButton(self.datalab_radio, 0)
+        self.backend_button_group.addButton(self.local_radio, 1)
+        self.backend_button_group.addButton(self.openrouter_radio, 2)
         
+        backend_layout.addWidget(self.datalab_radio)
         backend_layout.addWidget(self.local_radio)
         backend_layout.addWidget(self.openrouter_radio)
-        backend_layout.addWidget(self.datalab_radio)
         
         # Datalab info
         datalab_info = QLabel(
@@ -85,73 +82,34 @@ class OCRDialog(QDialog):
         if not datalab_key:
             self.datalab_radio.setEnabled(False)
             self.datalab_radio.setText("Datalab Marker API (DATALAB_API_KEY не найден)")
-        
-        # Выбор модели OpenRouter
-        model_layout = QHBoxLayout()
-        model_layout.addWidget(QLabel("Модель OpenRouter:"))
-        self.model_combo = QComboBox()
-        self.model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
-        self.model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
-        self.model_combo.setEnabled(False)
-        model_layout.addWidget(self.model_combo)
-        backend_layout.addLayout(model_layout)
-        
-        self.openrouter_radio.toggled.connect(lambda checked: self.model_combo.setEnabled(checked))
+            self.local_radio.setChecked(True)
+        else:
+            self.datalab_radio.setChecked(True)
         
         layout.addWidget(backend_group)
         
-        # Выбор движка для IMAGE блоков (при использовании Datalab)
-        self.image_backend_group = QGroupBox("OCR движок для IMAGE блоков (картинок)")
-        image_backend_layout = QVBoxLayout(self.image_backend_group)
+        # Модели для картинок (Datalab) - показывается только при Datalab
+        self.datalab_image_group = QGroupBox("Модель OpenRouter для IMAGE блоков")
+        datalab_image_layout = QVBoxLayout(self.datalab_image_group)
         
-        self.image_backend_button_group = QButtonGroup(self)
+        datalab_image_info = QLabel("Картинки требуют VLM для описания, Datalab их не обрабатывает")
+        datalab_image_info.setStyleSheet("color: #888; font-size: 10px;")
+        datalab_image_layout.addWidget(datalab_image_info)
         
-        self.image_local_radio = QRadioButton("Локальный VLM")
-        self.image_openrouter_radio = QRadioButton("OpenRouter")
-        self.image_local_radio.setChecked(True)
+        image_model_layout = QHBoxLayout()
+        image_model_layout.addWidget(QLabel("Модель:"))
+        self.datalab_image_model_combo = QComboBox()
+        self.datalab_image_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
+        self.datalab_image_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
+        image_model_layout.addWidget(self.datalab_image_model_combo)
+        datalab_image_layout.addLayout(image_model_layout)
         
-        self.image_backend_button_group.addButton(self.image_local_radio, 0)
-        self.image_backend_button_group.addButton(self.image_openrouter_radio, 1)
+        self.datalab_image_group.setVisible(datalab_key != "")
+        layout.addWidget(self.datalab_image_group)
         
-        image_backend_layout.addWidget(self.image_local_radio)
-        image_backend_layout.addWidget(self.image_openrouter_radio)
-        
-        image_info = QLabel("Картинки требуют VLM для описания, Datalab их не обрабатывает")
-        image_info.setStyleSheet("color: #888; font-size: 10px;")
-        image_backend_layout.addWidget(image_info)
-        
-        # Скрываем по умолчанию, показываем только при выборе Datalab
-        self.image_backend_group.setVisible(False)
-        layout.addWidget(self.image_backend_group)
-        
-        # Связываем видимость с выбором Datalab
-        self.datalab_radio.toggled.connect(self._on_datalab_toggled)
-        
-        # Режим распознавания
-        mode_group = QGroupBox("Режим распознавания")
-        mode_layout = QVBoxLayout(mode_group)
-        
-        self.blocks_radio = QRadioButton("По блокам (учитывает вашу разметку)")
-        self.full_page_radio = QRadioButton("Все страницы (автоматическая структура)")
-        self.blocks_radio.setChecked(True)
-        
-        mode_layout.addWidget(self.blocks_radio)
-        mode_layout.addWidget(self.full_page_radio)
-        
-        # Batch оптимизация
-        self.batch_checkbox = QCheckBox("Batch-оптимизация (экономия ~40-60% токенов)")
-        self.batch_checkbox.setChecked(True)
-        self.batch_checkbox.setToolTip(
-            "Группирует блоки с одинаковым промптом и отправляет несколько изображений в одном запросе.\n"
-            "Экономит токены за счет уменьшения повторений system prompt."
-        )
-        mode_layout.addWidget(self.batch_checkbox)
-        
-        layout.addWidget(mode_group)
-        
-        # Выбор моделей для типов блоков (только для OpenRouter)
-        models_group = QGroupBox("Модели для типов блоков (OpenRouter)")
-        models_layout = QVBoxLayout(models_group)
+        # Модели для типов блоков (OpenRouter) - показывается только при OpenRouter
+        self.openrouter_models_group = QGroupBox("Модели для типов блоков (OpenRouter)")
+        models_layout = QVBoxLayout(self.openrouter_models_group)
         
         # TEXT
         text_layout = QHBoxLayout()
@@ -159,7 +117,6 @@ class OCRDialog(QDialog):
         self.text_model_combo = QComboBox()
         self.text_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
         self.text_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
-        self.text_model_combo.setEnabled(False)
         text_layout.addWidget(self.text_model_combo)
         models_layout.addLayout(text_layout)
         
@@ -169,7 +126,6 @@ class OCRDialog(QDialog):
         self.table_model_combo = QComboBox()
         self.table_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
         self.table_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
-        self.table_model_combo.setEnabled(False)
         table_layout.addWidget(self.table_model_combo)
         models_layout.addLayout(table_layout)
         
@@ -179,14 +135,16 @@ class OCRDialog(QDialog):
         self.image_model_combo = QComboBox()
         self.image_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
         self.image_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
-        self.image_model_combo.setEnabled(False)
         image_layout.addWidget(self.image_model_combo)
         models_layout.addLayout(image_layout)
         
-        layout.addWidget(models_group)
+        self.openrouter_models_group.setVisible(False)
+        layout.addWidget(self.openrouter_models_group)
         
-        # Связываем с выбором OpenRouter
-        self.openrouter_radio.toggled.connect(lambda checked: self._update_models_enabled(checked))
+        # Связываем видимость групп моделей с выбором бэкенда
+        self.datalab_radio.toggled.connect(self._on_backend_changed)
+        self.openrouter_radio.toggled.connect(self._on_backend_changed)
+        self.local_radio.toggled.connect(self._on_backend_changed)
         
         # Папка для результатов
         output_group = QGroupBox("Папка для результатов")
@@ -256,15 +214,13 @@ class OCRDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
     
-    def _on_datalab_toggled(self, checked):
-        """Показать/скрыть выбор движка для картинок при выборе Datalab"""
-        self.image_backend_group.setVisible(checked)
-    
-    def _update_models_enabled(self, openrouter_enabled):
-        """Включить/отключить выбор моделей для типов блоков"""
-        self.text_model_combo.setEnabled(openrouter_enabled)
-        self.table_model_combo.setEnabled(openrouter_enabled)
-        self.image_model_combo.setEnabled(openrouter_enabled)
+    def _on_backend_changed(self, checked=None):
+        """Показать/скрыть группы моделей в зависимости от выбранного бэкенда"""
+        is_datalab = self.datalab_radio.isChecked()
+        is_openrouter = self.openrouter_radio.isChecked()
+        
+        self.datalab_image_group.setVisible(is_datalab)
+        self.openrouter_models_group.setVisible(is_openrouter)
     
     def _select_output_dir(self):
         """Выбор базовой папки для результатов"""
@@ -301,25 +257,24 @@ class OCRDialog(QDialog):
         self.output_dir = str(Path(self.base_dir) / self.task_name)
         
         # Сохраняем настройки
-        self.mode = "blocks" if self.blocks_radio.isChecked() else "full_page"
+        self.mode = "blocks"  # Всегда по блокам
+        self.use_batch_ocr = True  # Всегда с batch-оптимизацией
         
         # Определяем backend
         if self.datalab_radio.isChecked():
             self.ocr_backend = "datalab"
             self.use_datalab = True
-            self.datalab_image_backend = "local" if self.image_local_radio.isChecked() else "openrouter"
+            self.datalab_image_backend = "openrouter"  # Всегда OpenRouter для картинок
+            self.image_model = self.datalab_image_model_combo.currentData()
         elif self.openrouter_radio.isChecked():
             self.ocr_backend = "openrouter"
             self.use_datalab = False
+            self.text_model = self.text_model_combo.currentData()
+            self.table_model = self.table_model_combo.currentData()
+            self.image_model = self.image_model_combo.currentData()
         else:
             self.ocr_backend = "local"
             self.use_datalab = False
-        
-        self.openrouter_model = self.model_combo.currentData()
-        self.text_model = self.text_model_combo.currentData()
-        self.table_model = self.table_model_combo.currentData()
-        self.image_model = self.image_model_combo.currentData()
-        self.use_batch_ocr = self.batch_checkbox.isChecked()
         
         self.accept()
 

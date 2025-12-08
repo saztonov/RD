@@ -8,7 +8,9 @@ import os
 from pathlib import Path
 from typing import Optional
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
+from boto3.s3.transfer import TransferConfig
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -70,14 +72,34 @@ class R2Storage:
             logger.error(f"❌ {error_msg}")
             raise ValueError(error_msg)
         
-        # Создаем S3 клиент для R2
+        # Создаем S3 клиент для R2 с настройками retry и timeouts
         try:
+            # Конфигурация для стабильной работы с R2
+            client_config = Config(
+                retries={
+                    'max_attempts': 10,
+                    'mode': 'adaptive'  # Адаптивные retry с backoff
+                },
+                connect_timeout=30,
+                read_timeout=120,
+                max_pool_connections=10
+            )
+            
+            # Настройки multipart upload
+            self.transfer_config = TransferConfig(
+                multipart_threshold=8 * 1024 * 1024,  # 8MB - начинать multipart
+                max_concurrency=5,  # Меньше параллельных соединений
+                multipart_chunksize=8 * 1024 * 1024,  # 8MB chunks
+                use_threads=True
+            )
+            
             self.s3_client = boto3.client(
                 's3',
                 endpoint_url=self.endpoint_url,
                 aws_access_key_id=self.access_key_id,
                 aws_secret_access_key=self.secret_access_key,
-                region_name='auto'  # R2 использует 'auto'
+                region_name='auto',  # R2 использует 'auto'
+                config=client_config
             )
             logger.info(f"✅ R2Storage инициализирован (bucket: {self.bucket_name}, endpoint: {self.endpoint_url})")
         except Exception as e:
@@ -129,7 +151,8 @@ class R2Storage:
                 str(local_file),
                 self.bucket_name,
                 remote_key,
-                ExtraArgs=extra_args
+                ExtraArgs=extra_args,
+                Config=self.transfer_config
             )
             
             logger.info(f"✅ Файл загружен в R2: {remote_key} ({file_size} байт)")
