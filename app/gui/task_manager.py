@@ -149,10 +149,8 @@ class OCRWorker(QThread):
                 if not page_img:
                     continue
                 
-                # Сортируем блоки по Y позиции
-                sorted_blocks = sorted(page.blocks, key=lambda b: b.coords_px[1])
-                
-                for block in sorted_blocks:
+                # Блоки в порядке нумерации (индекс в списке)
+                for block in page.blocks:
                     x1, y1, x2, y2 = block.coords_px
                     if x1 >= x2 or y1 >= y2:
                         continue
@@ -453,10 +451,8 @@ class OCRWorker(QThread):
                 if not page_img:
                     continue
                 
-                # Сортируем блоки страницы по вертикальной позиции (сверху вниз)
-                sorted_blocks = sorted(page.blocks, key=lambda b: b.coords_px[1])
-                
-                for block in sorted_blocks:
+                # Блоки в порядке нумерации (индекс в списке)
+                for block in page.blocks:
                     x1, y1, x2, y2 = block.coords_px
                     if x1 >= x2 or y1 >= y2:
                         continue

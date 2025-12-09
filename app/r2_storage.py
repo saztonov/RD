@@ -85,11 +85,11 @@ class R2Storage:
                 max_pool_connections=10
             )
             
-            # Настройки multipart upload
+            # Настройки multipart upload - оптимизированы для скорости
             self.transfer_config = TransferConfig(
-                multipart_threshold=8 * 1024 * 1024,  # 8MB - начинать multipart
-                max_concurrency=5,  # Меньше параллельных соединений
-                multipart_chunksize=8 * 1024 * 1024,  # 8MB chunks
+                multipart_threshold=100 * 1024 * 1024,  # 100MB - только для очень больших файлов
+                max_concurrency=20,  # Больше параллельных соединений
+                multipart_chunksize=50 * 1024 * 1024,  # 50MB chunks
                 use_threads=True
             )
             
