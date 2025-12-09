@@ -439,35 +439,25 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
             if not block.ocr_text:
                 continue
             
-            category_prefix = f"**{block.category}**\n\n" if block.category else ""
-            
             if block.block_type == BlockType.IMAGE:
-                # Для изображений: описание + ссылка на кроп
-                markdown_parts.append(f"{category_prefix}")
-                markdown_parts.append(f"*Изображение:*\n\n")
-                markdown_parts.append(f"{block.ocr_text}\n\n")
-                
-                # Добавляем ссылку на кроп, если есть image_file
+                # Для изображений: сначала картинка, потом описание
                 if block.image_file:
                     crop_path = Path(block.image_file)
                     if crop_path.is_absolute():
                         try:
                             rel_path = crop_path.relative_to(output_file.parent)
                             rel_path_str = rel_path.as_posix()
-                            markdown_parts.append(f"![Изображение]({rel_path_str})\n\n")
                         except ValueError:
-                            crop_path_str = crop_path.as_posix()
-                            markdown_parts.append(f"![Изображение]({crop_path_str})\n\n")
+                            rel_path_str = crop_path.as_posix()
                     else:
-                        crop_path_str = crop_path.as_posix()
-                        markdown_parts.append(f"![Изображение]({crop_path_str})\n\n")
+                        rel_path_str = crop_path.as_posix()
+                    markdown_parts.append(f"![Изображение]({rel_path_str})\n\n")
+                markdown_parts.append(f"{block.ocr_text}\n\n")
                 
             elif block.block_type == BlockType.TABLE:
-                markdown_parts.append(f"{category_prefix}")
                 markdown_parts.append(f"{block.ocr_text}\n\n")
                 
             elif block.block_type == BlockType.TEXT:
-                markdown_parts.append(f"{category_prefix}")
                 markdown_parts.append(f"{block.ocr_text}\n\n")
         
         # Объединяем и сохраняем

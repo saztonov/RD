@@ -228,18 +228,12 @@ class OCRWorker(QThread):
                 
                 # Объединяем результаты и присваиваем блокам (фильтруем None и пустые)
                 valid_results = [r for r in all_results if r]
-                combined_markdown = "\n\n---\n\n".join(valid_results) if valid_results else ""
+                combined_markdown = "\n\n".join(valid_results) if valid_results else ""
                 
-                # Простое распределение: весь markdown идет первому блоку
-                # В идеале нужен парсер для разбивки по блокам, но это сложно
-                # Пока сохраняем общий результат в первый блок
-                if text_table_blocks:
-                    first_block = text_table_blocks[0][0]
-                    first_block.ocr_text = combined_markdown
-                    
-                    # Остальным блокам ставим placeholder
-                    for block, _, _ in text_table_blocks[1:]:
-                        block.ocr_text = "[См. общий результат Datalab выше]"
+                # Распределяем результат по блокам пропорционально
+                # Разбиваем по разделителям или абзацам
+                if text_table_blocks and combined_markdown:
+                    self._distribute_datalab_results(text_table_blocks, combined_markdown)
                 
                 processed_count += len(text_table_blocks)
                 self.progress.emit(processed_count, total_blocks)
@@ -281,6 +275,29 @@ class OCRWorker(QThread):
         except Exception as e:
             logger.error(f"Datalab OCR Worker error: {e}", exc_info=True)
             self.error.emit(str(e))
+    
+    def _distribute_datalab_results(self, text_table_blocks, combined_markdown: str):
+        """
+        Распределить результат Datalab по блокам.
+        Пытается разбить по разделителям --- или абзацам.
+        """
+        # Пробуем разбить по --- разделителям (между батчами)
+        parts = [p.strip() for p in combined_markdown.split('---') if p.strip()]
+        
+        if not parts:
+            parts = [combined_markdown]
+        
+        # Если частей больше чем блоков - объединяем лишние в последний
+        while len(parts) > len(text_table_blocks) and len(parts) > 1:
+            parts[-2] = parts[-2] + "\n\n" + parts[-1]
+            parts.pop()
+        
+        # Если частей меньше чем блоков - оставшиеся пустые
+        for i, (block, _, _) in enumerate(text_table_blocks):
+            if i < len(parts):
+                block.ocr_text = parts[i]
+            else:
+                block.ocr_text = ""  # Пустой, не placeholder
     
     def _get_datalab_prompt(self, blocks_data, prompt_loader) -> str:
         """Собрать промпт для Datalab на основе типов блоков и категорий"""
