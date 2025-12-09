@@ -28,6 +28,7 @@ class DatalabOCRClient:
     API_URL = "https://www.datalab.to/api/v1/marker"
     POLL_INTERVAL = 2      # секунд
     MAX_POLL_ATTEMPTS = 60 # 2 минуты максимум
+    MAX_RETRIES = 3        # Максимум повторных попыток при таймауте
     
     def __init__(self, api_key: str):
         if not api_key:
@@ -35,18 +36,48 @@ class DatalabOCRClient:
         self.api_key = api_key
         self.headers = {"X-Api-Key": api_key}
     
-    def recognize(self, image_path: str, block_prompt: str = None, progress_callback=None) -> str:
+    def recognize(self, image_path: str, block_prompt: str = None, progress_callback=None, max_retries: int = None) -> str:
         """
-        Отправить изображение на распознавание
+        Отправить изображение на распознавание с автоматическим retry при таймауте.
         
         Args:
             image_path: путь к изображению
             block_prompt: промпт для коррекции блока (block_correction_prompt)
             progress_callback: функция обратного вызова (message, attempt, max_attempts)
+            max_retries: максимум повторных попыток (по умолчанию MAX_RETRIES)
         
         Returns:
             Markdown с распознанным текстом
         """
+        retries = max_retries if max_retries is not None else self.MAX_RETRIES
+        last_error = None
+        
+        for retry_num in range(retries):
+            try:
+                if retry_num > 0:
+                    logger.info(f"Datalab OCR: повторная попытка {retry_num + 1}/{retries} для {image_path}")
+                
+                return self._do_recognize(image_path, block_prompt, progress_callback)
+                
+            except Exception as e:
+                last_error = e
+                error_msg = str(e)
+                
+                # Retry только при таймауте
+                if "превышено время ожидания" in error_msg.lower() or "timeout" in error_msg.lower():
+                    logger.warning(f"Datalab таймаут, попытка {retry_num + 1}/{retries}: {e}")
+                    if retry_num < retries - 1:
+                        time.sleep(5)  # Пауза перед retry
+                        continue
+                else:
+                    # Другие ошибки - не повторяем
+                    raise
+        
+        # Все попытки исчерпаны
+        raise last_error
+    
+    def _do_recognize(self, image_path: str, block_prompt: str = None, progress_callback=None) -> str:
+        """Внутренний метод распознавания (одна попытка)"""
         logger.info(f"Datalab OCR: отправка {image_path}")
         
         # Отправка запроса
@@ -143,6 +174,73 @@ def resize_to_width(image: Image.Image, target_width: int = TARGET_WIDTH) -> Ima
     return image.resize((target_width, new_height), Image.LANCZOS)
 
 
+def create_image_placeholder(block_id: str, width: int = TARGET_WIDTH, height: int = 150) -> Image.Image:
+    """
+    Создать placeholder изображение с уникальным ID для вставки вместо картинки.
+    Формат: ===IMGBLOCK_shortid=== для надёжного OCR распознавания.
+    
+    Args:
+        block_id: уникальный ID блока
+        width: ширина placeholder
+        height: высота placeholder
+    
+    Returns:
+        PIL Image с текстом placeholder
+    """
+    from PIL import ImageDraw, ImageFont
+    
+    # Используем короткий ID (первые 8 символов) для лучшего распознавания
+    short_id = block_id.replace('-', '')[:8].upper()
+    
+    # Создаем белый фон
+    img = Image.new('RGB', (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    
+    # Горизонтальные линии сверху и снизу для визуального выделения
+    line_y1 = 20
+    line_y2 = height - 20
+    draw.line([(50, line_y1), (width - 50, line_y1)], fill=(0, 0, 0), width=3)
+    draw.line([(50, line_y2), (width - 50, line_y2)], fill=(0, 0, 0), width=3)
+    
+    # Текст placeholder - простой формат с разделителями
+    placeholder_text = f"===IMGBLOCK_{short_id}==="
+    
+    # Пытаемся использовать крупный шрифт
+    font = None
+    for font_name in ["arial.ttf", "Arial.ttf", "DejaVuSans.ttf", "FreeSans.ttf"]:
+        try:
+            font = ImageFont.truetype(font_name, 40)
+            break
+        except:
+            continue
+    
+    if font is None:
+        font = ImageFont.load_default()
+    
+    # Центрируем текст
+    bbox = draw.textbbox((0, 0), placeholder_text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    x = (width - text_width) // 2
+    y = (height - text_height) // 2
+    
+    # Чёрный текст на белом фоне
+    draw.text((x, y), placeholder_text, fill=(0, 0, 0), font=font)
+    
+    return img
+
+
+def get_short_id(block_id: str) -> str:
+    """Получить короткий ID для placeholder"""
+    return block_id.replace('-', '')[:8].upper()
+
+
+def get_placeholder_marker(block_id: str) -> str:
+    """Получить текстовый маркер placeholder для поиска в markdown"""
+    short_id = get_short_id(block_id)
+    return f"===IMGBLOCK_{short_id}==="
+
+
 def split_large_block(image: Image.Image, max_height: int = MAX_BLOCK_HEIGHT) -> List[Image.Image]:
     """
     Разделить большой блок на части по высоте
@@ -191,29 +289,49 @@ def concatenate_blocks(
     if not block_images:
         return []
     
-    # Разделяем большие блоки и ресайзим
-    resized = []
-    for img in block_images:
-        parts = split_large_block(img, MAX_BLOCK_HEIGHT)
-        for part in parts:
-            resized.append(resize_to_width(part, target_width))
-    
     batches = []
     current_batch = []
     current_height = 0
     
-    for img in resized:
-        # Проверяем, поместится ли блок в текущий батч
-        needed_height = img.height + (padding if current_batch else 0)
+    for img in block_images:
+        # Сначала ресайзим до целевой ширины
+        resized_img = resize_to_width(img, target_width)
         
-        if current_height + needed_height > max_height and current_batch:
-            # Сохраняем текущий батч, начинаем новый
-            batches.append(_create_batch_image(current_batch, padding, target_width))
-            current_batch = [img]
-            current_height = img.height
+        # Если блок после ресайза больше MAX_BLOCK_HEIGHT - делим на части
+        if resized_img.height > MAX_BLOCK_HEIGHT:
+            # Сохраняем накопленный батч перед обработкой большого блока
+            if current_batch:
+                batches.append(_create_batch_image(current_batch, padding, target_width))
+                current_batch = []
+                current_height = 0
+            
+            # Делим большой блок на части
+            parts = split_large_block(resized_img, MAX_BLOCK_HEIGHT)
+            logger.info(f"Большой блок {resized_img.width}x{resized_img.height} разделён на {len(parts)} частей после ресайза")
+            
+            # Каждую часть добавляем в батчи
+            for part in parts:
+                needed_height = part.height + (padding if current_batch else 0)
+                
+                if current_height + needed_height > max_height and current_batch:
+                    batches.append(_create_batch_image(current_batch, padding, target_width))
+                    current_batch = [part]
+                    current_height = part.height
+                else:
+                    current_batch.append(part)
+                    current_height += needed_height
         else:
-            current_batch.append(img)
-            current_height += needed_height
+            # Обычный блок - добавляем в текущий батч
+            needed_height = resized_img.height + (padding if current_batch else 0)
+            
+            if current_height + needed_height > max_height and current_batch:
+                # Сохраняем текущий батч, начинаем новый
+                batches.append(_create_batch_image(current_batch, padding, target_width))
+                current_batch = [resized_img]
+                current_height = resized_img.height
+            else:
+                current_batch.append(resized_img)
+                current_height += needed_height
     
     # Последний батч
     if current_batch:
