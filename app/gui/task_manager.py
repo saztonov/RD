@@ -3,6 +3,7 @@
 """
 
 import logging
+import os
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
@@ -242,6 +243,10 @@ class OCRWorker(QThread):
                 
                 return "\n\n".join([r for r in batch_results if r])
             
+            # Получаем публичный URL R2
+            r2_public_url = os.getenv("R2_PUBLIC_URL", "https://rd1.svarovsky.ru")
+            project_name = output_dir.name
+            
             # Функция для обработки одной картинки через VLM
             def process_image(block, crop, part_id):
                 nonlocal processed_count
@@ -262,7 +267,16 @@ class OCRWorker(QThread):
                     elif "_part" in part_id:
                         block.ocr_text = (block.ocr_text or "") + "\n" + ocr_text
                     
-                    return f"\n\n**Изображение:**\n\n{ocr_text}\n\n"
+                    # Формируем markdown со ссылкой на R2
+                    md_result = f"\n\n**Изображение:**\n\n{ocr_text}\n\n"
+                    
+                    # Добавляем ссылку на кроп в R2
+                    if block.image_file:
+                        crop_filename = Path(block.image_file).name
+                        r2_url = f"{r2_public_url}/ocr_results/{project_name}/crops/{crop_filename}"
+                        md_result += f"![Изображение]({r2_url})\n\n"
+                    
+                    return md_result
                     
                 except Exception as e:
                     logger.error(f"VLM IMAGE block {part_id} error: {e}")
@@ -672,7 +686,8 @@ class OCRWorker(QThread):
         AnnotationIO.save_annotation(self.annotation_document, str(json_path))
         
         md_path = output_dir / "document.md"
-        generate_structured_markdown(self.annotation_document.pages, str(md_path))
+        project_name = output_dir.name
+        generate_structured_markdown(self.annotation_document.pages, str(md_path), project_name=project_name)
         
         try:
             from app.r2_storage import upload_ocr_to_r2

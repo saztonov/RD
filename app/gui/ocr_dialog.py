@@ -101,6 +101,7 @@ class OCRDialog(QDialog):
         self.datalab_image_model_combo = QComboBox()
         self.datalab_image_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
         self.datalab_image_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
+        self.datalab_image_model_combo.setCurrentIndex(1)
         image_model_layout.addWidget(self.datalab_image_model_combo)
         datalab_image_layout.addLayout(image_model_layout)
         
@@ -135,6 +136,7 @@ class OCRDialog(QDialog):
         self.image_model_combo = QComboBox()
         self.image_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
         self.image_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
+        self.image_model_combo.setCurrentIndex(1)
         image_layout.addWidget(self.image_model_combo)
         models_layout.addLayout(image_layout)
         
@@ -231,20 +233,19 @@ class OCRDialog(QDialog):
             self._update_output_path()
     
     def _update_output_path(self):
-        """Обновить итоговый путь"""
+        """Обновить итоговый путь (показ примера с timestamp)"""
         if self.base_dir and self.task_name:
-            self.output_dir = str(Path(self.base_dir) / self.task_name)
-            self.result_path_label.setText(self.output_dir)
+            example_path = str(Path(self.base_dir) / f"{self.task_name}_YYYYMMDD_HHMMSS")
+            self.result_path_label.setText(example_path)
         elif self.base_dir:
             self.result_path_label.setText("(задание не выбрано)")
-            self.output_dir = None
         else:
             self.result_path_label.setText("")
-            self.output_dir = None
     
     def _accept(self):
         """Проверка и принятие"""
         from PySide6.QtWidgets import QMessageBox
+        from datetime import datetime
         
         if not self.base_dir:
             QMessageBox.warning(self, "Ошибка", "Выберите папку для результатов")
@@ -254,7 +255,10 @@ class OCRDialog(QDialog):
             QMessageBox.warning(self, "Ошибка", "Сначала создайте задание в боковом меню")
             return
         
-        self.output_dir = str(Path(self.base_dir) / self.task_name)
+        # Добавляем timestamp для уникальности пути
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_name = f"{self.task_name}_{timestamp}"
+        self.output_dir = str(Path(self.base_dir) / unique_name)
         
         # Сохраняем настройки
         self.mode = "blocks"  # Всегда по блокам

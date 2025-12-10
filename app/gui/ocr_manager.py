@@ -301,7 +301,8 @@ class OCRManager:
         logger.info(f"Разметка сохранена: {json_path}")
         
         md_path = output_dir / "document.md"
-        generate_structured_markdown(self.parent.annotation_document.pages, str(md_path))
+        project_name = output_dir.name
+        generate_structured_markdown(self.parent.annotation_document.pages, str(md_path), project_name=project_name)
         logger.info(f"Markdown сохранен: {md_path}")
         
         self._upload_to_r2(output_dir)
