@@ -99,8 +99,15 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         """Обновить UI элементы"""
         if self.pdf_document:
             self.page_label.setText(f"Страница: {self.current_page + 1} / {self.pdf_document.page_count}")
+            self.page_input.setEnabled(True)
+            self.page_input.setMaximum(self.pdf_document.page_count)
+            self.page_input.blockSignals(True)
+            self.page_input.setValue(self.current_page + 1)
+            self.page_input.blockSignals(False)
         else:
             self.page_label.setText("Страница: 0 / 0")
+            self.page_input.setEnabled(False)
+            self.page_input.setMaximum(1)
     
     def _prev_page(self):
         """Предыдущая страница"""
@@ -109,6 +116,11 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
     def _next_page(self):
         """Следующая страница"""
         self.navigation_manager.next_page()
+    
+    def _goto_page_from_input(self, page_num: int):
+        """Перейти на страницу из поля ввода (нумерация с 1)"""
+        if self.pdf_document:
+            self.navigation_manager.go_to_page(page_num - 1)
     
     def _zoom_in(self):
         """Увеличить масштаб"""

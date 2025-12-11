@@ -2,8 +2,9 @@
 Миксин для настройки меню и тулбара
 """
 
-from PySide6.QtWidgets import QToolBar, QLabel
+from PySide6.QtWidgets import QToolBar, QLabel, QSpinBox
 from PySide6.QtGui import QAction, QKeySequence, QActionGroup
+from PySide6.QtCore import Qt
 from app.models import BlockType
 
 
@@ -137,6 +138,40 @@ class MenuSetupMixin:
         
         self.page_label = QLabel("Страница: 0 / 0")
         toolbar.addWidget(self.page_label)
+        
+        # Поле ввода номера страницы
+        self.page_input = QSpinBox(self)
+        self.page_input.setMinimum(1)
+        self.page_input.setMaximum(1)
+        self.page_input.setFixedSize(50, 24)
+        self.page_input.setEnabled(False)
+        self.page_input.setAlignment(Qt.AlignCenter)
+        self.page_input.setButtonSymbols(QSpinBox.NoButtons)
+        self.page_input.setToolTip("Введите номер страницы и нажмите Enter")
+        self.page_input.setStyleSheet("""
+            QSpinBox {
+                padding: 2px;
+                border: none;
+                border-bottom: 2px solid #666;
+                border-radius: 0px;
+                background: transparent;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            QSpinBox:hover {
+                border-bottom: 2px solid #0078d4;
+            }
+            QSpinBox:focus {
+                border-bottom: 2px solid #0078d4;
+                background: rgba(0, 120, 212, 0.05);
+            }
+            QSpinBox:disabled {
+                border-bottom: 2px solid #ccc;
+                color: #999;
+            }
+        """)
+        self.page_input.valueChanged.connect(self._goto_page_from_input)
+        toolbar.addWidget(self.page_input)
         
         self.next_action = QAction("Вперед ▶", self)
         self.next_action.triggered.connect(self._next_page)
