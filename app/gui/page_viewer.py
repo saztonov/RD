@@ -65,6 +65,10 @@ class PageViewer(QGraphicsView):
         self.move_start_pos: Optional[QPointF] = None
         self.original_block_rect: Optional[QRectF] = None
         
+        # Состояние панорамирования (перемещения листа)
+        self.panning = False
+        self.pan_start_pos: Optional[QPointF] = None
+        
         # Масштабирование
         self.zoom_factor = 1.0
         
@@ -360,11 +364,21 @@ class PageViewer(QGraphicsView):
         
         elif event.button() == Qt.MiddleButton:
             # Средняя кнопка мыши для перетаскивания
-            self.setDragMode(QGraphicsView.ScrollHandDrag)
-            super().mousePressEvent(event)
+            self.panning = True
+            self.pan_start_pos = event.pos()
+            self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
     
     def mouseMoveEvent(self, event):
         """Обработка движения мыши - рисование rubber band, перемещение или изменение размера"""
+        # Обработка панорамирования (перемещения листа средней кнопкой)
+        if self.panning and self.pan_start_pos:
+            delta = event.pos() - self.pan_start_pos
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            self.pan_start_pos = event.pos()
+            return
+        
         scene_pos = self.mapToScene(event.pos())
         
         # Проверяем начало рамки выбора через ПКМ
@@ -463,8 +477,10 @@ class PageViewer(QGraphicsView):
                 self.original_block_rect = None
         
         elif event.button() == Qt.MiddleButton:
-            self.setDragMode(QGraphicsView.NoDrag)
-            super().mouseReleaseEvent(event)
+            self.panning = False
+            self.pan_start_pos = None
+            self.setCursor(Qt.ArrowCursor)
+            event.accept()
         
         elif event.button() == Qt.RightButton:
             self.right_button_pressed = False
