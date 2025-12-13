@@ -78,6 +78,9 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         
         self.setWindowTitle("PDF Annotation Tool")
         self.resize(1200, 800)
+        
+        # Восстановить настройки окна
+        self._restore_settings()
     
     def _render_current_page(self, update_tree: bool = True):
         """Отрендерить текущую страницу"""
@@ -344,3 +347,38 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.page_images.clear()
         self.page_viewer.set_page_image(None, 0)
         self._update_ui()
+    
+    def _save_settings(self):
+        """Сохранить настройки окна"""
+        from PySide6.QtCore import QSettings
+        
+        settings = QSettings("PDFAnnotationTool", "MainWindow")
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("windowState", self.saveState())
+        
+        if hasattr(self, 'main_splitter'):
+            settings.setValue("splitterSizes", self.main_splitter.saveState())
+    
+    def _restore_settings(self):
+        """Восстановить настройки окна"""
+        from PySide6.QtCore import QSettings
+        
+        settings = QSettings("PDFAnnotationTool", "MainWindow")
+        
+        geometry = settings.value("geometry")
+        if geometry:
+            self.restoreGeometry(geometry)
+        
+        window_state = settings.value("windowState")
+        if window_state:
+            self.restoreState(window_state)
+        
+        if hasattr(self, 'main_splitter'):
+            splitter_state = settings.value("splitterSizes")
+            if splitter_state:
+                self.main_splitter.restoreState(splitter_state)
+    
+    def closeEvent(self, event):
+        """Обработка закрытия окна"""
+        self._save_settings()
+        event.accept()

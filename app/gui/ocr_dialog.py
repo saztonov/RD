@@ -4,6 +4,7 @@
 
 import logging
 import os
+import re
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QPushButton, QRadioButton, QLineEdit, QFileDialog,
                                QGroupBox, QDialogButtonBox, QComboBox, QButtonGroup)
@@ -14,6 +15,55 @@ logger = logging.getLogger(__name__)
 
 # Загрузка .env для проверки R2
 load_dotenv()
+
+
+def transliterate_to_latin(text: str) -> str:
+    """
+    Транслитерация русского текста в латиницу + очистка для URL/путей
+    
+    Args:
+        text: исходный текст (может содержать кириллицу, пробелы, спецсимволы)
+    
+    Returns:
+        Очищенный текст (латиница, подчеркивания, без спецсимволов)
+    """
+    # Словарь транслитерации (ГОСТ 7.79-2000, система Б)
+    cyrillic_to_latin = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+        'ф': 'f', 'х': 'h', 'ц': 'c', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+        'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo',
+        'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M',
+        'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
+        'Ф': 'F', 'Х': 'H', 'Ц': 'C', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch',
+        'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
+    }
+    
+    # Транслитерация по символам
+    result = []
+    for char in text:
+        if char in cyrillic_to_latin:
+            result.append(cyrillic_to_latin[char])
+        else:
+            result.append(char)
+    
+    transliterated = ''.join(result)
+    
+    # Заменяем пробелы на подчеркивания
+    transliterated = transliterated.replace(' ', '_')
+    
+    # Удаляем все спецсимволы кроме букв, цифр, подчеркиваний и дефисов
+    transliterated = re.sub(r'[^a-zA-Z0-9_\-]', '', transliterated)
+    
+    # Убираем множественные подчеркивания
+    transliterated = re.sub(r'_{2,}', '_', transliterated)
+    
+    # Убираем подчеркивания в начале и конце
+    transliterated = transliterated.strip('_')
+    
+    return transliterated
 
 
 class OCRDialog(QDialog):
@@ -235,7 +285,9 @@ class OCRDialog(QDialog):
     def _update_output_path(self):
         """Обновить итоговый путь (показ примера с timestamp)"""
         if self.base_dir and self.task_name:
-            example_path = str(Path(self.base_dir) / f"{self.task_name}_YYYYMMDD_HHMMSS")
+            # Показываем пример с транслитерированным названием
+            safe_task_name = transliterate_to_latin(self.task_name)
+            example_path = str(Path(self.base_dir) / f"{safe_task_name}_YYYYMMDD_HHMMSS")
             self.result_path_label.setText(example_path)
         elif self.base_dir:
             self.result_path_label.setText("(задание не выбрано)")
@@ -257,7 +309,9 @@ class OCRDialog(QDialog):
         
         # Добавляем timestamp для уникальности пути
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        unique_name = f"{self.task_name}_{timestamp}"
+        # Транслитерируем название задания для безопасных URL/путей
+        safe_task_name = transliterate_to_latin(self.task_name)
+        unique_name = f"{safe_task_name}_{timestamp}"
         self.output_dir = str(Path(self.base_dir) / unique_name)
         
         # Сохраняем настройки

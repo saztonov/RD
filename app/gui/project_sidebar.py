@@ -2,12 +2,14 @@
 Боковая панель с заданиями
 """
 
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, 
-                               QListWidget, QListWidgetItem, QHBoxLayout, 
+from pathlib import Path
+
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton,
+                               QListWidget, QListWidgetItem, QHBoxLayout,
                                QGroupBox, QMessageBox, QInputDialog, QMenu,
                                QFileDialog, QAbstractItemView, QFrame, QSizePolicy)
-from PySide6.QtCore import Qt, Signal, QSize, QTimer
-from PySide6.QtGui import QFont, QCursor, QIcon
+from PySide6.QtCore import Qt, Signal, QSize, QTimer, QUrl
+from PySide6.QtGui import QFont, QCursor, QIcon, QDesktopServices
 from app.gui.project_manager import Project
 
 
@@ -134,6 +136,7 @@ class ProjectItemWidget(QWidget):
                 file_btn = QPushButton(f"📄 {file.pdf_name}")
                 file_btn.setCursor(Qt.PointingHandCursor)
                 file_btn.setFixedHeight(26)
+                file_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                 
                 is_active = (i == self.project.active_file_index)
                 self._apply_file_button_style(file_btn, is_active)
@@ -144,7 +147,26 @@ class ProjectItemWidget(QWidget):
                 
                 file_btn.clicked.connect(make_click_handler(i, self.project.id))
                 
-                file_row.addWidget(file_btn)
+                open_dir_btn = QPushButton("📂")
+                open_dir_btn.setCursor(Qt.PointingHandCursor)
+                open_dir_btn.setToolTip("Открыть папку")
+                open_dir_btn.setFixedSize(26, 26)
+                open_dir_btn.setStyleSheet("""
+                    QPushButton {
+                        border: none;
+                        background-color: transparent;
+                        color: #cccccc;
+                        border-radius: 3px;
+                    }
+                    QPushButton:hover {
+                        background-color: #2a2d2e;
+                        color: white;
+                    }
+                """)
+                open_dir_btn.clicked.connect(lambda checked=False, p=file.pdf_path: self._open_file_folder(p))
+
+                file_row.addWidget(file_btn, stretch=1)
+                file_row.addWidget(open_dir_btn)
                 layout.addWidget(file_widget)
                 self._file_buttons.append((file_btn, i))
                 self._file_widgets.append((file_widget, i))
@@ -156,6 +178,14 @@ class ProjectItemWidget(QWidget):
         # Принудительно обновляем layout
         self.files_container.updateGeometry()
         self.updateGeometry()
+
+    def _open_file_folder(self, file_path: str):
+        p = Path(file_path)
+        folder = p.parent
+        if folder.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        else:
+            QMessageBox.warning(self, "Ошибка", f"Папка не найдена:\n{folder}")
     
     def _apply_file_button_style(self, btn: QPushButton, is_active: bool):
         """Применить стиль к кнопке файла"""

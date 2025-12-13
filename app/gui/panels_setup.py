@@ -25,27 +25,27 @@ class PanelsSetupMixin:
         main_layout.setContentsMargins(0, 0, 0, 0)
         
         # Главный сплиттер для изменения размеров панелей
-        main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter = QSplitter(Qt.Horizontal)
         
         # Боковая панель проектов + задания
         left_sidebar = self._create_left_sidebar()
-        main_splitter.addWidget(left_sidebar)
+        self.main_splitter.addWidget(left_sidebar)
         
         # Левая панель: просмотр страниц
         left_panel = self._create_left_panel()
-        main_splitter.addWidget(left_panel)
+        self.main_splitter.addWidget(left_panel)
         
         # Правая панель: инструменты и свойства блоков
         right_panel = self._create_right_panel()
-        main_splitter.addWidget(right_panel)
+        self.main_splitter.addWidget(right_panel)
         
         # Устанавливаем начальные размеры (левая боковая 280, центр 600, правая 320)
-        main_splitter.setSizes([280, 600, 320])
-        main_splitter.setStretchFactor(0, 0)  # Боковая панель не растягивается
-        main_splitter.setStretchFactor(1, 1)  # Центр растягивается
-        main_splitter.setStretchFactor(2, 0)  # Правая панель не растягивается
+        self.main_splitter.setSizes([280, 600, 320])
+        self.main_splitter.setStretchFactor(0, 0)  # Боковая панель не растягивается
+        self.main_splitter.setStretchFactor(1, 1)  # Центр растягивается
+        self.main_splitter.setStretchFactor(2, 0)  # Правая панель не растягивается
         
-        main_layout.addWidget(main_splitter)
+        main_layout.addWidget(self.main_splitter)
     
     def _create_left_sidebar(self) -> QWidget:
         """Создать боковую панель проектов"""
