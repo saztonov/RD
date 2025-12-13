@@ -467,7 +467,7 @@ class RemoteOCRPanel(QDockWidget):
             # 2. Удаляем файлы из R2
             if r2_prefix:
                 try:
-                    from app.r2_storage import R2Storage
+                    from rd_core.r2_storage import R2Storage
                     r2 = R2Storage()
                     
                     # Добавляем "/" в конец префикса для точного совпадения директории

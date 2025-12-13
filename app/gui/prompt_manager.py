@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Optional
 from PySide6.QtWidgets import QMessageBox, QDialog
-from app.r2_storage import R2Storage
+from rd_core.r2_storage import R2Storage
 from app.gui.prompt_editor_dialog import PromptEditorDialog
 
 logger = logging.getLogger(__name__)

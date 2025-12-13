@@ -5,14 +5,12 @@
 
 from typing import Optional
 from PySide6.QtWidgets import QMainWindow
-from app.models import Document, BlockType
-from app.pdf_utils import PDFDocument
-from app.gui.ocr_manager import OCRManager
+from rd_core.models import Document, BlockType
+from rd_core.pdf_utils import PDFDocument
 from app.gui.blocks_tree_manager import BlocksTreeManager
 from app.gui.category_manager import CategoryManager
 from app.gui.prompt_manager import PromptManager
 from app.gui.project_manager import ProjectManager
-from app.gui.task_manager import TaskManager
 from app.gui.navigation_manager import NavigationManager
 from app.gui.menu_setup import MenuSetupMixin
 from app.gui.panels_setup import PanelsSetupMixin
@@ -46,13 +44,10 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         
         # Менеджеры (инициализируются после setup_ui)
         self.project_manager = ProjectManager()
-        self.task_manager = TaskManager()
         self.prompt_manager = PromptManager(self)
-        self.ocr_manager = None
         self.blocks_tree_manager = None
         self.category_manager = None
         self.project_sidebar = None
-        self.task_sidebar = None
         self.navigation_manager = None
         self.remote_ocr_panel = None
         
@@ -65,7 +60,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self._setup_remote_ocr_panel()
         
         # Инициализация менеджеров после создания UI
-        self.ocr_manager = OCRManager(self, self.task_manager)
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree, self.blocks_tree_by_category)
         self.category_manager = CategoryManager(self, self.categories_list)
         self.navigation_manager = NavigationManager(self)
@@ -229,10 +223,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self.page_viewer.set_blocks(page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()
             self._update_ui()
-    
-    def _run_ocr_all(self):
-        """Запустить OCR для всех блоков"""
-        self.ocr_manager.run_ocr_all()
     
     def _sync_from_r2(self):
         """Синхронизировать категории и промты из R2"""

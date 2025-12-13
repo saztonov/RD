@@ -5,9 +5,9 @@
 import logging
 from pathlib import Path
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
-from app.models import Document, Page
-from app.pdf_utils import PDFDocument
-from app.annotation_io import AnnotationIO
+from rd_core.models import Document, Page
+from rd_core.pdf_utils import PDFDocument
+from rd_core.annotation_io import AnnotationIO
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +151,15 @@ class FileOperationsMixin:
         
         loaded_doc = AnnotationIO.load_annotation(file_path)
         if loaded_doc:
+            # Поддержка относительного пути в annotation.json (например "document.pdf")
+            try:
+                pdf_path_obj = Path(loaded_doc.pdf_path)
+                if not pdf_path_obj.is_absolute():
+                    resolved = (Path(file_path).parent / pdf_path_obj).resolve()
+                    loaded_doc.pdf_path = str(resolved)
+            except Exception:
+                pass
+
             self.annotation_document = loaded_doc
             pdf_path = loaded_doc.pdf_path
             if Path(pdf_path).exists():

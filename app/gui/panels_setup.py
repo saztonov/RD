@@ -7,10 +7,9 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QTreeWidget, QTabWidget, QListWidget, QAbstractItemView,
                                QTreeWidgetItem, QSplitter, QHeaderView)
 from PySide6.QtCore import Qt
-from app.models import BlockType
+from rd_core.models import BlockType
 from app.gui.page_viewer import PageViewer
 from app.gui.project_sidebar import ProjectSidebar
-from app.gui.task_sidebar import TaskSidebar
 
 
 class PanelsSetupMixin:
@@ -58,10 +57,7 @@ class PanelsSetupMixin:
         self.project_sidebar.project_switched.connect(self._on_project_switched)
         self.project_sidebar.file_switched.connect(self._on_file_switched)
         self.project_manager.file_removed.connect(self._on_file_removed)
-        left_sidebar_layout.addWidget(self.project_sidebar, stretch=2)
-        
-        self.task_sidebar = TaskSidebar(self.task_manager)
-        left_sidebar_layout.addWidget(self.task_sidebar, stretch=1)
+        left_sidebar_layout.addWidget(self.project_sidebar, stretch=1)
         
         left_sidebar.setMinimumWidth(200)
         return left_sidebar

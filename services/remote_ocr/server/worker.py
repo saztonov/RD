@@ -114,20 +114,15 @@ def _process_job(job: Job) -> None:
             else:
                 ocr_backend = create_ocr_engine("dummy")
         
-        # Запускаем OCR с обновлением прогресса
-        for i, block in enumerate(blocks):
-            if block.image_file and os.path.exists(block.image_file):
-                try:
-                    from PIL import Image
-                    img = Image.open(block.image_file)
-                    result = ocr_backend.recognize(img)
-                    block.ocr_text = result
-                except Exception as e:
-                    logger.error(f"OCR error для блока {block.id}: {e}")
-                    block.ocr_text = f"[OCR error: {e}]"
-            
-            progress = 0.1 + 0.8 * ((i + 1) / total_blocks)
+        # Запускаем OCR через rd_core с обновлением прогресса
+        def _on_progress(done: int, total: int) -> None:
+            if total <= 0:
+                update_job_status(job.id, "processing", progress=0.9)
+                return
+            progress = 0.1 + 0.8 * (done / total)
             update_job_status(job.id, "processing", progress=progress)
+
+        run_ocr_for_blocks(blocks, ocr_backend, on_progress=_on_progress)
         
         # Формируем результаты
         result_json = [
@@ -145,13 +140,32 @@ def _process_job(job: Job) -> None:
         with open(result_json_path, "w", encoding="utf-8") as f:
             json.dump(result_json, f, ensure_ascii=False, indent=2)
         
+        # Собираем страницы и аннотацию (Document) + markdown через rd_core
+        from rd_core.models import Page, Document  # noqa: E402
+        from rd_core.pdf_utils import PDFDocument  # noqa: E402
+        from rd_core.ocr import generate_structured_markdown  # noqa: E402
+
+        blocks_by_page: dict[int, list] = {}
+        for b in blocks:
+            blocks_by_page.setdefault(b.page_index, []).append(b)
+
+        pages = []
+        with PDFDocument(str(pdf_path)) as pdf:
+            for page_idx in sorted(blocks_by_page.keys()):
+                dims = pdf.get_page_dimensions(page_idx)
+                width, height = dims if dims else (0, 0)
+                page_blocks = sorted(blocks_by_page[page_idx], key=lambda bl: bl.coords_px[1])
+                pages.append(Page(page_number=page_idx, width=width, height=height, blocks=page_blocks))
+
         # Формируем markdown
         result_md_path = job_dir / "result.md"
-        _generate_result_md(blocks, result_md_path)
+        generate_structured_markdown(pages, str(result_md_path), project_name=job.id)
         
         # Сохраняем полную аннотацию
         annotation_path = job_dir / "annotation.json"
-        _save_annotation_json(blocks, annotation_path)
+        doc = Document(pdf_path=pdf_path.name, pages=pages)
+        with open(annotation_path, "w", encoding="utf-8") as f:
+            json.dump(doc.to_dict(), f, ensure_ascii=False, indent=2)
         
         # Создаём zip со всеми результатами
         result_zip_path = job_dir / "result.zip"
@@ -182,19 +196,8 @@ def _process_job(job: Job) -> None:
         logger.info(f"Job dir: {job_dir}")
         
         try:
-            import sys
-            from pathlib import Path as PathLib
-            
-            # Добавляем корень проекта в sys.path если его там нет
-            project_root = PathLib(__file__).parent.parent.parent.parent
-            logger.info(f"Project root: {project_root}")
-            
-            if str(project_root) not in sys.path:
-                sys.path.insert(0, str(project_root))
-                logger.info(f"✅ Добавлен в sys.path: {project_root}")
-            
             logger.info("Импорт R2Storage...")
-            from app.r2_storage import R2Storage
+            from rd_core.r2_storage import R2Storage
             
             logger.info("Создание экземпляра R2Storage...")
             r2 = R2Storage()
@@ -270,32 +273,6 @@ def _process_job(job: Job) -> None:
         update_job_status(job.id, "error", error_message=str(e))
 
 
-def _generate_result_md(blocks, output_path: Path) -> None:
-    """Сгенерировать markdown из результатов OCR"""
-    parts = ["# OCR Results\n\n"]
-    
-    for block in blocks:
-        if block.ocr_text:
-            category = f"**{block.category}**\n\n" if block.category else ""
-            block_type = block.block_type.value.upper()
-            parts.append(f"## {block_type} (page {block.page_index + 1})\n\n")
-            parts.append(category)
-            parts.append(f"{block.ocr_text}\n\n---\n\n")
-    
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write("".join(parts))
-
-
-def _save_annotation_json(blocks, output_path: Path) -> None:
-    """Сохранить полную аннотацию блоков в JSON"""
-    annotation_data = {
-        "blocks": [block.to_dict() for block in blocks]
-    }
-    
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(annotation_data, f, ensure_ascii=False, indent=2)
-
-
 def _create_empty_result(job_dir: Path) -> None:
     """Создать пустой результат"""
     result_json_path = job_dir / "result.json"
@@ -311,7 +288,8 @@ def _create_empty_result(job_dir: Path) -> None:
         f.write("# OCR Results\n\nNo blocks to process.\n")
     
     with open(annotation_path, "w", encoding="utf-8") as f:
-        json.dump({"blocks": []}, f)
+        from rd_core.models import Document  # noqa: E402
+        json.dump(Document(pdf_path=pdf_path.name, pages=[]).to_dict(), f, ensure_ascii=False, indent=2)
     
     with zipfile.ZipFile(result_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(result_json_path, "result.json")

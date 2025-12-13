@@ -5,7 +5,7 @@
 from PySide6.QtWidgets import QToolBar, QLabel, QSpinBox
 from PySide6.QtGui import QAction, QKeySequence, QActionGroup
 from PySide6.QtCore import Qt
-from app.models import BlockType
+from rd_core.models import BlockType
 
 
 class MenuSetupMixin:

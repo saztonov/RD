@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QRectF, QPointF, Signal
 from PySide6.QtGui import QPixmap, QPainter, QPen, QImage, QColor, QWheelEvent, QBrush, QAction, QFont
 from PIL import Image
 from typing import Optional, List, Dict
-from app.models import Block, BlockType, BlockSource
+from rd_core.models import Block, BlockType, BlockSource
 
 
 class PageViewer(QGraphicsView):
@@ -538,7 +538,7 @@ class PageViewer(QGraphicsView):
     
     def _show_context_menu(self, global_pos):
         """Показать контекстное меню"""
-        from app.models import BlockType
+        from rd_core.models import BlockType
         
         menu = QMenu(self)
         
@@ -605,7 +605,7 @@ class PageViewer(QGraphicsView):
     
     def _apply_type_to_blocks(self, blocks_data: list, block_type):
         """Применить тип к нескольким блокам"""
-        from app.models import BlockType
+        from rd_core.models import BlockType
         
         main_window = self.parent().window()
         if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:

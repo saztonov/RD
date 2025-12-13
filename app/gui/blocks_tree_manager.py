@@ -7,7 +7,7 @@ import logging
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QInputDialog, QMenu
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
-from app.models import BlockType
+from rd_core.models import BlockType
 
 logger = logging.getLogger(__name__)
 

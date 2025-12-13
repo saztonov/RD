@@ -5,7 +5,7 @@
 from PySide6.QtWidgets import QTreeWidgetItem, QMessageBox
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QKeyEvent
-from app.models import Block, BlockType, BlockSource, Page
+from rd_core.models import Block, BlockType, BlockSource, Page
 
 
 class BlockHandlersMixin:

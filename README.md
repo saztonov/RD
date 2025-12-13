@@ -236,7 +236,7 @@ pyinstaller --onefile --windowed --name="PDFAnnotation" app/main.py
 ### 1. Рендеринг PDF
 
 ```python
-from app.pdf_utils import open_pdf, render_page_to_image, render_all_pages
+from rd_core.pdf_utils import open_pdf, render_page_to_image, render_all_pages
 
 # Открыть PDF
 doc = open_pdf("document.pdf")  # Обработка ошибок встроена
@@ -255,7 +255,7 @@ doc.close()
 ### 2. Модели данных
 
 ```python
-from app.models import Block, BlockType, BlockSource, PageModel
+from rd_core.models import Block, BlockType, BlockSource, PageModel
 
 # Создать блок с двумя системами координат
 block = Block.create(

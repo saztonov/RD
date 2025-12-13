@@ -76,7 +76,7 @@ rd1/
 ### Программное использование
 
 ```python
-from app.r2_storage import R2Storage, upload_ocr_to_r2
+from rd_core.r2_storage import R2Storage, upload_ocr_to_r2
 
 # Вариант 1: Быстрая загрузка
 upload_ocr_to_r2("output/my_project", project_name="my_project")

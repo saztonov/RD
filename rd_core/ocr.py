@@ -8,7 +8,7 @@ import json
 import base64
 import io
 from pathlib import Path
-from typing import Protocol, List, Optional
+from typing import Protocol, List, Optional, Callable
 from PIL import Image
 from rd_core.models import Block, BlockType
 
@@ -397,7 +397,8 @@ class DatalabOCRBackend:
 def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "", 
                        image_description_backend: Optional[OCRBackend] = None,
                        index_file: Optional[str] = None,
-                       prompt_loader=None) -> None:
+                       prompt_loader=None,
+                       on_progress: Optional[Callable[[int, int], None]] = None) -> None:
     """
     Запустить OCR для блоков с учетом типа и категории
     
@@ -416,10 +417,13 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
     if image_description_backend is None:
         image_description_backend = ocr_backend
     
-    for block in blocks:
+    total = len(blocks)
+    for idx, block in enumerate(blocks, start=1):
         # Пропускаем блоки без image_file
         if not block.image_file:
             skipped += 1
+            if on_progress:
+                on_progress(idx, total)
             continue
         
         try:
@@ -432,6 +436,8 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             if not image_path.exists():
                 logger.warning(f"Файл изображения не найден: {image_path}")
                 skipped += 1
+                if on_progress:
+                    on_progress(idx, total)
                 continue
             
             # Загружаем изображение
@@ -478,9 +484,13 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             else:
                 skipped += 1
             
+            if on_progress:
+                on_progress(idx, total)
         except Exception as e:
             logger.error(f"Ошибка OCR для блока {block.id}: {e}")
             skipped += 1
+            if on_progress:
+                on_progress(idx, total)
     
     logger.info(f"OCR завершён: {processed} блоков обработано, {skipped} пропущено")
 
