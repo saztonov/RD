@@ -17,6 +17,7 @@ from app.gui.navigation_manager import NavigationManager
 from app.gui.marker_manager import MarkerManager
 from app.gui.menu_setup import MenuSetupMixin
 from app.gui.panels_setup import PanelsSetupMixin
+from app.gui.remote_ocr_panel import RemoteOCRPanel
 from app.gui.file_operations import FileOperationsMixin
 from app.gui.block_handlers import BlockHandlersMixin
 from app.ocr import create_ocr_engine
@@ -59,11 +60,15 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.task_sidebar = None
         self.navigation_manager = None
         self.marker_manager = None
+        self.remote_ocr_panel = None
         
         # Настройка UI
         self._setup_menu()
         self._setup_toolbar()
         self._setup_ui()
+        
+        # Remote OCR панель
+        self._setup_remote_ocr_panel()
         
         # Инициализация менеджеров после создания UI
         self.ocr_manager = OCRManager(self, self.task_manager)
@@ -382,3 +387,25 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         """Обработка закрытия окна"""
         self._save_settings()
         event.accept()
+    
+    # === Remote OCR ===
+    def _setup_remote_ocr_panel(self):
+        """Инициализировать панель Remote OCR"""
+        from PySide6.QtCore import Qt
+        self.remote_ocr_panel = RemoteOCRPanel(self, self)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.remote_ocr_panel)
+        self.remote_ocr_panel.hide()  # Скрыта по умолчанию
+    
+    def _toggle_remote_ocr_panel(self):
+        """Показать/скрыть панель Remote OCR"""
+        if self.remote_ocr_panel:
+            if self.remote_ocr_panel.isVisible():
+                self.remote_ocr_panel.hide()
+            else:
+                self.remote_ocr_panel.show()
+    
+    def _send_to_remote_ocr(self):
+        """Отправить выделенные блоки на Remote OCR"""
+        if self.remote_ocr_panel:
+            self.remote_ocr_panel.show()
+            self.remote_ocr_panel._create_job()

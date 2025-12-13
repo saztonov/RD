@@ -6,11 +6,11 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Settings:
-    host: str = os.getenv("REMOTE_OCR_HOST", "0.0.0.0")
-    port: int = int(os.getenv("REMOTE_OCR_PORT", "8081"))
-    data_dir: str = os.getenv("REMOTE_OCR_DATA_DIR", "/workspace/.remote_ocr")
+    """Настройки remote OCR сервера"""
+    data_dir: str = os.getenv("REMOTE_OCR_DATA_DIR", "/data")
+    api_key: str = os.getenv("REMOTE_OCR_API_KEY", "")  # Если задан, требуем X-API-Key
+    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
+    datalab_api_key: str = os.getenv("DATALAB_API_KEY", "")
 
 
 settings = Settings()
-
-

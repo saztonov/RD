@@ -824,6 +824,22 @@ class PageViewer(QGraphicsView):
             self.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
             self.zoom_factor = self.transform().m11()
     
+    def get_selected_blocks(self) -> List[Block]:
+        """Получить список выбранных блоков"""
+        selected = []
+        
+        # Множественное выделение
+        if self.selected_block_indices:
+            for idx in self.selected_block_indices:
+                if 0 <= idx < len(self.current_blocks):
+                    selected.append(self.current_blocks[idx])
+        # Одиночное выделение
+        elif self.selected_block_idx is not None:
+            if 0 <= self.selected_block_idx < len(self.current_blocks):
+                selected.append(self.current_blocks[self.selected_block_idx])
+        
+        return selected
+    
     def _draw_resize_handles(self, rect: QRectF):
         """Нарисовать хэндлы изменения размера на углах и сторонах прямоугольника"""
         handle_size = 8 / self.zoom_factor

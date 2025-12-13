@@ -80,6 +80,18 @@ class MenuSetupMixin:
         sync_r2_action.triggered.connect(self._sync_from_r2)
         tools_menu.addAction(sync_r2_action)
         
+        tools_menu.addSeparator()
+        
+        # Remote OCR
+        remote_ocr_action = QAction("☁️ Remote OCR (выделенные блоки)", self)
+        remote_ocr_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
+        remote_ocr_action.triggered.connect(self._send_to_remote_ocr)
+        tools_menu.addAction(remote_ocr_action)
+        
+        toggle_remote_panel_action = QAction("📋 Показать панель Remote OCR", self)
+        toggle_remote_panel_action.triggered.connect(self._toggle_remote_ocr_panel)
+        tools_menu.addAction(toggle_remote_panel_action)
+        
         # Меню "Вид"
         view_menu = menubar.addMenu("&Вид")
         

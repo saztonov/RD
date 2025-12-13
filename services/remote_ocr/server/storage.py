@@ -1,85 +1,257 @@
+"""SQLite-хранилище для задач OCR"""
 from __future__ import annotations
 
-import json
 import os
+import sqlite3
 import threading
 import uuid
-from dataclasses import asdict, dataclass
-from enum import Enum
-from typing import Any
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional, List, Any
 
-
-class TaskStatus(str, Enum):
-    queued = "queued"
-    running = "running"
-    done = "done"
-    failed = "failed"
+from .settings import settings
 
 
 @dataclass
-class Task:
+class Job:
     id: str
-    status: TaskStatus = TaskStatus.queued
-    payload: dict[str, Any] | None = None
-    result: dict[str, Any] | None = None
-    error: str | None = None
+    client_id: str
+    document_id: str
+    document_name: str
+    status: str  # queued|processing|done|error
+    progress: float
+    created_at: str
+    updated_at: str
+    error_message: Optional[str]
+    job_dir: str
+    result_path: Optional[str]
+    engine: str = ""
 
 
-def task_to_dict(task: Task) -> dict[str, Any]:
-    d = asdict(task)
-    d["status"] = task.status.value
-    return d
+_db_lock = threading.Lock()
+_db_path: Optional[str] = None
 
 
-class FileTaskStore:
-    def __init__(self, path: str):
-        self._path = path
-        self._lock = threading.Lock()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        if not os.path.exists(path):
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump({}, f)
+def _get_db_path() -> str:
+    global _db_path
+    if _db_path is None:
+        os.makedirs(settings.data_dir, exist_ok=True)
+        _db_path = os.path.join(settings.data_dir, "jobs.sqlite")
+    return _db_path
 
-    def create(self, payload: dict[str, Any]) -> Task:
-        task = Task(id=str(uuid.uuid4()), payload=payload)
-        with self._lock:
-            data = self._read_all()
-            data[task.id] = task_to_dict(task)
-            self._write_all(data)
-        return task
 
-    def get(self, task_id: str) -> Task | None:
-        with self._lock:
-            data = self._read_all()
-            raw = data.get(task_id)
-            if raw is None:
+def _get_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(_get_db_path(), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db() -> None:
+    """Инициализировать БД (создать таблицу если не существует)"""
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id TEXT PRIMARY KEY,
+                    client_id TEXT NOT NULL,
+                    document_id TEXT NOT NULL,
+                    document_name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    progress REAL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    error_message TEXT,
+                    job_dir TEXT NOT NULL,
+                    result_path TEXT,
+                    engine TEXT DEFAULT ''
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_client_id ON jobs(client_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_document_id ON jobs(document_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON jobs(status)")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def create_job(
+    client_id: str,
+    document_id: str,
+    document_name: str,
+    engine: str,
+    job_dir: str
+) -> Job:
+    """Создать новую задачу"""
+    job_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    
+    job = Job(
+        id=job_id,
+        client_id=client_id,
+        document_id=document_id,
+        document_name=document_name,
+        status="queued",
+        progress=0.0,
+        created_at=now,
+        updated_at=now,
+        error_message=None,
+        job_dir=job_dir,
+        result_path=None,
+        engine=engine
+    )
+    
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            conn.execute("""
+                INSERT INTO jobs (id, client_id, document_id, document_name, status, progress,
+                                  created_at, updated_at, error_message, job_dir, result_path, engine)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (job.id, job.client_id, job.document_id, job.document_name, job.status,
+                  job.progress, job.created_at, job.updated_at, job.error_message,
+                  job.job_dir, job.result_path, job.engine))
+            conn.commit()
+        finally:
+            conn.close()
+    
+    return job
+
+
+def get_job(job_id: str) -> Optional[Job]:
+    """Получить задачу по ID"""
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None:
                 return None
-            return self._deserialize(raw)
-
-    def update(self, task: Task) -> None:
-        with self._lock:
-            data = self._read_all()
-            data[task.id] = task_to_dict(task)
-            self._write_all(data)
-
-    def _read_all(self) -> dict[str, Any]:
-        with open(self._path, "r", encoding="utf-8") as f:
-            return json.load(f)
-
-    def _write_all(self, data: dict[str, Any]) -> None:
-        tmp = self._path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, self._path)
-
-    @staticmethod
-    def _deserialize(d: dict[str, Any]) -> Task:
-        return Task(
-            id=d["id"],
-            status=TaskStatus(d["status"]),
-            payload=d.get("payload"),
-            result=d.get("result"),
-            error=d.get("error"),
-        )
+            return _row_to_job(row)
+        finally:
+            conn.close()
 
 
+def list_jobs(client_id: str, document_id: Optional[str] = None) -> List[Job]:
+    """Получить список задач по client_id и опционально document_id"""
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            if document_id:
+                rows = conn.execute(
+                    "SELECT * FROM jobs WHERE client_id = ? AND document_id = ? ORDER BY created_at DESC",
+                    (client_id, document_id)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM jobs WHERE client_id = ? ORDER BY created_at DESC",
+                    (client_id,)
+                ).fetchall()
+            return [_row_to_job(row) for row in rows]
+        finally:
+            conn.close()
+
+
+def update_job_status(
+    job_id: str,
+    status: str,
+    progress: Optional[float] = None,
+    error_message: Optional[str] = None,
+    result_path: Optional[str] = None
+) -> None:
+    """Обновить статус задачи"""
+    now = datetime.utcnow().isoformat()
+    
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            # Собираем SET-части запроса
+            updates = ["status = ?", "updated_at = ?"]
+            values: List[Any] = [status, now]
+            
+            if progress is not None:
+                updates.append("progress = ?")
+                values.append(progress)
+            
+            if error_message is not None:
+                updates.append("error_message = ?")
+                values.append(error_message)
+            
+            if result_path is not None:
+                updates.append("result_path = ?")
+                values.append(result_path)
+            
+            values.append(job_id)
+            
+            conn.execute(
+                f"UPDATE jobs SET {', '.join(updates)} WHERE id = ?",
+                tuple(values)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def claim_next_job() -> Optional[Job]:
+    """Взять следующую задачу в очереди (атомарно переключить в processing)"""
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            # Находим первую queued задачу
+            row = conn.execute(
+                "SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1"
+            ).fetchone()
+            
+            if row is None:
+                return None
+            
+            job_id = row["id"]
+            now = datetime.utcnow().isoformat()
+            
+            # Атомарно помечаем как processing
+            conn.execute(
+                "UPDATE jobs SET status = 'processing', updated_at = ? WHERE id = ? AND status = 'queued'",
+                (now, job_id)
+            )
+            conn.commit()
+            
+            # Перечитываем
+            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row and row["status"] == "processing":
+                return _row_to_job(row)
+            return None
+        finally:
+            conn.close()
+
+
+def _row_to_job(row: sqlite3.Row) -> Job:
+    return Job(
+        id=row["id"],
+        client_id=row["client_id"],
+        document_id=row["document_id"],
+        document_name=row["document_name"],
+        status=row["status"],
+        progress=row["progress"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        error_message=row["error_message"],
+        job_dir=row["job_dir"],
+        result_path=row["result_path"],
+        engine=row["engine"] if "engine" in row.keys() else ""
+    )
+
+
+def job_to_dict(job: Job) -> dict:
+    """Конвертировать Job в dict для JSON ответа"""
+    return {
+        "id": job.id,
+        "client_id": job.client_id,
+        "document_id": job.document_id,
+        "document_name": job.document_name,
+        "status": job.status,
+        "progress": job.progress,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+        "error_message": job.error_message,
+        "result_path": job.result_path,
+        "engine": job.engine
+    }

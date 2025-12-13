@@ -3,12 +3,16 @@ services:
     build:
       context: .
       dockerfile: services/remote_ocr/Dockerfile
-    command: uvicorn services.remote_ocr.server.main:app --host 0.0.0.0 --port 8081 --reload
+    command: uvicorn services.remote_ocr.server.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ./:/workspace
+      # Монтируем весь проект для hot-reload
+      - .:/app
+      # Отдельный volume для данных
+      - ./services/remote_ocr/data:/data
     env_file:
       - .env
+    environment:
+      - REMOTE_OCR_DATA_DIR=/data
     ports:
-      - "8081:8081"
-
-
+      - "8000:8000"
+    restart: "no"
