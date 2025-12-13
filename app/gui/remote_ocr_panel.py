@@ -300,8 +300,6 @@ class RemoteOCRPanel(QDockWidget):
             engine = "datalab"
         elif dialog.ocr_backend == "openrouter":
             engine = "openrouter"
-        elif dialog.ocr_backend == "local":
-            engine = "local"
         
         try:
             job_info = client.create_job(pdf_path, selected_blocks, engine=engine)

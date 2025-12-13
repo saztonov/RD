@@ -8,9 +8,7 @@
 - ✅ **Удаление электронных штампов** (аннотации, изображения, контейнеры)
 - ✅ Ручное выделение прямоугольных блоков (text/table/image)
 - ✅ **Автоматическая сегментация блоков** (Marker + Datalab API)
-- ✅ **OCR распознавание** (Локальные VLM + Chandra OCR)
-  - **Локальные VLM серверы**: Qwen3-VL-32B, LLaVA и др.
-  - **Chandra OCR**: таблицы, формы, рукописный текст, полная структура
+- ✅ **OCR распознавание** (Datalab + OpenRouter)
 - ✅ Сохранение разметки в JSON
 - ✅ Экспорт кропов блоков в изображения
 - ✅ Генерация Markdown отчётов по категориям
@@ -29,17 +27,8 @@ pip install -r requirements.txt
 
 ### 3. OCR движки (опционально)
 
-**Вариант 1: Локальный VLM сервер (рекомендуется)**
-- Запустите Qwen3-VL-32B или другую VLM модель на `http://127.0.0.1:1234`
-- Используйте LM Studio, vLLM или Ollama
-- **Документация:** [`docs/LOCAL_VLM_OCR.md`](docs/LOCAL_VLM_OCR.md)
-
-**Вариант 2: Chandra OCR**
-```bash
-pip install chandra-ocr
-```
-- GPU рекомендуется для ускорения
-- **Документация:** [`docs/CHANDRA_OCR.md`](docs/CHANDRA_OCR.md)
+**OpenRouter (VLM)**
+- Укажите `OPENROUTER_API_KEY`
 
 ### 4. Datalab API (опционально)
 
@@ -136,17 +125,12 @@ RD/
 - **"Запустить OCR"** (Ctrl+R) → выбор движка и режима:
 
 **Движки OCR:**
-1. **Локальный VLM сервер** (Qwen3-VL и др.)
-   - URL: `http://127.0.0.1:1234/v1`
-   - Модель: `qwen3-vl-32b-instruct`
-   - Отличная работа с русским языком
-2. **Chandra OCR**
-   - HuggingFace (локально) или vLLM сервер
-   - Оптимизирована для документов
+1. **Datalab Marker API**
+2. **OpenRouter (VLM)**
 
 **Режимы:**
 - **По блокам**: распознавание с учетом типа каждого блока
-  - TEXT/TABLE: OCR через Chandra/Qwen
+  - TEXT/TABLE: OCR через Datalab/OpenRouter
   - IMAGE: детальное описание на русском
 - **Вся страница**: автоматическая структура документа
 
@@ -200,7 +184,7 @@ pyinstaller --onefile --windowed --name="PDFAnnotation" app/main.py
 | `pdf_utils.py` | Открытие PDF и рендеринг страниц через PyMuPDF | ✨ Функции + класс, логирование, обработка ошибок |
 | `annotation_io.py` | Сохранение/загрузка разметки в JSON | Логирование операций |
 | `cropping.py` | Обрезка блоков и сохранение в изображения | Прогресс-логирование |
-| `ocr.py` | OCR движки (LocalVLM + Chandra) | Высокоточное распознавание документов |
+| `ocr.py` | OCR движки (OpenRouter + Datalab) | Высокоточное распознавание документов |
 | `report_md.py` | Генерация Markdown отчётов | Группировка по типам |
 | `auto_segmentation.py` | Автоматическое выделение блоков (OpenCV) | Эвристики для типов блоков |
 | `reapply.py` | Перенос разметки на новый PDF | Автоматическое масштабирование координат |
@@ -218,8 +202,6 @@ pyinstaller --onefile --windowed --name="PDFAnnotation" app/main.py
 - **[Datalab API интеграция](docs/DATALAB_API_INTEGRATION.md)** — автоматическая разметка через API ⭐
 - **[R2 Storage интеграция](docs/R2_STORAGE_INTEGRATION.md)** — автоматическая загрузка в облако ⭐
 - **[Настройка промптов OCR](docs/PROMPTS_CUSTOMIZATION.md)** — редактирование промптов ⭐
-- **[Chandra OCR](docs/CHANDRA_OCR.md)** — высокоточная модель документов
-- **[Локальные VLM](docs/LOCAL_VLM_OCR.md)** — Qwen3-VL и другие
 - **[Распознавание изображений](docs/IMAGE_RECOGNITION.md)** — описание изображений
 
 ### Архитектура

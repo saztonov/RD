@@ -79,9 +79,7 @@ class OCRDialog(QDialog):
         self.base_dir = None
         self.task_name = task_name
         self.mode = "blocks"  # "blocks" или "full_page"
-        self.vlm_server_url = ""  # Не используется (ngrok endpoint)
-        self.vlm_model_name = "qwen3-vl-32b-instruct"
-        self.ocr_backend = "local"  # "local", "openrouter" или "datalab"
+        self.ocr_backend = "openrouter"  # "openrouter" или "datalab"
         self.openrouter_model = "qwen/qwen3-vl-30b-a3b-instruct"
         
         # Модели для разных типов блоков
@@ -94,7 +92,6 @@ class OCRDialog(QDialog):
         
         # Datalab настройки
         self.use_datalab = False
-        self.datalab_image_backend = "local"  # "local" или "openrouter" для IMAGE блоков
         
         self._setup_ui()
     
@@ -109,15 +106,12 @@ class OCRDialog(QDialog):
         self.backend_button_group = QButtonGroup(self)
         
         self.datalab_radio = QRadioButton("Datalab Marker API (экономия бюджета)")
-        self.local_radio = QRadioButton("Локальный VLM сервер")
         self.openrouter_radio = QRadioButton("OpenRouter (VLM)")
         
         self.backend_button_group.addButton(self.datalab_radio, 0)
-        self.backend_button_group.addButton(self.local_radio, 1)
-        self.backend_button_group.addButton(self.openrouter_radio, 2)
+        self.backend_button_group.addButton(self.openrouter_radio, 1)
         
         backend_layout.addWidget(self.datalab_radio)
-        backend_layout.addWidget(self.local_radio)
         backend_layout.addWidget(self.openrouter_radio)
         
         # Datalab info
@@ -133,7 +127,7 @@ class OCRDialog(QDialog):
         if not datalab_key:
             self.datalab_radio.setEnabled(False)
             self.datalab_radio.setText("Datalab Marker API (DATALAB_API_KEY не найден)")
-            self.local_radio.setChecked(True)
+            self.openrouter_radio.setChecked(True)
         else:
             self.datalab_radio.setChecked(True)
         
@@ -197,7 +191,6 @@ class OCRDialog(QDialog):
         # Связываем видимость групп моделей с выбором бэкенда
         self.datalab_radio.toggled.connect(self._on_backend_changed)
         self.openrouter_radio.toggled.connect(self._on_backend_changed)
-        self.local_radio.toggled.connect(self._on_backend_changed)
         
         # Папка для результатов
         output_group = QGroupBox("Папка для результатов")
@@ -334,7 +327,6 @@ class OCRDialog(QDialog):
         if self.datalab_radio.isChecked():
             self.ocr_backend = "datalab"
             self.use_datalab = True
-            self.datalab_image_backend = "openrouter"  # Всегда OpenRouter для картинок
             self.image_model = self.datalab_image_model_combo.currentData()
         elif self.openrouter_radio.isChecked():
             self.ocr_backend = "openrouter"
@@ -343,7 +335,7 @@ class OCRDialog(QDialog):
             self.table_model = self.table_model_combo.currentData()
             self.image_model = self.image_model_combo.currentData()
         else:
-            self.ocr_backend = "local"
+            self.ocr_backend = "openrouter"
             self.use_datalab = False
         
         self.accept()

@@ -1,10 +1,9 @@
 """
 OCR обработка через API движки
-Поддержка LocalVLM (через ngrok) и OpenRouter API
+Поддержка OpenRouter и Datalab API
 """
 
 import logging
-import json
 import base64
 import io
 from pathlib import Path
@@ -55,83 +54,6 @@ class OCRBackend(Protocol):
             Распознанный текст
         """
         ...
-
-
-class LocalVLMBackend:
-    """OCR через ngrok endpoint (проксирует в LM Studio)"""
-    
-    DEFAULT_SYSTEM = "You are an expert design engineer and automation specialist. Your task is to analyze technical drawings and extract data into structured JSON or Markdown formats with 100% accuracy. Do not omit details. Do not hallucinate values."
-    DEFAULT_USER = "Распознай содержимое изображения."
-    
-    def __init__(self, api_base: str = None, model_name: str = "qwen3-vl-32b-instruct"):
-        self.model_name = model_name
-        try:
-            import httpx
-            self.httpx = httpx
-        except ImportError:
-            raise ImportError("Требуется установить httpx: pip install httpx")
-        logger.info(f"LocalVLM инициализирован (модель: {self.model_name})")
-    
-    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
-        """Распознать текст через ngrok endpoint"""
-        try:
-            from rd_core.config import get_lm_base_url
-            
-            # Извлекаем system и user из промта
-            if prompt and isinstance(prompt, dict):
-                system_prompt = prompt.get("system", "") or self.DEFAULT_SYSTEM
-                user_prompt = prompt.get("user", "") or self.DEFAULT_USER
-            else:
-                system_prompt = self.DEFAULT_SYSTEM
-                user_prompt = self.DEFAULT_USER
-            
-            img_base64 = image_to_base64(image)
-            url = get_lm_base_url()
-            
-            payload = {
-                "model": self.model_name,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": user_prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
-                        ]
-                    }
-                ],
-                "max_tokens": 16384,
-                "temperature": 0.1,
-                "top_p": 0.9,
-                "frequency_penalty": 0.0,
-                "presence_penalty": 0.0
-            }
-            
-            with self.httpx.Client(timeout=600.0) as client:
-                response = client.post(url, json=payload)
-                response.raise_for_status()
-                result = response.json()
-            
-            text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            if not text:
-                logger.error(f"Пустой ответ от сервера: {result}")
-                return "[Ошибка: пустой ответ от сервера]"
-            
-            logger.debug(f"VLM OCR: распознано {len(text)} символов")
-            return text.strip()
-            
-        except self.httpx.ConnectError:
-            logger.error("Не удалось подключиться к серверу")
-            return "[Ошибка: сервер недоступен]"
-        except self.httpx.TimeoutException:
-            logger.error("Превышен таймаут")
-            return "[Ошибка: таймаут сервера]"
-        except Exception as e:
-            logger.error(f"Ошибка VLM OCR: {e}", exc_info=True)
-            return f"[Ошибка VLM OCR: {e}]"
 
 
 class OpenRouterBackend:
@@ -495,20 +417,18 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
     logger.info(f"OCR завершён: {processed} блоков обработано, {skipped} пропущено")
 
 
-def create_ocr_engine(backend: str = "local_vlm", **kwargs) -> OCRBackend:
+def create_ocr_engine(backend: str = "dummy", **kwargs) -> OCRBackend:
     """
     Фабрика для создания OCR движка
     
     Args:
-        backend: тип движка ('local_vlm', 'openrouter', 'datalab' или 'dummy')
+        backend: тип движка ('openrouter', 'datalab' или 'dummy')
         **kwargs: дополнительные параметры для движка
     
     Returns:
         Экземпляр OCR движка
     """
-    if backend == "local_vlm":
-        return LocalVLMBackend(**kwargs)
-    elif backend == "openrouter":
+    if backend == "openrouter":
         return OpenRouterBackend(**kwargs)
     elif backend == "datalab":
         return DatalabOCRBackend(**kwargs)
@@ -593,51 +513,4 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
         
     except Exception as e:
         logger.error(f"Ошибка генерации структурированного markdown: {e}", exc_info=True)
-        raise
-
-
-def run_local_vlm_full_document(page_images: dict, output_path: str, api_base: str = None, model_name: str = "qwen3-vl-32b-instruct") -> str:
-    """
-    Распознать весь документ через локальный VLM сервер
-    
-    Args:
-        page_images: словарь {page_num: PIL.Image}
-        output_path: путь для сохранения результата
-        api_base: URL VLM сервера
-        model_name: имя модели
-    
-    Returns:
-        Путь к сохраненному файлу
-    """
-    try:
-        logger.info(f"Запуск LocalVLM OCR для {len(page_images)} страниц")
-        
-        output_file = Path(output_path)
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Создаем движок
-        vlm = LocalVLMBackend(api_base=api_base, model_name=model_name)
-        
-        # Обрабатываем страницы
-        markdown_parts = []
-        
-        for page_num in sorted(page_images.keys()):
-            logger.info(f"Обработка страницы {page_num + 1}/{len(page_images)}")
-            image = page_images[page_num]
-            
-            # Распознаем страницу
-            page_text = vlm.recognize(image)
-            markdown_parts.append(f"# Страница {page_num + 1}\n\n{page_text}\n\n---\n\n")
-        
-        # Объединяем результаты
-        full_markdown = "".join(markdown_parts)
-        
-        # Сохраняем
-        output_file.write_text(full_markdown, encoding='utf-8')
-        
-        logger.info(f"Markdown документ сохранен: {output_file}")
-        return str(output_file)
-        
-    except Exception as e:
-        logger.error(f"Ошибка при обработке документа LocalVLM OCR: {e}", exc_info=True)
         raise

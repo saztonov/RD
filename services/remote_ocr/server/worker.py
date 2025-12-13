@@ -105,8 +105,6 @@ def _process_job(job: Job) -> None:
             ocr_backend = create_ocr_engine("datalab", api_key=os.getenv("DATALAB_API_KEY"))
         elif engine == "openrouter" and settings.openrouter_api_key:
             ocr_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key)
-        elif engine == "local":
-            ocr_backend = create_ocr_engine("local_vlm")
         else:
             # Fallback на openrouter или dummy
             if settings.openrouter_api_key:
