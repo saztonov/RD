@@ -328,27 +328,13 @@ class PanelsSetupMixin:
         actions_group = QGroupBox("Действия")
         actions_layout = QVBoxLayout(actions_group)
         
-        # Paddle
-        self.paddle_segment_btn = QPushButton("Paddle разметка")
-        self.paddle_segment_btn.clicked.connect(self._paddle_segment_pdf)
-        actions_layout.addWidget(self.paddle_segment_btn)
-        
-        self.paddle_all_btn = QPushButton("Paddle (все страницы)")
-        self.paddle_all_btn.clicked.connect(self._paddle_segment_all_pages)
-        actions_layout.addWidget(self.paddle_all_btn)
-        
-        actions_layout.addWidget(QLabel(""))
-        
-        # Очистка
         self.clear_page_btn = QPushButton("Очистить разметку")
         self.clear_page_btn.clicked.connect(self._clear_current_page)
         actions_layout.addWidget(self.clear_page_btn)
         
-        actions_layout.addWidget(QLabel(""))
-        
-        self.run_ocr_btn = QPushButton("Запустить OCR")
-        self.run_ocr_btn.clicked.connect(self._run_ocr_all)
-        actions_layout.addWidget(self.run_ocr_btn)
+        self.remote_ocr_btn = QPushButton("Запустить Remote OCR")
+        self.remote_ocr_btn.clicked.connect(self._send_to_remote_ocr)
+        actions_layout.addWidget(self.remote_ocr_btn)
         
         return actions_group
     

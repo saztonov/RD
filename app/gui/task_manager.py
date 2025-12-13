@@ -26,7 +26,6 @@ class TaskStatus(Enum):
 class TaskType(Enum):
     """Тип задания"""
     OCR = "ocr"
-    MARKER = "marker"
 
 
 @dataclass
@@ -68,23 +67,14 @@ class OCRWorker(QThread):
         self._cancelled = True
     
     def run(self):
-        # Выбираем режим: datalab, batch или legacy
-        use_datalab = self.config.get('use_datalab', False)
-        use_batch = self.config.get('use_batch_ocr', True)
-        
-        if use_datalab:
-            self._run_datalab_ocr()
-        elif use_batch:
-            self._run_batch_ocr()
-        else:
-            self._run_legacy_ocr()
+        # Весь OCR теперь идёт через удалённый сервер
+        self._run_batch_ocr()
     
-    def _run_datalab_ocr(self):
-        """
-        Datalab OCR: последовательная обработка блоков.
-        TEXT/TABLE собираются в батчи до 9000px, при встрече IMAGE - батч отправляется,
-        затем обрабатывается картинка, и начинается новый батч.
-        """
+    def _run_datalab_ocr_DEPRECATED(self):
+        """DEPRECATED: Локальный OCR удалён. Используйте удалённый сервер."""
+        self.error.emit("Локальный Datalab OCR удалён. Используйте удалённый сервер")
+        return
+        # DEPRECATED CODE - DO NOT USE
         try:
             from app.datalab_ocr import (
                 concatenate_blocks, save_optimized_image, 
@@ -542,10 +532,13 @@ class OCRWorker(QThread):
             logger.error(f"Batch OCR Worker error: {e}", exc_info=True)
             self.error.emit(str(e))
     
-    def _run_legacy_ocr(self):
-        """Legacy режим: один блок = один запрос"""
+    def _run_legacy_ocr_DEPRECATED(self):
+        """DEPRECATED: Локальный OCR удалён. Используйте удалённый сервер."""
+        self.error.emit("Локальный Legacy OCR удалён. Используйте удалённый сервер")
+        return
+        # DEPRECATED CODE - DO NOT USE
         try:
-            from app.ocr import create_ocr_engine, generate_structured_markdown
+            from app.ocr import generate_structured_markdown
             from app.annotation_io import AnnotationIO
             from app.models import BlockType
             from app.datalab_ocr import MAX_BLOCK_HEIGHT
@@ -700,44 +693,6 @@ class OCRWorker(QThread):
         self.finished.emit({'output_dir': str(output_dir), 'updated_pages': self.annotation_document.pages})
 
 
-class MarkerWorker(QThread):
-    """Фоновый поток для Marker"""
-    progress = Signal(int, int)
-    finished = Signal(object)
-    error = Signal(str)
-    
-    def __init__(self, task_id, pdf_path, pages, page_images, page_range, category, engine="paddle"):
-        super().__init__()
-        self.task_id = task_id
-        self.pdf_path = pdf_path
-        self.pages = pages
-        self.page_images = page_images
-        self.page_range = page_range
-        self.category = category
-        self.engine = engine
-        self._cancelled = False
-    
-    def cancel(self):
-        self._cancelled = True
-    
-    def run(self):
-        try:
-            if self._cancelled:
-                return
-            
-            from app.segmentation_api import segment_with_api
-            result = segment_with_api(
-                self.pdf_path, self.pages, self.page_images, 
-                self.page_range, self.category, self.engine
-            )
-            
-            if not self._cancelled:
-                self.finished.emit(result)
-        except Exception as e:
-            logger.error(f"Marker Worker error: {e}", exc_info=True)
-            self.error.emit(str(e))
-
-
 class TaskManager(QObject):
     """Менеджер фоновых заданий"""
     
@@ -780,22 +735,6 @@ class TaskManager(QObject):
         
         worker = OCRWorker(task_id, annotation_document, pdf_document, page_images, config)
         worker.progress.connect(lambda current, total: self._on_progress(task_id, current, total))
-        worker.finished.connect(lambda result: self._on_task_finished(task_id, result))
-        worker.error.connect(lambda error: self._on_task_error(task_id, error))
-        
-        self.workers[task_id] = worker
-        worker.start()
-    
-    def start_marker_task(self, task_id: str, pdf_path, pages, page_images, page_range, category, engine="paddle"):
-        """Запустить Marker задание"""
-        if task_id not in self.tasks:
-            return
-        
-        task = self.tasks[task_id]
-        task.status = TaskStatus.RUNNING
-        self.task_updated.emit(task_id)
-        
-        worker = MarkerWorker(task_id, pdf_path, pages, page_images, page_range, category, engine)
         worker.finished.connect(lambda result: self._on_task_finished(task_id, result))
         worker.error.connect(lambda error: self._on_task_error(task_id, error))
         

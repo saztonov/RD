@@ -58,8 +58,8 @@ class RemoteOCRPanel(QDockWidget):
         
         # Таблица задач
         self.jobs_table = QTableWidget()
-        self.jobs_table.setColumnCount(5)
-        self.jobs_table.setHorizontalHeaderLabels(["ID", "Документ", "Статус", "Прогресс", ""])
+        self.jobs_table.setColumnCount(6)
+        self.jobs_table.setHorizontalHeaderLabels(["ID", "Документ", "Статус", "Прогресс", "Действия", "Результат"])
         
         header = self.jobs_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -67,6 +67,7 @@ class RemoteOCRPanel(QDockWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         
         self.jobs_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.jobs_table.setSelectionMode(QTableWidget.SingleSelection)
@@ -89,7 +90,7 @@ class RemoteOCRPanel(QDockWidget):
         """Настроить таймер для автообновления"""
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self._refresh_jobs)
-        self.refresh_timer.start(10000)  # 10 секунд
+        # Таймер не запускается автоматически, только когда панель видима
     
     def _get_client(self):
         """Получить или создать клиент"""
@@ -123,24 +124,17 @@ class RemoteOCRPanel(QDockWidget):
         """Обновить список задач"""
         client = self._get_client()
         if client is None:
+            self.status_label.setText("🔴 Ошибка клиента")
             return
         
-        if not self._check_server():
-            return
-        
-        # Получаем document_id текущего PDF
-        document_id = None
-        if self.main_window.pdf_document and hasattr(self.main_window, 'annotation_document'):
-            if self.main_window.annotation_document:
-                pdf_path = self.main_window.annotation_document.pdf_path
-                if pdf_path and Path(pdf_path).exists():
-                    document_id = client.hash_pdf(pdf_path)
-        
+        # Показываем ВСЕ задачи (не фильтруем по document_id)
         try:
-            jobs = client.list_jobs(document_id)
+            jobs = client.list_jobs(document_id=None)
             self._update_table(jobs)
+            self.status_label.setText("🟢 Подключено")
         except Exception as e:
             logger.error(f"Ошибка получения списка задач: {e}")
+            self.status_label.setText("🔴 Сервер недоступен")
     
     def _update_table(self, jobs):
         """Обновить таблицу задач"""
@@ -178,7 +172,7 @@ class RemoteOCRPanel(QDockWidget):
             progress_text = f"{int(job.progress * 100)}%"
             self.jobs_table.setItem(row, 3, QTableWidgetItem(progress_text))
             
-            # Кнопка действия
+            # Кнопка действия (применить/ошибка)
             if job.status == "done":
                 btn = QPushButton("📥 Применить")
                 btn.clicked.connect(lambda checked, jid=job_id: self._download_and_apply(jid))
@@ -189,6 +183,12 @@ class RemoteOCRPanel(QDockWidget):
                 btn.clicked.connect(lambda checked, msg=job.error_message: 
                                    QMessageBox.warning(self, "Ошибка", msg or "Неизвестная ошибка"))
                 self.jobs_table.setCellWidget(row, 4, btn)
+            
+            # Кнопка открытия результата (для готовых задач)
+            if job.status == "done":
+                open_btn = QPushButton("📂 Открыть")
+                open_btn.clicked.connect(lambda checked, jid=job_id: self._open_result_folder(jid))
+                self.jobs_table.setCellWidget(row, 5, open_btn)
     
     def _create_job(self):
         """Создать новую задачу OCR"""
@@ -208,13 +208,9 @@ class RemoteOCRPanel(QDockWidget):
             QMessageBox.warning(self, "Ошибка", "Выберите блоки для распознавания")
             return
         
-        # Проверяем сервер
-        if not self._check_server():
-            QMessageBox.warning(self, "Ошибка", "Сервер Remote OCR недоступен")
-            return
-        
         client = self._get_client()
         if client is None:
+            QMessageBox.warning(self, "Ошибка", "Клиент не инициализирован")
             return
         
         try:
@@ -330,12 +326,60 @@ class RemoteOCRPanel(QDockWidget):
         
         return applied
     
+    def _open_result_folder(self, job_id: str):
+        """Открыть папку с результатами задачи"""
+        client = self._get_client()
+        if client is None:
+            return
+        
+        try:
+            # Получаем информацию о задаче
+            job = client.get_job(job_id)
+            
+            # Скачиваем результат во временную папку
+            import tempfile
+            import subprocess
+            import sys
+            
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                zip_path = Path(tmp_dir) / "result.zip"
+                client.download_result(job_id, str(zip_path))
+                
+                # Создаём папку для распаковки
+                extract_dir = Path(tmp_dir) / f"result_{job_id[:8]}"
+                extract_dir.mkdir(exist_ok=True)
+                
+                # Распаковываем
+                with zipfile.ZipFile(zip_path, 'r') as zf:
+                    zf.extractall(extract_dir)
+                
+                # Открываем папку в проводнике
+                if sys.platform == 'win32':
+                    os.startfile(extract_dir)
+                elif sys.platform == 'darwin':
+                    subprocess.Popen(['open', extract_dir])
+                else:
+                    subprocess.Popen(['xdg-open', extract_dir])
+                
+                QMessageBox.information(
+                    self,
+                    "Результат открыт",
+                    f"Папка с результатами открыта во временной директории:\n{extract_dir}\n\n"
+                    "Файлы будут удалены после закрытия приложения."
+                )
+                
+        except Exception as e:
+            logger.error(f"Ошибка открытия результата: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть результат:\n{e}")
+    
     def showEvent(self, event):
         """При показе панели обновляем список"""
         super().showEvent(event)
         self._refresh_jobs()
+        self.refresh_timer.start(30000)  # 30 секунд (оптимизация)
     
     def hideEvent(self, event):
-        """При скрытии можно остановить таймер"""
+        """При скрытии останавливаем таймер"""
         super().hideEvent(event)
+        self.refresh_timer.stop()
 

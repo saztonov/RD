@@ -48,7 +48,14 @@ def setup_logging(log_level=logging.DEBUG):
     logging.getLogger('app.ocr').setLevel(log_level)
     logging.getLogger('app.gui.main_window').setLevel(log_level)
     
-    # Отключаем DEBUG сообщения от PIL
+    # Отключаем DEBUG сообщения от сторонних библиотек
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('botocore').setLevel(logging.WARNING)
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('httpcore').setLevel(logging.WARNING)
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    logging.getLogger('s3transfer').setLevel(logging.WARNING)
     logging.getLogger('PIL').setLevel(logging.INFO)
     
     logger = logging.getLogger(__name__)
@@ -64,7 +71,7 @@ def main():
     """
     # Настраиваем логирование
     # Для отладки используйте logging.DEBUG
-    setup_logging(log_level=logging.DEBUG)
+    setup_logging(log_level=logging.INFO)
     
     logger = logging.getLogger(__name__)
     

@@ -14,13 +14,11 @@ from app.gui.prompt_manager import PromptManager
 from app.gui.project_manager import ProjectManager
 from app.gui.task_manager import TaskManager
 from app.gui.navigation_manager import NavigationManager
-from app.gui.marker_manager import MarkerManager
 from app.gui.menu_setup import MenuSetupMixin
 from app.gui.panels_setup import PanelsSetupMixin
 from app.gui.remote_ocr_panel import RemoteOCRPanel
 from app.gui.file_operations import FileOperationsMixin
 from app.gui.block_handlers import BlockHandlersMixin
-from app.ocr import create_ocr_engine
 
 
 class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin, 
@@ -46,9 +44,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.undo_stack: list = []  # [(page_num, blocks_copy), ...]
         self.redo_stack: list = []
         
-        # Компоненты
-        self.ocr_engine = create_ocr_engine("dummy")
-        
         # Менеджеры (инициализируются после setup_ui)
         self.project_manager = ProjectManager()
         self.task_manager = TaskManager()
@@ -59,7 +54,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.project_sidebar = None
         self.task_sidebar = None
         self.navigation_manager = None
-        self.marker_manager = None
         self.remote_ocr_panel = None
         
         # Настройка UI
@@ -75,7 +69,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree, self.blocks_tree_by_category)
         self.category_manager = CategoryManager(self, self.categories_list)
         self.navigation_manager = NavigationManager(self)
-        self.marker_manager = MarkerManager(self)
         
         # Инициализация промптов и стандартных категорий
         self.prompt_manager.ensure_default_prompts()  # Проверяем наличие промптов в R2
@@ -237,22 +230,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self.blocks_tree_manager.update_blocks_tree()
             self._update_ui()
     
-    # === Paddle ===
-    def _paddle_segment_pdf(self):
-        """Разметка текущей страницы через Paddle"""
-        self.marker_manager.segment_current_page_paddle()
-
-    def _paddle_segment_all_pages(self):
-        """Разметка всех страниц через Paddle"""
-        self.marker_manager.segment_all_pages_paddle()
-    
-    # === Устаревшие (совместимость) ===
-    def _marker_segment_pdf(self):
-        self._paddle_segment_pdf()
-
-    def _marker_segment_all_pages(self):
-        self._paddle_segment_all_pages()
-    
     def _run_ocr_all(self):
         """Запустить OCR для всех блоков"""
         self.ocr_manager.run_ocr_all()
@@ -394,7 +371,7 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         from PySide6.QtCore import Qt
         self.remote_ocr_panel = RemoteOCRPanel(self, self)
         self.addDockWidget(Qt.RightDockWidgetArea, self.remote_ocr_panel)
-        self.remote_ocr_panel.hide()  # Скрыта по умолчанию
+        self.remote_ocr_panel.show()  # Всегда показывать при загрузке
     
     def _toggle_remote_ocr_panel(self):
         """Показать/скрыть панель Remote OCR"""

@@ -8,7 +8,7 @@ ENV PYTHONPATH=/app
 
 # Зависимости для PyMuPDF
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Устанавливаем зависимости сервера

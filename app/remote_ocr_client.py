@@ -91,7 +91,7 @@ class RemoteOCRClient:
     def health(self) -> bool:
         """Проверить доступность сервера"""
         try:
-            with httpx.Client(base_url=self.base_url, timeout=10.0) as client:
+            with httpx.Client(base_url=self.base_url, timeout=2.0) as client:
                 resp = client.get("/health", headers=self._headers())
                 return resp.status_code == 200 and resp.json().get("ok", False)
         except Exception:

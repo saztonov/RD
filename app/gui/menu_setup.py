@@ -45,26 +45,6 @@ class MenuSetupMixin:
         # Меню "Инструменты"
         tools_menu = menubar.addMenu("&Инструменты")
         
-        # Paddle (PP-StructureV3)
-        paddle_all_action = QAction("&Paddle (все стр.)", self)
-        paddle_all_action.setShortcut(QKeySequence("Ctrl+Shift+P"))
-        paddle_all_action.triggered.connect(self._paddle_segment_all_pages)
-        tools_menu.addAction(paddle_all_action)
-        
-        paddle_action = QAction("&Paddle разметка", self)
-        paddle_action.setShortcut(QKeySequence("Ctrl+P"))
-        paddle_action.triggered.connect(self._paddle_segment_pdf)
-        tools_menu.addAction(paddle_action)
-        
-        tools_menu.addSeparator()
-        
-        run_ocr_action = QAction("Запустить &OCR", self)
-        run_ocr_action.setShortcut(QKeySequence("Ctrl+R"))
-        run_ocr_action.triggered.connect(self._run_ocr_all)
-        tools_menu.addAction(run_ocr_action)
-        
-        tools_menu.addSeparator()
-        
         export_cat_action = QAction("Экспорт категорий", self)
         export_cat_action.triggered.connect(lambda: self.category_manager.export_categories())
         tools_menu.addAction(export_cat_action)
