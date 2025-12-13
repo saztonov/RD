@@ -18,6 +18,7 @@ class Job:
     client_id: str
     document_id: str
     document_name: str
+    task_name: str
     status: str  # queued|processing|done|error
     progress: float
     created_at: str
@@ -58,6 +59,7 @@ def init_db() -> None:
                     client_id TEXT NOT NULL,
                     document_id TEXT NOT NULL,
                     document_name TEXT NOT NULL,
+                    task_name TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'queued',
                     progress REAL DEFAULT 0,
                     created_at TEXT NOT NULL,
@@ -83,6 +85,11 @@ def init_db() -> None:
                     conn.commit()
                     import logging
                     logging.getLogger(__name__).info("✅ Миграция БД: добавлена колонка r2_prefix")
+                if "task_name" not in columns:
+                    conn.execute("ALTER TABLE jobs ADD COLUMN task_name TEXT NOT NULL DEFAULT ''")
+                    conn.commit()
+                    import logging
+                    logging.getLogger(__name__).info("✅ Миграция БД: добавлена колонка task_name")
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).warning(f"⚠️ Ошибка миграции БД: {e}")
@@ -94,6 +101,7 @@ def create_job(
     client_id: str,
     document_id: str,
     document_name: str,
+    task_name: str,
     engine: str,
     job_dir: str
 ) -> Job:
@@ -106,6 +114,7 @@ def create_job(
         client_id=client_id,
         document_id=document_id,
         document_name=document_name,
+        task_name=task_name,
         status="queued",
         progress=0.0,
         created_at=now,
@@ -121,10 +130,10 @@ def create_job(
         conn = _get_connection()
         try:
             conn.execute("""
-                INSERT INTO jobs (id, client_id, document_id, document_name, status, progress,
+                INSERT INTO jobs (id, client_id, document_id, document_name, task_name, status, progress,
                                   created_at, updated_at, error_message, job_dir, result_path, engine, r2_prefix)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (job.id, job.client_id, job.document_id, job.document_name, job.status,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (job.id, job.client_id, job.document_id, job.document_name, job.task_name, job.status,
                   job.progress, job.created_at, job.updated_at, job.error_message,
                   job.job_dir, job.result_path, job.engine, job.r2_prefix))
             conn.commit()
@@ -250,6 +259,7 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         client_id=row["client_id"],
         document_id=row["document_id"],
         document_name=row["document_name"],
+        task_name=row["task_name"] if "task_name" in row.keys() else "",
         status=row["status"],
         progress=row["progress"],
         created_at=row["created_at"],
@@ -281,6 +291,7 @@ def job_to_dict(job: Job) -> dict:
         "client_id": job.client_id,
         "document_id": job.document_id,
         "document_name": job.document_name,
+        "task_name": job.task_name,
         "status": job.status,
         "progress": job.progress,
         "created_at": job.created_at,

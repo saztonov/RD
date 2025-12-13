@@ -60,6 +60,7 @@ class JobInfo:
     progress: float
     document_id: str
     document_name: str
+    task_name: str = ""
     created_at: str = ""
     updated_at: str = ""
     error_message: Optional[str] = None
@@ -102,6 +103,7 @@ class RemoteOCRClient:
         self,
         pdf_path: str,
         selected_blocks: List[Block],
+        task_name: str = "",
         engine: str = "openrouter"
     ) -> JobInfo:
         """
@@ -110,6 +112,7 @@ class RemoteOCRClient:
         Args:
             pdf_path: путь к PDF файлу
             selected_blocks: список выбранных блоков
+            task_name: название задания
             engine: движок OCR
         
         Returns:
@@ -131,6 +134,7 @@ class RemoteOCRClient:
                         "client_id": self.client_id,
                         "document_id": document_id,
                         "document_name": document_name,
+                        "task_name": task_name,
                         "engine": engine,
                         "blocks_json": blocks_json,
                     },
@@ -144,7 +148,8 @@ class RemoteOCRClient:
             status=data["status"],
             progress=data["progress"],
             document_id=data["document_id"],
-            document_name=data["document_name"]
+            document_name=data["document_name"],
+            task_name=data.get("task_name", "")
         )
     
     def list_jobs(self, document_id: Optional[str] = None) -> List[JobInfo]:
@@ -173,6 +178,7 @@ class RemoteOCRClient:
                 progress=j["progress"],
                 document_id=j["document_id"],
                 document_name=j["document_name"],
+                task_name=j.get("task_name", ""),
                 created_at=j.get("created_at", ""),
                 updated_at=j.get("updated_at", ""),
                 error_message=j.get("error_message")
@@ -193,6 +199,7 @@ class RemoteOCRClient:
             progress=j["progress"],
             document_id=j["document_id"],
             document_name=j["document_name"],
+            task_name=j.get("task_name", ""),
             created_at=j.get("created_at", ""),
             updated_at=j.get("updated_at", ""),
             error_message=j.get("error_message")

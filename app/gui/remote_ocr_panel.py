@@ -67,7 +67,7 @@ class RemoteOCRPanel(QDockWidget):
         # Таблица задач
         self.jobs_table = QTableWidget()
         self.jobs_table.setColumnCount(6)
-        self.jobs_table.setHorizontalHeaderLabels(["ID", "Документ", "Время начала", "Статус", "Прогресс", "Действия"])
+        self.jobs_table.setHorizontalHeaderLabels(["№", "Наименование", "Время начала", "Статус", "Прогресс", "Действия"])
         
         header = self.jobs_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -83,15 +83,6 @@ class RemoteOCRPanel(QDockWidget):
         self.jobs_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.jobs_table.setSelectionMode(QTableWidget.SingleSelection)
         layout.addWidget(self.jobs_table)
-        
-        # Кнопка создания задачи
-        buttons_layout = QHBoxLayout()
-        
-        self.create_job_btn = QPushButton("📤 Отправить выделенные блоки")
-        self.create_job_btn.clicked.connect(self._create_job)
-        buttons_layout.addWidget(self.create_job_btn)
-        
-        layout.addLayout(buttons_layout)
         
         self.setWidget(widget)
         self.setMinimumWidth(300)
@@ -188,22 +179,20 @@ class RemoteOCRPanel(QDockWidget):
         self.jobs_table.setSortingEnabled(False)
         self.jobs_table.setRowCount(0)
         
-        for job in jobs:
+        for idx, job in enumerate(jobs, start=1):
             row = self.jobs_table.rowCount()
             self.jobs_table.insertRow(row)
             
-            # ID (сокращённый)
-            job_id = job.id
-            short_id = job_id[:8] + "..."
-            id_item = QTableWidgetItem(short_id)
-            id_item.setData(Qt.UserRole, job_id)
-            id_item.setToolTip(job_id)
-            self.jobs_table.setItem(row, 0, id_item)
+            # Нумерация
+            num_item = QTableWidgetItem(str(idx))
+            num_item.setData(Qt.UserRole, job.id)  # Сохраняем ID для операций
+            self.jobs_table.setItem(row, 0, num_item)
             
-            # Документ
-            self.jobs_table.setItem(row, 1, QTableWidgetItem(job.document_name))
+            # Наименование задания (используем task_name если есть, иначе document_name)
+            display_name = job.task_name if job.task_name else job.document_name
+            self.jobs_table.setItem(row, 1, QTableWidgetItem(display_name))
             
-            # Время начала (МСК = UTC+3)
+            # Время начала в формате 20:02 25.01.2025
             created_at_str = self._format_datetime_utc3(job.created_at)
             created_item = QTableWidgetItem(created_at_str)
             created_item.setData(Qt.UserRole, job.created_at)  # Сохраняем исходное время для сортировки
@@ -238,14 +227,14 @@ class RemoteOCRPanel(QDockWidget):
             info_btn = QPushButton("ℹ️")
             info_btn.setToolTip("Информация о задаче")
             info_btn.setMaximumWidth(40)
-            info_btn.clicked.connect(lambda checked, jid=job_id: self._show_job_details(jid))
+            info_btn.clicked.connect(lambda checked, jid=job.id: self._show_job_details(jid))
             actions_layout.addWidget(info_btn)
             
             # Кнопка удалить (для всех статусов)
             delete_btn = QPushButton("🗑️")
             delete_btn.setToolTip("Удалить задачу и все файлы")
             delete_btn.setMaximumWidth(40)
-            delete_btn.clicked.connect(lambda checked, jid=job_id: self._delete_job(jid))
+            delete_btn.clicked.connect(lambda checked, jid=job.id: self._delete_job(jid))
             actions_layout.addWidget(delete_btn)
             
             actions_layout.addStretch()
@@ -302,7 +291,7 @@ class RemoteOCRPanel(QDockWidget):
             engine = "openrouter"
         
         try:
-            job_info = client.create_job(pdf_path, selected_blocks, engine=engine)
+            job_info = client.create_job(pdf_path, selected_blocks, task_name=self.main_window.project_manager.get_active_project().name if self.main_window.project_manager.get_active_project() else "", engine=engine)
             
             # Сохраняем маппинг job_id -> output_dir
             self._job_output_dirs[job_info.id] = dialog.output_dir
@@ -344,12 +333,20 @@ class RemoteOCRPanel(QDockWidget):
         return blocks
     
     def _auto_download_result(self, job_id: str):
-        """Автоматически скачать результат без открытия папки"""
+        """Автоматически скачать результат из R2"""
         client = self._get_client()
         if client is None:
             return
         
         try:
+            # Получаем детали задачи (включая r2_prefix)
+            job_details = client.get_job_details(job_id)
+            r2_prefix = job_details.get("r2_prefix")
+            
+            if not r2_prefix:
+                logger.warning(f"Задача {job_id} не имеет r2_prefix, пропускаем автоскачивание")
+                return
+            
             # Определяем папку для сохранения
             if job_id in self._job_output_dirs:
                 extract_dir = Path(self._job_output_dirs[job_id])
@@ -372,17 +369,35 @@ class RemoteOCRPanel(QDockWidget):
             
             if not result_exists:
                 extract_dir.mkdir(parents=True, exist_ok=True)
-                logger.info(f"Автоскачивание результата в: {extract_dir}")
+                logger.info(f"Автоскачивание результата из R2 в: {extract_dir}")
                 
-                # Скачиваем и распаковываем
-                zip_path = extract_dir / "result.zip"
-                client.download_result(job_id, str(zip_path))
+                # Инициализируем R2Storage
+                from rd_core.r2_storage import R2Storage
+                r2 = R2Storage()
                 
-                with zipfile.ZipFile(zip_path, 'r') as zf:
-                    zf.extractall(extract_dir)
+                # Скачиваем основные файлы
+                main_files = ["annotation.json", "result.json", "result.md", "document.pdf", "blocks.json"]
+                for filename in main_files:
+                    remote_key = f"{r2_prefix}/{filename}"
+                    local_path = extract_dir / filename
+                    r2.download_file(remote_key, str(local_path))
                 
-                zip_path.unlink()
-                logger.info(f"✅ Результат автоматически скачан: {extract_dir}")
+                # Скачиваем кропы из папки crops/
+                crops_dir = extract_dir / "crops"
+                crops_dir.mkdir(exist_ok=True)
+                
+                # Получаем список всех файлов в R2 с префиксом crops/
+                crops_prefix = f"{r2_prefix}/crops/"
+                crop_files = r2.list_by_prefix(crops_prefix)
+                
+                for remote_key in crop_files:
+                    # Извлекаем имя файла
+                    filename = remote_key.split("/")[-1]
+                    if filename:  # Пропускаем директории
+                        local_path = crops_dir / filename
+                        r2.download_file(remote_key, str(local_path))
+                
+                logger.info(f"✅ Результат автоматически скачан из R2: {extract_dir}")
                 
                 from app.gui.toast import show_toast
                 show_toast(self.main_window, f"Результат скачан: {job_id[:8]}...")
@@ -542,7 +557,7 @@ class RemoteOCRPanel(QDockWidget):
             utc3 = timezone(timedelta(hours=3))
             dt_local = dt_utc.astimezone(utc3)
             
-            return dt_local.strftime("%Y-%m-%d %H:%M:%S")
+            return dt_local.strftime("%H:%M %d.%m.%Y")
         except:
             return dt_str
 

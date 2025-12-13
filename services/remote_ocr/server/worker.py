@@ -242,13 +242,14 @@ def _process_job(job: Job) -> None:
                 import shutil
                 logger.info(f"Очистка файлов задачи {job.id} с сервера...")
                 
-                # Удаляем все файлы кроме result.zip (для возможности скачивания)
+                # Удаляем все файлы включая result.zip
                 files_to_remove = [
                     pdf_path,  # document.pdf
                     blocks_path,  # blocks.json
                     result_json_path,  # result.json
                     result_md_path,  # result.md
                     annotation_path,  # annotation.json
+                    result_zip_path,  # result.zip
                 ]
                 
                 for file_path in files_to_remove:
@@ -261,7 +262,7 @@ def _process_job(job: Job) -> None:
                     shutil.rmtree(crops_dir)
                     logger.debug(f"  Удалена папка: crops/")
                 
-                logger.info(f"✅ Файлы задачи {job.id} очищены с сервера (result.zip сохранён)")
+                logger.info(f"✅ Файлы задачи {job.id} полностью очищены с сервера")
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка очистки файлов задачи {job.id}: {e}")
         

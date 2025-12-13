@@ -213,7 +213,7 @@ class JobDetailsDialog(QDialog):
             utc3 = timezone(timedelta(hours=3))
             dt_local = dt_utc.astimezone(utc3)
             
-            return dt_local.strftime("%Y-%m-%d %H:%M:%S")
+            return dt_local.strftime("%H:%M %d.%m.%Y")
         except:
             return dt_str
     
@@ -262,7 +262,7 @@ class JobDetailsDialog(QDialog):
                     # Конвертируем в UTC+3
                     utc3 = timezone(timedelta(hours=3))
                     eta_local = eta_dt.astimezone(utc3)
-                    eta_str = eta_local.strftime("%Y-%m-%d %H:%M:%S")
+                    eta_str = eta_local.strftime("%H:%M %d.%m.%Y")
                     
                     # Форматируем оставшееся время
                     remaining = timedelta(seconds=int(remaining_seconds))

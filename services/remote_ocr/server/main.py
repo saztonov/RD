@@ -51,6 +51,7 @@ async def create_job_endpoint(
     client_id: str = Form(...),
     document_id: str = Form(...),
     document_name: str = Form(...),
+    task_name: str = Form(""),
     engine: str = Form("openrouter"),
     blocks_json: str = Form(...),
     pdf: UploadFile = File(...),
@@ -62,6 +63,7 @@ async def create_job_endpoint(
     - client_id: идентификатор клиента
     - document_id: sha256 хеш PDF
     - document_name: имя документа
+    - task_name: название задания
     - engine: движок OCR
     - blocks_json: JSON со списком блоков
     - pdf: PDF файл
@@ -96,6 +98,7 @@ async def create_job_endpoint(
         client_id=client_id,
         document_id=document_id,
         document_name=document_name,
+        task_name=task_name,
         engine=engine,
         job_dir=job_dir
     )
@@ -107,7 +110,8 @@ async def create_job_endpoint(
         "status": job.status,
         "progress": job.progress,
         "document_id": job.document_id,
-        "document_name": job.document_name
+        "document_name": job.document_name,
+        "task_name": job.task_name
     }
 
 
@@ -127,6 +131,7 @@ def list_jobs_endpoint(
             "status": j.status,
             "progress": j.progress,
             "document_name": j.document_name,
+            "task_name": j.task_name,
             "document_id": j.document_id,
             "created_at": j.created_at,
             "updated_at": j.updated_at,
@@ -237,7 +242,7 @@ def download_result(
     job_id: str,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> FileResponse:
-    """Скачать результат задачи (zip)"""
+    """Скачать результат задачи (устарело, используйте R2)"""
     _check_api_key(x_api_key)
     
     job = get_job(job_id)
@@ -247,8 +252,15 @@ def download_result(
     if job.status != "done":
         raise HTTPException(status_code=400, detail=f"Job not ready, status: {job.status}")
     
+    # Файлы удалены после загрузки в R2
     if not job.result_path or not os.path.exists(job.result_path):
-        raise HTTPException(status_code=404, detail="Result file not found")
+        if job.r2_prefix:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Result files moved to R2 storage. Download from R2 using prefix: {job.r2_prefix}"
+            )
+        else:
+            raise HTTPException(status_code=404, detail="Result file not found")
     
     return FileResponse(
         job.result_path,

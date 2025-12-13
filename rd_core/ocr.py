@@ -290,20 +290,33 @@ class DatalabOCRBackend:
                     return "[Ошибка: нет request_check_url]"
                 
                 # Поллинг результата
-                for _ in range(self.MAX_POLL_ATTEMPTS):
+                logger.info(f"Datalab: начало поллинга результата по URL: {check_url}")
+                for attempt in range(self.MAX_POLL_ATTEMPTS):
                     time.sleep(self.POLL_INTERVAL)
                     
+                    logger.debug(f"Datalab: попытка поллинга {attempt + 1}/{self.MAX_POLL_ATTEMPTS}")
                     poll_response = self.requests.get(check_url, headers=self.headers, timeout=30)
-                    poll_result = poll_response.json()
                     
+                    if poll_response.status_code != 200:
+                        logger.warning(f"Datalab: поллинг вернул статус {poll_response.status_code}: {poll_response.text}")
+                        continue
+                    
+                    poll_result = poll_response.json()
                     status = poll_result.get('status', '')
                     
+                    logger.info(f"Datalab: текущий статус задачи: '{status}' (попытка {attempt + 1}/{self.MAX_POLL_ATTEMPTS})")
+                    
                     if status == 'complete':
+                        logger.info("Datalab: задача успешно завершена")
                         return poll_result.get('markdown', '')
                     elif status == 'failed':
                         error = poll_result.get('error', 'Unknown error')
+                        logger.error(f"Datalab: задача завершилась с ошибкой: {error}")
                         return f"[Ошибка Datalab: {error}]"
+                    elif status not in ['processing', 'pending', 'queued']:
+                        logger.warning(f"Datalab: неизвестный статус '{status}'. Полный ответ: {poll_result}")
                 
+                logger.error(f"Datalab: превышено время ожидания после {self.MAX_POLL_ATTEMPTS} попыток")
                 return "[Ошибка Datalab: превышено время ожидания]"
                 
             finally:

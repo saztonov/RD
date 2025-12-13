@@ -361,6 +361,44 @@ class R2Storage:
             logger.error(f"❌ Ошибка загрузки текста в R2: {e}")
             return False
 
+    def download_file(self, remote_key: str, local_path: str) -> bool:
+        """
+        Скачать файл из R2
+
+        Args:
+            remote_key: Ключ объекта в R2
+            local_path: Локальный путь для сохранения
+
+        Returns:
+            True если успешно, False при ошибке
+        """
+        try:
+            local_file = Path(local_path)
+            local_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            logger.debug(f"Скачивание файла из R2: {remote_key} → {local_path}")
+            
+            self.s3_client.download_file(
+                self.bucket_name,
+                remote_key,
+                str(local_file),
+                Config=self.transfer_config
+            )
+            
+            logger.info(f"✅ Файл скачан из R2: {remote_key}")
+            return True
+            
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "Unknown")
+            if error_code == "NoSuchKey" or error_code == "404":
+                logger.warning(f"⚠️ Файл не найден в R2: {remote_key}")
+            else:
+                logger.error(f"❌ Ошибка скачивания из R2: {error_code} - {e}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Неожиданная ошибка скачивания из R2: {type(e).__name__}: {e}", exc_info=True)
+            return False
+
     def download_text(self, remote_key: str) -> Optional[str]:
         """
         Скачать текстовый контент из R2
