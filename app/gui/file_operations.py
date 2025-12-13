@@ -131,14 +131,16 @@ class FileOperationsMixin:
                 annotation_path = pdf_path.parent / f"{pdf_path.stem}_annotation.json"
                 AnnotationIO.save_annotation(self.annotation_document, str(annotation_path))
                 active_file.annotation_path = str(annotation_path)
-                QMessageBox.information(self, "Успех", f"Разметка сохранена:\n{annotation_path}")
+                from app.gui.toast import show_toast
+                show_toast(self, "Разметка сохранена")
                 return
         
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Сохранить разметку", "blocks.json", "JSON Files (*.json)")
         if file_path:
             AnnotationIO.save_annotation(self.annotation_document, file_path)
-            QMessageBox.information(self, "Успех", "Разметка сохранена")
+            from app.gui.toast import show_toast
+            show_toast(self, "Разметка сохранена")
     
     def _load_annotation(self):
         """Загрузить разметку из JSON"""
@@ -160,7 +162,8 @@ class FileOperationsMixin:
             
             self.blocks_tree_manager.update_blocks_tree()
             self.category_manager.extract_categories_from_document()
-            QMessageBox.information(self, "Успех", "Разметка загружена")
+            from app.gui.toast import show_toast
+            show_toast(self, "Разметка загружена")
     
     def _save_current_annotation_to_cache(self):
         """Сохранить текущую аннотацию в кеш"""

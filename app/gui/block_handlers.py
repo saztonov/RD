@@ -294,7 +294,8 @@ class BlockHandlersMixin:
             current_page_data.blocks.clear()
             self.page_viewer.set_blocks([])
             self.blocks_tree_manager.update_blocks_tree()
-            QMessageBox.information(self, "Успех", "Разметка страницы очищена")
+            from app.gui.toast import show_toast
+            show_toast(self, "Разметка страницы очищена")
     
     def _move_block_up(self):
         """Переместить выбранный блок вверх"""

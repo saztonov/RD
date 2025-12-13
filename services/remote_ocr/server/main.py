@@ -128,6 +128,7 @@ def list_jobs_endpoint(
             "progress": j.progress,
             "document_name": j.document_name,
             "document_id": j.document_id,
+            "created_at": j.created_at,
             "updated_at": j.updated_at,
             "error_message": j.error_message
         }

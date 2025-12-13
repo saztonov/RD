@@ -311,11 +311,8 @@ class RemoteOCRPanel(QDockWidget):
             self._job_output_dirs[job_info.id] = dialog.output_dir
             self._save_job_mappings()
             
-            QMessageBox.information(
-                self,
-                "Задача создана",
-                f"ID: {job_info.id}\nСтатус: {job_info.status}\n\nРезультат будет сохранён в:\n{dialog.output_dir}"
-            )
+            from app.gui.toast import show_toast
+            show_toast(self, f"Задача создана: {dialog.job_name}", duration=2500)
             self._refresh_jobs()
         except Exception as e:
             logger.error(f"Ошибка создания задачи: {e}")
@@ -409,11 +406,8 @@ class RemoteOCRPanel(QDockWidget):
             except Exception as e:
                 logger.warning(f"Не удалось удалить задачу {job_id} с сервера: {e}")
             
-            QMessageBox.information(
-                self,
-                "Результат открыт",
-                f"Папка с результатами:\n{extract_dir}"
-            )
+            from app.gui.toast import show_toast
+            show_toast(self, "Результат открыт")
             
         except Exception as e:
             logger.error(f"Ошибка открытия результата: {e}")
@@ -463,7 +457,8 @@ class RemoteOCRPanel(QDockWidget):
                 del self._job_output_dirs[job_id]
                 self._save_job_mappings()
             
-            QMessageBox.information(self, "Успех", "Задача удалена")
+            from app.gui.toast import show_toast
+            show_toast(self, "Задача удалена")
             self._refresh_jobs()
         except Exception as e:
             logger.error(f"Ошибка удаления задачи: {e}")

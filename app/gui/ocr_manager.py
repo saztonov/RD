@@ -151,11 +151,8 @@ class OCRManager:
                         if cache_key in self.parent.annotations_cache:
                             self.parent.annotations_cache[cache_key].pages = updated_pages
                     
-                    QMessageBox.information(
-                        self.parent, 
-                        "Готово", 
-                        f"OCR завершен!\n\nРезультаты: {result.get('output_dir', output_dir)}"
-                    )
+                    from app.gui.toast import show_toast
+                    show_toast(self.parent, "OCR завершён успешно")
         
         def on_failed(tid, error):
             if tid == task_id:
@@ -205,10 +202,7 @@ class OCRManager:
         self._upload_to_r2(output_dir)
         
         pdf_name = Path(self.parent.annotation_document.pdf_path).name
-        QMessageBox.information(
-            self.parent, 
-            "Готово", 
-            f"OCR завершен!\n\nРезультаты сохранены в:\n{output_dir}\n\n• {pdf_name}\n• annotation.json\n• crops/\n• document.md"
-        )
+        from app.gui.toast import show_toast
+        show_toast(self.parent, "OCR завершён успешно")
     
 

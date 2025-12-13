@@ -8,6 +8,7 @@ import re
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QPushButton, QRadioButton, QLineEdit, QFileDialog,
                                QGroupBox, QDialogButtonBox, QComboBox, QButtonGroup)
+from PySide6.QtCore import QSettings
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -265,6 +266,14 @@ class OCRDialog(QDialog):
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        
+        # Загрузка сохраненной папки
+        settings = QSettings("RDApp", "OCRDialog")
+        last_dir = settings.value("last_output_dir", "")
+        if last_dir and os.path.exists(last_dir):
+            self.path_edit.setText(last_dir)
+            self.base_dir = last_dir
+            self._update_output_path()
     
     def _on_backend_changed(self, checked=None):
         """Показать/скрыть группы моделей в зависимости от выбранного бэкенда"""
@@ -281,6 +290,9 @@ class OCRDialog(QDialog):
             self.path_edit.setText(dir_path)
             self.base_dir = dir_path
             self._update_output_path()
+            # Сохранение выбранной папки
+            settings = QSettings("RDApp", "OCRDialog")
+            settings.setValue("last_output_dir", dir_path)
     
     def _update_output_path(self):
         """Обновить итоговый путь (показ примера с timestamp)"""

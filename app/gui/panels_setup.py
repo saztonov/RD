@@ -413,5 +413,6 @@ class PanelsSetupMixin:
         if hasattr(self, 'blocks_tree_manager'):
             self.blocks_tree_manager.update_blocks_tree()
         
-        QMessageBox.information(self, "Успех", f"Категория переименована: {old_name} → {new_name}")
+        from app.gui.toast import show_toast
+        show_toast(self, f"Категория переименована: {old_name} → {new_name}", duration=2500)
 

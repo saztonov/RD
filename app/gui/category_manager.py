@@ -142,11 +142,8 @@ class CategoryManager:
             self._save_categories_to_r2()
             self.update_categories_list()
             
-            QMessageBox.information(
-                self.parent,
-                "Успех",
-                f"Категория '{category_name}' удалена из R2"
-            )
+            from app.gui.toast import show_toast
+            show_toast(self.parent, f"Категория удалена: {category_name}")
     
     def edit_category_prompt(self, category_name: str):
         """Редактировать промт категории"""
@@ -193,7 +190,8 @@ class CategoryManager:
             try:
                 with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump({"categories": self.parent.categories}, f, ensure_ascii=False, indent=2)
-                QMessageBox.information(self.parent, "Успех", f"Экспортировано {len(self.parent.categories)} категорий")
+                from app.gui.toast import show_toast
+                show_toast(self.parent, f"Экспортировано {len(self.parent.categories)} категорий")
             except Exception as e:
                 QMessageBox.critical(self.parent, "Ошибка", f"Ошибка экспорта:\n{e}")
     
@@ -215,7 +213,8 @@ class CategoryManager:
                 # Сохраняем обновленный список в R2
                 self._save_categories_to_r2()
                 self.update_categories_list()
-                QMessageBox.information(self.parent, "Успех", f"Импортировано {new_count} новых категорий")
+                from app.gui.toast import show_toast
+                show_toast(self.parent, f"Импортировано {new_count} новых категорий")
             except Exception as e:
                 QMessageBox.critical(self.parent, "Ошибка", f"Ошибка импорта:\n{e}")
 

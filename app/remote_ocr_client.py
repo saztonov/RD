@@ -60,6 +60,7 @@ class JobInfo:
     progress: float
     document_id: str
     document_name: str
+    created_at: str = ""
     updated_at: str = ""
     error_message: Optional[str] = None
 
@@ -172,6 +173,7 @@ class RemoteOCRClient:
                 progress=j["progress"],
                 document_id=j["document_id"],
                 document_name=j["document_name"],
+                created_at=j.get("created_at", ""),
                 updated_at=j.get("updated_at", ""),
                 error_message=j.get("error_message")
             )
@@ -191,6 +193,7 @@ class RemoteOCRClient:
             progress=j["progress"],
             document_id=j["document_id"],
             document_name=j["document_name"],
+            created_at=j.get("created_at", ""),
             updated_at=j.get("updated_at", ""),
             error_message=j.get("error_message")
         )
