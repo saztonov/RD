@@ -235,6 +235,35 @@ def _process_job(job: Job) -> None:
         update_job_status(job.id, "done", progress=1.0, result_path=str(result_zip_path), r2_prefix=r2_prefix)
         logger.info(f"Задача {job.id} завершена успешно")
         
+        # Очистка файлов с сервера после сохранения в R2
+        if r2_prefix:
+            try:
+                import shutil
+                logger.info(f"Очистка файлов задачи {job.id} с сервера...")
+                
+                # Удаляем все файлы кроме result.zip (для возможности скачивания)
+                files_to_remove = [
+                    pdf_path,  # document.pdf
+                    blocks_path,  # blocks.json
+                    result_json_path,  # result.json
+                    result_md_path,  # result.md
+                    annotation_path,  # annotation.json
+                ]
+                
+                for file_path in files_to_remove:
+                    if file_path.exists():
+                        file_path.unlink()
+                        logger.debug(f"  Удалён: {file_path.name}")
+                
+                # Удаляем папку с кропами
+                if crops_dir.exists():
+                    shutil.rmtree(crops_dir)
+                    logger.debug(f"  Удалена папка: crops/")
+                
+                logger.info(f"✅ Файлы задачи {job.id} очищены с сервера (result.zip сохранён)")
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка очистки файлов задачи {job.id}: {e}")
+        
     except Exception as e:
         error_msg = f"{e}\n{traceback.format_exc()}"
         logger.error(f"Ошибка обработки задачи {job.id}: {error_msg}")

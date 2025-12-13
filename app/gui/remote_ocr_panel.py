@@ -36,6 +36,7 @@ class RemoteOCRPanel(QDockWidget):
         self._last_engine = None
         self._job_output_dirs = {}  # Маппинг job_id -> output_dir
         self._config_file = Path.home() / ".rd" / "remote_ocr_jobs.json"
+        self._job_statuses = {}  # Отслеживание статусов для автоскачивания
         
         self._load_job_mappings()
         self._setup_ui()
@@ -161,6 +162,20 @@ class RemoteOCRPanel(QDockWidget):
         # Показываем ВСЕ задачи (не фильтруем по document_id)
         try:
             jobs = client.list_jobs(document_id=None)
+            
+            # Проверяем новые завершённые задачи для автоскачивания
+            for job in jobs:
+                old_status = self._job_statuses.get(job.id)
+                new_status = job.status
+                
+                # Если статус изменился на "done" - автоматически скачиваем
+                if old_status != "done" and new_status == "done":
+                    logger.info(f"Задача {job.id} завершена, автоскачивание...")
+                    self._auto_download_result(job.id)
+                
+                # Обновляем статус
+                self._job_statuses[job.id] = new_status
+            
             self._update_table(jobs)
             self.status_label.setText("🟢 Подключено")
         except Exception as e:
@@ -226,25 +241,9 @@ class RemoteOCRPanel(QDockWidget):
             info_btn.clicked.connect(lambda checked, jid=job_id: self._show_job_details(jid))
             actions_layout.addWidget(info_btn)
             
-            if job.status == "done":
-                # Кнопка открыть результат
-                open_btn = QPushButton("📂")
-                open_btn.setToolTip("Открыть результат")
-                open_btn.setMaximumWidth(40)
-                open_btn.clicked.connect(lambda checked, jid=job_id: self._open_result_folder(jid))
-                actions_layout.addWidget(open_btn)
-            elif job.status == "error":
-                # Кнопка показать ошибку
-                error_btn = QPushButton("❌")
-                error_btn.setToolTip(job.error_message or "Ошибка")
-                error_btn.setMaximumWidth(40)
-                error_btn.clicked.connect(lambda checked, msg=job.error_message: 
-                                         QMessageBox.warning(self, "Ошибка", msg or "Неизвестная ошибка"))
-                actions_layout.addWidget(error_btn)
-            
             # Кнопка удалить (для всех статусов)
             delete_btn = QPushButton("🗑️")
-            delete_btn.setToolTip("Удалить задачу")
+            delete_btn.setToolTip("Удалить задачу и все файлы")
             delete_btn.setMaximumWidth(40)
             delete_btn.clicked.connect(lambda checked, jid=job_id: self._delete_job(jid))
             actions_layout.addWidget(delete_btn)
@@ -346,75 +345,54 @@ class RemoteOCRPanel(QDockWidget):
         
         return blocks
     
-    def _open_result_folder(self, job_id: str):
-        """Скачать и открыть папку с результатами задачи"""
+    def _auto_download_result(self, job_id: str):
+        """Автоматически скачать результат без открытия папки"""
         client = self._get_client()
         if client is None:
             return
         
         try:
             # Определяем папку для сохранения
-            # Приоритет 1: Сохранённая папка для этой конкретной задачи
             if job_id in self._job_output_dirs:
                 extract_dir = Path(self._job_output_dirs[job_id])
-            # Приоритет 2: Последняя использованная папка (если существует)
             elif self._last_output_dir and Path(self._last_output_dir).parent.exists():
-                # Создаём подпапку с ID задачи в последней использованной директории
                 base_dir = Path(self._last_output_dir).parent
                 extract_dir = base_dir / f"result_{job_id[:8]}"
             else:
-                # Fallback: временная папка
                 import tempfile
                 tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
                 tmp_base.mkdir(exist_ok=True)
                 extract_dir = tmp_base / f"result_{job_id[:8]}"
             
-            # Проверяем, был ли результат уже скачан
+            # Сохраняем маппинг
+            if job_id not in self._job_output_dirs:
+                self._job_output_dirs[job_id] = str(extract_dir)
+                self._save_job_mappings()
+            
+            # Проверяем, был ли уже скачан
             result_exists = extract_dir.exists() and (extract_dir / "annotation.json").exists()
             
             if not result_exists:
-                # СОЗДАЕМ ПАПКУ
                 extract_dir.mkdir(parents=True, exist_ok=True)
-                logger.info(f"Скачивание результата в: {extract_dir}")
+                logger.info(f"Автоскачивание результата в: {extract_dir}")
                 
-                # Скачиваем результат
+                # Скачиваем и распаковываем
                 zip_path = extract_dir / "result.zip"
                 client.download_result(job_id, str(zip_path))
                 
-                # Распаковываем
                 with zipfile.ZipFile(zip_path, 'r') as zf:
                     zf.extractall(extract_dir)
                 
-                # Удаляем сам zip
                 zip_path.unlink()
-                logger.info(f"Результат распакован в: {extract_dir}")
+                logger.info(f"✅ Результат автоматически скачан: {extract_dir}")
                 
-                # Удаляем задачу с сервера после успешного скачивания
-                try:
-                    client.delete_job(job_id)
-                    logger.info(f"Задача {job_id} удалена с сервера после скачивания")
-                    
-                    # Обновляем список задач
-                    self._refresh_jobs()
-                except Exception as e:
-                    logger.warning(f"Не удалось удалить задачу {job_id} с сервера: {e}")
+                from app.gui.toast import show_toast
+                show_toast(self.main_window, f"Результат скачан: {job_id[:8]}...")
             else:
-                logger.info(f"Результат уже скачан, открываем: {extract_dir}")
-            
-            # Открываем папку
-            if sys.platform == 'win32':
-                os.startfile(extract_dir)
-            elif sys.platform == 'darwin':
-                subprocess.Popen(['open', extract_dir])
-            else:
-                subprocess.Popen(['xdg-open', extract_dir])
-            
-            from app.gui.toast import show_toast
-            show_toast(self, "Результат открыт")
-            
+                logger.debug(f"Результат уже скачан: {extract_dir}")
+                
         except Exception as e:
-            logger.error(f"Ошибка открытия результата: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть результат:\n{e}")
+            logger.error(f"Ошибка автоскачивания результата {job_id}: {e}")
     
     def _show_job_details(self, job_id: str):
         """Показать детальную информацию о задаче"""
@@ -425,9 +403,23 @@ class RemoteOCRPanel(QDockWidget):
         try:
             job_details = client.get_job_details(job_id)
             
+            # Определяем локальный путь
+            if job_id not in self._job_output_dirs:
+                # Определяем путь по тем же правилам, что и при автоскачивании
+                if self._last_output_dir and Path(self._last_output_dir).parent.exists():
+                    base_dir = Path(self._last_output_dir).parent
+                    extract_dir = base_dir / f"result_{job_id[:8]}"
+                else:
+                    import tempfile
+                    tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
+                    extract_dir = tmp_base / f"result_{job_id[:8]}"
+                
+                # Сохраняем маппинг
+                self._job_output_dirs[job_id] = str(extract_dir)
+                self._save_job_mappings()
+            
             # Добавляем локальный путь из маппинга
-            if job_id in self._job_output_dirs:
-                job_details["client_output_dir"] = self._job_output_dirs[job_id]
+            job_details["client_output_dir"] = self._job_output_dirs[job_id]
             
             from app.gui.job_details_dialog import JobDetailsDialog
             dialog = JobDetailsDialog(job_details, self)
@@ -437,11 +429,11 @@ class RemoteOCRPanel(QDockWidget):
             QMessageBox.critical(self, "Ошибка", f"Не удалось получить информацию:\n{e}")
     
     def _delete_job(self, job_id: str):
-        """Удалить задачу и её файлы"""
+        """Удалить задачу и все связанные файлы (локальные + R2)"""
         reply = QMessageBox.question(
             self,
             "Подтверждение удаления",
-            f"Удалить задачу {job_id[:8]}...?\n\nБудут удалены все связанные файлы.",
+            f"Удалить задачу {job_id[:8]}...?\n\nБудут удалены:\n• Запись на сервере\n• Локальная папка с результатами\n• Файлы в R2 Storage",
             QMessageBox.Yes | QMessageBox.No
         )
         
@@ -453,16 +445,74 @@ class RemoteOCRPanel(QDockWidget):
             return
         
         try:
-            client.delete_job(job_id)
+            # Получаем детали задачи для r2_prefix
+            job_details = client.get_job_details(job_id)
+            r2_prefix = job_details.get("r2_prefix")
             
-            # Удаляем маппинг
+            # 1. Удаляем локальную папку с результатами
             if job_id in self._job_output_dirs:
+                local_dir = Path(self._job_output_dirs[job_id])
+                if local_dir.exists():
+                    import shutil
+                    try:
+                        shutil.rmtree(local_dir)
+                        logger.info(f"✅ Удалена локальная папка: {local_dir}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Ошибка удаления локальной папки {local_dir}: {e}")
+                
+                # Удаляем маппинг
                 del self._job_output_dirs[job_id]
                 self._save_job_mappings()
             
+            # 2. Удаляем файлы из R2
+            if r2_prefix:
+                try:
+                    from app.r2_storage import R2Storage
+                    r2 = R2Storage()
+                    
+                    # Добавляем "/" в конец префикса для точного совпадения директории
+                    # Это гарантирует, что ocr_results/job1 не захватит файлы из ocr_results/job10
+                    r2_prefix_normalized = r2_prefix if r2_prefix.endswith('/') else f"{r2_prefix}/"
+                    
+                    logger.info(f"Удаление файлов из R2 с префиксом: {r2_prefix_normalized}")
+                    
+                    # Получаем список всех файлов в префиксе
+                    files_to_delete = []
+                    paginator = r2.s3_client.get_paginator('list_objects_v2')
+                    for page in paginator.paginate(Bucket=r2.bucket_name, Prefix=r2_prefix_normalized):
+                        if 'Contents' in page:
+                            for obj in page['Contents']:
+                                key = obj['Key']
+                                # Дополнительная проверка: файл должен быть строго внутри директории задачи
+                                # (после r2_prefix/ должен быть хотя бы один символ, и не начинаться с другого job_id)
+                                if key.startswith(r2_prefix_normalized):
+                                    files_to_delete.append({'Key': key})
+                                    logger.debug(f"  Будет удален: {key}")
+                    
+                    # Удаляем все файлы батчами (до 1000 за раз)
+                    if files_to_delete:
+                        logger.info(f"Найдено {len(files_to_delete)} файлов для удаления")
+                        # Batch delete поддерживает до 1000 объектов за раз
+                        for i in range(0, len(files_to_delete), 1000):
+                            batch = files_to_delete[i:i+1000]
+                            r2.s3_client.delete_objects(
+                                Bucket=r2.bucket_name,
+                                Delete={'Objects': batch}
+                            )
+                        logger.info(f"✅ Удалено {len(files_to_delete)} файлов из R2 для задачи {job_id[:8]}...")
+                    else:
+                        logger.info(f"Файлы в R2 не найдены для префикса {r2_prefix_normalized}")
+                        
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка удаления файлов из R2: {e}")
+            
+            # 3. Удаляем задачу на сервере
+            client.delete_job(job_id)
+            
             from app.gui.toast import show_toast
-            show_toast(self, "Задача удалена")
+            show_toast(self, "Задача и все файлы удалены")
             self._refresh_jobs()
+            
         except Exception as e:
             logger.error(f"Ошибка удаления задачи: {e}")
             QMessageBox.critical(self, "Ошибка", f"Не удалось удалить задачу:\n{e}")
