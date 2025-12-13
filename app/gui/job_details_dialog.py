@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLabel, 
     QDialogButtonBox, QGroupBox, QPushButton, QHBoxLayout
@@ -36,9 +37,19 @@ class JobDetailsDialog(QDialog):
         main_group = QGroupBox("Основная информация")
         main_layout = QFormLayout()
         
-        # ID задачи (полный)
+        # ID задачи (полный) с кнопкой копирования
         job_id = self.job_details.get("id", "")
-        main_layout.addRow("ID задачи:", QLabel(job_id))
+        job_id_layout = QHBoxLayout()
+        job_id_label = QLabel(job_id)
+        job_id_layout.addWidget(job_id_label, 1)
+        
+        copy_btn = QPushButton("📋")
+        copy_btn.setMaximumWidth(30)
+        copy_btn.setToolTip("Скопировать ID в буфер обмена")
+        copy_btn.clicked.connect(lambda: self._copy_to_clipboard(job_id))
+        job_id_layout.addWidget(copy_btn)
+        
+        main_layout.addRow("ID задачи:", job_id_layout)
         
         # Документ
         doc_name = self.job_details.get("document_name", "")
@@ -216,6 +227,11 @@ class JobDetailsDialog(QDialog):
             return dt_local.strftime("%H:%M %d.%m.%Y")
         except:
             return dt_str
+    
+    def _copy_to_clipboard(self, text: str):
+        """Скопировать текст в буфер обмена"""
+        clipboard = QGuiApplication.clipboard()
+        clipboard.setText(text)
     
     def _open_folder(self, path: str):
         """Открыть папку в проводнике"""
