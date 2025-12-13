@@ -1,5 +1,3 @@
-from rd_core.pdf_utils import *  # noqa
-
 """
 Утилиты для работы с PDF
 Загрузка PDF, рендеринг страниц в изображения через PyMuPDF

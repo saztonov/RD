@@ -1,5 +1,3 @@
-from rd_core.report_md import *  # noqa
-
 """
 Генерация Markdown-отчётов
 Сбор результатов OCR в один MD-файл по каждой категории
@@ -11,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Dict, Union
 from PIL import Image
-from app.models import Document
+from rd_core.models import Document
 
 logger = logging.getLogger(__name__)
 

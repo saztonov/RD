@@ -1,5 +1,3 @@
-from rd_core.ocr import *  # noqa
-
 """
 OCR обработка через API движки
 Поддержка LocalVLM (через ngrok) и OpenRouter API
@@ -12,7 +10,7 @@ import io
 from pathlib import Path
 from typing import Protocol, List, Optional
 from PIL import Image
-from app.models import Block, BlockType
+from rd_core.models import Block, BlockType
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +75,7 @@ class LocalVLMBackend:
     def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
         """Распознать текст через ngrok endpoint"""
         try:
-            from app.config import get_lm_base_url
+            from rd_core.config import get_lm_base_url
             
             # Извлекаем system и user из промта
             if prompt and isinstance(prompt, dict):
@@ -360,7 +358,7 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
                 
                 # Если указан index_file, обновляем индекс
                 if index_file:
-                    from app.report_md import update_smart_index
+                    from rd_core.report_md import update_smart_index  # noqa: E402
                     image_name = Path(block.image_file).name if block.image_file else f"block_{block.id}"
                     update_smart_index(ocr_text, image_name, index_file)
                 
@@ -422,7 +420,7 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
         Путь к сохраненному файлу
     """
     try:
-        from app.models import Page, BlockType
+        from rd_core.models import Page, BlockType
         import os
         
         output_file = Path(output_path)

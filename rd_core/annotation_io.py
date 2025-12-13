@@ -1,5 +1,3 @@
-from rd_core.annotation_io import *  # noqa
-
 """
 Сохранение и загрузка разметки
 Работа с JSON-файлами для сохранения/загрузки annotations.json
@@ -10,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 from PIL import Image
-from app.models import PageModel, Block, Document
+from rd_core.models import PageModel, Block, Document
 
 
 logger = logging.getLogger(__name__)
