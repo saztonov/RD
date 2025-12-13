@@ -26,6 +26,7 @@ class Job:
     job_dir: str
     result_path: Optional[str]
     engine: str = ""
+    r2_prefix: Optional[str] = None
 
 
 _db_lock = threading.Lock()
@@ -64,13 +65,27 @@ def init_db() -> None:
                     error_message TEXT,
                     job_dir TEXT NOT NULL,
                     result_path TEXT,
-                    engine TEXT DEFAULT ''
+                    engine TEXT DEFAULT '',
+                    r2_prefix TEXT
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_client_id ON jobs(client_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_document_id ON jobs(document_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON jobs(status)")
             conn.commit()
+            
+            # Миграция: добавляем r2_prefix если его нет
+            try:
+                cursor = conn.execute("PRAGMA table_info(jobs)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if "r2_prefix" not in columns:
+                    conn.execute("ALTER TABLE jobs ADD COLUMN r2_prefix TEXT")
+                    conn.commit()
+                    import logging
+                    logging.getLogger(__name__).info("✅ Миграция БД: добавлена колонка r2_prefix")
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"⚠️ Ошибка миграции БД: {e}")
         finally:
             conn.close()
 
@@ -98,7 +113,8 @@ def create_job(
         error_message=None,
         job_dir=job_dir,
         result_path=None,
-        engine=engine
+        engine=engine,
+        r2_prefix=None
     )
     
     with _db_lock:
@@ -106,11 +122,11 @@ def create_job(
         try:
             conn.execute("""
                 INSERT INTO jobs (id, client_id, document_id, document_name, status, progress,
-                                  created_at, updated_at, error_message, job_dir, result_path, engine)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  created_at, updated_at, error_message, job_dir, result_path, engine, r2_prefix)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (job.id, job.client_id, job.document_id, job.document_name, job.status,
                   job.progress, job.created_at, job.updated_at, job.error_message,
-                  job.job_dir, job.result_path, job.engine))
+                  job.job_dir, job.result_path, job.engine, job.r2_prefix))
             conn.commit()
         finally:
             conn.close()
@@ -156,7 +172,8 @@ def update_job_status(
     status: str,
     progress: Optional[float] = None,
     error_message: Optional[str] = None,
-    result_path: Optional[str] = None
+    result_path: Optional[str] = None,
+    r2_prefix: Optional[str] = None
 ) -> None:
     """Обновить статус задачи"""
     now = datetime.utcnow().isoformat()
@@ -179,6 +196,10 @@ def update_job_status(
             if result_path is not None:
                 updates.append("result_path = ?")
                 values.append(result_path)
+            
+            if r2_prefix is not None:
+                updates.append("r2_prefix = ?")
+                values.append(r2_prefix)
             
             values.append(job_id)
             
@@ -236,8 +257,21 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         error_message=row["error_message"],
         job_dir=row["job_dir"],
         result_path=row["result_path"],
-        engine=row["engine"] if "engine" in row.keys() else ""
+        engine=row["engine"] if "engine" in row.keys() else "",
+        r2_prefix=row["r2_prefix"] if "r2_prefix" in row.keys() else None
     )
+
+
+def delete_job(job_id: str) -> bool:
+    """Удалить задачу из БД"""
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            cursor = conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
 
 
 def job_to_dict(job: Job) -> dict:
@@ -252,6 +286,8 @@ def job_to_dict(job: Job) -> dict:
         "created_at": job.created_at,
         "updated_at": job.updated_at,
         "error_message": job.error_message,
+        "job_dir": job.job_dir,
         "result_path": job.result_path,
-        "engine": job.engine
+        "engine": job.engine,
+        "r2_prefix": job.r2_prefix
     }

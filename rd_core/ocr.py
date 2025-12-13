@@ -292,6 +292,108 @@ class DummyOCRBackend:
         return "[OCR placeholder - OCR engine not configured]"
 
 
+class DatalabOCRBackend:
+    """OCR через Datalab Marker API"""
+    
+    API_URL = "https://www.datalab.to/api/v1/marker"
+    POLL_INTERVAL = 2
+    MAX_POLL_ATTEMPTS = 60
+    
+    def __init__(self, api_key: str):
+        if not api_key:
+            raise ValueError("DATALAB_API_KEY не указан")
+        self.api_key = api_key
+        self.headers = {"X-Api-Key": api_key}
+        try:
+            import requests
+            self.requests = requests
+        except ImportError:
+            raise ImportError("Требуется установить requests: pip install requests")
+        logger.info("Datalab OCR инициализирован")
+    
+    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
+        """Распознать изображение через Datalab API"""
+        import tempfile
+        import time
+        import os
+        
+        try:
+            # Сохраняем изображение во временный файл
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                image.save(tmp, format='PNG')
+                tmp_path = tmp.name
+            
+            try:
+                # Отправляем на распознавание
+                with open(tmp_path, 'rb') as f:
+                    files = {'file': (os.path.basename(tmp_path), f, 'image/png')}
+                    data = {
+                        'mode': 'accurate',
+                        'force_ocr': 'true',
+                        'paginate': 'false',
+                        'use_llm': 'true',
+                        'output_format': 'markdown',
+                        'disable_image_extraction': 'true'
+                    }
+                    
+                    # Добавляем промпт если есть
+                    if prompt and isinstance(prompt, dict):
+                        user_prompt = prompt.get('user', '')
+                        if user_prompt:
+                            data['block_correction_prompt'] = user_prompt
+                    
+                    response = self.requests.post(
+                        self.API_URL,
+                        headers=self.headers,
+                        files=files,
+                        data=data,
+                        timeout=120
+                    )
+                
+                if response.status_code != 200:
+                    logger.error(f"Datalab API error: {response.status_code} - {response.text}")
+                    return f"[Ошибка Datalab API: {response.status_code}]"
+                
+                result = response.json()
+                
+                if not result.get('success'):
+                    error = result.get('error', 'Unknown error')
+                    return f"[Ошибка Datalab: {error}]"
+                
+                # Получаем URL для поллинга
+                check_url = result.get('request_check_url')
+                if not check_url:
+                    if 'markdown' in result:
+                        return result['markdown']
+                    return "[Ошибка: нет request_check_url]"
+                
+                # Поллинг результата
+                for _ in range(self.MAX_POLL_ATTEMPTS):
+                    time.sleep(self.POLL_INTERVAL)
+                    
+                    poll_response = self.requests.get(check_url, headers=self.headers, timeout=30)
+                    poll_result = poll_response.json()
+                    
+                    status = poll_result.get('status', '')
+                    
+                    if status == 'complete':
+                        return poll_result.get('markdown', '')
+                    elif status == 'failed':
+                        error = poll_result.get('error', 'Unknown error')
+                        return f"[Ошибка Datalab: {error}]"
+                
+                return "[Ошибка Datalab: превышено время ожидания]"
+                
+            finally:
+                # Удаляем временный файл
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                    
+        except Exception as e:
+            logger.error(f"Ошибка Datalab OCR: {e}", exc_info=True)
+            return f"[Ошибка Datalab OCR: {e}]"
+
+
 def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "", 
                        image_description_backend: Optional[OCRBackend] = None,
                        index_file: Optional[str] = None,
@@ -388,7 +490,7 @@ def create_ocr_engine(backend: str = "local_vlm", **kwargs) -> OCRBackend:
     Фабрика для создания OCR движка
     
     Args:
-        backend: тип движка ('local_vlm', 'openrouter' или 'dummy')
+        backend: тип движка ('local_vlm', 'openrouter', 'datalab' или 'dummy')
         **kwargs: дополнительные параметры для движка
     
     Returns:
@@ -398,6 +500,8 @@ def create_ocr_engine(backend: str = "local_vlm", **kwargs) -> OCRBackend:
         return LocalVLMBackend(**kwargs)
     elif backend == "openrouter":
         return OpenRouterBackend(**kwargs)
+    elif backend == "datalab":
+        return DatalabOCRBackend(**kwargs)
     elif backend == "dummy":
         return DummyOCRBackend()
     else:

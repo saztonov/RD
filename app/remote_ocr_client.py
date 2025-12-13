@@ -195,6 +195,13 @@ class RemoteOCRClient:
             error_message=j.get("error_message")
         )
     
+    def get_job_details(self, job_id: str) -> dict:
+        """Получить детальную информацию о задаче"""
+        with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
+            resp = client.get(f"/jobs/{job_id}/details", headers=self._headers())
+            resp.raise_for_status()
+            return resp.json()
+    
     def download_result(self, job_id: str, target_zip_path: str) -> str:
         """
         Скачать результат задачи
@@ -215,6 +222,21 @@ class RemoteOCRClient:
                 f.write(resp.content)
         
         return target_zip_path
+    
+    def delete_job(self, job_id: str) -> bool:
+        """
+        Удалить задачу и все связанные файлы
+        
+        Args:
+            job_id: ID задачи
+        
+        Returns:
+            True если успешно удалено
+        """
+        with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
+            resp = client.delete(f"/jobs/{job_id}", headers=self._headers())
+            resp.raise_for_status()
+            return resp.json().get("ok", False)
 
 
 # Для обратной совместимости

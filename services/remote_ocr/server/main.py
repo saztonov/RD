@@ -13,6 +13,7 @@ from .settings import settings
 from .storage import (
     Job,
     create_job,
+    delete_job,
     get_job,
     init_db,
     job_to_dict,
@@ -149,6 +150,87 @@ def get_job_endpoint(
     return job_to_dict(job)
 
 
+@app.get("/jobs/{job_id}/details")
+def get_job_details_endpoint(
+    job_id: str,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Получить детальную информацию о задаче"""
+    _check_api_key(x_api_key)
+    
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    result = job_to_dict(job)
+    
+    # Читаем blocks.json для статистики
+    blocks_path = os.path.join(job.job_dir, "blocks.json")
+    if os.path.exists(blocks_path):
+        with open(blocks_path, "r", encoding="utf-8") as f:
+            blocks = json.load(f)
+        
+        # Подсчитываем блоки по типам
+        block_stats = {"text": 0, "table": 0, "image": 0, "total": len(blocks)}
+        for block in blocks:
+            block_type = block.get("block_type", "text")
+            if block_type in block_stats:
+                block_stats[block_type] += 1
+        
+        result["block_stats"] = block_stats
+    
+    # Читаем annotation.json для информации о батчах (если есть)
+    annotation_path = os.path.join(job.job_dir, "annotation.json")
+    if os.path.exists(annotation_path):
+        try:
+            with open(annotation_path, "r", encoding="utf-8") as f:
+                annotation = json.load(f)
+            # Подсчитываем количество страниц как прокси для батчей
+            result["num_pages"] = len(annotation.get("pages", []))
+        except:
+            pass
+    
+    # Формируем публичный URL для R2 если доступен
+    if job.r2_prefix:
+        r2_public_url = os.getenv("R2_PUBLIC_URL")  # Публичный URL R2 bucket
+        
+        if r2_public_url:
+            # Убираем trailing slash если есть
+            base_url = r2_public_url.rstrip('/')
+            result["r2_base_url"] = f"{base_url}/{job.r2_prefix}"
+            
+            # Формируем список доступных файлов
+            result["r2_files"] = [
+                {"name": "document.pdf", "path": "document.pdf", "icon": "📄"},
+                {"name": "result.md", "path": "result.md", "icon": "📝"},
+                {"name": "result.json", "path": "result.json", "icon": "📋"},
+                {"name": "annotation.json", "path": "annotation.json", "icon": "📋"},
+                {"name": "blocks.json", "path": "blocks.json", "icon": "📋"},
+            ]
+            
+            # Добавляем кропы если есть
+            crops_dir = os.path.join(job.job_dir, "crops")
+            if os.path.exists(crops_dir):
+                crop_files = []
+                for f in os.listdir(crops_dir):
+                    if f.endswith(('.png', '.jpg', '.jpeg')):
+                        crop_files.append({
+                            "name": f,
+                            "path": f"crops/{f}",
+                            "icon": "🖼️"
+                        })
+                if crop_files:
+                    result["r2_files"].extend(sorted(crop_files, key=lambda x: x["name"]))
+        else:
+            result["r2_base_url"] = None
+            result["r2_files"] = []
+    else:
+        result["r2_base_url"] = None
+        result["r2_files"] = []
+    
+    return result
+
+
 @app.get("/jobs/{job_id}/result")
 def download_result(
     job_id: str,
@@ -172,6 +254,33 @@ def download_result(
         media_type="application/zip",
         filename=f"result_{job_id}.zip"
     )
+
+
+@app.delete("/jobs/{job_id}")
+def delete_job_endpoint(
+    job_id: str,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Удалить задачу и её файлы"""
+    _check_api_key(x_api_key)
+    
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Удаляем файлы из job_dir
+    import shutil
+    if os.path.exists(job.job_dir):
+        try:
+            shutil.rmtree(job.job_dir)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete job files: {e}")
+    
+    # Удаляем из БД
+    if not delete_job(job_id):
+        raise HTTPException(status_code=500, detail="Failed to delete job from database")
+    
+    return {"ok": True, "deleted_job_id": job_id}
 
 
 if __name__ == "__main__":
