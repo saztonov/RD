@@ -312,7 +312,7 @@ class RemoteOCRPanel(QDockWidget):
             self._save_job_mappings()
             
             from app.gui.toast import show_toast
-            show_toast(self, f"Задача создана: {dialog.job_name}", duration=2500)
+            show_toast(self, f"Задача создана: {job_info.id[:8]}...", duration=2500)
             self._refresh_jobs()
         except Exception as e:
             logger.error(f"Ошибка создания задачи: {e}")
@@ -357,31 +357,49 @@ class RemoteOCRPanel(QDockWidget):
             # Приоритет 1: Сохранённая папка для этой конкретной задачи
             if job_id in self._job_output_dirs:
                 extract_dir = Path(self._job_output_dirs[job_id])
-                extract_dir.mkdir(parents=True, exist_ok=True)
             # Приоритет 2: Последняя использованная папка (если существует)
             elif self._last_output_dir and Path(self._last_output_dir).parent.exists():
                 # Создаём подпапку с ID задачи в последней использованной директории
                 base_dir = Path(self._last_output_dir).parent
                 extract_dir = base_dir / f"result_{job_id[:8]}"
-                extract_dir.mkdir(parents=True, exist_ok=True)
             else:
                 # Fallback: временная папка
                 import tempfile
                 tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
                 tmp_base.mkdir(exist_ok=True)
                 extract_dir = tmp_base / f"result_{job_id[:8]}"
-                extract_dir.mkdir(exist_ok=True)
             
-            # Скачиваем результат
-            zip_path = extract_dir / "result.zip"
-            client.download_result(job_id, str(zip_path))
+            # Проверяем, был ли результат уже скачан
+            result_exists = extract_dir.exists() and (extract_dir / "annotation.json").exists()
             
-            # Распаковываем
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                zf.extractall(extract_dir)
-            
-            # Удаляем сам zip
-            zip_path.unlink()
+            if not result_exists:
+                # СОЗДАЕМ ПАПКУ
+                extract_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Скачивание результата в: {extract_dir}")
+                
+                # Скачиваем результат
+                zip_path = extract_dir / "result.zip"
+                client.download_result(job_id, str(zip_path))
+                
+                # Распаковываем
+                with zipfile.ZipFile(zip_path, 'r') as zf:
+                    zf.extractall(extract_dir)
+                
+                # Удаляем сам zip
+                zip_path.unlink()
+                logger.info(f"Результат распакован в: {extract_dir}")
+                
+                # Удаляем задачу с сервера после успешного скачивания
+                try:
+                    client.delete_job(job_id)
+                    logger.info(f"Задача {job_id} удалена с сервера после скачивания")
+                    
+                    # Обновляем список задач
+                    self._refresh_jobs()
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить задачу {job_id} с сервера: {e}")
+            else:
+                logger.info(f"Результат уже скачан, открываем: {extract_dir}")
             
             # Открываем папку
             if sys.platform == 'win32':
@@ -390,21 +408,6 @@ class RemoteOCRPanel(QDockWidget):
                 subprocess.Popen(['open', extract_dir])
             else:
                 subprocess.Popen(['xdg-open', extract_dir])
-            
-            # Удаляем задачу с сервера после успешного скачивания
-            try:
-                client.delete_job(job_id)
-                logger.info(f"Задача {job_id} удалена с сервера после скачивания")
-                
-                # Удаляем маппинг
-                if job_id in self._job_output_dirs:
-                    del self._job_output_dirs[job_id]
-                    self._save_job_mappings()
-                
-                # Обновляем список задач
-                self._refresh_jobs()
-            except Exception as e:
-                logger.warning(f"Не удалось удалить задачу {job_id} с сервера: {e}")
             
             from app.gui.toast import show_toast
             show_toast(self, "Результат открыт")

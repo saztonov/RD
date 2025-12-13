@@ -131,14 +131,24 @@ class JobDetailsDialog(QDialog):
         client_output_dir = self.job_details.get("client_output_dir")
         if client_output_dir:
             local_layout = QHBoxLayout()
-            local_label = QLabel(f"Локально (клиент): {client_output_dir}")
-            local_label.setWordWrap(True)
-            local_layout.addWidget(local_label, 1)
             
-            open_local_btn = QPushButton("📁 Открыть")
-            open_local_btn.setMaximumWidth(100)
-            open_local_btn.clicked.connect(lambda: self._open_folder(client_output_dir))
-            local_layout.addWidget(open_local_btn)
+            # Проверяем существование папки
+            folder_exists = os.path.exists(client_output_dir)
+            
+            if folder_exists:
+                local_label = QLabel(f"Локально: {client_output_dir}")
+                local_label.setWordWrap(True)
+                local_layout.addWidget(local_label, 1)
+                
+                open_local_btn = QPushButton("📁 Открыть")
+                open_local_btn.setMaximumWidth(100)
+                open_local_btn.clicked.connect(lambda: self._open_folder(client_output_dir))
+                local_layout.addWidget(open_local_btn)
+            else:
+                local_label = QLabel(f"Локально: {client_output_dir} (результат еще не скачан)")
+                local_label.setStyleSheet("color: gray;")
+                local_label.setWordWrap(True)
+                local_layout.addWidget(local_label, 1)
             
             paths_layout.addLayout(local_layout)
         
