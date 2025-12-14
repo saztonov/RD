@@ -6,6 +6,7 @@ OCR обработка через API движки
 import logging
 import base64
 import io
+import re
 from pathlib import Path
 from typing import Protocol, List, Optional, Callable
 from PIL import Image
@@ -220,6 +221,7 @@ class DatalabOCRBackend:
     API_URL = "https://www.datalab.to/api/v1/marker"
     POLL_INTERVAL = 2
     MAX_POLL_ATTEMPTS = 60
+    MAX_RETRIES = 3  # Количество попыток при 429
     
     # Промпт для коррекции блоков (Russian Construction Documentation QA)
     BLOCK_CORRECTION_PROMPT = """You are a specialized QA OCR assistant for Russian Construction Documentation (Stages P & RD). Your goal is to transcribe image blocks into strict Markdown for automated error checking.
@@ -240,11 +242,17 @@ RULES:
 5. **Drawings**: If the image is a drawing (e.g., parking layout), output a bulleted list of text labels and dimensions found (e.g., "- Малое м/м: 2600x5300").
 6. **Output**: Return ONLY the clean Markdown. No conversational filler."""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, rate_limiter=None):
+        """
+        Args:
+            api_key: API ключ Datalab
+            rate_limiter: объект rate limiter с методами acquire()/release()
+        """
         if not api_key:
             raise ValueError("DATALAB_API_KEY не указан")
         self.api_key = api_key
         self.headers = {"X-Api-Key": api_key}
+        self.rate_limiter = rate_limiter
         try:
             import requests
             self.requests = requests
@@ -258,6 +266,11 @@ RULES:
         import time
         import os
         
+        # Получаем разрешение от rate limiter (если задан)
+        if self.rate_limiter:
+            if not self.rate_limiter.acquire():
+                return "[Ошибка: таймаут ожидания rate limiter]"
+        
         try:
             # Сохраняем изображение во временный файл
             with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
@@ -265,26 +278,39 @@ RULES:
                 tmp_path = tmp.name
             
             try:
-                # Отправляем на распознавание
-                with open(tmp_path, 'rb') as f:
-                    files = {'file': (os.path.basename(tmp_path), f, 'image/png')}
-                    data = {
-                        'mode': 'accurate',
-                        'force_ocr': 'true',
-                        'paginate': 'false',
-                        'use_llm': 'true',
-                        'output_format': 'markdown',
-                        'disable_image_extraction': 'true',
-                        'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT
-                    }
+                # Отправляем на распознавание с retry для 429
+                response = None
+                for retry in range(self.MAX_RETRIES):
+                    with open(tmp_path, 'rb') as f:
+                        files = {'file': (os.path.basename(tmp_path), f, 'image/png')}
+                        data = {
+                            'mode': 'accurate',
+                            'force_ocr': 'true',
+                            'paginate': 'false',
+                            'use_llm': 'true',
+                            'output_format': 'markdown',
+                            'disable_image_extraction': 'true',
+                            'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT
+                        }
+                        
+                        response = self.requests.post(
+                            self.API_URL,
+                            headers=self.headers,
+                            files=files,
+                            data=data,
+                            timeout=120
+                        )
                     
-                    response = self.requests.post(
-                        self.API_URL,
-                        headers=self.headers,
-                        files=files,
-                        data=data,
-                        timeout=120
-                    )
+                    if response.status_code == 429:
+                        # Rate limit - exponential backoff
+                        wait_time = min(60, (2 ** retry) * 10)
+                        logger.warning(f"Datalab API 429: ждём {wait_time}с (попытка {retry + 1}/{self.MAX_RETRIES})")
+                        time.sleep(wait_time)
+                        continue
+                    break
+                
+                if response is None or response.status_code == 429:
+                    return "[Ошибка Datalab API: превышен лимит запросов (429)]"
                 
                 if response.status_code != 200:
                     logger.error(f"Datalab API error: {response.status_code} - {response.text}")
@@ -310,6 +336,12 @@ RULES:
                     
                     logger.debug(f"Datalab: попытка поллинга {attempt + 1}/{self.MAX_POLL_ATTEMPTS}")
                     poll_response = self.requests.get(check_url, headers=self.headers, timeout=30)
+                    
+                    if poll_response.status_code == 429:
+                        # Rate limit на поллинге - ждём и продолжаем
+                        logger.warning("Datalab: 429 при поллинге, ждём 30с")
+                        time.sleep(30)
+                        continue
                     
                     if poll_response.status_code != 200:
                         logger.warning(f"Datalab: поллинг вернул статус {poll_response.status_code}: {poll_response.text}")
@@ -341,6 +373,10 @@ RULES:
         except Exception as e:
             logger.error(f"Ошибка Datalab OCR: {e}", exc_info=True)
             return f"[Ошибка Datalab OCR: {e}]"
+        finally:
+            # Освобождаем rate limiter
+            if self.rate_limiter:
+                self.rate_limiter.release()
 
 
 def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "", 
@@ -502,10 +538,19 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
         for page_num, block in all_blocks:
             if not block.ocr_text:
                 continue
+            
+            # Нормализуем текст: убираем лишние пустые строки
+            text = block.ocr_text.strip()
+            if not text:
+                continue
+            
+            # Убираем множественные переносы строк (оставляем максимум 2)
+            text = re.sub(r'\n{3,}', '\n\n', text)
+            
             if block.block_type == BlockType.IMAGE:
                 # Для изображений: описание + ссылка на кроп в R2
                 markdown_parts.append(f"*Изображение:*\n\n")
-                markdown_parts.append(f"{block.ocr_text}\n\n")
+                markdown_parts.append(f"{text}\n\n")
                 
                 # Добавляем ссылку на кроп в R2
                 if block.image_file:
@@ -514,10 +559,10 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
                     markdown_parts.append(f"![Изображение]({r2_url})\n\n")
             
             elif block.block_type == BlockType.TABLE:
-                markdown_parts.append(f"{block.ocr_text}\n\n")
+                markdown_parts.append(f"{text}\n\n")
                 
             elif block.block_type == BlockType.TEXT:
-                markdown_parts.append(f"{block.ocr_text}\n\n")
+                markdown_parts.append(f"{text}\n\n")
         
         # Объединяем и сохраняем
         full_markdown = "".join(markdown_parts)

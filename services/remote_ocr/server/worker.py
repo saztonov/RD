@@ -4,17 +4,27 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import threading
 import time
 import traceback
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 from .storage import Job, claim_next_job, update_job_status
 from .settings import settings
+from .rate_limiter import get_datalab_limiter
 
+# Настройка логирования для воркера (вывод в stdout)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 _worker_thread: Optional[threading.Thread] = None
 _stop_event = threading.Event()
@@ -55,23 +65,23 @@ def _build_strip_prompt(blocks: list) -> dict:
     }
 
 
-def _parse_batch_response(blocks: list, response_text: str) -> dict:
+def _parse_batch_response_by_index(num_blocks: int, response_text: str) -> Dict[int, str]:
     """
     Парсинг ответа с маркерами [1], [2], ...
-    Returns: Dict[block_id -> text]
+    Returns: Dict[index -> text] (индекс 0-based)
     """
     import re
     
-    results = {}
+    results: Dict[int, str] = {}
     
     # Защита от None
     if response_text is None:
-        for block in blocks:
-            results[block.id] = "[Ошибка: пустой ответ OCR]"
+        for i in range(num_blocks):
+            results[i] = "[Ошибка: пустой ответ OCR]"
         return results
     
-    if len(blocks) == 1:
-        results[blocks[0].id] = response_text.strip()
+    if num_blocks == 1:
+        results[0] = response_text.strip()
         return results
     
     # Разбиваем по маркерам [N]
@@ -82,19 +92,35 @@ def _parse_batch_response(blocks: list, response_text: str) -> dict:
         try:
             idx = int(parts[i]) - 1  # 1-based -> 0-based
             text = parts[i + 1].strip()
-            if 0 <= idx < len(blocks):
+            if 0 <= idx < num_blocks:
                 parsed[idx] = text
         except (ValueError, IndexError):
             continue
     
-    for i, block in enumerate(blocks):
-        if i in parsed:
-            results[block.id] = parsed[i]
-        else:
-            if i == 0 and not parsed:
-                results[block.id] = response_text.strip()
+    # Если маркеров не найдено - пробуем разделить по разделителям
+    if not parsed:
+        # Пробуем разделить по "---" или пустым строкам (2+)
+        alt_parts = re.split(r'\n{3,}|(?:\n-{3,}\n)', response_text.strip())
+        if len(alt_parts) >= num_blocks:
+            for i in range(num_blocks):
+                results[i] = alt_parts[i].strip()
+            return results
+        # Fallback: весь текст идёт первому элементу, остальные пусты
+        for i in range(num_blocks):
+            if i == 0:
+                results[i] = response_text.strip()
             else:
-                results[block.id] = "[Ошибка парсинга]"
+                results[i] = ""  # Пустой результат вместо ошибки
+        logger.warning(f"Batch response без маркеров [N], весь текст присвоен первому элементу")
+        return results
+    
+    for i in range(num_blocks):
+        if i in parsed:
+            results[i] = parsed[i]
+        else:
+            # Для непарсенных элементов - пустой результат вместо ошибки
+            results[i] = ""
+            logger.warning(f"Элемент {i} не найден в batch response")
     
     return results
 
@@ -105,12 +131,14 @@ def start_worker() -> None:
     
     if _worker_thread is not None and _worker_thread.is_alive():
         logger.warning("Worker уже запущен")
+        print("[WORKER] Worker уже запущен", flush=True)
         return
     
     _stop_event.clear()
     _worker_thread = threading.Thread(target=_worker_loop, daemon=True, name="ocr-worker")
     _worker_thread.start()
     logger.info("OCR Worker запущен")
+    print("[WORKER] OCR Worker запущен", flush=True)
 
 
 def stop_worker() -> None:
@@ -125,16 +153,19 @@ def stop_worker() -> None:
 
 def _worker_loop() -> None:
     """Главный цикл воркера"""
+    print("[WORKER] Worker loop started", flush=True)
     while not _stop_event.is_set():
         try:
             job = claim_next_job()
             if job:
                 logger.info(f"Взята задача {job.id}")
+                print(f"[WORKER] Взята задача {job.id}", flush=True)
                 _process_job(job)
             else:
                 time.sleep(2.0)
         except Exception as e:
             logger.error(f"Ошибка в worker loop: {e}")
+            print(f"[WORKER] Ошибка: {e}", flush=True)
             time.sleep(5.0)
 
 
@@ -176,12 +207,13 @@ def _process_job(job: Job) -> None:
         logger.info(f"Распределение блоков по страницам: {pages_summary}")
         
         # Вырезаем кропы с объединением TEXT/TABLE в полосы
+        # IMAGE блоки сохраняем как PDF (векторный формат)
         update_job_status(job.id, "processing", progress=0.1)
-        strip_paths, strip_images, strips, image_blocks = crop_and_merge_blocks_from_pdf(
-            str(pdf_path), blocks, str(crops_dir)
+        strip_paths, strip_images, strips, image_blocks, image_pdf_paths = crop_and_merge_blocks_from_pdf(
+            str(pdf_path), blocks, str(crops_dir), save_image_crops_as_pdf=True
         )
         
-        logger.info(f"Создано {len(strips)} полос TEXT/TABLE, {len(image_blocks)} IMAGE блоков")
+        logger.info(f"Создано {len(strips)} полос TEXT/TABLE, {len(image_blocks)} IMAGE блоков, {len(image_pdf_paths)} PDF-кропов")
         
         # Загружаем настройки задачи (модели по типам блоков)
         job_settings = {}
@@ -199,8 +231,15 @@ def _process_job(job: Job) -> None:
         # Создаём OCR движки (TEXT/TABLE отдельно от IMAGE)
         engine = job.engine or "openrouter"
         
+        # Получаем глобальный rate limiter для Datalab
+        datalab_limiter = get_datalab_limiter() if engine == "datalab" else None
+        
         if engine == "datalab" and settings.datalab_api_key:
-            strip_backend = create_ocr_engine("datalab", api_key=settings.datalab_api_key)
+            strip_backend = create_ocr_engine(
+                "datalab", 
+                api_key=settings.datalab_api_key,
+                rate_limiter=datalab_limiter
+            )
         elif settings.openrouter_api_key:
             strip_model = text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
             strip_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key, model_name=strip_model)
@@ -216,23 +255,24 @@ def _process_job(job: Job) -> None:
         # Считаем общее количество запросов
         total_requests = len(strips) + len(image_blocks)
         processed = 0
+        progress_lock = threading.Lock()
         
         def _update_progress():
             nonlocal processed
-            processed += 1
-            if total_requests > 0:
-                progress = 0.1 + 0.8 * (processed / total_requests)
-                update_job_status(job.id, "processing", progress=progress)
+            with progress_lock:
+                processed += 1
+                if total_requests > 0:
+                    progress = 0.1 + 0.8 * (processed / total_requests)
+                    update_job_status(job.id, "processing", progress=progress)
         
-        # Обрабатываем полосы TEXT/TABLE
-        for strip_idx, strip in enumerate(strips):
+        def _process_strip(strip_idx: int, strip):
+            """Обработать одну полосу TEXT/TABLE блоков"""
             try:
                 logger.info(f"Обработка полосы {strip_idx + 1}/{len(strips)}: {len(strip.blocks)} блоков")
                 merged_image = strip_images.get(strip.strip_id)
                 if not merged_image:
                     logger.warning(f"Нет изображения для полосы {strip.strip_id}")
-                    _update_progress()
-                    continue
+                    return {}, []
                 
                 # Формируем batch-промпт для полосы
                 prompt_data = _build_strip_prompt(strip.blocks)
@@ -243,24 +283,21 @@ def _process_job(job: Job) -> None:
                     logger.error(f"Ошибка OCR для полосы {strip_idx + 1}: {ocr_err}")
                     response_text = None
                 
-                # Парсим результаты по маркерам [1], [2], ...
-                results = _parse_batch_response(strip.blocks, response_text)
+                # Парсим результаты по индексам
+                index_results = _parse_batch_response_by_index(len(strip.blocks), response_text)
                 
-                for block in strip.blocks:
-                    if block.id in results:
-                        block.ocr_text = results[block.id]
-                        logger.debug(f"Блок {block.id}: OCR {len(block.ocr_text) if block.ocr_text else 0} символов")
-                
-                _update_progress()
+                # Возвращаем результаты с метаинфо о частях
+                return index_results, strip.block_parts
                 
             except Exception as e:
                 logger.error(f"Ошибка обработки полосы {strip_idx + 1}: {e}", exc_info=True)
-                _update_progress()
+                return {}, []
         
-        # Обрабатываем IMAGE блоки отдельно с их промптами
-        for img_idx, (block, crop) in enumerate(image_blocks):
+        def _process_image_block(img_idx: int, block, crop, part_idx: int, total_parts: int):
+            """Обработать один IMAGE блок (или часть)"""
             try:
-                logger.info(f"Обработка IMAGE блока {img_idx + 1}/{len(image_blocks)}: {block.id}")
+                part_info = f" (часть {part_idx + 1}/{total_parts})" if total_parts > 1 else ""
+                logger.info(f"Обработка IMAGE блока {img_idx + 1}/{len(image_blocks)}: {block.id}{part_info}")
                 
                 # Используем промпт из блока (если задан клиентом)
                 prompt_data = block.prompt
@@ -268,15 +305,137 @@ def _process_job(job: Job) -> None:
                     prompt_data = {"system": "", "user": "Опиши что изображено на картинке."}
                 
                 text = image_backend.recognize(crop, prompt=prompt_data)
-                block.ocr_text = text
-                logger.debug(f"IMAGE блок {block.id}: {len(text)} символов")
-                
-                _update_progress()
+                return block.id, text, part_idx, total_parts
                 
             except Exception as e:
                 logger.error(f"Ошибка OCR для IMAGE блока {block.id}: {e}")
-                block.ocr_text = f"[Ошибка: {e}]"
-                _update_progress()
+                return block.id, f"[Ошибка: {e}]", part_idx, total_parts
+        
+        # Параллельная обработка полос TEXT/TABLE
+        max_workers = settings.datalab_max_concurrent if engine == "datalab" else 5
+        logger.info(f"Запуск параллельной обработки: {len(strips)} полос, {len(image_blocks)} IMAGE, max_workers={max_workers}")
+        
+        # Собираем части TEXT/TABLE блоков для объединения результатов
+        text_block_parts: Dict[str, Dict[int, str]] = {}  # block_id -> {part_idx: text}
+        text_block_total_parts: Dict[str, int] = {}  # block_id -> total_parts
+        text_block_objects: Dict[str, object] = {}  # block_id -> block object
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Отправляем strips на обработку
+            strip_futures = {
+                executor.submit(_process_strip, idx, strip): strip
+                for idx, strip in enumerate(strips)
+            }
+            
+            # Собираем результаты strips
+            for future in as_completed(strip_futures):
+                strip = strip_futures[future]
+                try:
+                    index_results, block_parts_info = future.result()
+                    
+                    # Проверяем наличие метаинфо о частях
+                    if block_parts_info and len(block_parts_info) == len(strip.blocks):
+                        # Обрабатываем результаты с учётом частей блоков
+                        for i, block_part in enumerate(block_parts_info):
+                            text = index_results.get(i, "")
+                            block = block_part.block
+                            block_id = block.id
+                            part_idx = block_part.part_idx
+                            total_parts = block_part.total_parts
+                            
+                            # Инициализируем структуры для блока
+                            if block_id not in text_block_parts:
+                                text_block_parts[block_id] = {}
+                                text_block_total_parts[block_id] = total_parts
+                                text_block_objects[block_id] = block
+                            
+                            # Сохраняем результат части
+                            text_block_parts[block_id][part_idx] = text
+                            logger.debug(f"TEXT/TABLE блок {block_id} часть {part_idx + 1}/{total_parts}: {len(text)} символов")
+                    else:
+                        # Fallback: обрабатываем без метаинфо о частях (старый способ)
+                        seen_blocks = set()
+                        for i, block in enumerate(strip.blocks):
+                            if block.id not in seen_blocks:
+                                text = index_results.get(i, "")
+                                block.ocr_text = text
+                                seen_blocks.add(block.id)
+                                logger.debug(f"Блок {block.id}: OCR {len(text)} символов")
+                except Exception as e:
+                    logger.error(f"Ошибка получения результата полосы: {e}")
+                finally:
+                    _update_progress()
+        
+        # Объединяем результаты частей для TEXT/TABLE блоков
+        for block_id, parts_dict in text_block_parts.items():
+            block = text_block_objects[block_id]
+            total_parts = text_block_total_parts[block_id]
+            
+            if total_parts == 1:
+                block.ocr_text = parts_dict.get(0, "")
+            else:
+                # Объединяем части в правильном порядке
+                combined_parts = []
+                for i in range(total_parts):
+                    if i in parts_dict:
+                        combined_parts.append(parts_dict[i])
+                    else:
+                        logger.warning(f"Отсутствует часть {i + 1}/{total_parts} для TEXT/TABLE блока {block_id}")
+                
+                block.ocr_text = "\n\n".join(combined_parts)
+                logger.info(f"Объединено {len(combined_parts)}/{total_parts} частей для TEXT/TABLE блока {block_id}")
+        
+        # Параллельная обработка IMAGE блоков
+        # Собираем части блоков для объединения результатов
+        block_parts_results: Dict[str, Dict[int, str]] = {}  # block_id -> {part_idx: text}
+        block_total_parts: Dict[str, int] = {}  # block_id -> total_parts
+        block_objects: Dict[str, object] = {}  # block_id -> block object
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            image_futures = {
+                executor.submit(_process_image_block, idx, block, crop, part_idx, total_parts): (block, part_idx, total_parts)
+                for idx, (block, crop, part_idx, total_parts) in enumerate(image_blocks)
+            }
+            
+            # Собираем результаты IMAGE блоков
+            for future in as_completed(image_futures):
+                block, part_idx, total_parts = image_futures[future]
+                try:
+                    block_id, text, res_part_idx, res_total_parts = future.result()
+                    
+                    # Инициализируем структуры для блока
+                    if block_id not in block_parts_results:
+                        block_parts_results[block_id] = {}
+                        block_total_parts[block_id] = res_total_parts
+                        block_objects[block_id] = block
+                    
+                    # Сохраняем результат части
+                    block_parts_results[block_id][res_part_idx] = text
+                    logger.debug(f"IMAGE блок {block_id} часть {res_part_idx + 1}/{res_total_parts}: {len(text) if text else 0} символов")
+                except Exception as e:
+                    logger.error(f"Ошибка получения результата IMAGE: {e}")
+                    block.ocr_text = f"[Ошибка: {e}]"
+                finally:
+                    _update_progress()
+        
+        # Объединяем результаты частей для каждого блока
+        for block_id, parts_dict in block_parts_results.items():
+            block = block_objects[block_id]
+            total_parts = block_total_parts[block_id]
+            
+            if total_parts == 1:
+                block.ocr_text = parts_dict.get(0, "")
+            else:
+                # Объединяем части в правильном порядке
+                combined_parts = []
+                for i in range(total_parts):
+                    if i in parts_dict:
+                        combined_parts.append(parts_dict[i])
+                    else:
+                        logger.warning(f"Отсутствует часть {i + 1}/{total_parts} для блока {block_id}")
+                
+                block.ocr_text = "\n\n".join(combined_parts)
+                logger.info(f"Объединено {len(combined_parts)}/{total_parts} частей для IMAGE блока {block_id}")
         
         logger.info(f"OCR завершён: {processed} запросов обработано")
         
@@ -321,10 +480,11 @@ def _process_job(job: Job) -> None:
             if pdf_path.exists():
                 zf.write(pdf_path, "document.pdf")
             
-            # Кропы изображений
+            # Только PDF-кропы IMAGE блоков (векторный формат)
+            # TEXT/TABLE кропы не сохраняем
             if crops_dir.exists():
                 for crop_file in crops_dir.iterdir():
-                    if crop_file.is_file():
+                    if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
                         zf.write(crop_file, f"crops/{crop_file.name}")
         
         # Загружаем результаты в R2

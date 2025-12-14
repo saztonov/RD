@@ -36,7 +36,6 @@ class RemoteOCRPanel(QDockWidget):
         self._last_engine = None
         self._job_output_dirs = {}  # Маппинг job_id -> output_dir
         self._config_file = Path.home() / ".rd" / "remote_ocr_jobs.json"
-        self._job_statuses = {}  # Отслеживание статусов для автоскачивания
         
         self._load_job_mappings()
         self._setup_ui()
@@ -150,23 +149,8 @@ class RemoteOCRPanel(QDockWidget):
             self.status_label.setText("🔴 Ошибка клиента")
             return
         
-        # Показываем ВСЕ задачи (не фильтруем по document_id)
         try:
             jobs = client.list_jobs(document_id=None)
-            
-            # Проверяем новые завершённые задачи для автоскачивания
-            for job in jobs:
-                old_status = self._job_statuses.get(job.id)
-                new_status = job.status
-                
-                # Если статус изменился на "done" - автоматически скачиваем
-                if old_status != "done" and new_status == "done":
-                    logger.info(f"Задача {job.id} завершена, автоскачивание...")
-                    self._auto_download_result(job.id)
-                
-                # Обновляем статус
-                self._job_statuses[job.id] = new_status
-            
             self._update_table(jobs)
             self.status_label.setText("🟢 Подключено")
         except Exception as e:
@@ -178,6 +162,13 @@ class RemoteOCRPanel(QDockWidget):
         # Отключаем сортировку на время обновления
         self.jobs_table.setSortingEnabled(False)
         self.jobs_table.setRowCount(0)
+        
+        # Автоскачивание для завершённых задач
+        for job in jobs:
+            if job.status == "done" and job.id in self._job_output_dirs:
+                extract_dir = Path(self._job_output_dirs[job.id])
+                if not (extract_dir / "annotation.json").exists():
+                    self._auto_download_result(job.id)
         
         for idx, job in enumerate(jobs, start=1):
             row = self.jobs_table.rowCount()
@@ -584,6 +575,11 @@ class RemoteOCRPanel(QDockWidget):
                 # Сохраняем маппинг
                 self._job_output_dirs[job_id] = str(extract_dir)
                 self._save_job_mappings()
+            
+            # Автоскачивание если задача готова но файлов нет
+            extract_dir = Path(self._job_output_dirs[job_id])
+            if job_details.get("status") == "done" and not (extract_dir / "annotation.json").exists():
+                self._auto_download_result(job_id)
             
             # Добавляем локальный путь из маппинга
             job_details["client_output_dir"] = self._job_output_dirs[job_id]

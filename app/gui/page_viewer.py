@@ -933,7 +933,11 @@ class PageViewer(QGraphicsView):
         
         # Удаляем старую временную линию
         if self.polygon_temp_line:
-            self.scene.removeItem(self.polygon_temp_line)
+            try:
+                self.scene.removeItem(self.polygon_temp_line)
+            except RuntimeError:
+                # C++ объект уже удалён
+                pass
             self.polygon_temp_line = None
         
         # Создаём новую временную линию
