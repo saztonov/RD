@@ -144,6 +144,7 @@ def _process_job(job: Job) -> None:
         job_dir = Path(job.job_dir)
         pdf_path = job_dir / "document.pdf"
         blocks_path = job_dir / "blocks.json"
+        job_settings_path = job_dir / "job_settings.json"
         crops_dir = job_dir / "crops"
         crops_dir.mkdir(exist_ok=True)
         
@@ -176,18 +177,35 @@ def _process_job(job: Job) -> None:
         
         logger.info(f"Создано {len(strips)} полос TEXT/TABLE, {len(image_blocks)} IMAGE блоков")
         
-        # Создаём OCR движок
+        # Загружаем настройки задачи (модели по типам блоков)
+        job_settings = {}
+        if job_settings_path.exists():
+            try:
+                with open(job_settings_path, "r", encoding="utf-8") as f:
+                    job_settings = json.load(f) or {}
+            except Exception:
+                job_settings = {}
+
+        text_model = (job_settings.get("text_model") or "").strip()
+        table_model = (job_settings.get("table_model") or "").strip()
+        image_model = (job_settings.get("image_model") or "").strip()
+
+        # Создаём OCR движки (TEXT/TABLE отдельно от IMAGE)
         engine = job.engine or "openrouter"
         
-        if engine == "datalab" and os.getenv("DATALAB_API_KEY"):
-            ocr_backend = create_ocr_engine("datalab", api_key=os.getenv("DATALAB_API_KEY"))
-        elif engine == "openrouter" and settings.openrouter_api_key:
-            ocr_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key)
+        if engine == "datalab" and settings.datalab_api_key:
+            strip_backend = create_ocr_engine("datalab", api_key=settings.datalab_api_key)
+        elif settings.openrouter_api_key:
+            strip_model = text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
+            strip_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key, model_name=strip_model)
         else:
-            if settings.openrouter_api_key:
-                ocr_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key)
-            else:
-                ocr_backend = create_ocr_engine("dummy")
+            strip_backend = create_ocr_engine("dummy")
+
+        if settings.openrouter_api_key:
+            img_model = image_model or text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
+            image_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key, model_name=img_model)
+        else:
+            image_backend = create_ocr_engine("dummy")
         
         # Считаем общее количество запросов
         total_requests = len(strips) + len(image_blocks)
@@ -214,7 +232,7 @@ def _process_job(job: Job) -> None:
                 prompt_data = _build_strip_prompt(strip.blocks)
                 
                 try:
-                    response_text = ocr_backend.recognize(merged_image, prompt=prompt_data)
+                    response_text = strip_backend.recognize(merged_image, prompt=prompt_data)
                 except Exception as ocr_err:
                     logger.error(f"Ошибка OCR для полосы {strip_idx + 1}: {ocr_err}")
                     response_text = None
@@ -243,7 +261,7 @@ def _process_job(job: Job) -> None:
                 if not prompt_data:
                     prompt_data = {"system": "", "user": "Опиши что изображено на картинке."}
                 
-                text = ocr_backend.recognize(crop, prompt=prompt_data)
+                text = image_backend.recognize(crop, prompt=prompt_data)
                 block.ocr_text = text
                 logger.debug(f"IMAGE блок {block.id}: {len(text)} символов")
                 

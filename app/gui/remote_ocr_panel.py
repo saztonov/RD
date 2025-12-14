@@ -291,7 +291,15 @@ class RemoteOCRPanel(QDockWidget):
             engine = "openrouter"
         
         try:
-            job_info = client.create_job(pdf_path, selected_blocks, task_name=self.main_window.project_manager.get_active_project().name if self.main_window.project_manager.get_active_project() else "", engine=engine)
+            job_info = client.create_job(
+                pdf_path,
+                selected_blocks,
+                task_name=self.main_window.project_manager.get_active_project().name if self.main_window.project_manager.get_active_project() else "",
+                engine=engine,
+                text_model=getattr(dialog, "text_model", None),
+                table_model=getattr(dialog, "table_model", None),
+                image_model=getattr(dialog, "image_model", None),
+            )
             
             # Сохраняем маппинг job_id -> output_dir
             self._job_output_dirs[job_info.id] = dialog.output_dir
@@ -363,6 +371,8 @@ class RemoteOCRPanel(QDockWidget):
         for block in blocks:
             # Для IMAGE блоков загружаем промпт типа image
             if block.block_type == BlockType.IMAGE:
+                if getattr(block, "prompt", None):
+                    continue
                 prompt = None
                 prompt = pm.load_prompt("image")
                 

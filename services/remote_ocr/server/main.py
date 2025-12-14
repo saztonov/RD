@@ -53,6 +53,9 @@ async def create_job_endpoint(
     document_name: str = Form(...),
     task_name: str = Form(""),
     engine: str = Form("openrouter"),
+    text_model: str = Form(""),
+    table_model: str = Form(""),
+    image_model: str = Form(""),
     blocks_json: str = Form(...),
     pdf: UploadFile = File(...),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -92,6 +95,20 @@ async def create_job_endpoint(
     blocks_path = os.path.join(job_dir, "blocks.json")
     with open(blocks_path, "w", encoding="utf-8") as f:
         json.dump(blocks_data, f, ensure_ascii=False, indent=2)
+
+    # Сохраняем настройки задачи (модели по типам блоков)
+    settings_path = os.path.join(job_dir, "job_settings.json")
+    with open(settings_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "text_model": text_model,
+                "table_model": table_model,
+                "image_model": image_model,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
     
     # Создаём запись в БД
     job = create_job(

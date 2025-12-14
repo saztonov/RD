@@ -104,7 +104,10 @@ class RemoteOCRClient:
         pdf_path: str,
         selected_blocks: List[Block],
         task_name: str = "",
-        engine: str = "openrouter"
+        engine: str = "openrouter",
+        text_model: Optional[str] = None,
+        table_model: Optional[str] = None,
+        image_model: Optional[str] = None,
     ) -> JobInfo:
         """
         Создать задачу OCR
@@ -127,17 +130,25 @@ class RemoteOCRClient:
         
         with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
             with open(pdf_path, "rb") as pdf_file:
+                data = {
+                    "client_id": self.client_id,
+                    "document_id": document_id,
+                    "document_name": document_name,
+                    "task_name": task_name,
+                    "engine": engine,
+                    "blocks_json": blocks_json,
+                }
+                if text_model:
+                    data["text_model"] = text_model
+                if table_model:
+                    data["table_model"] = table_model
+                if image_model:
+                    data["image_model"] = image_model
+
                 resp = client.post(
                     "/jobs",
                     headers=self._headers(),
-                    data={
-                        "client_id": self.client_id,
-                        "document_id": document_id,
-                        "document_name": document_name,
-                        "task_name": task_name,
-                        "engine": engine,
-                        "blocks_json": blocks_json,
-                    },
+                    data=data,
                     files={"pdf": (document_name, pdf_file, "application/pdf")}
                 )
             resp.raise_for_status()
