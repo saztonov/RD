@@ -8,8 +8,9 @@ from typing import List, Optional, Tuple, Dict
 from dataclasses import dataclass, field
 from PIL import Image
 
-from rd_core.models import Block, BlockType
+from rd_core.models import Block, BlockType, ShapeType
 from rd_core.pdf_utils import PDFDocument
+from PIL import ImageDraw
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,31 @@ def crop_block_from_image(
     x2 = min(page_image.width, x2 + padding)
     y2 = min(page_image.height, y2 + padding)
     
-    return page_image.crop((x1, y1, x2, y2))
+    # Для прямоугольников - простой crop
+    if block.shape_type == ShapeType.RECTANGLE or not block.polygon_points:
+        return page_image.crop((x1, y1, x2, y2))
+    
+    # Для полигонов - используем маску
+    # Создаём маску размером с bounding box
+    mask = Image.new('L', (x2 - x1, y2 - y1), 0)
+    draw = ImageDraw.Draw(mask)
+    
+    # Смещаем координаты полигона относительно bounding box
+    adjusted_points = [(x - x1, y - y1) for x, y in block.polygon_points]
+    
+    # Рисуем полигон на маске
+    draw.polygon(adjusted_points, fill=255)
+    
+    # Вырезаем прямоугольную область
+    cropped = page_image.crop((x1, y1, x2, y2))
+    
+    # Создаём белый фон
+    result = Image.new('RGB', cropped.size, (255, 255, 255))
+    
+    # Накладываем вырезанную область через маску
+    result.paste(cropped, mask=mask)
+    
+    return result
 
 
 def crop_blocks_from_pdf(

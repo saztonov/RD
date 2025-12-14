@@ -5,7 +5,7 @@
 from PySide6.QtWidgets import QTreeWidgetItem, QMessageBox
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QKeyEvent
-from rd_core.models import Block, BlockType, BlockSource, Page
+from rd_core.models import Block, BlockType, BlockSource, ShapeType, Page
 
 
 class BlockHandlersMixin:
@@ -37,7 +37,7 @@ class BlockHandlersMixin:
         return self.annotation_document.pages[page_num]
     
     def _on_block_drawn(self, x1: int, y1: int, x2: int, y2: int):
-        """Обработка завершения рисования блока"""
+        """Обработка завершения рисования блока (прямоугольник)"""
         if not self.annotation_document:
             return
         
@@ -56,7 +56,42 @@ class BlockHandlersMixin:
             page_width=current_page_data.width,
             page_height=current_page_data.height,
             block_type=block_type,
-            source=BlockSource.USER
+            source=BlockSource.USER,
+            shape_type=ShapeType.RECTANGLE
+        )
+        
+        current_page_data.blocks.append(block)
+        self.page_viewer.set_blocks(current_page_data.blocks)
+        self.blocks_tree_manager.update_blocks_tree()
+    
+    def _on_polygon_drawn(self, points: list):
+        """Обработка завершения рисования полигона"""
+        if not self.annotation_document or not points or len(points) < 3:
+            return
+        
+        self._save_undo_state()
+        
+        checked_action = self.block_type_group.checkedAction()
+        block_type = checked_action.data() if checked_action else BlockType.TEXT
+        
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
+        
+        # Вычисляем bounding box для coords_px
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
+        
+        block = Block.create(
+            page_index=self.current_page,
+            coords_px=(x1, y1, x2, y2),
+            page_width=current_page_data.width,
+            page_height=current_page_data.height,
+            block_type=block_type,
+            source=BlockSource.USER,
+            shape_type=ShapeType.POLYGON,
+            polygon_points=points
         )
         
         current_page_data.blocks.append(block)

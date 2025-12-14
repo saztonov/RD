@@ -77,6 +77,7 @@ class PanelsSetupMixin:
         
         self.page_viewer = PageViewer()
         self.page_viewer.blockDrawn.connect(self._on_block_drawn)
+        self.page_viewer.polygonDrawn.connect(self._on_polygon_drawn)
         self.page_viewer.block_selected.connect(self._on_block_selected)
         self.page_viewer.blocks_selected.connect(self._on_blocks_selected)
         self.page_viewer.blockEditing.connect(self._on_block_editing)

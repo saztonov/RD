@@ -23,6 +23,12 @@ class BlockSource(Enum):
     AUTO = "auto"    # Создан автоматической сегментацией
 
 
+class ShapeType(Enum):
+    """Тип формы блока"""
+    RECTANGLE = "rectangle"  # Прямоугольник
+    POLYGON = "polygon"      # Многоугольник
+
+
 @dataclass
 class Block:
     """
@@ -35,6 +41,8 @@ class Block:
         coords_norm: нормализованные координаты (0..1) относительно ширины/высоты
         block_type: тип блока (TEXT/TABLE/IMAGE)
         source: источник создания (USER/AUTO)
+        shape_type: тип формы (RECTANGLE/POLYGON)
+        polygon_points: координаты вершин полигона [(x1,y1), (x2,y2), ...] для POLYGON
         image_file: путь к сохранённому кропу блока
         ocr_text: результат OCR распознавания
         prompt: промпт для OCR (dict с ключами system/user)
@@ -45,6 +53,8 @@ class Block:
     coords_norm: Tuple[float, float, float, float]  # (x1, y1, x2, y2) в диапазоне 0..1
     block_type: BlockType
     source: BlockSource
+    shape_type: ShapeType = ShapeType.RECTANGLE
+    polygon_points: Optional[List[Tuple[int, int]]] = None  # Для полигонов
     image_file: Optional[str] = None
     ocr_text: Optional[str] = None
     prompt: Optional[dict] = None  # {"system": "...", "user": "..."}
@@ -108,6 +118,8 @@ class Block:
                page_height: int,
                block_type: BlockType,
                source: BlockSource,
+               shape_type: ShapeType = ShapeType.RECTANGLE,
+               polygon_points: Optional[List[Tuple[int, int]]] = None,
                image_file: Optional[str] = None,
                ocr_text: Optional[str] = None,
                block_id: Optional[str] = None,
@@ -122,6 +134,8 @@ class Block:
             page_height: высота страницы в пикселях
             block_type: тип блока
             source: источник создания
+            shape_type: тип формы (прямоугольник/полигон)
+            polygon_points: вершины полигона
             image_file: путь к кропу
             ocr_text: результат OCR
             block_id: ID блока (если None, генерируется автоматически)
@@ -139,6 +153,8 @@ class Block:
             coords_norm=coords_norm,
             block_type=block_type,
             source=source,
+            shape_type=shape_type,
+            polygon_points=polygon_points,
             image_file=image_file,
             ocr_text=ocr_text,
             prompt=prompt
@@ -176,9 +192,12 @@ class Block:
             "coords_norm": list(self.coords_norm),
             "block_type": self.block_type.value,
             "source": self.source.value,
+            "shape_type": self.shape_type.value,
             "image_file": self.image_file,
             "ocr_text": self.ocr_text
         }
+        if self.polygon_points:
+            result["polygon_points"] = [list(p) for p in self.polygon_points]
         if self.prompt:
             result["prompt"] = self.prompt
         return result
@@ -192,6 +211,17 @@ class Block:
         except ValueError:
             block_type = BlockType.TEXT  # Fallback для неизвестных типов
         
+        # Безопасное получение shape_type с fallback на RECTANGLE
+        try:
+            shape_type = ShapeType(data.get("shape_type", "rectangle"))
+        except ValueError:
+            shape_type = ShapeType.RECTANGLE
+        
+        # Получение polygon_points если есть
+        polygon_points = None
+        if "polygon_points" in data and data["polygon_points"]:
+            polygon_points = [tuple(p) for p in data["polygon_points"]]
+        
         return cls(
             id=data["id"],
             page_index=data["page_index"],
@@ -199,6 +229,8 @@ class Block:
             coords_norm=tuple(data["coords_norm"]),
             block_type=block_type,
             source=BlockSource(data["source"]),
+            shape_type=shape_type,
+            polygon_points=polygon_points,
             image_file=data.get("image_file"),
             ocr_text=data.get("ocr_text"),
             prompt=data.get("prompt")

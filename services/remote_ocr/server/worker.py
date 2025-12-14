@@ -169,6 +169,12 @@ def _process_job(job: Job) -> None:
         
         logger.info(f"Задача {job.id}: {total_blocks} блоков")
         
+        # Логируем распределение блоков по страницам
+        pages_summary = {}
+        for b in blocks:
+            pages_summary[b.page_index] = pages_summary.get(b.page_index, 0) + 1
+        logger.info(f"Распределение блоков по страницам: {pages_summary}")
+        
         # Вырезаем кропы с объединением TEXT/TABLE в полосы
         update_job_status(job.id, "processing", progress=0.1)
         strip_paths, strip_images, strips, image_blocks = crop_and_merge_blocks_from_pdf(

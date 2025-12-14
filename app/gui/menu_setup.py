@@ -5,7 +5,7 @@
 from PySide6.QtWidgets import QToolBar, QLabel, QSpinBox
 from PySide6.QtGui import QAction, QKeySequence, QActionGroup
 from PySide6.QtCore import Qt
-from rd_core.models import BlockType
+from rd_core.models import BlockType, ShapeType
 
 
 class MenuSetupMixin:
@@ -186,6 +186,38 @@ class MenuSetupMixin:
         self.block_type_group.addAction(self.image_action)
         toolbar.addAction(self.image_action)
         
+        toolbar.addSeparator()
+        
+        # Выбор формы блока
+        toolbar.addWidget(QLabel("  Форма:"))
+        
+        self.shape_type_group = QActionGroup(self)
+        self.shape_type_group.setExclusive(True)
+        
+        self.rectangle_action = QAction("⬛ Прямоугольник", self)
+        self.rectangle_action.setCheckable(True)
+        self.rectangle_action.setChecked(True)
+        self.rectangle_action.setData(ShapeType.RECTANGLE)
+        self.shape_type_group.addAction(self.rectangle_action)
+        toolbar.addAction(self.rectangle_action)
+        
+        self.polygon_action = QAction("🔷 Обводка", self)
+        self.polygon_action.setCheckable(True)
+        self.polygon_action.setData(ShapeType.POLYGON)
+        self.polygon_action.setToolTip("Режим полигонов: клик для добавления точки, двойной клик для завершения")
+        self.shape_type_group.addAction(self.polygon_action)
+        toolbar.addAction(self.polygon_action)
+        
+        # Коннекты для отслеживания изменений
+        self.shape_type_group.triggered.connect(self._on_shape_type_changed)
+        
         # Текущий выбранный тип
         self.selected_block_type = BlockType.TEXT
+        self.selected_shape_type = ShapeType.RECTANGLE
+    
+    def _on_shape_type_changed(self, action):
+        """Обработка изменения типа формы"""
+        shape_type = action.data()
+        if shape_type:
+            self.selected_shape_type = shape_type
 

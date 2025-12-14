@@ -410,6 +410,12 @@ class RemoteOCRPanel(QDockWidget):
             QMessageBox.warning(self, "Ошибка", "Нет блоков для распознавания")
             return
         
+        # Логируем распределение блоков по страницам
+        pages_summary = {}
+        for b in selected_blocks:
+            pages_summary[b.page_index] = pages_summary.get(b.page_index, 0) + 1
+        logger.info(f"Отправка на OCR: {len(selected_blocks)} блоков, страницы: {pages_summary}")
+        
         client = self._get_client()
         if client is None:
             QMessageBox.warning(self, "Ошибка", "Клиент не инициализирован")
@@ -445,46 +451,14 @@ class RemoteOCRPanel(QDockWidget):
             QMessageBox.critical(self, "Ошибка", f"Не удалось создать задачу:\n{e}")
     
     def _get_selected_blocks(self):
-        """Получить выделенные блоки из PageViewer или дерева блоков (со всех страниц)"""
-        from rd_core.models import BlockType
-        
+        """Получить ВСЕ блоки со ВСЕХ страниц для OCR"""
         blocks = []
         
-        # Сначала проверяем выделение в PageViewer (только текущая страница)
-        if hasattr(self.main_window, 'page_viewer'):
-            selected = self.main_window.page_viewer.get_selected_blocks()
-            if selected:
-                blocks = list(selected)
-        
-        # Если нет выделения в viewer, берём из деревьев блоков (все страницы)
-        if not blocks and self.main_window.annotation_document:
-            selected_items = []
-            if hasattr(self.main_window, 'blocks_tree'):
-                selected_items.extend(self.main_window.blocks_tree.selectedItems())
-            
-            # Убираем дубликаты по (page, idx)
-            seen = set()
-            for item in selected_items:
-                data = item.data(0, Qt.UserRole)
-                if data and isinstance(data, dict) and data.get("type") == "block":
-                    page_num = data.get("page")
-                    block_idx = data.get("idx")
-                    
-                    if page_num is not None and block_idx is not None:
-                        key = (page_num, block_idx)
-                        if key not in seen:
-                            seen.add(key)
-                            # Получаем блок из annotation_document
-                            if page_num < len(self.main_window.annotation_document.pages):
-                                page = self.main_window.annotation_document.pages[page_num]
-                                if block_idx < len(page.blocks):
-                                    blocks.append(page.blocks[block_idx])
-        
-        # Если ничего не выбрано, автоматически берём все блоки ВСЕХ страниц
-        if not blocks and self.main_window.annotation_document:
+        if self.main_window.annotation_document:
             for page in self.main_window.annotation_document.pages:
                 if page.blocks:
                     blocks.extend(page.blocks)
+            logger.info(f"Собраны ВСЕ блоки со всех страниц: {len(blocks)} блоков")
         
         # Добавляем промпты к IMAGE блокам
         self._attach_prompts_to_blocks(blocks)

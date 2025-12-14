@@ -3,12 +3,12 @@
 Отображение страницы с возможностью рисовать прямоугольники для разметки
 """
 
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem, QMenu, QGraphicsTextItem
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsPolygonItem, QMenu, QGraphicsTextItem, QGraphicsEllipseItem, QGraphicsLineItem
 from PySide6.QtCore import Qt, QRectF, QPointF, Signal
-from PySide6.QtGui import QPixmap, QPainter, QPen, QImage, QColor, QWheelEvent, QBrush, QAction, QFont
+from PySide6.QtGui import QPixmap, QPainter, QPen, QImage, QColor, QWheelEvent, QBrush, QAction, QFont, QPolygonF
 from PIL import Image
-from typing import Optional, List, Dict
-from rd_core.models import Block, BlockType, BlockSource
+from typing import Optional, List, Dict, Union
+from rd_core.models import Block, BlockType, BlockSource, ShapeType
 
 
 class PageViewer(QGraphicsView):
@@ -24,7 +24,8 @@ class PageViewer(QGraphicsView):
         page_changed: испускается при запросе смены страницы (int - новая страница)
     """
     
-    blockDrawn = Signal(int, int, int, int)  # x1, y1, x2, y2
+    blockDrawn = Signal(int, int, int, int)  # x1, y1, x2, y2 (для прямоугольников)
+    polygonDrawn = Signal(list)  # [(x1, y1), (x2, y2), ...] (для полигонов)
     block_selected = Signal(int)
     blocks_selected = Signal(list)  # список индексов выбранных блоков
     blockEditing = Signal(int)  # индекс блока для редактирования
@@ -44,13 +45,18 @@ class PageViewer(QGraphicsView):
         self.page_image: Optional[QPixmap] = None
         self.image_item: Optional[QGraphicsPixmapItem] = None
         self.current_blocks: List[Block] = []
-        self.block_items: Dict[str, QGraphicsRectItem] = {}  # id блока -> QGraphicsRectItem
+        self.block_items: Dict[str, Union[QGraphicsRectItem, QGraphicsPolygonItem]] = {}  # id блока -> item
         self.block_labels: Dict[str, QGraphicsTextItem] = {}  # id блока -> QGraphicsTextItem
         self.resize_handles: List[QGraphicsRectItem] = []  # хэндлы изменения размера
         self.current_page: int = 0
         
         # Состояние рисования
         self.drawing = False
+        self.drawing_polygon = False  # режим рисования полигона
+        self.polygon_points: List[QPointF] = []  # точки полигона
+        self.polygon_preview_items: List[QGraphicsEllipseItem] = []  # маркеры точек
+        self.polygon_line_items: List[QGraphicsLineItem] = []  # линии между точками
+        self.polygon_temp_line: Optional[QGraphicsLineItem] = None  # временная линия от последней точки к курсору
         self.selecting = False  # режим множественного выделения
         self.right_button_pressed = False  # ПКМ зажата
         self.start_point: Optional[QPointF] = None
@@ -94,6 +100,44 @@ class PageViewer(QGraphicsView):
         # Для запоминания позиции контекстного меню
         self.context_menu_pos: Optional[QPointF] = None
     
+    def get_current_shape_type(self) -> ShapeType:
+        """Получить текущий выбранный тип формы из главного окна"""
+        main_window = self.parent().window()
+        if hasattr(main_window, 'selected_shape_type'):
+            return main_window.selected_shape_type
+        return ShapeType.RECTANGLE
+    
+    def _clamp_to_page(self, point: QPointF) -> QPointF:
+        """Ограничить точку границами страницы"""
+        if not self.page_image:
+            return point
+        
+        page_rect = self.scene.sceneRect()
+        x = max(page_rect.left(), min(point.x(), page_rect.right()))
+        y = max(page_rect.top(), min(point.y(), page_rect.bottom()))
+        return QPointF(x, y)
+    
+    def _clamp_rect_to_page(self, rect: QRectF) -> QRectF:
+        """Ограничить прямоугольник границами страницы"""
+        if not self.page_image:
+            return rect
+        
+        page_rect = self.scene.sceneRect()
+        
+        # Ограничиваем координаты
+        x1 = max(page_rect.left(), min(rect.left(), page_rect.right()))
+        y1 = max(page_rect.top(), min(rect.top(), page_rect.bottom()))
+        x2 = max(page_rect.left(), min(rect.right(), page_rect.right()))
+        y2 = max(page_rect.top(), min(rect.bottom(), page_rect.bottom()))
+        
+        # Проверяем минимальный размер
+        if x2 - x1 < 10:
+            x2 = min(x1 + 10, page_rect.right())
+        if y2 - y1 < 10:
+            y2 = min(y1 + 10, page_rect.bottom())
+        
+        return QRectF(QPointF(x1, y1), QPointF(x2, y2))
+    
     def set_page_image(self, pil_image: Image.Image, page_number: int = 0, reset_zoom: bool = True):
         """
         Установить изображение страницы
@@ -127,6 +171,7 @@ class PageViewer(QGraphicsView):
         
         # Сбрасываем выбранный блок при смене страницы
         self.selected_block_idx = None
+        self.selected_block_indices = []  # Сброс множественного выделения
         self.block_items.clear()
         self.block_labels.clear()
         
@@ -173,16 +218,12 @@ class PageViewer(QGraphicsView):
     
     def _draw_block(self, block: Block, idx: int):
         """
-        Отрисовать один блок как QGraphicsRectItem
+        Отрисовать один блок (прямоугольник или полигон)
         
         Args:
             block: блок для отрисовки
             idx: индекс блока в списке
         """
-        x1, y1, x2, y2 = block.coords_px
-        rect = QRectF(x1, y1, x2 - x1, y2 - y1)
-        
-        # Создаём QGraphicsRectItem
         color = self._get_block_color(block.block_type)
         pen = QPen(color, 2)
         
@@ -203,34 +244,46 @@ class PageViewer(QGraphicsView):
         # Полупрозрачная заливка
         brush = QBrush(QColor(color.red(), color.green(), color.blue(), 30))
         
-        rect_item = QGraphicsRectItem(rect)
-        rect_item.setPen(pen)
-        rect_item.setBrush(brush)
-        
-        # Сохраняем ссылку на блок в userData
-        rect_item.setData(0, block.id)
-        rect_item.setData(1, idx)
-        
-        self.scene.addItem(rect_item)
-        self.block_items[block.id] = rect_item
+        # Рисуем в зависимости от типа формы
+        if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+            # Рисуем полигон
+            polygon = QPolygonF([QPointF(x, y) for x, y in block.polygon_points])
+            poly_item = QGraphicsPolygonItem(polygon)
+            poly_item.setPen(pen)
+            poly_item.setBrush(brush)
+            poly_item.setData(0, block.id)
+            poly_item.setData(1, idx)
+            self.scene.addItem(poly_item)
+            self.block_items[block.id] = poly_item
+            
+            # Координаты для метки - используем bounding box
+            x1, y1, x2, y2 = block.coords_px
+        else:
+            # Рисуем прямоугольник
+            x1, y1, x2, y2 = block.coords_px
+            rect = QRectF(x1, y1, x2 - x1, y2 - y1)
+            rect_item = QGraphicsRectItem(rect)
+            rect_item.setPen(pen)
+            rect_item.setBrush(brush)
+            rect_item.setData(0, block.id)
+            rect_item.setData(1, idx)
+            self.scene.addItem(rect_item)
+            self.block_items[block.id] = rect_item
         
         # Добавляем номер блока в правом верхнем углу
+        x1, y1, x2, y2 = block.coords_px
         label = QGraphicsTextItem(str(idx + 1))
         font = QFont("Arial", 12, QFont.Bold)
         label.setFont(font)
         label.setDefaultTextColor(QColor(255, 0, 0))  # Ярко-красный
-        
-        # Игнорируем трансформации view для постоянного размера
         label.setFlag(label.GraphicsItemFlag.ItemIgnoresTransformations, True)
-        
-        # Позиционируем в правом верхнем углу блока
         label.setPos(x2 - 20, y1 + 2)
-        
         self.scene.addItem(label)
         self.block_labels[block.id] = label
         
-        # Рисуем хэндлы для выделенного блока
-        if idx == self.selected_block_idx:
+        # Рисуем хэндлы для выделенного блока (только для прямоугольников)
+        if idx == self.selected_block_idx and block.shape_type == ShapeType.RECTANGLE:
+            rect = QRectF(x1, y1, x2 - x1, y2 - y1)
             self._draw_resize_handles(rect)
     
     def _get_block_color(self, block_type: BlockType) -> QColor:
@@ -268,6 +321,11 @@ class PageViewer(QGraphicsView):
             # Преобразуем координаты в координаты сцены
             scene_pos = self.mapToScene(event.pos())
             
+            # Если идет рисование полигона - добавляем точку
+            if self.drawing_polygon:
+                self._add_polygon_point(scene_pos)
+                return
+            
             # Проверяем, попали ли в существующий блок
             clicked_block = self._find_block_at_position(scene_pos)
             
@@ -300,7 +358,7 @@ class PageViewer(QGraphicsView):
                         self.parent().window()._save_undo_state()
                         self.resizing_block = True
                         self.resize_handle = resize_handle
-                        self.move_start_pos = scene_pos
+                        self.move_start_pos = self._clamp_to_page(scene_pos)
                         self.original_block_rect = block_rect
                         return
             
@@ -321,36 +379,46 @@ class PageViewer(QGraphicsView):
                     self.parent().window()._save_undo_state()
                     self.resizing_block = True
                     self.resize_handle = resize_handle
-                    self.move_start_pos = scene_pos
+                    self.move_start_pos = self._clamp_to_page(scene_pos)
                     self.original_block_rect = block_rect
                 else:
                     # Начинаем перемещение
                     self.parent().window()._save_undo_state()
                     self.moving_block = True
-                    self.move_start_pos = scene_pos
+                    self.move_start_pos = self._clamp_to_page(scene_pos)
                     self.original_block_rect = block_rect
                 
                 self._redraw_blocks()  # перерисовываем для выделения
             else:
-                # Начинаем рисовать новый блок (rubber band)
-                self.drawing = True
-                self.start_point = scene_pos
-                self.selected_block_indices = []  # очищаем множественное выделение
+                # Начинаем рисовать новый блок
+                shape_type = self.get_current_shape_type()
                 
-                # Создаём временный rubber band rect
-                self.rubber_band_item = QGraphicsRectItem(QRectF(scene_pos, scene_pos))
-                pen = QPen(QColor(255, 0, 0), 2, Qt.DashLine)
-                brush = QBrush(QColor(255, 0, 0, 30))
-                self.rubber_band_item.setPen(pen)
-                self.rubber_band_item.setBrush(brush)
-                self.scene.addItem(self.rubber_band_item)
+                if shape_type == ShapeType.POLYGON:
+                    # Начинаем рисовать полигон
+                    self.drawing_polygon = True
+                    self.polygon_points = []
+                    self._add_polygon_point(scene_pos)
+                else:
+                    # Начинаем рисовать прямоугольник (rubber band)
+                    clamped_start = self._clamp_to_page(scene_pos)
+                    self.drawing = True
+                    self.start_point = clamped_start
+                    self.selected_block_indices = []  # очищаем множественное выделение
+                    
+                    # Создаём временный rubber band rect
+                    self.rubber_band_item = QGraphicsRectItem(QRectF(clamped_start, clamped_start))
+                    pen = QPen(QColor(255, 0, 0), 2, Qt.DashLine)
+                    brush = QBrush(QColor(255, 0, 0, 30))
+                    self.rubber_band_item.setPen(pen)
+                    self.rubber_band_item.setBrush(brush)
+                    self.scene.addItem(self.rubber_band_item)
         
         elif event.button() == Qt.RightButton:
             # Преобразуем координаты в координаты сцены
             scene_pos = self.mapToScene(event.pos())
             self.context_menu_pos = scene_pos
             self.right_button_pressed = True
-            self.start_point = scene_pos
+            self.start_point = self._clamp_to_page(scene_pos)
             
             # Проверяем, попали ли в существующий блок
             clicked_block = self._find_block_at_position(scene_pos)
@@ -380,6 +448,12 @@ class PageViewer(QGraphicsView):
             return
         
         scene_pos = self.mapToScene(event.pos())
+        clamped_pos = self._clamp_to_page(scene_pos)
+        
+        # Обновление временной линии при рисовании полигона
+        if self.drawing_polygon and self.polygon_points:
+            self._update_polygon_temp_line(clamped_pos)
+            return
         
         # Проверяем начало рамки выбора через ПКМ
         if self.right_button_pressed and not self.selecting and self.start_point:
@@ -388,7 +462,7 @@ class PageViewer(QGraphicsView):
             if distance > 5:
                 self.selecting = True
                 # Создаём временную рамку выбора
-                self.rubber_band_item = QGraphicsRectItem(QRectF(self.start_point, scene_pos))
+                self.rubber_band_item = QGraphicsRectItem(QRectF(self.start_point, clamped_pos))
                 pen = QPen(QColor(0, 120, 255), 2, Qt.DashLine)
                 brush = QBrush(QColor(0, 120, 255, 30))
                 self.rubber_band_item.setPen(pen)
@@ -397,23 +471,25 @@ class PageViewer(QGraphicsView):
         
         if self.selecting and self.start_point and self.rubber_band_item:
             # Рамка выбора (множественное выделение)
-            rect = QRectF(self.start_point, scene_pos).normalized()
+            rect = QRectF(self.start_point, clamped_pos).normalized()
             self.rubber_band_item.setRect(rect)
         
         elif self.drawing and self.start_point and self.rubber_band_item:
             # Рисование нового блока
-            rect = QRectF(self.start_point, scene_pos).normalized()
+            rect = QRectF(self.start_point, clamped_pos).normalized()
             self.rubber_band_item.setRect(rect)
         
         elif self.moving_block and self.selected_block_idx is not None:
             # Перемещение блока
-            delta = scene_pos - self.move_start_pos
+            delta = clamped_pos - self.move_start_pos
             new_rect = self.original_block_rect.translated(delta)
+            new_rect = self._clamp_rect_to_page(new_rect)
             self._update_block_rect(self.selected_block_idx, new_rect)
         
         elif self.resizing_block and self.selected_block_idx is not None:
             # Изменение размера блока
-            new_rect = self._calculate_resized_rect(scene_pos)
+            new_rect = self._calculate_resized_rect(clamped_pos)
+            new_rect = self._clamp_rect_to_page(new_rect)
             self._update_block_rect(self.selected_block_idx, new_rect)
         
         else:
@@ -430,8 +506,13 @@ class PageViewer(QGraphicsView):
             super().mouseMoveEvent(event)
     
     def mouseDoubleClickEvent(self, event):
-        """Обработка двойного клика - редактирование блока"""
+        """Обработка двойного клика - редактирование блока или завершение полигона"""
         if event.button() == Qt.LeftButton:
+            # Если идет рисование полигона - завершаем его
+            if self.drawing_polygon:
+                self._finish_polygon()
+                return
+            
             scene_pos = self.mapToScene(event.pos())
             clicked_block = self._find_block_at_position(scene_pos)
             
@@ -446,6 +527,7 @@ class PageViewer(QGraphicsView):
                 
                 if self.rubber_band_item:
                     rect = self.rubber_band_item.rect()
+                    rect = self._clamp_rect_to_page(rect)
                     
                     # Удаляем rubber band
                     self.scene.removeItem(self.rubber_band_item)
@@ -524,6 +606,9 @@ class PageViewer(QGraphicsView):
                 self.blockDeleted.emit(self.selected_block_idx)
                 self.selected_block_idx = None
         elif event.key() == Qt.Key_Escape:
+            # Отмена рисования полигона
+            if self.drawing_polygon:
+                self._clear_polygon_preview()
             # Сброс выделения
             self.selected_block_idx = None
             self.selected_block_indices = []
@@ -620,14 +705,20 @@ class PageViewer(QGraphicsView):
         Returns:
             Индекс блока или None
         """
-        # Используем itemAt для проверки QGraphicsRectItem
+        # Используем itemAt для проверки графических элементов
         item = self.scene.itemAt(scene_pos, self.transform())
         
-        if isinstance(item, QGraphicsRectItem) and item != self.rubber_band_item:
-            # Получаем индекс из userData
-            idx = item.data(1)
-            if idx is not None:
-                return idx
+        if item and item != self.rubber_band_item:
+            # Проверяем прямоугольники
+            if isinstance(item, QGraphicsRectItem):
+                idx = item.data(1)
+                if idx is not None:
+                    return idx
+            # Проверяем полигоны
+            elif isinstance(item, QGraphicsPolygonItem):
+                idx = item.data(1)
+                if idx is not None:
+                    return idx
         
         return None
     
@@ -808,4 +899,98 @@ class PageViewer(QGraphicsView):
             handle.setBrush(QBrush(QColor(255, 255, 255)))
             self.scene.addItem(handle)
             self.resize_handles.append(handle)
+    
+    def _add_polygon_point(self, point: QPointF):
+        """Добавить точку в полигон"""
+        clamped_point = self._clamp_to_page(point)
+        self.polygon_points.append(clamped_point)
+        
+        # Рисуем маркер точки
+        marker_size = 6 / self.zoom_factor
+        marker = QGraphicsEllipseItem(
+            clamped_point.x() - marker_size/2, 
+            clamped_point.y() - marker_size/2,
+            marker_size, 
+            marker_size
+        )
+        marker.setPen(QPen(QColor(255, 0, 0), 2))
+        marker.setBrush(QBrush(QColor(255, 0, 0)))
+        self.scene.addItem(marker)
+        self.polygon_preview_items.append(marker)
+        
+        # Рисуем линию от предыдущей точки
+        if len(self.polygon_points) > 1:
+            prev_point = self.polygon_points[-2]
+            line = QGraphicsLineItem(prev_point.x(), prev_point.y(), clamped_point.x(), clamped_point.y())
+            line.setPen(QPen(QColor(255, 0, 0), 2))
+            self.scene.addItem(line)
+            self.polygon_line_items.append(line)
+    
+    def _update_polygon_temp_line(self, current_pos: QPointF):
+        """Обновить временную линию от последней точки к курсору"""
+        if not self.polygon_points:
+            return
+        
+        # Удаляем старую временную линию
+        if self.polygon_temp_line:
+            self.scene.removeItem(self.polygon_temp_line)
+            self.polygon_temp_line = None
+        
+        # Создаём новую временную линию
+        last_point = self.polygon_points[-1]
+        self.polygon_temp_line = QGraphicsLineItem(
+            last_point.x(), last_point.y(),
+            current_pos.x(), current_pos.y()
+        )
+        self.polygon_temp_line.setPen(QPen(QColor(255, 0, 0, 128), 1, Qt.DashLine))
+        self.scene.addItem(self.polygon_temp_line)
+    
+    def _finish_polygon(self):
+        """Завершить рисование полигона и создать блок"""
+        if len(self.polygon_points) < 3:
+            # Нужно минимум 3 точки для полигона
+            self._clear_polygon_preview()
+            return
+        
+        # Конвертируем точки в координаты
+        points = [(int(p.x()), int(p.y())) for p in self.polygon_points]
+        
+        # Испускаем сигнал с точками полигона
+        self.polygonDrawn.emit(points)
+        
+        # Очищаем превью
+        self._clear_polygon_preview()
+    
+    def _clear_polygon_preview(self):
+        """Очистить превью полигона (маркеры и линии)"""
+        # Удаляем маркеры
+        for marker in self.polygon_preview_items:
+            try:
+                if marker.scene() is not None:
+                    self.scene.removeItem(marker)
+            except RuntimeError:
+                pass
+        self.polygon_preview_items.clear()
+        
+        # Удаляем линии
+        for line in self.polygon_line_items:
+            try:
+                if line.scene() is not None:
+                    self.scene.removeItem(line)
+            except RuntimeError:
+                pass
+        self.polygon_line_items.clear()
+        
+        # Удаляем временную линию
+        if self.polygon_temp_line:
+            try:
+                if self.polygon_temp_line.scene() is not None:
+                    self.scene.removeItem(self.polygon_temp_line)
+            except RuntimeError:
+                pass
+            self.polygon_temp_line = None
+        
+        # Сбрасываем состояние
+        self.drawing_polygon = False
+        self.polygon_points.clear()
 

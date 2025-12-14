@@ -221,6 +221,25 @@ class DatalabOCRBackend:
     POLL_INTERVAL = 2
     MAX_POLL_ATTEMPTS = 60
     
+    # Промпт для коррекции блоков (Russian Construction Documentation QA)
+    BLOCK_CORRECTION_PROMPT = """You are a specialized QA OCR assistant for Russian Construction Documentation (Stages P & RD). Your goal is to transcribe image blocks into strict Markdown for automated error checking.
+
+RULES:
+1. **Content Fidelity (CRITICAL)**: Transcribe text and numbers EXACTLY as seen. 
+   - NEVER "fix" math errors. If the sum in the image is wrong, keep it wrong. We need to find these errors.
+   - NEVER round numbers. Preserve all decimals (e.g., "34,5").
+2. **Tables**: If the image shows a table (Explication, Bill of Materials), output a VALID Markdown table.
+   - If headers are cut off (missing from the image), output the data rows as a table without inventing headers.
+   - Preserve merged cell content if implied.
+3. **Abbreviations**: Keep Russian technical acronyms exactly as printed: "МХМТС", "БКТ", "ПУИ", "ВРУ", "ЛК", "С/у". Do not expand them.
+4. **OCR Correction**: Fix ONLY visual character errors typical for Cyrillic OCR:
+   - '0' (digit) vs 'O' (letter)
+   - '3' (digit) vs 'З' (letter)
+   - 'б' (letter) vs '6' (digit)
+   - 'м2' -> 'м²'
+5. **Drawings**: If the image is a drawing (e.g., parking layout), output a bulleted list of text labels and dimensions found (e.g., "- Малое м/м: 2600x5300").
+6. **Output**: Return ONLY the clean Markdown. No conversational filler."""
+    
     def __init__(self, api_key: str):
         if not api_key:
             raise ValueError("DATALAB_API_KEY не указан")
@@ -255,14 +274,9 @@ class DatalabOCRBackend:
                         'paginate': 'false',
                         'use_llm': 'true',
                         'output_format': 'markdown',
-                        'disable_image_extraction': 'true'
+                        'disable_image_extraction': 'true',
+                        'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT
                     }
-                    
-                    # Добавляем промпт если есть
-                    if prompt and isinstance(prompt, dict):
-                        user_prompt = prompt.get('user', '')
-                        if user_prompt:
-                            data['block_correction_prompt'] = user_prompt
                     
                     response = self.requests.post(
                         self.API_URL,
