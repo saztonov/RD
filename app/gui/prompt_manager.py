@@ -1,5 +1,5 @@
 """
-Менеджер промтов для типов блоков и категорий
+Менеджер промтов для типов блоков
 Все промты хранятся ТОЛЬКО в R2 Storage (rd1/prompts/) в JSON формате
 Формат: {"system": "...", "user": "..."}
 """
@@ -45,7 +45,7 @@ class PromptManager:
         Загрузить промт из R2
         
         Args:
-            name: Имя промта (например 'text', 'table', 'image' или 'category_XXX')
+            name: Имя промта (например 'text', 'table', 'image')
         
         Returns:
             Dict с ключами 'system' и 'user' или None
@@ -160,49 +160,6 @@ class PromptManager:
             logger.warning(f"⚠️ Отсутствуют промпты в R2 (rd1/prompts/): {missing_prompts}")
             logger.warning(f"⚠️ Загрузите промпты в R2 или создайте через UI")
     
-    def ensure_standard_categories(self) -> list[str]:
-        """Загрузить категории из R2 (сканирование файлов)"""
-        return self.load_categories_from_r2()
-    
-    def load_categories_from_r2(self) -> list[str]:
-        """
-        Загрузить список категорий из R2 путём сканирования файлов category_*.json
-        
-        Returns:
-            Список названий категорий (пустой если R2 недоступен)
-        """
-        if not self.r2_storage:
-            logger.warning("R2 недоступен, категории не загружены")
-            return []
-        
-        # Сканируем все файлы в prompts/
-        keys = self.r2_storage.list_by_prefix(f"{self.PROMPTS_PREFIX}/")
-        
-        categories = []
-        for key in keys:
-            # Ищем файлы вида prompts/category_XXX.json
-            if key.startswith(f"{self.PROMPTS_PREFIX}/category_") and key.endswith(".json"):
-                # Извлекаем имя категории
-                filename = key.replace(f"{self.PROMPTS_PREFIX}/category_", "").replace(".json", "")
-                if filename:
-                    categories.append(filename)
-        
-        logger.info(f"✅ Найдено {len(categories)} категорий в R2")
-        return categories
-    
-    def save_categories_to_r2(self, categories: list[str]) -> bool:
-        """
-        Категории сохраняются автоматически при создании промптов.
-        Этот метод оставлен для совместимости.
-        """
-        # Категории определяются по наличию файлов category_*.json
-        # Нет необходимости в отдельном файле списка
-        return True
-    
-    def get_category_prompt_name(self, category: str) -> str:
-        """Получить имя промпта для категории"""
-        return f"category_{category}"
-    
     def delete_prompt(self, name: str) -> bool:
         """
         Удалить промт из R2
@@ -251,7 +208,7 @@ class PromptManager:
         Получить список всех промптов из R2 с метаданными
         
         Returns:
-            Список dict: {name, last_modified, is_category}
+            Список dict: {name, last_modified}
         """
         if not self.r2_storage:
             return []
@@ -263,14 +220,9 @@ class PromptManager:
             key = obj['Key']
             if key.endswith('.json'):
                 name = key.replace(self.PROMPTS_PREFIX + "/", "").replace(".json", "")
-                is_category = name.startswith("category_")
-                display_name = name.replace("category_", "") if is_category else name
-                
                 prompts.append({
                     'name': name,
-                    'display_name': display_name,
                     'last_modified': obj.get('LastModified'),
-                    'is_category': is_category
                 })
         
         return prompts

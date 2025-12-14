@@ -305,32 +305,70 @@ class RemoteOCRPanel(QDockWidget):
             QMessageBox.critical(self, "Ошибка", f"Не удалось создать задачу:\n{e}")
     
     def _get_selected_blocks(self):
-        """Получить выделенные блоки из PageViewer"""
+        """Получить выделенные блоки из PageViewer или дерева блоков (со всех страниц)"""
+        from rd_core.models import BlockType
+        
         blocks = []
         
-        # Сначала проверяем выделение в PageViewer
+        # Сначала проверяем выделение в PageViewer (только текущая страница)
         if hasattr(self.main_window, 'page_viewer'):
             selected = self.main_window.page_viewer.get_selected_blocks()
             if selected:
-                return selected
+                blocks = list(selected)
         
-        # Если нет выделения в viewer, берём из дерева блоков
-        if hasattr(self.main_window, 'blocks_tree'):
-            tree = self.main_window.blocks_tree
-            selected_items = tree.selectedItems()
-            
-            for item in selected_items:
-                block = item.data(0, Qt.UserRole + 1)
-                if block:
-                    blocks.append(block)
-        
-        # Если ничего не выбрано, автоматически берём все блоки текущей страницы
+        # Если нет выделения в viewer, берём из деревьев блоков (все страницы)
         if not blocks and self.main_window.annotation_document:
-            page_data = self.main_window._get_or_create_page(self.main_window.current_page)
-            if page_data and page_data.blocks:
-                blocks = list(page_data.blocks)
+            selected_items = []
+            if hasattr(self.main_window, 'blocks_tree'):
+                selected_items.extend(self.main_window.blocks_tree.selectedItems())
+            
+            # Убираем дубликаты по (page, idx)
+            seen = set()
+            for item in selected_items:
+                data = item.data(0, Qt.UserRole)
+                if data and isinstance(data, dict) and data.get("type") == "block":
+                    page_num = data.get("page")
+                    block_idx = data.get("idx")
+                    
+                    if page_num is not None and block_idx is not None:
+                        key = (page_num, block_idx)
+                        if key not in seen:
+                            seen.add(key)
+                            # Получаем блок из annotation_document
+                            if page_num < len(self.main_window.annotation_document.pages):
+                                page = self.main_window.annotation_document.pages[page_num]
+                                if block_idx < len(page.blocks):
+                                    blocks.append(page.blocks[block_idx])
+        
+        # Если ничего не выбрано, автоматически берём все блоки ВСЕХ страниц
+        if not blocks and self.main_window.annotation_document:
+            for page in self.main_window.annotation_document.pages:
+                if page.blocks:
+                    blocks.extend(page.blocks)
+        
+        # Добавляем промпты к IMAGE блокам
+        self._attach_prompts_to_blocks(blocks)
         
         return blocks
+    
+    def _attach_prompts_to_blocks(self, blocks):
+        """Добавить промпты к блокам (особенно IMAGE) перед отправкой на сервер"""
+        from rd_core.models import BlockType
+        
+        if not hasattr(self.main_window, 'prompt_manager'):
+            return
+        
+        pm = self.main_window.prompt_manager
+        
+        for block in blocks:
+            # Для IMAGE блоков загружаем промпт типа image
+            if block.block_type == BlockType.IMAGE:
+                prompt = None
+                prompt = pm.load_prompt("image")
+                
+                if prompt:
+                    block.prompt = prompt
+                    logger.debug(f"Промпт для IMAGE блока {block.id}: image")
     
     def _auto_download_result(self, job_id: str):
         """Автоматически скачать результат из R2"""
@@ -376,7 +414,7 @@ class RemoteOCRPanel(QDockWidget):
                 r2 = R2Storage()
                 
                 # Скачиваем основные файлы
-                main_files = ["annotation.json", "result.json", "result.md", "document.pdf", "blocks.json"]
+                main_files = ["annotation.json", "result.md", "document.pdf"]
                 for filename in main_files:
                     remote_key = f"{r2_prefix}/{filename}"
                     local_path = extract_dir / filename

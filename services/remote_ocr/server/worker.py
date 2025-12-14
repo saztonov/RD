@@ -20,6 +20,85 @@ _worker_thread: Optional[threading.Thread] = None
 _stop_event = threading.Event()
 
 
+def _build_strip_prompt(blocks: list) -> dict:
+    """
+    Построить промпт для batch запроса (полоса TEXT/TABLE блоков).
+    Формат ответа: [1] результат первого ... [N] результат N-го
+    """
+    if len(blocks) == 1:
+        # Один блок - простой промпт
+        block = blocks[0]
+        if block.prompt:
+            return block.prompt
+        return {
+            "system": "You are an expert OCR system. Extract text accurately.",
+            "user": "Распознай текст на изображении. Сохрани форматирование."
+        }
+    
+    # Несколько блоков - batch prompt
+    system = "You are an expert OCR system. Extract text from each block accurately."
+    user = "Распознай текст на изображении."
+    
+    batch_instruction = (
+        f"\n\nНа изображении {len(blocks)} блоков, расположенных вертикально (сверху вниз).\n"
+        f"Распознай каждый блок ОТДЕЛЬНО.\n"
+        f"Формат ответа:\n"
+    )
+    for i in range(1, len(blocks) + 1):
+        batch_instruction += f"[{i}] <результат блока {i}>\n"
+    
+    batch_instruction += "\nНе объединяй блоки. Каждый блок — отдельный фрагмент документа."
+    
+    return {
+        "system": system,
+        "user": user + batch_instruction
+    }
+
+
+def _parse_batch_response(blocks: list, response_text: str) -> dict:
+    """
+    Парсинг ответа с маркерами [1], [2], ...
+    Returns: Dict[block_id -> text]
+    """
+    import re
+    
+    results = {}
+    
+    # Защита от None
+    if response_text is None:
+        for block in blocks:
+            results[block.id] = "[Ошибка: пустой ответ OCR]"
+        return results
+    
+    if len(blocks) == 1:
+        results[blocks[0].id] = response_text.strip()
+        return results
+    
+    # Разбиваем по маркерам [N]
+    parts = re.split(r'\n?\[(\d+)\]\s*', response_text)
+    
+    parsed = {}
+    for i in range(1, len(parts) - 1, 2):
+        try:
+            idx = int(parts[i]) - 1  # 1-based -> 0-based
+            text = parts[i + 1].strip()
+            if 0 <= idx < len(blocks):
+                parsed[idx] = text
+        except (ValueError, IndexError):
+            continue
+    
+    for i, block in enumerate(blocks):
+        if i in parsed:
+            results[block.id] = parsed[i]
+        else:
+            if i == 0 and not parsed:
+                results[block.id] = response_text.strip()
+            else:
+                results[block.id] = "[Ошибка парсинга]"
+    
+    return results
+
+
 def start_worker() -> None:
     """Запустить фоновый воркер"""
     global _worker_thread
@@ -78,9 +157,10 @@ def _process_job(job: Job) -> None:
             return
         
         # Импортируем rd_core
-        from rd_core.models import Block
-        from rd_core.cropping import crop_blocks_from_pdf
-        from rd_core.ocr import create_ocr_engine, run_ocr_for_blocks
+        from rd_core.models import Block, BlockType
+        from rd_core.cropping import crop_and_merge_blocks_from_pdf
+        from rd_core.ocr import create_ocr_engine
+        from PIL import Image
         
         # Восстанавливаем блоки
         blocks = [Block.from_dict(b) for b in blocks_data]
@@ -88,17 +168,15 @@ def _process_job(job: Job) -> None:
         
         logger.info(f"Задача {job.id}: {total_blocks} блоков")
         
-        # Вырезаем кропы
+        # Вырезаем кропы с объединением TEXT/TABLE в полосы
         update_job_status(job.id, "processing", progress=0.1)
-        crop_results = crop_blocks_from_pdf(str(pdf_path), blocks, str(crops_dir))
+        strip_paths, strip_images, strips, image_blocks = crop_and_merge_blocks_from_pdf(
+            str(pdf_path), blocks, str(crops_dir)
+        )
         
-        # Обновляем image_file в блоках
-        crop_map = {block.id: path for block, path in crop_results}
-        for block in blocks:
-            if block.id in crop_map:
-                block.image_file = crop_map[block.id]
+        logger.info(f"Создано {len(strips)} полос TEXT/TABLE, {len(image_blocks)} IMAGE блоков")
         
-        # Создаём OCR движок в зависимости от настроек задачи
+        # Создаём OCR движок
         engine = job.engine or "openrouter"
         
         if engine == "datalab" and os.getenv("DATALAB_API_KEY"):
@@ -106,37 +184,77 @@ def _process_job(job: Job) -> None:
         elif engine == "openrouter" and settings.openrouter_api_key:
             ocr_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key)
         else:
-            # Fallback на openrouter или dummy
             if settings.openrouter_api_key:
                 ocr_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key)
             else:
                 ocr_backend = create_ocr_engine("dummy")
         
-        # Запускаем OCR через rd_core с обновлением прогресса
-        def _on_progress(done: int, total: int) -> None:
-            if total <= 0:
-                update_job_status(job.id, "processing", progress=0.9)
-                return
-            progress = 0.1 + 0.8 * (done / total)
-            update_job_status(job.id, "processing", progress=progress)
-
-        run_ocr_for_blocks(blocks, ocr_backend, on_progress=_on_progress)
+        # Считаем общее количество запросов
+        total_requests = len(strips) + len(image_blocks)
+        processed = 0
         
-        # Формируем результаты
-        result_json = [
-            {
-                "block_id": block.id,
-                "text": block.ocr_text or "",
-                "type": block.block_type.value,
-                "page_index": block.page_index,
-                "category": block.category
-            }
-            for block in blocks
-        ]
+        def _update_progress():
+            nonlocal processed
+            processed += 1
+            if total_requests > 0:
+                progress = 0.1 + 0.8 * (processed / total_requests)
+                update_job_status(job.id, "processing", progress=progress)
         
-        result_json_path = job_dir / "result.json"
-        with open(result_json_path, "w", encoding="utf-8") as f:
-            json.dump(result_json, f, ensure_ascii=False, indent=2)
+        # Обрабатываем полосы TEXT/TABLE
+        for strip_idx, strip in enumerate(strips):
+            try:
+                logger.info(f"Обработка полосы {strip_idx + 1}/{len(strips)}: {len(strip.blocks)} блоков")
+                merged_image = strip_images.get(strip.strip_id)
+                if not merged_image:
+                    logger.warning(f"Нет изображения для полосы {strip.strip_id}")
+                    _update_progress()
+                    continue
+                
+                # Формируем batch-промпт для полосы
+                prompt_data = _build_strip_prompt(strip.blocks)
+                
+                try:
+                    response_text = ocr_backend.recognize(merged_image, prompt=prompt_data)
+                except Exception as ocr_err:
+                    logger.error(f"Ошибка OCR для полосы {strip_idx + 1}: {ocr_err}")
+                    response_text = None
+                
+                # Парсим результаты по маркерам [1], [2], ...
+                results = _parse_batch_response(strip.blocks, response_text)
+                
+                for block in strip.blocks:
+                    if block.id in results:
+                        block.ocr_text = results[block.id]
+                        logger.debug(f"Блок {block.id}: OCR {len(block.ocr_text) if block.ocr_text else 0} символов")
+                
+                _update_progress()
+                
+            except Exception as e:
+                logger.error(f"Ошибка обработки полосы {strip_idx + 1}: {e}", exc_info=True)
+                _update_progress()
+        
+        # Обрабатываем IMAGE блоки отдельно с их промптами
+        for img_idx, (block, crop) in enumerate(image_blocks):
+            try:
+                logger.info(f"Обработка IMAGE блока {img_idx + 1}/{len(image_blocks)}: {block.id}")
+                
+                # Используем промпт из блока (если задан клиентом)
+                prompt_data = block.prompt
+                if not prompt_data:
+                    prompt_data = {"system": "", "user": "Опиши что изображено на картинке."}
+                
+                text = ocr_backend.recognize(crop, prompt=prompt_data)
+                block.ocr_text = text
+                logger.debug(f"IMAGE блок {block.id}: {len(text)} символов")
+                
+                _update_progress()
+                
+            except Exception as e:
+                logger.error(f"Ошибка OCR для IMAGE блока {block.id}: {e}")
+                block.ocr_text = f"[Ошибка: {e}]"
+                _update_progress()
+        
+        logger.info(f"OCR завершён: {processed} запросов обработано")
         
         # Собираем страницы и аннотацию (Document) + markdown через rd_core
         from rd_core.models import Page, Document  # noqa: E402
@@ -169,7 +287,6 @@ def _process_job(job: Job) -> None:
         result_zip_path = job_dir / "result.zip"
         with zipfile.ZipFile(result_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             # Результаты OCR
-            zf.write(result_json_path, "result.json")
             zf.write(result_md_path, "result.md")
             
             # Аннотация
@@ -246,7 +363,6 @@ def _process_job(job: Job) -> None:
                 files_to_remove = [
                     pdf_path,  # document.pdf
                     blocks_path,  # blocks.json
-                    result_json_path,  # result.json
                     result_md_path,  # result.md
                     annotation_path,  # annotation.json
                     result_zip_path,  # result.zip
@@ -274,14 +390,10 @@ def _process_job(job: Job) -> None:
 
 def _create_empty_result(job_dir: Path) -> None:
     """Создать пустой результат"""
-    result_json_path = job_dir / "result.json"
     result_md_path = job_dir / "result.md"
     annotation_path = job_dir / "annotation.json"
     result_zip_path = job_dir / "result.zip"
     pdf_path = job_dir / "document.pdf"
-    
-    with open(result_json_path, "w", encoding="utf-8") as f:
-        json.dump([], f)
     
     with open(result_md_path, "w", encoding="utf-8") as f:
         f.write("# OCR Results\n\nNo blocks to process.\n")
@@ -291,7 +403,6 @@ def _create_empty_result(job_dir: Path) -> None:
         json.dump(Document(pdf_path=pdf_path.name, pages=[]).to_dict(), f, ensure_ascii=False, indent=2)
     
     with zipfile.ZipFile(result_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(result_json_path, "result.json")
         zf.write(result_md_path, "result.md")
         zf.write(annotation_path, "annotation.json")
         if pdf_path.exists():

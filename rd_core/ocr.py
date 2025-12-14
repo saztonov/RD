@@ -335,7 +335,7 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
                        prompt_loader=None,
                        on_progress: Optional[Callable[[int, int], None]] = None) -> None:
     """
-    Запустить OCR для блоков с учетом типа и категории
+    Запустить OCR для блоков с учетом типа
     
     Args:
         blocks: список блоков для обработки
@@ -381,18 +381,12 @@ def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: s
             # Получаем промпт из R2 (dict с system/user)
             prompt_data = None
             if prompt_loader:
-                # Сначала пытаемся загрузить промпт категории
-                if block.category:
-                    prompt_data = prompt_loader(f"category_{block.category}")
-                
-                # Если нет промпта категории, используем промпт типа блока
-                if not prompt_data:
-                    if block.block_type == BlockType.IMAGE:
-                        prompt_data = prompt_loader("image")
-                    elif block.block_type == BlockType.TABLE:
-                        prompt_data = prompt_loader("table")
-                    elif block.block_type == BlockType.TEXT:
-                        prompt_data = prompt_loader("text")
+                type_key = {
+                    BlockType.IMAGE: "image",
+                    BlockType.TABLE: "table",
+                    BlockType.TEXT: "text",
+                }.get(block.block_type, "text")
+                prompt_data = prompt_loader(type_key)
             
             # Обрабатываем в зависимости от типа блока
             if block.block_type == BlockType.IMAGE:
@@ -494,12 +488,8 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
         for page_num, block in all_blocks:
             if not block.ocr_text:
                 continue
-            
-            category_prefix = f"**{block.category}**\n\n" if block.category else ""
-            
             if block.block_type == BlockType.IMAGE:
                 # Для изображений: описание + ссылка на кроп в R2
-                markdown_parts.append(f"{category_prefix}")
                 markdown_parts.append(f"*Изображение:*\n\n")
                 markdown_parts.append(f"{block.ocr_text}\n\n")
                 
@@ -510,11 +500,9 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
                     markdown_parts.append(f"![Изображение]({r2_url})\n\n")
             
             elif block.block_type == BlockType.TABLE:
-                markdown_parts.append(f"{category_prefix}")
                 markdown_parts.append(f"{block.ocr_text}\n\n")
                 
             elif block.block_type == BlockType.TEXT:
-                markdown_parts.append(f"{category_prefix}")
                 markdown_parts.append(f"{block.ocr_text}\n\n")
         
         # Объединяем и сохраняем

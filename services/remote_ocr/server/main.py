@@ -177,11 +177,29 @@ def get_job_details_endpoint(
             blocks = json.load(f)
         
         # Подсчитываем блоки по типам
-        block_stats = {"text": 0, "table": 0, "image": 0, "total": len(blocks)}
+        text_count = 0
+        table_count = 0
+        image_count = 0
+        
         for block in blocks:
             block_type = block.get("block_type", "text")
-            if block_type in block_stats:
-                block_stats[block_type] += 1
+            if block_type == "text":
+                text_count += 1
+            elif block_type == "table":
+                table_count += 1
+            elif block_type == "image":
+                image_count += 1
+        
+        # grouped = текстовые + табличные (объединяются в полосы)
+        grouped_count = text_count + table_count
+        
+        block_stats = {
+            "total": len(blocks),
+            "text": text_count,
+            "table": table_count,
+            "image": image_count,
+            "grouped": grouped_count
+        }
         
         result["block_stats"] = block_stats
     
@@ -209,9 +227,7 @@ def get_job_details_endpoint(
             result["r2_files"] = [
                 {"name": "document.pdf", "path": "document.pdf", "icon": "📄"},
                 {"name": "result.md", "path": "result.md", "icon": "📝"},
-                {"name": "result.json", "path": "result.json", "icon": "📋"},
                 {"name": "annotation.json", "path": "annotation.json", "icon": "📋"},
-                {"name": "blocks.json", "path": "blocks.json", "icon": "📋"},
             ]
             
             # Добавляем кропы если есть

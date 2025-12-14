@@ -55,7 +55,6 @@ class BlockHandlersMixin:
             coords_px=(x1, y1, x2, y2),
             page_width=current_page_data.width,
             page_height=current_page_data.height,
-            category=self.active_category,
             block_type=block_type,
             source=BlockSource.USER
         )
@@ -73,12 +72,6 @@ class BlockHandlersMixin:
         if not current_page_data or not (0 <= block_idx < len(current_page_data.blocks)):
             return
         
-        block = current_page_data.blocks[block_idx]
-        
-        self.category_edit.blockSignals(True)
-        self.category_edit.setText(block.category)
-        self.category_edit.blockSignals(False)
-        
         self.blocks_tree_manager.select_block_in_tree(block_idx)
     
     def _on_blocks_selected(self, block_indices: list):
@@ -87,25 +80,6 @@ class BlockHandlersMixin:
             return
         
         self.blocks_tree_manager.select_blocks_in_tree(block_indices)
-    
-    def _on_category_changed(self):
-        """Изменение категории выбранного блока"""
-        category = self.category_edit.text().strip()
-        self.active_category = category
-        
-        if not self.annotation_document:
-            return
-        
-        current_page_data = self._get_or_create_page(self.current_page)
-        if not current_page_data:
-            return
-        
-        if self.page_viewer.selected_block_idx is not None and \
-           0 <= self.page_viewer.selected_block_idx < len(current_page_data.blocks):
-            self._save_undo_state()
-            block = current_page_data.blocks[self.page_viewer.selected_block_idx]
-            block.category = category
-            self.blocks_tree_manager.update_blocks_tree()
     
     def _on_block_editing(self, block_idx: int):
         """Обработка двойного клика для редактирования блока"""
@@ -119,8 +93,6 @@ class BlockHandlersMixin:
         if 0 <= block_idx < len(current_page_data.blocks):
             self.page_viewer.selected_block_idx = block_idx
             self._on_block_selected(block_idx)
-            self.category_edit.setFocus()
-            self.category_edit.selectAll()
     
     def _on_block_deleted(self, block_idx: int):
         """Обработка удаления блока"""
@@ -136,10 +108,6 @@ class BlockHandlersMixin:
             
             self.page_viewer.selected_block_idx = None
             del current_page_data.blocks[block_idx]
-            
-            self.category_edit.blockSignals(True)
-            self.category_edit.setText("")
-            self.category_edit.blockSignals(False)
             
             self.page_viewer.set_blocks(current_page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()
@@ -165,10 +133,6 @@ class BlockHandlersMixin:
         # Очищаем выделение
         self.page_viewer.selected_block_idx = None
         self.page_viewer.selected_block_indices = []
-        
-        self.category_edit.blockSignals(True)
-        self.category_edit.setText("")
-        self.category_edit.blockSignals(False)
         
         self.page_viewer.set_blocks(current_page_data.blocks)
         self.blocks_tree_manager.update_blocks_tree()
@@ -260,11 +224,8 @@ class BlockHandlersMixin:
         self._on_block_selected(block_idx)
     
     def _on_tree_block_double_clicked(self, item: QTreeWidgetItem, column: int):
-        """Двойной клик - редактирование категории"""
-        data = item.data(0, Qt.UserRole)
-        if data and isinstance(data, dict) and data.get("type") == "block":
-            self.category_edit.setFocus()
-            self.category_edit.selectAll()
+        """Двойной клик по дереву блоков"""
+        return
     
     def _on_page_changed(self, new_page: int):
         """Обработка запроса смены страницы от viewer"""
@@ -397,8 +358,7 @@ class BlockHandlersMixin:
     
     def eventFilter(self, obj, event):
         """Обработка событий для деревьев блоков"""
-        if hasattr(self, 'blocks_tree') and hasattr(self, 'blocks_tree_by_category') and \
-           obj in (self.blocks_tree, self.blocks_tree_by_category):
+        if hasattr(self, 'blocks_tree') and obj is self.blocks_tree:
             if event.type() == QEvent.KeyPress and isinstance(event, QKeyEvent):
                 if event.key() == Qt.Key_Delete:
                     current_item = obj.currentItem()

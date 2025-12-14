@@ -2,12 +2,20 @@
 Миксин для создания панелей UI
 """
 
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                               QLabel, QComboBox, QGroupBox, QLineEdit,
-                               QTreeWidget, QTabWidget, QListWidget, QAbstractItemView,
-                               QTreeWidgetItem, QSplitter, QHeaderView)
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QLabel,
+    QGroupBox,
+    QTreeWidget,
+    QTabWidget,
+    QAbstractItemView,
+    QTreeWidgetItem,
+    QSplitter,
+)
 from PySide6.QtCore import Qt
-from rd_core.models import BlockType
 from app.gui.page_viewer import PageViewer
 from app.gui.project_sidebar import ProjectSidebar
 
@@ -89,10 +97,6 @@ class PanelsSetupMixin:
         blocks_group = self._create_blocks_group()
         layout.addWidget(blocks_group)
         
-        # Группа: свойства блока
-        block_group = self._create_block_properties_group()
-        layout.addWidget(block_group)
-        
         # Группа: промты
         prompts_group = self._create_prompts_group()
         layout.addWidget(prompts_group)
@@ -122,7 +126,7 @@ class PanelsSetupMixin:
         
         self.blocks_tabs = QTabWidget()
         
-        # Вкладка 1: Страница → Категория → Блок
+        # Вкладка: Страница → Блок
         self.blocks_tree = QTreeWidget()
         self.blocks_tree.setHeaderLabels(["Название", "Тип"])
         self.blocks_tree.setColumnWidth(0, 150)
@@ -136,53 +140,8 @@ class PanelsSetupMixin:
         self.blocks_tree.installEventFilter(self)
         self.blocks_tabs.addTab(self.blocks_tree, "Страница")
         
-        # Вкладка 2: Категория → Блок → Страница
-        self.blocks_tree_by_category = QTreeWidget()
-        self.blocks_tree_by_category.setHeaderLabels(["Название", "Тип"])
-        self.blocks_tree_by_category.setColumnWidth(0, 150)
-        self.blocks_tree_by_category.setSortingEnabled(False)  # Отключаем встроенную сортировку
-        self.blocks_tree_by_category.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.blocks_tree_by_category.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.blocks_tree_by_category.customContextMenuRequested.connect(
-            lambda pos: self.blocks_tree_manager.on_tree_context_menu(pos))
-        self.blocks_tree_by_category.itemClicked.connect(self._on_tree_block_clicked)
-        self.blocks_tree_by_category.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
-        self.blocks_tree_by_category.installEventFilter(self)
-        self.blocks_tabs.addTab(self.blocks_tree_by_category, "Категория")
-        
         blocks_layout.addWidget(self.blocks_tabs)
         return blocks_group
-    
-    def _create_block_properties_group(self) -> QGroupBox:
-        """Создать группу категорий"""
-        block_group = QGroupBox("Категории")
-        block_layout = QVBoxLayout(block_group)
-        
-        # Категория
-        cat_layout = QHBoxLayout()
-        cat_layout.addWidget(QLabel("Категория:"))
-        self.category_edit = QLineEdit()
-        self.category_edit.setPlaceholderText("Введите категорию...")
-        self.category_edit.editingFinished.connect(self._on_category_changed)
-        cat_layout.addWidget(self.category_edit)
-        
-        self.add_category_btn = QPushButton("➕")
-        self.add_category_btn.setMaximumWidth(30)
-        self.add_category_btn.setToolTip("Добавить новую категорию")
-        self.add_category_btn.clicked.connect(lambda: self.category_manager.add_category())
-        cat_layout.addWidget(self.add_category_btn)
-        block_layout.addLayout(cat_layout)
-        
-        # Список категорий
-        self.categories_list = QListWidget()
-        self.categories_list.setMaximumHeight(150)
-        self.categories_list.itemClicked.connect(
-            lambda item: self.category_manager.on_category_clicked(item))
-        self.categories_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.categories_list.customContextMenuRequested.connect(self._show_category_context_menu)
-        block_layout.addWidget(self.categories_list)
-        
-        return block_group
     
     def _create_prompts_group(self) -> QGroupBox:
         """Создать группу промтов"""
@@ -259,25 +218,6 @@ class PanelsSetupMixin:
             
             item.setData(0, Qt.UserRole, key)  # Сохраняем ключ
             row_num += 1
-        
-        # Добавляем категории
-        if hasattr(self, 'categories'):
-            for category in sorted(self.categories):
-                item = QTreeWidgetItem(self.prompts_tree)
-                item.setText(0, str(row_num))
-                item.setText(1, category)
-                item.setText(2, "Категория")
-                
-                # Дата обновления
-                cat_key = f"category_{category}"
-                last_mod = dates_map.get(cat_key)
-                if last_mod:
-                    item.setText(3, last_mod.strftime("%d.%m.%Y %H:%M"))
-                else:
-                    item.setText(3, "—")
-                
-                item.setData(0, Qt.UserRole, cat_key)
-                row_num += 1
     
     def update_prompts_table(self):
         """Обновить список промтов (публичный метод)"""
@@ -313,11 +253,6 @@ class PanelsSetupMixin:
                     None  # Промт загрузится из R2
                 )
                 self._populate_prompts_tree()  # Обновляем список после редактирования
-        elif prompt_type == "Категория":
-            # Редактируем промт категории (из R2)
-            if hasattr(self, 'category_manager'):
-                self.category_manager.edit_category_prompt(display_name)
-                self._populate_prompts_tree()  # Обновляем список после редактирования
     
     def _create_actions_group(self) -> QGroupBox:
         """Создать группу действий"""
@@ -333,82 +268,3 @@ class PanelsSetupMixin:
         actions_layout.addWidget(self.remote_ocr_btn)
         
         return actions_group
-    
-    def _show_category_context_menu(self, position):
-        """Показать контекстное меню для категории"""
-        from PySide6.QtWidgets import QMenu, QInputDialog
-        
-        item = self.categories_list.itemAt(position)
-        if not item:
-            return
-        
-        menu = QMenu()
-        category_name = item.text()
-        
-        rename_action = menu.addAction("✏️ Переименовать")
-        rename_action.triggered.connect(lambda: self._rename_category(category_name))
-        
-        edit_prompt_action = menu.addAction("📝 Редактировать промт")
-        edit_prompt_action.triggered.connect(lambda: self.category_manager.edit_category_prompt(category_name))
-        
-        menu.addSeparator()
-        
-        delete_action = menu.addAction("🗑️ Удалить категорию")
-        delete_action.triggered.connect(lambda: self.category_manager.delete_category(category_name))
-        
-        menu.exec(self.categories_list.mapToGlobal(position))
-    
-    def _rename_category(self, old_name: str):
-        """Переименовать категорию"""
-        from PySide6.QtWidgets import QInputDialog, QMessageBox
-        
-        new_name, ok = QInputDialog.getText(
-            self,
-            "Переименовать категорию",
-            "Новое название:",
-            text=old_name
-        )
-        
-        if not ok or not new_name.strip() or new_name.strip() == old_name:
-            return
-        
-        new_name = new_name.strip()
-        
-        # Проверяем что новое имя не существует
-        if new_name in self.categories:
-            QMessageBox.warning(self, "Ошибка", f"Категория '{new_name}' уже существует")
-            return
-        
-        # Загружаем старый промт
-        old_prompt_key = self.prompt_manager.get_category_prompt_name(old_name)
-        prompt_data = self.prompt_manager.load_prompt(old_prompt_key.replace("category_", ""))
-        
-        # Создаем новый промт
-        new_prompt_key = self.prompt_manager.get_category_prompt_name(new_name)
-        if prompt_data:
-            self.prompt_manager.save_prompt(new_prompt_key.replace("category_", ""), prompt_data)
-        
-        # Удаляем старый промт
-        self.prompt_manager.delete_prompt(old_prompt_key.replace("category_", ""))
-        
-        # Обновляем список категорий
-        idx = self.categories.index(old_name)
-        self.categories[idx] = new_name
-        
-        # Обновляем категорию в блоках документа
-        if self.annotation_document:
-            for page in self.annotation_document.pages:
-                for block in page.blocks:
-                    if block.category == old_name:
-                        block.category = new_name
-        
-        # Обновляем UI
-        self.category_manager.update_categories_list()
-        self._populate_prompts_tree()
-        
-        if hasattr(self, 'blocks_tree_manager'):
-            self.blocks_tree_manager.update_blocks_tree()
-        
-        from app.gui.toast import show_toast
-        show_toast(self, f"Категория переименована: {old_name} → {new_name}", duration=2500)
-

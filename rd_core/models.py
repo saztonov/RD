@@ -33,21 +33,21 @@ class Block:
         page_index: индекс страницы (начиная с 0)
         coords_px: координаты в пикселях (x1, y1, x2, y2) на отрендеренном изображении
         coords_norm: нормализованные координаты (0..1) относительно ширины/высоты
-        category: описание/группа блока (например "Заголовок", "Параметры")
         block_type: тип блока (TEXT/TABLE/IMAGE)
         source: источник создания (USER/AUTO)
         image_file: путь к сохранённому кропу блока
         ocr_text: результат OCR распознавания
+        prompt: промпт для OCR (dict с ключами system/user)
     """
     id: str
     page_index: int
     coords_px: Tuple[int, int, int, int]  # (x1, y1, x2, y2)
     coords_norm: Tuple[float, float, float, float]  # (x1, y1, x2, y2) в диапазоне 0..1
-    category: str
     block_type: BlockType
     source: BlockSource
     image_file: Optional[str] = None
     ocr_text: Optional[str] = None
+    prompt: Optional[dict] = None  # {"system": "...", "user": "..."}
     
     @staticmethod
     def generate_id() -> str:
@@ -106,12 +106,12 @@ class Block:
                coords_px: Tuple[int, int, int, int],
                page_width: int,
                page_height: int,
-               category: str,
                block_type: BlockType,
                source: BlockSource,
                image_file: Optional[str] = None,
                ocr_text: Optional[str] = None,
-               block_id: Optional[str] = None) -> 'Block':
+               block_id: Optional[str] = None,
+               prompt: Optional[dict] = None) -> 'Block':
         """
         Создать блок с автоматическим вычислением нормализованных координат
         
@@ -120,12 +120,12 @@ class Block:
             coords_px: координаты в пикселях (x1, y1, x2, y2)
             page_width: ширина страницы в пикселях
             page_height: высота страницы в пикселях
-            category: категория/описание
             block_type: тип блока
             source: источник создания
             image_file: путь к кропу
             ocr_text: результат OCR
             block_id: ID блока (если None, генерируется автоматически)
+            prompt: промпт для OCR
         
         Returns:
             Новый экземпляр Block
@@ -137,11 +137,11 @@ class Block:
             page_index=page_index,
             coords_px=coords_px,
             coords_norm=coords_norm,
-            category=category,
             block_type=block_type,
             source=source,
             image_file=image_file,
-            ocr_text=ocr_text
+            ocr_text=ocr_text,
+            prompt=prompt
         )
     
     def get_width_height_px(self) -> Tuple[int, int]:
@@ -169,17 +169,19 @@ class Block:
     
     def to_dict(self) -> dict:
         """Сериализация в словарь для JSON"""
-        return {
+        result = {
             "id": self.id,
             "page_index": self.page_index,
             "coords_px": list(self.coords_px),
             "coords_norm": list(self.coords_norm),
-            "category": self.category,
             "block_type": self.block_type.value,
             "source": self.source.value,
             "image_file": self.image_file,
             "ocr_text": self.ocr_text
         }
+        if self.prompt:
+            result["prompt"] = self.prompt
+        return result
     
     @classmethod
     def from_dict(cls, data: dict) -> 'Block':
@@ -195,11 +197,11 @@ class Block:
             page_index=data["page_index"],
             coords_px=tuple(data["coords_px"]),
             coords_norm=tuple(data["coords_norm"]),
-            category=data.get("category", ""),
             block_type=block_type,
             source=BlockSource(data["source"]),
             image_file=data.get("image_file"),
-            ocr_text=data.get("ocr_text")
+            ocr_text=data.get("ocr_text"),
+            prompt=data.get("prompt")
         )
 
 
@@ -364,53 +366,6 @@ class Document:
 
 
 # ========== HELPER ФУНКЦИИ ДЛЯ КОНВЕРТАЦИИ ==========
-
-def create_block_from_legacy(x: int, y: int, width: int, height: int,
-                            page_index: int,
-                            page_width: int, 
-                            page_height: int,
-                            block_type: BlockType,
-                            is_auto: bool = False,
-                            category: str = "",
-                            description: str = "",
-                            ocr_text: Optional[str] = None) -> Block:
-    """
-    Создать новый Block из legacy параметров (x, y, width, height)
-    
-    Args:
-        x, y: координаты верхнего левого угла
-        width, height: размеры блока
-        page_index: индекс страницы
-        page_width, page_height: размеры страницы
-        block_type: тип блока
-        is_auto: был ли создан автоматически
-        category: категория/описание
-        description: дополнительное описание (legacy)
-        ocr_text: результат OCR
-    
-    Returns:
-        Новый экземпляр Block
-    """
-    # Конвертируем x, y, width, height в x1, y1, x2, y2
-    coords_px = (x, y, x + width, y + height)
-    
-    # Определяем источник
-    source = BlockSource.AUTO if is_auto else BlockSource.USER
-    
-    # Если category пустая, используем description
-    if not category and description:
-        category = description
-    
-    return Block.create(
-        page_index=page_index,
-        coords_px=coords_px,
-        page_width=page_width,
-        page_height=page_height,
-        category=category,
-        block_type=block_type,
-        source=source,
-        ocr_text=ocr_text
-    )
 
 
 def block_to_legacy_coords(block: Block) -> Tuple[int, int, int, int]:

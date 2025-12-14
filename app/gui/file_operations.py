@@ -96,7 +96,6 @@ class FileOperationsMixin:
         self.current_page = 0
         self._render_current_page()
         self._update_ui()
-        self.category_manager.extract_categories_from_document()
     
     def _load_cleaned_pdf(self, file_path: str, keep_annotation: bool = False):
         """Загрузить PDF (исходный или очищенный)"""
@@ -116,7 +115,6 @@ class FileOperationsMixin:
         self.current_page = 0
         self._render_current_page()
         self._update_ui()
-        self.category_manager.extract_categories_from_document()
     
     def _save_annotation(self):
         """Сохранить разметку в JSON"""
@@ -170,7 +168,6 @@ class FileOperationsMixin:
                 self._update_ui()
             
             self.blocks_tree_manager.update_blocks_tree()
-            self.category_manager.extract_categories_from_document()
             from app.gui.toast import show_toast
             show_toast(self, "Разметка загружена")
     

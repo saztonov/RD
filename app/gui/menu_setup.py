@@ -45,16 +45,6 @@ class MenuSetupMixin:
         # Меню "Инструменты"
         tools_menu = menubar.addMenu("&Инструменты")
         
-        export_cat_action = QAction("Экспорт категорий", self)
-        export_cat_action.triggered.connect(lambda: self.category_manager.export_categories())
-        tools_menu.addAction(export_cat_action)
-        
-        import_cat_action = QAction("Импорт категорий", self)
-        import_cat_action.triggered.connect(lambda: self.category_manager.import_categories())
-        tools_menu.addAction(import_cat_action)
-        
-        tools_menu.addSeparator()
-        
         sync_r2_action = QAction("🔄 Синхронизация из R2", self)
         sync_r2_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
         sync_r2_action.triggered.connect(self._sync_from_r2)

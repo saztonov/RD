@@ -8,7 +8,6 @@ from PySide6.QtWidgets import QMainWindow
 from rd_core.models import Document, BlockType
 from rd_core.pdf_utils import PDFDocument
 from app.gui.blocks_tree_manager import BlocksTreeManager
-from app.gui.category_manager import CategoryManager
 from app.gui.prompt_manager import PromptManager
 from app.gui.project_manager import ProjectManager
 from app.gui.navigation_manager import NavigationManager
@@ -31,8 +30,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.annotation_document: Optional[Document] = None
         self.current_page: int = 0
         self.page_images: dict = {}
-        self.categories: list = []
-        self.active_category: str = ""
         self.page_zoom_states: dict = {}
         self.annotations_cache: dict = {}
         self._current_project_id: Optional[str] = None
@@ -46,7 +43,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.project_manager = ProjectManager()
         self.prompt_manager = PromptManager(self)
         self.blocks_tree_manager = None
-        self.category_manager = None
         self.project_sidebar = None
         self.navigation_manager = None
         self.remote_ocr_panel = None
@@ -60,13 +56,11 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self._setup_remote_ocr_panel()
         
         # Инициализация менеджеров после создания UI
-        self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree, self.blocks_tree_by_category)
-        self.category_manager = CategoryManager(self, self.categories_list)
+        self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree)
         self.navigation_manager = NavigationManager(self)
         
-        # Инициализация промптов и стандартных категорий
+        # Инициализация промптов
         self.prompt_manager.ensure_default_prompts()  # Проверяем наличие промптов в R2
-        self.prompt_manager.ensure_standard_categories()
         
         self.setWindowTitle("PDF Annotation Tool")
         self.resize(1200, 800)
@@ -225,29 +219,22 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self._update_ui()
     
     def _sync_from_r2(self):
-        """Синхронизировать категории и промты из R2"""
+        """Синхронизировать промты из R2"""
         from PySide6.QtWidgets import QMessageBox
         
         if not self.prompt_manager.r2_storage:
             QMessageBox.warning(self, "R2 недоступен", "R2 Storage не настроен. Проверьте .env файл.")
             return
         
-        # Загружаем категории из R2
-        categories_from_r2 = self.prompt_manager.load_categories_from_r2()
-        if categories_from_r2:
-            self.categories = categories_from_r2
-        
-        # Обновляем UI
-        if self.category_manager:
-            self.category_manager.update_categories_list()
-        
         # Проверяем наличие промптов
         self.prompt_manager.ensure_default_prompts()
+        if hasattr(self, 'update_prompts_table'):
+            self.update_prompts_table()
         
         QMessageBox.information(
             self,
             "Синхронизация завершена",
-            f"Загружено категорий: {len(self.categories)}"
+            "Промпты обновлены"
         )
     
     def _on_project_switched(self, project_id: str):

@@ -11,7 +11,7 @@
 - ✅ **OCR распознавание** (Datalab + OpenRouter)
 - ✅ Сохранение разметки в JSON
 - ✅ Экспорт кропов блоков в изображения
-- ✅ Генерация Markdown отчётов по категориям
+- ✅ Генерация Markdown отчётов
 - ✅ Перенос разметки на новую версию PDF
 - ✅ Сборка в .exe с PyInstaller
 
@@ -161,7 +161,7 @@ RD/
     table/src/
     image/src/
   ```
-- "Генерация MD" → создать Markdown отчёты по категориям
+- "Генерация MD" → создать Markdown отчёт
 
 ### 8. Перенос разметки
 - Загрузите старую разметку (blocks.json)
@@ -245,7 +245,6 @@ block = Block.create(
     coords_px=(100, 200, 500, 600),  # Пиксели: x1, y1, x2, y2
     page_width=1600,
     page_height=2400,
-    category="Заголовок",
     block_type=BlockType.TEXT,
     source=BlockSource.USER
 )
