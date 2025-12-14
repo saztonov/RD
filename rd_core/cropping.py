@@ -187,21 +187,81 @@ def crop_block_to_pdf(
     pdf_doc: fitz.Document,
     block: Block,
     output_path: str,
-    padding: int = 5
+    padding: int = 5,
+    page_image: Optional[Image.Image] = None
 ) -> Optional[str]:
     """
-    Вырезать блок из PDF и сохранить как отдельный PDF (векторный формат).
+    Вырезать блок из PDF и сохранить как отдельный PDF.
+    Для прямоугольников - векторный формат.
+    Для полигонов - растровый с маской (белый фон снаружи).
     
     Args:
         pdf_doc: открытый PyMuPDF документ
         block: блок с координатами (coords_px в пикселях при zoom)
         output_path: путь для сохранения PDF
         padding: отступ в пикселях (при zoom)
+        page_image: изображение страницы (нужно для полигонов)
     
     Returns:
         Путь к сохранённому PDF или None
     """
     try:
+        # Для полигонов - векторный PDF с белой маской снаружи
+        if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+            page = pdf_doc[block.page_index]
+            
+            # Координаты bounding box в PDF points
+            x1, y1, x2, y2 = block.coords_px
+            x1_pt = (x1 - padding) / PDF_RENDER_ZOOM
+            y1_pt = (y1 - padding) / PDF_RENDER_ZOOM
+            x2_pt = (x2 + padding) / PDF_RENDER_ZOOM
+            y2_pt = (y2 + padding) / PDF_RENDER_ZOOM
+            
+            # Ограничиваем границами страницы
+            rect = page.rect
+            x1_pt = max(0, x1_pt)
+            y1_pt = max(0, y1_pt)
+            x2_pt = min(rect.width, x2_pt)
+            y2_pt = min(rect.height, y2_pt)
+            
+            clip_rect = fitz.Rect(x1_pt, y1_pt, x2_pt, y2_pt)
+            
+            # Создаём новый PDF
+            new_doc = fitz.open()
+            new_page = new_doc.new_page(width=clip_rect.width, height=clip_rect.height)
+            
+            # Копируем векторное содержимое (прямоугольный clip)
+            new_page.show_pdf_page(new_page.rect, pdf_doc, block.page_index, clip=clip_rect)
+            
+            # Конвертируем polygon_points в PDF points относительно новой страницы
+            polygon_pts = []
+            for px, py in block.polygon_points:
+                pt_x = (px / PDF_RENDER_ZOOM) - x1_pt
+                pt_y = (py / PDF_RENDER_ZOOM) - y1_pt
+                polygon_pts.append(fitz.Point(pt_x, pt_y))
+            
+            # Рисуем белую маску СНАРУЖИ полигона
+            # Создаём путь: прямоугольник страницы с вырезанным полигоном внутри
+            shape = new_page.new_shape()
+            
+            # Внешний прямоугольник (вся страница)
+            shape.draw_rect(new_page.rect)
+            
+            # Внутренний полигон (вырезаем)
+            if polygon_pts:
+                shape.draw_polyline(polygon_pts + [polygon_pts[0]])  # замыкаем
+            
+            # Заливаем белым с правилом even-odd (снаружи полигона)
+            shape.finish(color=None, fill=(1, 1, 1), even_odd=True)
+            shape.commit()
+            
+            new_doc.save(output_path, deflate=True, garbage=4)
+            new_doc.close()
+            
+            logger.debug(f"Сохранён векторный PDF-кроп полигона {block.id}: {output_path}")
+            return output_path
+        
+        # Для прямоугольников - векторный формат
         page = pdf_doc[block.page_index]
         
         # Конвертируем coords_px (пиксели при zoom) обратно в PDF points
@@ -451,7 +511,7 @@ def crop_and_merge_blocks_from_pdf(
                         # Для IMAGE блоков дополнительно создаём PDF-кроп
                         if save_image_crops_as_pdf and pdf_doc and block.block_type == BlockType.IMAGE:
                             pdf_crop_path = os.path.join(output_dir, f"image_{block.id}.pdf")
-                            result = crop_block_to_pdf(pdf_doc, block, pdf_crop_path, padding)
+                            result = crop_block_to_pdf(pdf_doc, block, pdf_crop_path, padding, page_image)
                             if result:
                                 image_pdf_paths[block.id] = result
                                 block.image_file = result  # Сохраняем путь к PDF

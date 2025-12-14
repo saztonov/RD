@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional, Dict
 
-from .storage import Job, claim_next_job, update_job_status
+from .storage import Job, claim_next_job, update_job_status, recover_stuck_jobs
 from .settings import settings
 from .rate_limiter import get_datalab_limiter
 
@@ -133,6 +133,11 @@ def start_worker() -> None:
         logger.warning("Worker уже запущен")
         print("[WORKER] Worker уже запущен", flush=True)
         return
+    
+    # Восстанавливаем застрявшие задачи при старте
+    recovered = recover_stuck_jobs()
+    if recovered > 0:
+        print(f"[WORKER] Восстановлено {recovered} застрявших задач", flush=True)
     
     _stop_event.clear()
     _worker_thread = threading.Thread(target=_worker_loop, daemon=True, name="ocr-worker")

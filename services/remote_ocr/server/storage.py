@@ -284,6 +284,34 @@ def delete_job(job_id: str) -> bool:
             conn.close()
 
 
+def recover_stuck_jobs() -> int:
+    """
+    Восстановить застрявшие задачи: сбросить 'processing' обратно в 'queued'.
+    Вызывается при старте воркера.
+    
+    Returns:
+        Количество восстановленных задач
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            now = datetime.utcnow().isoformat()
+            cursor = conn.execute(
+                "UPDATE jobs SET status = 'queued', updated_at = ?, progress = 0 WHERE status = 'processing'",
+                (now,)
+            )
+            conn.commit()
+            count = cursor.rowcount
+            if count > 0:
+                logger.warning(f"⚠️ Восстановлено {count} застрявших задач (processing -> queued)")
+            return count
+        finally:
+            conn.close()
+
+
 def job_to_dict(job: Job) -> dict:
     """Конвертировать Job в dict для JSON ответа"""
     return {
