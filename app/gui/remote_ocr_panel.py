@@ -223,6 +223,13 @@ class RemoteOCRPanel(QDockWidget):
             actions_layout.setContentsMargins(2, 2, 2, 2)
             actions_layout.setSpacing(4)
             
+            # Кнопка открыть в редакторе
+            open_btn = QPushButton("✏️")
+            open_btn.setToolTip("Открыть в редакторе")
+            open_btn.setMaximumWidth(40)
+            open_btn.clicked.connect(lambda checked, jid=job.id: self._open_job_in_editor(jid))
+            actions_layout.addWidget(open_btn)
+            
             # Кнопка информации (для всех статусов)
             info_btn = QPushButton("ℹ️")
             info_btn.setToolTip("Информация о задаче")
@@ -242,6 +249,131 @@ class RemoteOCRPanel(QDockWidget):
         
         # Включаем сортировку обратно
         self.jobs_table.setSortingEnabled(True)
+
+    def _open_job_in_editor(self, job_id: str):
+        """Открыть результат задачи (PDF + annotation.json) в редакторе"""
+        try:
+            # Сохраняем текущую аннотацию в кеш перед переключением
+            self.main_window._save_current_annotation_to_cache()
+            
+            # Сбрасываем маркеры проекта/файла (иначе система путается при последующем переключении)
+            self.main_window._current_project_id = None
+            self.main_window._current_file_index = -1
+            
+            # Сохраняем зум перед переключением
+            if hasattr(self.main_window, 'navigation_manager') and self.main_window.navigation_manager:
+                self.main_window.navigation_manager.save_current_zoom()
+            
+            # Определяем папку результата
+            if job_id in self._job_output_dirs:
+                extract_dir = Path(self._job_output_dirs[job_id])
+            elif self._last_output_dir and Path(self._last_output_dir).parent.exists():
+                base_dir = Path(self._last_output_dir).parent
+                extract_dir = base_dir / f"result_{job_id[:8]}"
+                self._job_output_dirs[job_id] = str(extract_dir)
+                self._save_job_mappings()
+            else:
+                import tempfile
+                tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
+                tmp_base.mkdir(exist_ok=True)
+                extract_dir = tmp_base / f"result_{job_id[:8]}"
+                self._job_output_dirs[job_id] = str(extract_dir)
+                self._save_job_mappings()
+
+            annotation_path = extract_dir / "annotation.json"
+            pdf_path = extract_dir / "document.pdf"
+
+            # Если результата нет локально — пробуем докачать (R2)
+            if not annotation_path.exists() or not pdf_path.exists():
+                self._auto_download_result(job_id)
+
+            if not annotation_path.exists():
+                QMessageBox.warning(self, "Нет результата", "annotation.json не найден (задача не готова или результат не скачан).")
+                return
+
+            from rd_core.annotation_io import AnnotationIO
+            loaded_doc = AnnotationIO.load_annotation(str(annotation_path))
+            if not loaded_doc:
+                QMessageBox.critical(self, "Ошибка", "Не удалось загрузить annotation.json")
+                return
+
+            # Поддержка относительных путей внутри annotation.json
+            try:
+                pdf_path_obj = Path(loaded_doc.pdf_path)
+                if not pdf_path_obj.is_absolute():
+                    loaded_doc.pdf_path = str((annotation_path.parent / pdf_path_obj).resolve())
+            except Exception:
+                pass
+
+            pdf_abs_path = Path(loaded_doc.pdf_path)
+            if not pdf_abs_path.exists():
+                QMessageBox.warning(self, "PDF не найден", f"PDF файл не найден:\n{loaded_doc.pdf_path}")
+                return
+
+            # Нормализуем страницы: индекс списка == номер страницы (иначе GUI рисует блоки не на тех страницах)
+            try:
+                from rd_core.models import Page
+                from rd_core.pdf_utils import PDFDocument
+
+                blocks_by_page: dict[int, list] = {}
+                page_dims: dict[int, tuple[int, int]] = {}
+
+                for p in loaded_doc.pages:
+                    if getattr(p, "width", 0) and getattr(p, "height", 0):
+                        page_dims[p.page_number] = (int(p.width), int(p.height))
+                    for b in (p.blocks or []):
+                        blocks_by_page.setdefault(int(getattr(b, "page_index", p.page_number)), []).append(b)
+
+                with PDFDocument(str(pdf_abs_path)) as pdf:
+                    new_pages = []
+                    for page_idx in range(pdf.page_count):
+                        dims = page_dims.get(page_idx) or pdf.get_page_dimensions(page_idx) or (595, 842)
+                        blocks = blocks_by_page.get(page_idx, [])
+                        try:
+                            blocks.sort(key=lambda bl: bl.coords_px[1])
+                        except Exception:
+                            pass
+                        new_pages.append(Page(page_number=page_idx, width=int(dims[0]), height=int(dims[1]), blocks=blocks))
+                loaded_doc.pages = new_pages
+            except Exception:
+                pass
+
+            # Фиксим image_file (сервер сохраняет абсолютные пути)
+            try:
+                crops_dir = annotation_path.parent / "crops"
+                if crops_dir.exists():
+                    for page in loaded_doc.pages:
+                        for block in page.blocks:
+                            if not getattr(block, "image_file", None):
+                                continue
+                            fname = Path(block.image_file).name
+                            local_img = (crops_dir / fname)
+                            if local_img.exists():
+                                block.image_file = str(local_img.resolve())
+                            else:
+                                block.image_file = str(local_img)
+            except Exception:
+                pass
+
+            # Открываем в главном редакторе
+            self.main_window.annotation_document = loaded_doc
+
+            # Сбрасываем выделение блоков (иначе тянется с прошлого документа)
+            if hasattr(self.main_window, "page_viewer") and self.main_window.page_viewer:
+                try:
+                    self.main_window.page_viewer.selected_block_idx = None
+                    self.main_window.page_viewer.selected_block_indices = []
+                except Exception:
+                    pass
+
+            self.main_window._load_cleaned_pdf(loaded_doc.pdf_path, keep_annotation=True)
+
+            if getattr(self.main_window, "blocks_tree_manager", None):
+                self.main_window.blocks_tree_manager.update_blocks_tree()
+
+        except Exception as e:
+            logger.error(f"Ошибка открытия задачи {job_id} в редакторе: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть задачу:\n{e}")
     
     def _create_job(self):
         """Создать новую задачу OCR с настройками"""
