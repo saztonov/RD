@@ -1,11 +1,12 @@
 """
 Утилиты для работы с PDF
 Загрузка PDF, рендеринг страниц в изображения через PyMuPDF
+Извлечение текста через pdfplumber
 """
 
 import fitz  # PyMuPDF
 import logging
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from PIL import Image
 import io
 from pathlib import Path
@@ -304,3 +305,120 @@ class PDFDocument:
         """Context manager exit"""
         self.close()
 
+
+# ========== ФУНКЦИИ ИЗВЛЕЧЕНИЯ ТЕКСТА PDFPLUMBER ==========
+
+def extract_text_pdfplumber(
+    pdf_path: str,
+    page_index: int,
+    bbox: Optional[Tuple[float, float, float, float]] = None
+) -> str:
+    """
+    Извлечь текст из PDF страницы с помощью pdfplumber
+    
+    Args:
+        pdf_path: путь к PDF файлу
+        page_index: индекс страницы (начиная с 0)
+        bbox: ограничивающий прямоугольник (x0, y0, x1, y1) в PDF-координатах
+              Если None - извлекается весь текст страницы
+    
+    Returns:
+        Извлечённый текст (может быть пустой строкой)
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        logger.warning("pdfplumber не установлен, текст не извлечён")
+        return ""
+    
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            if page_index < 0 or page_index >= len(pdf.pages):
+                logger.warning(f"Страница {page_index} не существует в PDF")
+                return ""
+            
+            page = pdf.pages[page_index]
+            
+            if bbox:
+                # Извлекаем текст из области
+                # pdfplumber использует координаты (x0, top, x1, bottom)
+                cropped = page.within_bbox(bbox)
+                text = cropped.extract_text() or ""
+            else:
+                # Извлекаем весь текст страницы
+                text = page.extract_text() or ""
+            
+            return text.strip()
+            
+    except Exception as e:
+        logger.error(f"Ошибка извлечения текста pdfplumber: {e}")
+        return ""
+
+
+def extract_text_for_block(
+    pdf_path: str,
+    page_index: int,
+    coords_norm: Tuple[float, float, float, float],
+    page_width_pdf: float,
+    page_height_pdf: float
+) -> str:
+    """
+    Извлечь текст для блока используя нормализованные координаты
+    
+    Args:
+        pdf_path: путь к PDF файлу
+        page_index: индекс страницы
+        coords_norm: нормализованные координаты блока (x1, y1, x2, y2) в диапазоне 0..1
+        page_width_pdf: ширина страницы в PDF-единицах
+        page_height_pdf: высота страницы в PDF-единицах
+    
+    Returns:
+        Извлечённый текст
+    """
+    # Конвертируем нормализованные координаты в PDF-координаты
+    x0 = coords_norm[0] * page_width_pdf
+    y0 = coords_norm[1] * page_height_pdf
+    x1 = coords_norm[2] * page_width_pdf
+    y1 = coords_norm[3] * page_height_pdf
+    
+    # pdfplumber использует (x0, top, x1, bottom)
+    bbox = (x0, y0, x1, y1)
+    
+    return extract_text_pdfplumber(pdf_path, page_index, bbox)
+
+
+def extract_full_page_text(pdf_path: str, page_index: int) -> str:
+    """
+    Извлечь весь текст со страницы PDF
+    
+    Args:
+        pdf_path: путь к PDF файлу
+        page_index: индекс страницы
+    
+    Returns:
+        Текст страницы
+    """
+    return extract_text_pdfplumber(pdf_path, page_index, bbox=None)
+
+
+def get_pdf_page_size(pdf_path: str, page_index: int) -> Optional[Tuple[float, float]]:
+    """
+    Получить размер страницы PDF в PDF-единицах (points)
+    
+    Args:
+        pdf_path: путь к PDF файлу
+        page_index: индекс страницы
+    
+    Returns:
+        (width, height) в PDF-единицах или None при ошибке
+    """
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            if page_index < 0 or page_index >= len(pdf.pages):
+                return None
+            page = pdf.pages[page_index]
+            return (page.width, page.height)
+    except Exception as e:
+        logger.error(f"Ошибка получения размера страницы: {e}")
+        return None

@@ -11,7 +11,7 @@ import traceback
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 from .storage import Job, claim_next_job, update_job_status, recover_stuck_jobs
 from .settings import settings
@@ -28,6 +28,96 @@ logger.setLevel(logging.INFO)
 
 _worker_thread: Optional[threading.Thread] = None
 _stop_event = threading.Event()
+
+# Кэш извлечённого текста pdfplumber по страницам
+_pdfplumber_cache: Dict[str, Dict[int, str]] = {}  # pdf_path -> {page_index: text}
+
+
+def _extract_pdfplumber_text(pdf_path: str, page_index: int) -> str:
+    """
+    Извлечь текст со страницы PDF с помощью pdfplumber (с кэшированием)
+    
+    Args:
+        pdf_path: путь к PDF файлу
+        page_index: индекс страницы
+    
+    Returns:
+        Извлечённый текст
+    """
+    global _pdfplumber_cache
+    
+    # Проверяем кэш
+    if pdf_path in _pdfplumber_cache:
+        if page_index in _pdfplumber_cache[pdf_path]:
+            return _pdfplumber_cache[pdf_path][page_index]
+    else:
+        _pdfplumber_cache[pdf_path] = {}
+    
+    try:
+        from rd_core.pdf_utils import extract_full_page_text
+        text = extract_full_page_text(pdf_path, page_index)
+        _pdfplumber_cache[pdf_path][page_index] = text
+        return text
+    except Exception as e:
+        logger.warning(f"Ошибка извлечения текста pdfplumber для страницы {page_index}: {e}")
+        return ""
+
+
+def _fill_image_prompt_variables(
+    prompt_data: Optional[dict],
+    doc_name: str,
+    page_index: int,
+    block_id: str,
+    hint: Optional[str],
+    pdfplumber_text: str
+) -> dict:
+    """
+    Заполнить переменные в промпте для IMAGE блока
+    
+    Переменные:
+        {DOC_NAME} - имя PDF документа
+        {PAGE_OR_NULL} - номер страницы (1-based) или "null"
+        {TILE_ID_OR_NULL} - ID блока или "null"
+        {TILE_HINT_OR_NULL} - подсказка пользователя или "null"
+        {OPERATOR_HINT_OR_EMPTY} - подсказка пользователя или пустая строка
+        {PDFPLUMBER_TEXT_OR_EMPTY} - извлечённый текст pdfplumber
+    
+    Args:
+        prompt_data: исходный промпт {"system": "...", "user": "..."}
+        doc_name: имя документа
+        page_index: индекс страницы (0-based)
+        block_id: ID блока
+        hint: подсказка пользователя
+        pdfplumber_text: извлечённый текст pdfplumber
+    
+    Returns:
+        Промпт с заполненными переменными
+    """
+    if not prompt_data:
+        return {"system": "", "user": "Опиши что изображено на картинке."}
+    
+    # Копируем промпт
+    result = {
+        "system": prompt_data.get("system", ""),
+        "user": prompt_data.get("user", "")
+    }
+    
+    # Значения для подстановки
+    variables = {
+        "{DOC_NAME}": doc_name or "unknown",
+        "{PAGE_OR_NULL}": str(page_index + 1) if page_index is not None else "null",
+        "{TILE_ID_OR_NULL}": block_id or "null",
+        "{TILE_HINT_OR_NULL}": hint if hint else "null",
+        "{OPERATOR_HINT_OR_EMPTY}": hint if hint else "",
+        "{PDFPLUMBER_TEXT_OR_EMPTY}": pdfplumber_text or "",
+    }
+    
+    # Подставляем переменные
+    for key, value in variables.items():
+        result["system"] = result["system"].replace(key, value)
+        result["user"] = result["user"].replace(key, value)
+    
+    return result
 
 
 def _build_strip_prompt(blocks: list) -> dict:
@@ -304,10 +394,24 @@ def _process_job(job: Job) -> None:
                 part_info = f" (часть {part_idx + 1}/{total_parts})" if total_parts > 1 else ""
                 logger.info(f"Обработка IMAGE блока {img_idx + 1}/{len(image_blocks)}: {block.id}{part_info}")
                 
-                # Используем промпт из блока (если задан клиентом)
+                # Извлекаем текст pdfplumber для страницы блока
+                pdfplumber_text = _extract_pdfplumber_text(str(pdf_path), block.page_index)
+                
+                # Получаем имя документа
+                doc_name = pdf_path.name
+                
+                # Используем промпт из блока и заполняем переменные
                 prompt_data = block.prompt
-                if not prompt_data:
-                    prompt_data = {"system": "", "user": "Опиши что изображено на картинке."}
+                prompt_data = _fill_image_prompt_variables(
+                    prompt_data=prompt_data,
+                    doc_name=doc_name,
+                    page_index=block.page_index,
+                    block_id=block.id,
+                    hint=getattr(block, 'hint', None),
+                    pdfplumber_text=pdfplumber_text
+                )
+                
+                logger.debug(f"IMAGE блок {block.id}: hint={getattr(block, 'hint', None)}, pdfplumber_len={len(pdfplumber_text)}")
                 
                 text = image_backend.recognize(crop, prompt=prompt_data)
                 return block.id, text, part_idx, total_parts

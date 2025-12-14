@@ -46,6 +46,7 @@ class Block:
         image_file: путь к сохранённому кропу блока
         ocr_text: результат OCR распознавания
         prompt: промпт для OCR (dict с ключами system/user)
+        hint: подсказка пользователя для IMAGE блока (описание содержимого)
     """
     id: str
     page_index: int
@@ -58,6 +59,7 @@ class Block:
     image_file: Optional[str] = None
     ocr_text: Optional[str] = None
     prompt: Optional[dict] = None  # {"system": "...", "user": "..."}
+    hint: Optional[str] = None  # Подсказка пользователя для IMAGE блока
     
     @staticmethod
     def generate_id() -> str:
@@ -123,7 +125,8 @@ class Block:
                image_file: Optional[str] = None,
                ocr_text: Optional[str] = None,
                block_id: Optional[str] = None,
-               prompt: Optional[dict] = None) -> 'Block':
+               prompt: Optional[dict] = None,
+               hint: Optional[str] = None) -> 'Block':
         """
         Создать блок с автоматическим вычислением нормализованных координат
         
@@ -140,6 +143,7 @@ class Block:
             ocr_text: результат OCR
             block_id: ID блока (если None, генерируется автоматически)
             prompt: промпт для OCR
+            hint: подсказка пользователя для IMAGE блока
         
         Returns:
             Новый экземпляр Block
@@ -157,7 +161,8 @@ class Block:
             polygon_points=polygon_points,
             image_file=image_file,
             ocr_text=ocr_text,
-            prompt=prompt
+            prompt=prompt,
+            hint=hint
         )
     
     def get_width_height_px(self) -> Tuple[int, int]:
@@ -200,6 +205,8 @@ class Block:
             result["polygon_points"] = [list(p) for p in self.polygon_points]
         if self.prompt:
             result["prompt"] = self.prompt
+        if self.hint:
+            result["hint"] = self.hint
         return result
     
     @classmethod
@@ -233,7 +240,8 @@ class Block:
             polygon_points=polygon_points,
             image_file=data.get("image_file"),
             ocr_text=data.get("ocr_text"),
-            prompt=data.get("prompt")
+            prompt=data.get("prompt"),
+            hint=data.get("hint")
         )
 
 

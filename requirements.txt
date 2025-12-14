@@ -3,6 +3,7 @@ PySide6>=6.6.0
 
 # PDF Processing
 PyMuPDF>=1.23.0
+pdfplumber>=0.10.0
 
 # Image Processing
 Pillow>=10.0.0
