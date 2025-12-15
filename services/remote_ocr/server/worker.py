@@ -29,37 +29,68 @@ logger.setLevel(logging.INFO)
 _worker_thread: Optional[threading.Thread] = None
 _stop_event = threading.Event()
 
-# Кэш извлечённого текста pdfplumber по страницам
-_pdfplumber_cache: Dict[str, Dict[int, str]] = {}  # pdf_path -> {page_index: text}
+# Кэш размеров страниц PDF
+_page_size_cache: Dict[str, Dict[int, tuple]] = {}  # pdf_path -> {page_index: (width, height)}
 
 
-def _extract_pdfplumber_text(pdf_path: str, page_index: int) -> str:
+def _get_pdf_page_size(pdf_path: str, page_index: int) -> tuple:
+    """Получить размер страницы PDF (с кэшированием)"""
+    global _page_size_cache
+    
+    if pdf_path in _page_size_cache:
+        if page_index in _page_size_cache[pdf_path]:
+            return _page_size_cache[pdf_path][page_index]
+    else:
+        _page_size_cache[pdf_path] = {}
+    
+    try:
+        from rd_core.pdf_utils import get_pdf_page_size
+        size = get_pdf_page_size(pdf_path, page_index)
+        if size:
+            _page_size_cache[pdf_path][page_index] = size
+            return size
+    except Exception as e:
+        logger.warning(f"Ошибка получения размера страницы {page_index}: {e}")
+    
+    return (595.0, 842.0)  # A4 по умолчанию
+
+
+def _extract_pdfplumber_text_for_block(
+    pdf_path: str, 
+    page_index: int,
+    coords_norm: tuple
+) -> str:
     """
-    Извлечь текст со страницы PDF с помощью pdfplumber (с кэшированием)
+    Извлечь текст из области блока с помощью pdfplumber
     
     Args:
         pdf_path: путь к PDF файлу
         page_index: индекс страницы
+        coords_norm: нормализованные координаты блока (x1, y1, x2, y2) в диапазоне 0..1
     
     Returns:
-        Извлечённый текст
+        Извлечённый текст из области блока
     """
-    global _pdfplumber_cache
-    
-    # Проверяем кэш
-    if pdf_path in _pdfplumber_cache:
-        if page_index in _pdfplumber_cache[pdf_path]:
-            return _pdfplumber_cache[pdf_path][page_index]
-    else:
-        _pdfplumber_cache[pdf_path] = {}
-    
     try:
-        from rd_core.pdf_utils import extract_full_page_text
-        text = extract_full_page_text(pdf_path, page_index)
-        _pdfplumber_cache[pdf_path][page_index] = text
+        from rd_core.pdf_utils import extract_text_for_block
+        
+        # Получаем размер страницы
+        page_width, page_height = _get_pdf_page_size(pdf_path, page_index)
+        
+        # Извлекаем текст из области блока
+        text = extract_text_for_block(
+            pdf_path, 
+            page_index, 
+            coords_norm,
+            page_width,
+            page_height
+        )
+        
+        logger.info(f"Извлечён текст из области блока: {len(text)} символов")
         return text
+        
     except Exception as e:
-        logger.warning(f"Ошибка извлечения текста pdfplumber для страницы {page_index}: {e}")
+        logger.warning(f"Ошибка извлечения текста pdfplumber для блока: {e}")
         return ""
 
 
@@ -118,6 +149,51 @@ def _fill_image_prompt_variables(
         result["user"] = result["user"].replace(key, value)
     
     return result
+
+
+def _inject_pdfplumber_to_ocr_text(ocr_result: str, pdfplumber_text: str) -> str:
+    """
+    Вставить pdfplumber текст в поле ocr_text результата OCR.
+    
+    Args:
+        ocr_result: результат от модели (JSON)
+        pdfplumber_text: извлечённый текст pdfplumber из области блока
+    
+    Returns:
+        Результат с заполненным ocr_text
+    """
+    import json
+    import re
+    
+    if not pdfplumber_text or not pdfplumber_text.strip():
+        return ocr_result
+    
+    if not ocr_result:
+        return ocr_result
+    
+    try:
+        # Ищем JSON в ответе (может быть обёрнут в markdown)
+        json_match = re.search(r'\{[\s\S]*\}', ocr_result)
+        if json_match:
+            json_str = json_match.group(0)
+            data = json.loads(json_str)
+            
+            # Записываем pdfplumber текст в ocr_text
+            if "ocr_text" in data:
+                # Заменяем пустой ocr_text на pdfplumber текст
+                data["ocr_text"] = pdfplumber_text.strip()
+                
+                # Возвращаем обновлённый JSON
+                new_json = json.dumps(data, ensure_ascii=False, indent=2)
+                
+                # Если был markdown wrapper - возвращаем его
+                if ocr_result.strip().startswith("```"):
+                    return f"```json\n{new_json}\n```"
+                return new_json
+    except (json.JSONDecodeError, AttributeError) as e:
+        logger.warning(f"Не удалось вставить pdfplumber текст в JSON: {e}")
+    
+    return ocr_result
 
 
 def _build_strip_prompt(blocks: list) -> dict:
@@ -394,8 +470,12 @@ def _process_job(job: Job) -> None:
                 part_info = f" (часть {part_idx + 1}/{total_parts})" if total_parts > 1 else ""
                 logger.info(f"Обработка IMAGE блока {img_idx + 1}/{len(image_blocks)}: {block.id}{part_info}")
                 
-                # Извлекаем текст pdfplumber для страницы блока
-                pdfplumber_text = _extract_pdfplumber_text(str(pdf_path), block.page_index)
+                # Извлекаем текст pdfplumber ТОЛЬКО из области блока (не всей страницы)
+                pdfplumber_text = _extract_pdfplumber_text_for_block(
+                    str(pdf_path), 
+                    block.page_index,
+                    block.coords_norm
+                )
                 
                 # Получаем имя документа
                 doc_name = pdf_path.name
@@ -411,9 +491,13 @@ def _process_job(job: Job) -> None:
                     pdfplumber_text=pdfplumber_text
                 )
                 
-                logger.debug(f"IMAGE блок {block.id}: hint={getattr(block, 'hint', None)}, pdfplumber_len={len(pdfplumber_text)}")
+                logger.info(f"IMAGE блок {block.id}: hint={getattr(block, 'hint', None)}, pdfplumber_len={len(pdfplumber_text)}")
                 
                 text = image_backend.recognize(crop, prompt=prompt_data)
+                
+                # Вставляем pdfplumber текст в поле ocr_text результата
+                text = _inject_pdfplumber_to_ocr_text(text, pdfplumber_text)
+                
                 return block.id, text, part_idx, total_parts
                 
             except Exception as e:

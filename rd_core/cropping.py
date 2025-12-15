@@ -527,7 +527,7 @@ def crop_and_merge_blocks_from_pdf(
     strip_paths: Dict[str, str] = {}
     strip_images: Dict[str, Image.Image] = {}
     
-    # Сохраняем объединённые кропы для полос TEXT/TABLE (только в память, не на диск)
+    # Объединённые кропы для полос TEXT/TABLE - только в память, не на диск
     for strip in strips:
         if not strip.crops:
             continue
@@ -535,35 +535,13 @@ def crop_and_merge_blocks_from_pdf(
         try:
             merged_image = merge_crops_vertically(strip.crops)
             strip_images[strip.strip_id] = merged_image
-            
-            # Сохраняем на диск (нужно для OCR)
-            crop_filename = f"{strip.strip_id}.png"
-            crop_path = os.path.join(output_dir, crop_filename)
-            merged_image.save(crop_path, "PNG")
-            strip_paths[strip.strip_id] = crop_path
-            
-            logger.debug(f"Сохранена полоса {strip.strip_id}: {len(strip.blocks)} блоков, {merged_image.height}px")
+            logger.debug(f"Полоса {strip.strip_id}: {len(strip.blocks)} блоков, {merged_image.height}px")
         except Exception as e:
-            logger.error(f"Ошибка сохранения полосы {strip.strip_id}: {e}")
+            logger.error(f"Ошибка создания полосы {strip.strip_id}: {e}")
     
-    # Сохраняем растровые кропы для IMAGE блоков (для OCR) - НЕ сохраняем на диск если есть PDF
+    # IMAGE блоки - PNG на диск не сохраняем (только PDF если save_image_crops_as_pdf=True)
     for block, crop, part_idx, total_parts in image_blocks:
-        try:
-            if total_parts > 1:
-                crop_filename = f"image_{block.id}_part{part_idx + 1}.png"
-            else:
-                crop_filename = f"image_{block.id}.png"
-            crop_path = os.path.join(output_dir, crop_filename)
-            
-            # PNG сохраняем только если не создаём PDF-кропы (нужен для OCR)
-            if not save_image_crops_as_pdf:
-                crop.save(crop_path, "PNG")
-                if part_idx == 0:
-                    block.image_file = crop_path
-            
-            logger.debug(f"IMAGE кроп {block.id} (часть {part_idx + 1}/{total_parts})")
-        except Exception as e:
-            logger.error(f"Ошибка обработки IMAGE кропа {block.id}: {e}")
+        logger.debug(f"IMAGE кроп {block.id} (часть {part_idx + 1}/{total_parts})")
     
     logger.info(f"Вырезано: {len(strip_paths)} полос, {len(image_blocks)} IMAGE блоков, {len(image_pdf_paths)} PDF-кропов")
     return strip_paths, strip_images, strips, image_blocks, image_pdf_paths
