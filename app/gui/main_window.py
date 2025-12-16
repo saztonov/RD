@@ -305,7 +305,26 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self._current_file_index = -1
         self.page_images.clear()
         self.page_viewer.set_page_image(None, 0)
+        self.page_viewer.set_blocks([])
+        if self.blocks_tree_manager:
+            self.blocks_tree_manager.update_blocks_tree()
         self._update_ui()
+    
+    def _on_project_removed(self, project_id: str):
+        """Обработка удаления проекта"""
+        # Очищаем кеш для удалённого проекта
+        cache_keys_to_remove = [k for k in self.annotations_cache.keys() if k[0] == project_id]
+        for key in cache_keys_to_remove:
+            del self.annotations_cache[key]
+        
+        zoom_keys_to_remove = [k for k in self.page_zoom_states.keys() if k[0] == project_id]
+        for key in zoom_keys_to_remove:
+            del self.page_zoom_states[key]
+        
+        # Если удалён текущий активный проект - очищаем интерфейс
+        if self._current_project_id == project_id:
+            self._current_project_id = None
+            self._clear_interface()
     
     def _save_settings(self):
         """Сохранить настройки окна"""

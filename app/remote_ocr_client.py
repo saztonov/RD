@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import platform
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +15,28 @@ from typing import Any, List, Optional
 import httpx
 
 from rd_core.models import Block
+
+logger = logging.getLogger(__name__)
+
+
+class RemoteOCRError(Exception):
+    """Базовая ошибка Remote OCR"""
+    pass
+
+
+class AuthenticationError(RemoteOCRError):
+    """Неверный API ключ (401)"""
+    pass
+
+
+class PayloadTooLargeError(RemoteOCRError):
+    """Слишком большой файл (413)"""
+    pass
+
+
+class ServerError(RemoteOCRError):
+    """Ошибка сервера (5xx)"""
+    pass
 
 
 def _get_client_id_path() -> Path:
@@ -73,6 +97,8 @@ class RemoteOCRClient:
     api_key: Optional[str] = field(default_factory=lambda: os.getenv("REMOTE_OCR_API_KEY"))
     client_id: str = field(default_factory=_get_or_create_client_id)
     timeout: float = 120.0
+    upload_timeout: float = 600.0  # Для POST /jobs - большие PDF
+    max_retries: int = 3
     
     def _headers(self) -> dict:
         """Получить заголовки для запросов"""
@@ -80,6 +106,57 @@ class RemoteOCRClient:
         if self.api_key:
             headers["X-API-Key"] = self.api_key
         return headers
+    
+    def _handle_response_error(self, resp: httpx.Response):
+        """Обработать ошибки ответа с понятными сообщениями"""
+        if resp.status_code == 401:
+            raise AuthenticationError("Неверный API ключ (REMOTE_OCR_API_KEY)")
+        elif resp.status_code == 413:
+            raise PayloadTooLargeError("Файл слишком большой для загрузки")
+        elif resp.status_code >= 500:
+            raise ServerError(f"Ошибка сервера: {resp.status_code}")
+        resp.raise_for_status()
+    
+    def _request_with_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        timeout: Optional[float] = None,
+        retries: Optional[int] = None,
+        **kwargs
+    ) -> httpx.Response:
+        """Выполнить запрос с ретраями и exponential backoff"""
+        timeout = timeout or self.timeout
+        retries = retries if retries is not None else self.max_retries
+        
+        last_error = None
+        for attempt in range(retries):
+            try:
+                with httpx.Client(base_url=self.base_url, timeout=timeout) as client:
+                    resp = getattr(client, method)(path, headers=self._headers(), **kwargs)
+                    
+                    # Для 5xx - ретраим
+                    if resp.status_code >= 500 and attempt < retries - 1:
+                        delay = 2 ** attempt  # 1, 2, 4 сек
+                        logger.warning(f"Сервер вернул {resp.status_code}, ретрай через {delay}с...")
+                        time.sleep(delay)
+                        continue
+                    
+                    self._handle_response_error(resp)
+                    return resp
+                    
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                last_error = e
+                if attempt < retries - 1:
+                    delay = 2 ** attempt
+                    logger.warning(f"Сетевая ошибка: {e}, ретрай через {delay}с...")
+                    time.sleep(delay)
+                    continue
+                raise
+        
+        if last_error:
+            raise last_error
     
     @staticmethod
     def hash_pdf(path: str) -> str:
@@ -99,6 +176,23 @@ class RemoteOCRClient:
         except Exception:
             return False
     
+    def find_existing_job(self, document_id: str) -> Optional[JobInfo]:
+        """
+        Найти существующую активную задачу для документа
+        
+        Returns:
+            JobInfo если есть queued/processing задача, иначе None
+        """
+        try:
+            jobs = self.list_jobs(document_id=document_id)
+            for job in jobs:
+                if job.status in ("queued", "processing"):
+                    logger.info(f"Найдена существующая задача {job.id} в статусе {job.status}")
+                    return job
+        except Exception as e:
+            logger.warning(f"Ошибка поиска существующей задачи: {e}")
+        return None
+    
     def create_job(
         self,
         pdf_path: str,
@@ -108,6 +202,7 @@ class RemoteOCRClient:
         text_model: Optional[str] = None,
         table_model: Optional[str] = None,
         image_model: Optional[str] = None,
+        reuse_existing: bool = True,
     ) -> JobInfo:
         """
         Создать задачу OCR
@@ -117,20 +212,29 @@ class RemoteOCRClient:
             selected_blocks: список выбранных блоков
             task_name: название задания
             engine: движок OCR
+            reuse_existing: переиспользовать существующую задачу если есть
         
         Returns:
-            JobInfo с информацией о созданной задаче
+            JobInfo с информацией о созданной/существующей задаче
         """
         document_id = self.hash_pdf(pdf_path)
         document_name = Path(pdf_path).name
+        
+        # Проверяем существующую активную задачу
+        if reuse_existing:
+            existing = self.find_existing_job(document_id)
+            if existing:
+                logger.info(f"Подключаемся к существующей задаче {existing.id}")
+                return existing
         
         # Сериализуем блоки
         blocks_data = [block.to_dict() for block in selected_blocks]
         blocks_json = json.dumps(blocks_data, ensure_ascii=False)
         
-        with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
+        # Используем увеличенный таймаут для загрузки
+        with httpx.Client(base_url=self.base_url, timeout=self.upload_timeout) as client:
             with open(pdf_path, "rb") as pdf_file:
-                data = {
+                form_data = {
                     "client_id": self.client_id,
                     "document_id": document_id,
                     "document_name": document_name,
@@ -139,19 +243,19 @@ class RemoteOCRClient:
                     "blocks_json": blocks_json,
                 }
                 if text_model:
-                    data["text_model"] = text_model
+                    form_data["text_model"] = text_model
                 if table_model:
-                    data["table_model"] = table_model
+                    form_data["table_model"] = table_model
                 if image_model:
-                    data["image_model"] = image_model
+                    form_data["image_model"] = image_model
 
                 resp = client.post(
                     "/jobs",
                     headers=self._headers(),
-                    data=data,
+                    data=form_data,
                     files={"pdf": (document_name, pdf_file, "application/pdf")}
                 )
-            resp.raise_for_status()
+            self._handle_response_error(resp)
             data = resp.json()
         
         return JobInfo(
@@ -177,10 +281,8 @@ class RemoteOCRClient:
         if document_id:
             params["document_id"] = document_id
         
-        with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
-            resp = client.get("/jobs", params=params, headers=self._headers())
-            resp.raise_for_status()
-            data = resp.json()
+        resp = self._request_with_retry("get", "/jobs", params=params)
+        data = resp.json()
         
         return [
             JobInfo(
@@ -199,10 +301,8 @@ class RemoteOCRClient:
     
     def get_job(self, job_id: str) -> JobInfo:
         """Получить информацию о задаче"""
-        with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
-            resp = client.get(f"/jobs/{job_id}", headers=self._headers())
-            resp.raise_for_status()
-            j = resp.json()
+        resp = self._request_with_retry("get", f"/jobs/{job_id}")
+        j = resp.json()
         
         return JobInfo(
             id=j["id"],
@@ -218,10 +318,8 @@ class RemoteOCRClient:
     
     def get_job_details(self, job_id: str) -> dict:
         """Получить детальную информацию о задаче"""
-        with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
-            resp = client.get(f"/jobs/{job_id}/details", headers=self._headers())
-            resp.raise_for_status()
-            return resp.json()
+        resp = self._request_with_retry("get", f"/jobs/{job_id}/details")
+        return resp.json()
     
     def download_result(self, job_id: str, target_zip_path: str) -> str:
         """
@@ -234,13 +332,11 @@ class RemoteOCRClient:
         Returns:
             Путь к скачанному файлу
         """
-        with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
-            resp = client.get(f"/jobs/{job_id}/result", headers=self._headers())
-            resp.raise_for_status()
-            
-            Path(target_zip_path).parent.mkdir(parents=True, exist_ok=True)
-            with open(target_zip_path, "wb") as f:
-                f.write(resp.content)
+        resp = self._request_with_retry("get", f"/jobs/{job_id}/result", timeout=300.0)
+        
+        Path(target_zip_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(target_zip_path, "wb") as f:
+            f.write(resp.content)
         
         return target_zip_path
     
@@ -254,10 +350,8 @@ class RemoteOCRClient:
         Returns:
             True если успешно удалено
         """
-        with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
-            resp = client.delete(f"/jobs/{job_id}", headers=self._headers())
-            resp.raise_for_status()
-            return resp.json().get("ok", False)
+        resp = self._request_with_retry("delete", f"/jobs/{job_id}")
+        return resp.json().get("ok", False)
 
 
 # Для обратной совместимости

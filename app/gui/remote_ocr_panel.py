@@ -7,16 +7,25 @@ import os
 import subprocess
 import sys
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal, QObject
 from PySide6.QtWidgets import (
     QDockWidget, QVBoxLayout, QHBoxLayout, QWidget,
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
     QMessageBox, QFileDialog, QLabel, QProgressBar
 )
+
+
+class _WorkerSignals(QObject):
+    """Сигналы для фоновых задач"""
+    jobs_loaded = Signal(list)
+    jobs_error = Signal(str)
+    job_created = Signal(object)
+    job_create_error = Signal(str, str)  # error_type, message
 
 if TYPE_CHECKING:
     from app.gui.main_window import MainWindow
@@ -36,6 +45,14 @@ class RemoteOCRPanel(QDockWidget):
         self._last_engine = None
         self._job_output_dirs = {}  # Маппинг job_id -> output_dir
         self._config_file = Path.home() / ".rd" / "remote_ocr_jobs.json"
+        
+        # ThreadPool для фоновых операций
+        self._executor = ThreadPoolExecutor(max_workers=2)
+        self._signals = _WorkerSignals()
+        self._signals.jobs_loaded.connect(self._on_jobs_loaded)
+        self._signals.jobs_error.connect(self._on_jobs_error)
+        self._signals.job_created.connect(self._on_job_created)
+        self._signals.job_create_error.connect(self._on_job_create_error)
         
         self._load_job_mappings()
         self._setup_ui()
@@ -143,19 +160,31 @@ class RemoteOCRPanel(QDockWidget):
         return False
     
     def _refresh_jobs(self):
-        """Обновить список задач"""
+        """Обновить список задач (в фоне)"""
+        self.status_label.setText("🔄 Загрузка...")
+        self._executor.submit(self._fetch_jobs_bg)
+    
+    def _fetch_jobs_bg(self):
+        """Фоновая загрузка списка задач"""
         client = self._get_client()
         if client is None:
-            self.status_label.setText("🔴 Ошибка клиента")
+            self._signals.jobs_error.emit("Ошибка клиента")
             return
-        
         try:
             jobs = client.list_jobs(document_id=None)
-            self._update_table(jobs)
-            self.status_label.setText("🟢 Подключено")
+            self._signals.jobs_loaded.emit(jobs)
         except Exception as e:
             logger.error(f"Ошибка получения списка задач: {e}")
-            self.status_label.setText("🔴 Сервер недоступен")
+            self._signals.jobs_error.emit(str(e))
+    
+    def _on_jobs_loaded(self, jobs):
+        """Слот: список задач получен"""
+        self._update_table(jobs)
+        self.status_label.setText("🟢 Подключено")
+    
+    def _on_jobs_error(self, error_msg: str):
+        """Слот: ошибка загрузки списка"""
+        self.status_label.setText("🔴 Сервер недоступен")
     
     def _update_table(self, jobs):
         """Обновить таблицу задач"""
@@ -419,27 +448,75 @@ class RemoteOCRPanel(QDockWidget):
         elif dialog.ocr_backend == "openrouter":
             engine = "openrouter"
         
+        # Сохраняем output_dir для использования после создания
+        self._pending_output_dir = dialog.output_dir
+        task_name = self.main_window.project_manager.get_active_project().name if self.main_window.project_manager.get_active_project() else ""
+        
+        from app.gui.toast import show_toast
+        show_toast(self, "Отправка задачи...", duration=1500)
+        
+        # Запускаем создание в фоне
+        self._executor.submit(
+            self._create_job_bg,
+            client,
+            pdf_path,
+            selected_blocks,
+            task_name,
+            engine,
+            getattr(dialog, "text_model", None),
+            getattr(dialog, "table_model", None),
+            getattr(dialog, "image_model", None),
+        )
+    
+    def _create_job_bg(self, client, pdf_path, blocks, task_name, engine, text_model, table_model, image_model):
+        """Фоновое создание задачи"""
         try:
+            from app.remote_ocr_client import AuthenticationError, PayloadTooLargeError, ServerError
+            
+            logger.info(f"[BG] Создание задачи: {len(blocks)} блоков, engine={engine}")
             job_info = client.create_job(
                 pdf_path,
-                selected_blocks,
-                task_name=self.main_window.project_manager.get_active_project().name if self.main_window.project_manager.get_active_project() else "",
+                blocks,
+                task_name=task_name,
                 engine=engine,
-                text_model=getattr(dialog, "text_model", None),
-                table_model=getattr(dialog, "table_model", None),
-                image_model=getattr(dialog, "image_model", None),
+                text_model=text_model,
+                table_model=table_model,
+                image_model=image_model,
             )
-            
-            # Сохраняем маппинг job_id -> output_dir
-            self._job_output_dirs[job_info.id] = dialog.output_dir
-            self._save_job_mappings()
-            
-            from app.gui.toast import show_toast
-            show_toast(self, f"Задача создана: {job_info.id[:8]}...", duration=2500)
-            self._refresh_jobs()
+            logger.info(f"[BG] Задача создана: {job_info.id}")
+            self._signals.job_created.emit(job_info)
+        except AuthenticationError:
+            logger.error("[BG] Ошибка авторизации")
+            self._signals.job_create_error.emit("auth", "Неверный API ключ.\n\nПроверьте REMOTE_OCR_API_KEY в .env файле.")
+        except PayloadTooLargeError:
+            logger.error("[BG] Файл слишком большой")
+            self._signals.job_create_error.emit("size", "PDF файл превышает лимит сервера.\n\nМаксимум: 500 МБ")
+        except ServerError as e:
+            logger.error(f"[BG] Ошибка сервера: {e}")
+            self._signals.job_create_error.emit("server", f"Сервер временно недоступен.\n\nПопробуйте позже.\n{e}")
         except Exception as e:
-            logger.error(f"Ошибка создания задачи: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось создать задачу:\n{e}")
+            logger.error(f"[BG] Ошибка создания задачи: {e}", exc_info=True)
+            self._signals.job_create_error.emit("generic", str(e))
+    
+    def _on_job_created(self, job_info):
+        """Слот: задача создана"""
+        logger.info(f"[SLOT] job_created: {job_info.id}")
+        self._job_output_dirs[job_info.id] = self._pending_output_dir
+        self._save_job_mappings()
+        
+        from app.gui.toast import show_toast
+        show_toast(self, f"Задача создана: {job_info.id[:8]}...", duration=2500)
+        self._refresh_jobs()
+    
+    def _on_job_create_error(self, error_type: str, message: str):
+        """Слот: ошибка создания задачи"""
+        titles = {
+            "auth": "Ошибка авторизации",
+            "size": "Файл слишком большой",
+            "server": "Ошибка сервера",
+            "generic": "Ошибка"
+        }
+        QMessageBox.critical(self, titles.get(error_type, "Ошибка"), message)
     
     def _get_selected_blocks(self):
         """Получить ВСЕ блоки со ВСЕХ страниц для OCR"""
@@ -690,6 +767,11 @@ class RemoteOCRPanel(QDockWidget):
         """При скрытии останавливаем таймер"""
         super().hideEvent(event)
         self.refresh_timer.stop()
+    
+    def closeEvent(self, event):
+        """Освобождаем ресурсы"""
+        self._executor.shutdown(wait=False)
+        super().closeEvent(event)
     
     def _format_datetime_utc3(self, dt_str: str) -> str:
         """Конвертировать UTC время в UTC+3 (МСК)"""
