@@ -51,35 +51,8 @@ class NavigationManager:
             )
     
     def restore_zoom(self, page_num: int = None):
-        """Восстановить zoom для страницы"""
-        if page_num is None:
-            page_num = self.parent.current_page
-        
-        if not self.parent._current_project_id or self.parent._current_file_index < 0:
-            self.parent.page_viewer.resetTransform()
-            self.parent.page_viewer.zoom_factor = 1.0
-            return
-        
-        zoom_key = (self.parent._current_project_id, self.parent._current_file_index, page_num)
-        
-        if zoom_key in self.parent.page_zoom_states:
-            saved_transform, saved_zoom = self.parent.page_zoom_states[zoom_key]
-            self.parent.page_viewer.setTransform(saved_transform)
-            self.parent.page_viewer.zoom_factor = saved_zoom
-        else:
-            # Попробовать найти зум для другой страницы в этом файле
-            file_zooms = {k: v for k, v in self.parent.page_zoom_states.items() 
-                         if k[0] == self.parent._current_project_id and k[1] == self.parent._current_file_index}
-            
-            if file_zooms:
-                # Берем зум последней просмотренной страницы
-                last_page_key = max(file_zooms.keys(), key=lambda x: x[2])
-                saved_transform, saved_zoom = file_zooms[last_page_key]
-                self.parent.page_viewer.setTransform(saved_transform)
-                self.parent.page_viewer.zoom_factor = saved_zoom
-            else:
-                self.parent.page_viewer.resetTransform()
-                self.parent.page_viewer.zoom_factor = 1.0
+        """Вписать страницу в область просмотра"""
+        self.parent.page_viewer.fit_to_view()
     
     def load_page_image(self, page_num: int, reset_zoom: bool = False):
         """Загрузить изображение страницы"""

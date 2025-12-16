@@ -62,6 +62,12 @@ class MenuSetupMixin:
         toggle_remote_panel_action.triggered.connect(self._toggle_remote_ocr_panel)
         tools_menu.addAction(toggle_remote_panel_action)
         
+        tools_menu.addSeparator()
+        
+        folder_settings_action = QAction("📁 Настройки папок", self)
+        folder_settings_action.triggered.connect(self._show_folder_settings)
+        tools_menu.addAction(folder_settings_action)
+        
         # Меню "Вид"
         view_menu = menubar.addMenu("&Вид")
         

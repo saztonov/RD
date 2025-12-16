@@ -378,6 +378,12 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             else:
                 self.remote_ocr_panel.show()
     
+    def _show_folder_settings(self):
+        """Показать диалог настройки папок"""
+        from app.gui.folder_settings_dialog import FolderSettingsDialog
+        dialog = FolderSettingsDialog(self)
+        dialog.exec()
+    
     def _send_to_remote_ocr(self):
         """Отправить выделенные блоки на Remote OCR"""
         if self.remote_ocr_panel:

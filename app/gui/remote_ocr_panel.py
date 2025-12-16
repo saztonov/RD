@@ -289,16 +289,16 @@ class RemoteOCRPanel(QDockWidget):
         # Определяем папку результата
         if job_id in self._job_output_dirs:
             extract_dir = Path(self._job_output_dirs[job_id])
-        elif self._last_output_dir and Path(self._last_output_dir).parent.exists():
-            base_dir = Path(self._last_output_dir).parent
-            extract_dir = base_dir / f"result_{job_id[:8]}"
-            self._job_output_dirs[job_id] = str(extract_dir)
-            self._save_job_mappings()
         else:
-            import tempfile
-            tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
-            tmp_base.mkdir(exist_ok=True)
-            extract_dir = tmp_base / f"result_{job_id[:8]}"
+            from app.gui.folder_settings_dialog import get_download_jobs_dir
+            download_dir = get_download_jobs_dir()
+            if download_dir and Path(download_dir).exists():
+                extract_dir = Path(download_dir) / f"result_{job_id[:8]}"
+            else:
+                import tempfile
+                tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
+                tmp_base.mkdir(exist_ok=True)
+                extract_dir = tmp_base / f"result_{job_id[:8]}"
             self._job_output_dirs[job_id] = str(extract_dir)
             self._save_job_mappings()
 
@@ -594,14 +594,16 @@ class RemoteOCRPanel(QDockWidget):
             # Определяем папку для сохранения
             if job_id in self._job_output_dirs:
                 extract_dir = Path(self._job_output_dirs[job_id])
-            elif self._last_output_dir and Path(self._last_output_dir).parent.exists():
-                base_dir = Path(self._last_output_dir).parent
-                extract_dir = base_dir / f"result_{job_id[:8]}"
             else:
-                import tempfile
-                tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
-                tmp_base.mkdir(exist_ok=True)
-                extract_dir = tmp_base / f"result_{job_id[:8]}"
+                from app.gui.folder_settings_dialog import get_download_jobs_dir
+                download_dir = get_download_jobs_dir()
+                if download_dir and Path(download_dir).exists():
+                    extract_dir = Path(download_dir) / f"result_{job_id[:8]}"
+                else:
+                    import tempfile
+                    tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
+                    tmp_base.mkdir(exist_ok=True)
+                    extract_dir = tmp_base / f"result_{job_id[:8]}"
             
             if job_id not in self._job_output_dirs:
                 self._job_output_dirs[job_id] = str(extract_dir)
@@ -725,10 +727,10 @@ class RemoteOCRPanel(QDockWidget):
             
             # Определяем локальный путь
             if job_id not in self._job_output_dirs:
-                # Определяем путь по тем же правилам, что и при автоскачивании
-                if self._last_output_dir and Path(self._last_output_dir).parent.exists():
-                    base_dir = Path(self._last_output_dir).parent
-                    extract_dir = base_dir / f"result_{job_id[:8]}"
+                from app.gui.folder_settings_dialog import get_download_jobs_dir
+                download_dir = get_download_jobs_dir()
+                if download_dir and Path(download_dir).exists():
+                    extract_dir = Path(download_dir) / f"result_{job_id[:8]}"
                 else:
                     import tempfile
                     tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"

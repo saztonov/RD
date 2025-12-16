@@ -6,9 +6,8 @@ import logging
 import os
 import re
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                               QPushButton, QRadioButton, QLineEdit, QFileDialog,
+                               QPushButton, QRadioButton,
                                QGroupBox, QDialogButtonBox, QComboBox, QButtonGroup)
-from PySide6.QtCore import QSettings
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -192,11 +191,18 @@ class OCRDialog(QDialog):
         self.datalab_radio.toggled.connect(self._on_backend_changed)
         self.openrouter_radio.toggled.connect(self._on_backend_changed)
         
-        # Папка для результатов
-        output_group = QGroupBox("Папка для результатов")
-        output_layout = QVBoxLayout(output_group)
+        # Информация о задании
+        info_group = QGroupBox("Информация")
+        info_layout = QVBoxLayout(info_group)
         
-        output_layout.addWidget(QLabel("Будут сохранены:\n• Исходный PDF\n• Разметка (JSON)\n• Кропы и Markdown документ"))
+        # Имя задачи (из бокового меню)
+        task_layout = QHBoxLayout()
+        task_layout.addWidget(QLabel("Задание:"))
+        self.task_name_label = QLabel(self.task_name if self.task_name else "(не выбрано)")
+        self.task_name_label.setStyleSheet("font-weight: bold; color: #e0e0e0;")
+        task_layout.addWidget(self.task_name_label)
+        task_layout.addStretch()
+        info_layout.addLayout(task_layout)
         
         # R2 Bucket информация
         r2_bucket = os.getenv("R2_BUCKET_NAME", "")
@@ -219,40 +225,9 @@ class OCRDialog(QDialog):
             r2_info.setStyleSheet("color: #888; font-size: 10px;")
             r2_layout.addWidget(r2_info)
         r2_layout.addStretch()
-        output_layout.addLayout(r2_layout)
+        info_layout.addLayout(r2_layout)
         
-        # Имя задачи (из бокового меню)
-        task_layout = QHBoxLayout()
-        task_layout.addWidget(QLabel("Задание:"))
-        self.task_name_label = QLabel(self.task_name if self.task_name else "(не выбрано)")
-        self.task_name_label.setStyleSheet("font-weight: bold; color: #e0e0e0;")
-        task_layout.addWidget(self.task_name_label)
-        task_layout.addStretch()
-        output_layout.addLayout(task_layout)
-        
-        # Базовая папка
-        path_layout = QHBoxLayout()
-        path_layout.addWidget(QLabel("Папка:"))
-        self.path_edit = QLineEdit()
-        self.path_edit.setReadOnly(True)
-        self.path_edit.setPlaceholderText("Выберите папку...")
-        path_layout.addWidget(self.path_edit)
-        
-        self.browse_btn = QPushButton("Обзор...")
-        self.browse_btn.clicked.connect(self._select_output_dir)
-        path_layout.addWidget(self.browse_btn)
-        
-        output_layout.addLayout(path_layout)
-        
-        # Итоговый путь
-        result_layout = QHBoxLayout()
-        result_layout.addWidget(QLabel("Итого:"))
-        self.result_path_label = QLabel("")
-        self.result_path_label.setStyleSheet("color: #666; font-style: italic;")
-        result_layout.addWidget(self.result_path_label)
-        output_layout.addLayout(result_layout)
-        
-        layout.addWidget(output_group)
+        layout.addWidget(info_group)
         
         # Кнопки
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -260,13 +235,9 @@ class OCRDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         
-        # Загрузка сохраненной папки
-        settings = QSettings("RDApp", "OCRDialog")
-        last_dir = settings.value("last_output_dir", "")
-        if last_dir and os.path.exists(last_dir):
-            self.path_edit.setText(last_dir)
-            self.base_dir = last_dir
-            self._update_output_path()
+        # Загрузка папки из настроек
+        from app.gui.folder_settings_dialog import get_new_jobs_dir
+        self.base_dir = get_new_jobs_dir()
     
     def _on_backend_changed(self, checked=None):
         """Показать/скрыть группы моделей в зависимости от выбранного бэкенда"""
@@ -276,36 +247,13 @@ class OCRDialog(QDialog):
         self.datalab_image_group.setVisible(is_datalab)
         self.openrouter_models_group.setVisible(is_openrouter)
     
-    def _select_output_dir(self):
-        """Выбор базовой папки для результатов"""
-        dir_path = QFileDialog.getExistingDirectory(self, "Выберите папку для результатов")
-        if dir_path:
-            self.path_edit.setText(dir_path)
-            self.base_dir = dir_path
-            self._update_output_path()
-            # Сохранение выбранной папки
-            settings = QSettings("RDApp", "OCRDialog")
-            settings.setValue("last_output_dir", dir_path)
-    
-    def _update_output_path(self):
-        """Обновить итоговый путь (показ примера с timestamp)"""
-        if self.base_dir and self.task_name:
-            # Показываем пример с транслитерированным названием
-            safe_task_name = transliterate_to_latin(self.task_name)
-            example_path = str(Path(self.base_dir) / f"{safe_task_name}_YYYYMMDD_HHMMSS")
-            self.result_path_label.setText(example_path)
-        elif self.base_dir:
-            self.result_path_label.setText("(задание не выбрано)")
-        else:
-            self.result_path_label.setText("")
-    
     def _accept(self):
         """Проверка и принятие"""
         from PySide6.QtWidgets import QMessageBox
         from datetime import datetime
         
         if not self.base_dir:
-            QMessageBox.warning(self, "Ошибка", "Выберите папку для результатов")
+            QMessageBox.warning(self, "Ошибка", "Настройте папки через меню Инструменты → Настройки папок")
             return
         
         if not self.task_name:
