@@ -134,11 +134,11 @@ async def create_job_endpoint(
 
 @app.get("/jobs")
 def list_jobs_endpoint(
-    client_id: str,
+    client_id: Optional[str] = None,
     document_id: Optional[str] = None,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> list:
-    """Получить список задач по client_id и опционально document_id"""
+    """Получить список задач. Без client_id возвращает все задачи."""
     _check_api_key(x_api_key)
     
     jobs = list_jobs(client_id, document_id)
@@ -247,19 +247,26 @@ def get_job_details_endpoint(
                 {"name": "annotation.json", "path": "annotation.json", "icon": "📋"},
             ]
             
-            # Добавляем кропы если есть
+            # Добавляем папку crops как элемент-директорию если есть файлы
             crops_dir = os.path.join(job.job_dir, "crops")
             if os.path.exists(crops_dir):
                 crop_files = []
                 for f in os.listdir(crops_dir):
-                    if f.endswith(('.png', '.jpg', '.jpeg')):
+                    if f.endswith(('.png', '.jpg', '.jpeg', '.pdf')):
                         crop_files.append({
                             "name": f,
                             "path": f"crops/{f}",
-                            "icon": "🖼️"
+                            "icon": "🖼️" if not f.endswith('.pdf') else "📄"
                         })
                 if crop_files:
-                    result["r2_files"].extend(sorted(crop_files, key=lambda x: x["name"]))
+                    # Добавляем папку crops как навигационный элемент
+                    result["r2_files"].append({
+                        "name": "crops/",
+                        "path": "crops",
+                        "icon": "📁",
+                        "is_dir": True,
+                        "children": sorted(crop_files, key=lambda x: x["name"])
+                    })
         else:
             result["r2_base_url"] = None
             result["r2_files"] = []

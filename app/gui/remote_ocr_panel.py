@@ -101,7 +101,7 @@ class RemoteOCRPanel(QDockWidget):
         layout.addWidget(self.jobs_table)
         
         self.setWidget(widget)
-        self.setMinimumWidth(300)
+        self.setMinimumWidth(520)
         self.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
     
     def _setup_timer(self):

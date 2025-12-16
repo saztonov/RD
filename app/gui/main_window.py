@@ -367,6 +367,7 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         from PySide6.QtCore import Qt
         self.remote_ocr_panel = RemoteOCRPanel(self, self)
         self.addDockWidget(Qt.RightDockWidgetArea, self.remote_ocr_panel)
+        self.resizeDocks([self.remote_ocr_panel], [520], Qt.Horizontal)
         self.remote_ocr_panel.show()  # Всегда показывать при загрузке
     
     def _toggle_remote_ocr_panel(self):

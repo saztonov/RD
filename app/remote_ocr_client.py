@@ -267,17 +267,20 @@ class RemoteOCRClient:
             task_name=data.get("task_name", "")
         )
     
-    def list_jobs(self, document_id: Optional[str] = None) -> List[JobInfo]:
+    def list_jobs(self, document_id: Optional[str] = None, all_clients: bool = True) -> List[JobInfo]:
         """
         Получить список задач
         
         Args:
             document_id: опционально фильтр по document_id
+            all_clients: если True - возвращает задачи всех пользователей
         
         Returns:
             Список задач
         """
-        params = {"client_id": self.client_id}
+        params = {}
+        if not all_clients:
+            params["client_id"] = self.client_id
         if document_id:
             params["document_id"] = document_id
         

@@ -156,20 +156,29 @@ def get_job(job_id: str) -> Optional[Job]:
             conn.close()
 
 
-def list_jobs(client_id: str, document_id: Optional[str] = None) -> List[Job]:
-    """Получить список задач по client_id и опционально document_id"""
+def list_jobs(client_id: Optional[str] = None, document_id: Optional[str] = None) -> List[Job]:
+    """Получить список задач. Если client_id не указан - возвращает все задачи."""
     with _db_lock:
         conn = _get_connection()
         try:
-            if document_id:
+            if client_id and document_id:
                 rows = conn.execute(
                     "SELECT * FROM jobs WHERE client_id = ? AND document_id = ? ORDER BY created_at DESC",
                     (client_id, document_id)
                 ).fetchall()
-            else:
+            elif client_id:
                 rows = conn.execute(
                     "SELECT * FROM jobs WHERE client_id = ? ORDER BY created_at DESC",
                     (client_id,)
+                ).fetchall()
+            elif document_id:
+                rows = conn.execute(
+                    "SELECT * FROM jobs WHERE document_id = ? ORDER BY created_at DESC",
+                    (document_id,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM jobs ORDER BY created_at DESC"
                 ).fetchall()
             return [_row_to_job(row) for row in rows]
         finally:
