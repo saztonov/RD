@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, QObject
 from PySide6.QtWidgets import (
     QDockWidget, QVBoxLayout, QHBoxLayout, QWidget,
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QFileDialog, QLabel, QProgressBar
+    QMessageBox, QFileDialog, QLabel, QProgressBar, QProgressDialog
 )
 
 
@@ -26,6 +26,11 @@ class _WorkerSignals(QObject):
     jobs_error = Signal(str)
     job_created = Signal(object)
     job_create_error = Signal(str, str)  # error_type, message
+    # Сигналы для скачивания
+    download_started = Signal(str, int)  # job_id, total_files
+    download_progress = Signal(str, int, str)  # job_id, current_file_num, filename
+    download_finished = Signal(str, str)  # job_id, extract_dir
+    download_error = Signal(str, str)  # job_id, error_message
 
 if TYPE_CHECKING:
     from app.gui.main_window import MainWindow
@@ -53,6 +58,14 @@ class RemoteOCRPanel(QDockWidget):
         self._signals.jobs_error.connect(self._on_jobs_error)
         self._signals.job_created.connect(self._on_job_created)
         self._signals.job_create_error.connect(self._on_job_create_error)
+        # Сигналы скачивания
+        self._signals.download_started.connect(self._on_download_started)
+        self._signals.download_progress.connect(self._on_download_progress)
+        self._signals.download_finished.connect(self._on_download_finished)
+        self._signals.download_error.connect(self._on_download_error)
+        
+        self._download_dialog: Optional[QProgressDialog] = None
+        self._pending_open_in_editor: Optional[str] = None  # job_id для открытия после скачивания
         
         self._load_job_mappings()
         self._setup_ui()
@@ -272,11 +285,40 @@ class RemoteOCRPanel(QDockWidget):
 
     def _open_job_in_editor(self, job_id: str):
         """Открыть результат задачи (PDF + annotation.json) в редакторе"""
+        # Определяем папку результата
+        if job_id in self._job_output_dirs:
+            extract_dir = Path(self._job_output_dirs[job_id])
+        elif self._last_output_dir and Path(self._last_output_dir).parent.exists():
+            base_dir = Path(self._last_output_dir).parent
+            extract_dir = base_dir / f"result_{job_id[:8]}"
+            self._job_output_dirs[job_id] = str(extract_dir)
+            self._save_job_mappings()
+        else:
+            import tempfile
+            tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
+            tmp_base.mkdir(exist_ok=True)
+            extract_dir = tmp_base / f"result_{job_id[:8]}"
+            self._job_output_dirs[job_id] = str(extract_dir)
+            self._save_job_mappings()
+
+        annotation_path = extract_dir / "annotation.json"
+        pdf_path = extract_dir / "document.pdf"
+
+        # Если результата нет локально — запускаем скачивание с прогрессом
+        if not annotation_path.exists() or not pdf_path.exists():
+            self._auto_download_result(job_id, open_after=True)
+            return
+        
+        # Файлы есть - открываем сразу
+        self._open_job_in_editor_internal(job_id)
+
+    def _open_job_in_editor_internal(self, job_id: str):
+        """Внутренний метод открытия задачи в редакторе (файлы уже скачаны)"""
         try:
             # Сохраняем текущую аннотацию в кеш перед переключением
             self.main_window._save_current_annotation_to_cache()
             
-            # Сбрасываем маркеры проекта/файла (иначе система путается при последующем переключении)
+            # Сбрасываем маркеры проекта/файла
             self.main_window._current_project_id = None
             self.main_window._current_file_index = -1
             
@@ -284,28 +326,8 @@ class RemoteOCRPanel(QDockWidget):
             if hasattr(self.main_window, 'navigation_manager') and self.main_window.navigation_manager:
                 self.main_window.navigation_manager.save_current_zoom()
             
-            # Определяем папку результата
-            if job_id in self._job_output_dirs:
-                extract_dir = Path(self._job_output_dirs[job_id])
-            elif self._last_output_dir and Path(self._last_output_dir).parent.exists():
-                base_dir = Path(self._last_output_dir).parent
-                extract_dir = base_dir / f"result_{job_id[:8]}"
-                self._job_output_dirs[job_id] = str(extract_dir)
-                self._save_job_mappings()
-            else:
-                import tempfile
-                tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
-                tmp_base.mkdir(exist_ok=True)
-                extract_dir = tmp_base / f"result_{job_id[:8]}"
-                self._job_output_dirs[job_id] = str(extract_dir)
-                self._save_job_mappings()
-
+            extract_dir = Path(self._job_output_dirs[job_id])
             annotation_path = extract_dir / "annotation.json"
-            pdf_path = extract_dir / "document.pdf"
-
-            # Если результата нет локально — пробуем докачать (R2)
-            if not annotation_path.exists() or not pdf_path.exists():
-                self._auto_download_result(job_id)
 
             if not annotation_path.exists():
                 QMessageBox.warning(self, "Нет результата", "annotation.json не найден (задача не готова или результат не скачан).")
@@ -554,14 +576,13 @@ class RemoteOCRPanel(QDockWidget):
                     block.prompt = prompt
                     logger.debug(f"Промпт для IMAGE блока {block.id}: image")
     
-    def _auto_download_result(self, job_id: str):
-        """Автоматически скачать результат из R2"""
+    def _auto_download_result(self, job_id: str, open_after: bool = False):
+        """Запустить скачивание результата из R2 в фоне с прогрессом"""
         client = self._get_client()
         if client is None:
             return
         
         try:
-            # Получаем детали задачи (включая r2_prefix)
             job_details = client.get_job_details(job_id)
             r2_prefix = job_details.get("r2_prefix")
             
@@ -581,7 +602,6 @@ class RemoteOCRPanel(QDockWidget):
                 tmp_base.mkdir(exist_ok=True)
                 extract_dir = tmp_base / f"result_{job_id[:8]}"
             
-            # Сохраняем маппинг
             if job_id not in self._job_output_dirs:
                 self._job_output_dirs[job_id] = str(extract_dir)
                 self._save_job_mappings()
@@ -590,44 +610,108 @@ class RemoteOCRPanel(QDockWidget):
             result_exists = extract_dir.exists() and (extract_dir / "annotation.json").exists()
             
             if not result_exists:
-                extract_dir.mkdir(parents=True, exist_ok=True)
-                logger.info(f"Автоскачивание результата из R2 в: {extract_dir}")
-                
-                # Инициализируем R2Storage
-                from rd_core.r2_storage import R2Storage
-                r2 = R2Storage()
-                
-                # Скачиваем основные файлы
-                main_files = ["annotation.json", "result.md", "document.pdf"]
-                for filename in main_files:
-                    remote_key = f"{r2_prefix}/{filename}"
-                    local_path = extract_dir / filename
-                    r2.download_file(remote_key, str(local_path))
-                
-                # Скачиваем кропы из папки crops/
-                crops_dir = extract_dir / "crops"
-                crops_dir.mkdir(exist_ok=True)
-                
-                # Получаем список всех файлов в R2 с префиксом crops/
-                crops_prefix = f"{r2_prefix}/crops/"
-                crop_files = r2.list_by_prefix(crops_prefix)
-                
-                for remote_key in crop_files:
-                    # Извлекаем имя файла
-                    filename = remote_key.split("/")[-1]
-                    if filename:  # Пропускаем директории
-                        local_path = crops_dir / filename
-                        r2.download_file(remote_key, str(local_path))
-                
-                logger.info(f"✅ Результат автоматически скачан из R2: {extract_dir}")
-                
-                from app.gui.toast import show_toast
-                show_toast(self.main_window, f"Результат скачан: {job_id[:8]}...")
+                if open_after:
+                    self._pending_open_in_editor = job_id
+                # Запускаем скачивание в фоне
+                self._executor.submit(self._download_result_bg, job_id, r2_prefix, str(extract_dir))
             else:
                 logger.debug(f"Результат уже скачан: {extract_dir}")
+                if open_after:
+                    self._open_job_in_editor_internal(job_id)
                 
         except Exception as e:
-            logger.error(f"Ошибка автоскачивания результата {job_id}: {e}")
+            logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")
+
+    def _download_result_bg(self, job_id: str, r2_prefix: str, extract_dir: str):
+        """Фоновое скачивание результата с прогрессом"""
+        try:
+            from rd_core.r2_storage import R2Storage
+            r2 = R2Storage()
+            
+            extract_path = Path(extract_dir)
+            extract_path.mkdir(parents=True, exist_ok=True)
+            
+            # Собираем список всех файлов для скачивания
+            main_files = ["annotation.json", "result.md", "document.pdf"]
+            crops_prefix = f"{r2_prefix}/crops/"
+            crop_files = r2.list_by_prefix(crops_prefix)
+            
+            total_files = len(main_files) + len(crop_files)
+            self._signals.download_started.emit(job_id, total_files)
+            
+            current = 0
+            
+            # Скачиваем основные файлы
+            for filename in main_files:
+                current += 1
+                self._signals.download_progress.emit(job_id, current, filename)
+                remote_key = f"{r2_prefix}/{filename}"
+                local_path = extract_path / filename
+                r2.download_file(remote_key, str(local_path))
+            
+            # Скачиваем кропы
+            if crop_files:
+                crops_dir = extract_path / "crops"
+                crops_dir.mkdir(exist_ok=True)
+                
+                for remote_key in crop_files:
+                    current += 1
+                    filename = remote_key.split("/")[-1]
+                    if filename:
+                        self._signals.download_progress.emit(job_id, current, f"crops/{filename}")
+                        local_path = crops_dir / filename
+                        r2.download_file(remote_key, str(local_path))
+            
+            logger.info(f"✅ Результат скачан из R2: {extract_dir}")
+            self._signals.download_finished.emit(job_id, extract_dir)
+            
+        except Exception as e:
+            logger.error(f"Ошибка скачивания результата {job_id}: {e}")
+            self._signals.download_error.emit(job_id, str(e))
+
+    def _on_download_started(self, job_id: str, total_files: int):
+        """Слот: начало скачивания - показываем диалог прогресса"""
+        self._download_dialog = QProgressDialog(
+            f"Скачивание файлов задачи {job_id[:8]}...",
+            None,  # Без кнопки отмены
+            0,
+            total_files,
+            self
+        )
+        self._download_dialog.setWindowTitle("Загрузка результатов")
+        self._download_dialog.setWindowModality(Qt.WindowModal)
+        self._download_dialog.setMinimumDuration(0)
+        self._download_dialog.setValue(0)
+        self._download_dialog.show()
+
+    def _on_download_progress(self, job_id: str, current: int, filename: str):
+        """Слот: прогресс скачивания"""
+        if self._download_dialog:
+            self._download_dialog.setValue(current)
+            self._download_dialog.setLabelText(f"Скачивание: {filename}")
+
+    def _on_download_finished(self, job_id: str, extract_dir: str):
+        """Слот: скачивание завершено"""
+        if self._download_dialog:
+            self._download_dialog.close()
+            self._download_dialog = None
+        
+        from app.gui.toast import show_toast
+        show_toast(self.main_window, f"Результат скачан: {job_id[:8]}...")
+        
+        # Если ожидалось открытие в редакторе - открываем
+        if self._pending_open_in_editor == job_id:
+            self._pending_open_in_editor = None
+            self._open_job_in_editor_internal(job_id)
+
+    def _on_download_error(self, job_id: str, error_msg: str):
+        """Слот: ошибка скачивания"""
+        if self._download_dialog:
+            self._download_dialog.close()
+            self._download_dialog = None
+        
+        self._pending_open_in_editor = None
+        QMessageBox.critical(self, "Ошибка загрузки", f"Не удалось скачать файлы:\n{error_msg}")
     
     def _show_job_details(self, job_id: str):
         """Показать детальную информацию о задаче"""
