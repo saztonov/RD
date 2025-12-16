@@ -175,10 +175,9 @@ class PageViewer(QGraphicsView):
         self.block_items.clear()
         self.block_labels.clear()
         
-        # Сбрасываем масштаб только если указано
+        # Вписываем страницу в область просмотра только если указано
         if reset_zoom:
-            self.resetTransform()
-            self.zoom_factor = 1.0
+            self.fit_to_view()
     
     def set_blocks(self, blocks: List[Block]):
         """

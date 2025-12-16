@@ -95,6 +95,7 @@ class MenuSetupMixin:
     def _setup_toolbar(self):
         """Настройка панели инструментов"""
         toolbar = QToolBar("Основная панель")
+        toolbar.setObjectName("MainToolbar")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
         

@@ -43,6 +43,7 @@ class RemoteOCRPanel(QDockWidget):
     
     def __init__(self, main_window: "MainWindow", parent=None):
         super().__init__("Remote OCR Jobs", parent)
+        self.setObjectName("RemoteOCRPanel")
         self.main_window = main_window
         self._client = None
         self._current_document_id = None

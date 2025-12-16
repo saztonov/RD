@@ -61,7 +61,13 @@ class BlockHandlersMixin:
         )
         
         current_page_data.blocks.append(block)
+        new_block_idx = len(current_page_data.blocks) - 1
         self.page_viewer.set_blocks(current_page_data.blocks)
+        
+        # Автоматически выбираем созданный блок для возможности изменения размера
+        self.page_viewer.selected_block_idx = new_block_idx
+        self.page_viewer._redraw_blocks()
+        
         self.blocks_tree_manager.update_blocks_tree()
     
     def _on_polygon_drawn(self, points: list):
@@ -95,7 +101,13 @@ class BlockHandlersMixin:
         )
         
         current_page_data.blocks.append(block)
+        new_block_idx = len(current_page_data.blocks) - 1
         self.page_viewer.set_blocks(current_page_data.blocks)
+        
+        # Автоматически выбираем созданный блок
+        self.page_viewer.selected_block_idx = new_block_idx
+        self.page_viewer._redraw_blocks()
+        
         self.blocks_tree_manager.update_blocks_tree()
     
     def _on_block_selected(self, block_idx: int):
