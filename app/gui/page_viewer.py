@@ -71,6 +71,11 @@ class PageViewer(QGraphicsView):
         self.move_start_pos: Optional[QPointF] = None
         self.original_block_rect: Optional[QRectF] = None
         
+        # Состояние редактирования полигона
+        self.dragging_polygon_vertex: Optional[int] = None  # индекс перетаскиваемой вершины
+        self.dragging_polygon_edge: Optional[int] = None  # индекс перетаскиваемого ребра (от вершины i к i+1)
+        self.original_polygon_points: Optional[List[tuple]] = None  # исходные точки полигона
+        
         # Состояние панорамирования (перемещения листа)
         self.panning = False
         self.pan_start_pos: Optional[QPointF] = None
@@ -280,10 +285,13 @@ class PageViewer(QGraphicsView):
         self.scene.addItem(label)
         self.block_labels[block.id] = label
         
-        # Рисуем хэндлы для выделенного блока (только для прямоугольников)
-        if idx == self.selected_block_idx and block.shape_type == ShapeType.RECTANGLE:
-            rect = QRectF(x1, y1, x2 - x1, y2 - y1)
-            self._draw_resize_handles(rect)
+        # Рисуем хэндлы для выделенного блока
+        if idx == self.selected_block_idx:
+            if block.shape_type == ShapeType.RECTANGLE:
+                rect = QRectF(x1, y1, x2 - x1, y2 - y1)
+                self._draw_resize_handles(rect)
+            elif block.shape_type == ShapeType.POLYGON and block.polygon_points:
+                self._draw_polygon_handles(block.polygon_points)
     
     def _get_block_color(self, block_type: BlockType) -> QColor:
         """Получить цвет для типа блока"""
@@ -350,6 +358,27 @@ class PageViewer(QGraphicsView):
                     block = self.current_blocks[self.selected_block_idx]
                     x1, y1, x2, y2 = block.coords_px
                     block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
+                    
+                    # Проверяем хэндлы полигона
+                    if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+                        vertex_idx = self._get_polygon_vertex_handle(scene_pos, block.polygon_points)
+                        if vertex_idx is not None:
+                            self.parent().window()._save_undo_state()
+                            self.dragging_polygon_vertex = vertex_idx
+                            self.move_start_pos = self._clamp_to_page(scene_pos)
+                            self.original_polygon_points = list(block.polygon_points)
+                            return
+                        
+                        # Проверяем ребра полигона
+                        edge_idx = self._get_polygon_edge_handle(scene_pos, block.polygon_points)
+                        if edge_idx is not None:
+                            self.parent().window()._save_undo_state()
+                            self.dragging_polygon_edge = edge_idx
+                            self.move_start_pos = self._clamp_to_page(scene_pos)
+                            self.original_polygon_points = list(block.polygon_points)
+                            return
+                    
+                    # Проверяем хэндлы прямоугольника
                     resize_handle = self._get_resize_handle(scene_pos, block_rect)
                     
                     if resize_handle:
@@ -371,6 +400,27 @@ class PageViewer(QGraphicsView):
                 x1, y1, x2, y2 = block.coords_px
                 block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
                 
+                # Проверяем хэндлы полигона
+                if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+                    vertex_idx = self._get_polygon_vertex_handle(scene_pos, block.polygon_points)
+                    if vertex_idx is not None:
+                        self.parent().window()._save_undo_state()
+                        self.dragging_polygon_vertex = vertex_idx
+                        self.move_start_pos = self._clamp_to_page(scene_pos)
+                        self.original_polygon_points = list(block.polygon_points)
+                        self._redraw_blocks()
+                        return
+                    
+                    # Проверяем ребра полигона
+                    edge_idx = self._get_polygon_edge_handle(scene_pos, block.polygon_points)
+                    if edge_idx is not None:
+                        self.parent().window()._save_undo_state()
+                        self.dragging_polygon_edge = edge_idx
+                        self.move_start_pos = self._clamp_to_page(scene_pos)
+                        self.original_polygon_points = list(block.polygon_points)
+                        self._redraw_blocks()
+                        return
+                
                 resize_handle = self._get_resize_handle(scene_pos, block_rect)
                 
                 if resize_handle:
@@ -381,11 +431,13 @@ class PageViewer(QGraphicsView):
                     self.move_start_pos = self._clamp_to_page(scene_pos)
                     self.original_block_rect = block_rect
                 else:
-                    # Начинаем перемещение
+                    # Начинаем перемещение (для полигонов тоже)
                     self.parent().window()._save_undo_state()
                     self.moving_block = True
                     self.move_start_pos = self._clamp_to_page(scene_pos)
                     self.original_block_rect = block_rect
+                    if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+                        self.original_polygon_points = list(block.polygon_points)
                 
                 self._redraw_blocks()  # перерисовываем для выделения
             else:
@@ -478,12 +530,27 @@ class PageViewer(QGraphicsView):
             rect = QRectF(self.start_point, clamped_pos).normalized()
             self.rubber_band_item.setRect(rect)
         
+        elif self.dragging_polygon_vertex is not None and self.selected_block_idx is not None:
+            # Перетаскивание вершины полигона
+            self._update_polygon_vertex(self.selected_block_idx, self.dragging_polygon_vertex, clamped_pos)
+        
+        elif self.dragging_polygon_edge is not None and self.selected_block_idx is not None:
+            # Перетаскивание ребра полигона
+            delta = clamped_pos - self.move_start_pos
+            self._update_polygon_edge(self.selected_block_idx, self.dragging_polygon_edge, delta)
+        
         elif self.moving_block and self.selected_block_idx is not None:
             # Перемещение блока
             delta = clamped_pos - self.move_start_pos
-            new_rect = self.original_block_rect.translated(delta)
-            new_rect = self._clamp_rect_to_page(new_rect)
-            self._update_block_rect(self.selected_block_idx, new_rect)
+            block = self.current_blocks[self.selected_block_idx]
+            
+            # Для полигона перемещаем все точки
+            if block.shape_type == ShapeType.POLYGON and self.original_polygon_points:
+                self._move_polygon(self.selected_block_idx, delta)
+            else:
+                new_rect = self.original_block_rect.translated(delta)
+                new_rect = self._clamp_rect_to_page(new_rect)
+                self._update_block_rect(self.selected_block_idx, new_rect)
         
         elif self.resizing_block and self.selected_block_idx is not None:
             # Изменение размера блока
@@ -497,8 +564,21 @@ class PageViewer(QGraphicsView):
                 block = self.current_blocks[self.selected_block_idx]
                 x1, y1, x2, y2 = block.coords_px
                 block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
-                resize_handle = self._get_resize_handle(scene_pos, block_rect)
-                self._set_cursor_for_handle(resize_handle)
+                
+                # Проверяем хэндлы полигона
+                if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+                    vertex_idx = self._get_polygon_vertex_handle(scene_pos, block.polygon_points)
+                    if vertex_idx is not None:
+                        self.setCursor(Qt.SizeAllCursor)
+                    else:
+                        edge_idx = self._get_polygon_edge_handle(scene_pos, block.polygon_points)
+                        if edge_idx is not None:
+                            self.setCursor(Qt.SizeAllCursor)
+                        else:
+                            self.setCursor(Qt.ArrowCursor)
+                else:
+                    resize_handle = self._get_resize_handle(scene_pos, block_rect)
+                    self._set_cursor_for_handle(resize_handle)
             else:
                 self.setCursor(Qt.ArrowCursor)
             
@@ -544,7 +624,7 @@ class PageViewer(QGraphicsView):
                 
                 self.start_point = None
             
-            elif self.moving_block or self.resizing_block:
+            elif self.moving_block or self.resizing_block or self.dragging_polygon_vertex is not None or self.dragging_polygon_edge is not None:
                 # Завершение перемещения или изменения размера
                 if self.selected_block_idx is not None and 0 <= self.selected_block_idx < len(self.current_blocks):
                     block = self.current_blocks[self.selected_block_idx]
@@ -556,6 +636,9 @@ class PageViewer(QGraphicsView):
                 self.resize_handle = None
                 self.move_start_pos = None
                 self.original_block_rect = None
+                self.dragging_polygon_vertex = None
+                self.dragging_polygon_edge = None
+                self.original_polygon_points = None
         
         elif event.button() == Qt.MiddleButton:
             self.panning = False
@@ -847,6 +930,87 @@ class PageViewer(QGraphicsView):
         # Перерисовываем блок
         self._redraw_blocks()
     
+    def _update_polygon_vertex(self, block_idx: int, vertex_idx: int, new_pos: QPointF):
+        """Обновить позицию вершины полигона"""
+        if block_idx >= len(self.current_blocks):
+            return
+        
+        block = self.current_blocks[block_idx]
+        if not block.polygon_points or vertex_idx >= len(block.polygon_points):
+            return
+        
+        # Обновляем точку
+        new_points = list(block.polygon_points)
+        new_points[vertex_idx] = (int(new_pos.x()), int(new_pos.y()))
+        block.polygon_points = new_points
+        
+        # Пересчитываем bounding box
+        xs = [p[0] for p in new_points]
+        ys = [p[1] for p in new_points]
+        block.coords_px = (min(xs), min(ys), max(xs), max(ys))
+        
+        self._redraw_blocks()
+    
+    def _move_polygon(self, block_idx: int, delta: QPointF):
+        """Переместить весь полигон"""
+        if block_idx >= len(self.current_blocks):
+            return
+        
+        block = self.current_blocks[block_idx]
+        if not self.original_polygon_points:
+            return
+        
+        # Перемещаем все точки
+        new_points = []
+        for px, py in self.original_polygon_points:
+            new_x = int(px + delta.x())
+            new_y = int(py + delta.y())
+            # Ограничиваем границами страницы
+            new_pos = self._clamp_to_page(QPointF(new_x, new_y))
+            new_points.append((int(new_pos.x()), int(new_pos.y())))
+        
+        block.polygon_points = new_points
+        
+        # Пересчитываем bounding box
+        xs = [p[0] for p in new_points]
+        ys = [p[1] for p in new_points]
+        block.coords_px = (min(xs), min(ys), max(xs), max(ys))
+        
+        self._redraw_blocks()
+    
+    def _update_polygon_edge(self, block_idx: int, edge_idx: int, delta: QPointF):
+        """Переместить ребро полигона (две смежные вершины)"""
+        if block_idx >= len(self.current_blocks):
+            return
+        
+        block = self.current_blocks[block_idx]
+        if not self.original_polygon_points:
+            return
+        
+        n = len(self.original_polygon_points)
+        i1 = edge_idx
+        i2 = (edge_idx + 1) % n
+        
+        # Копируем исходные точки
+        new_points = list(self.original_polygon_points)
+        
+        # Перемещаем две вершины ребра
+        for idx in [i1, i2]:
+            px, py = self.original_polygon_points[idx]
+            new_x = int(px + delta.x())
+            new_y = int(py + delta.y())
+            new_pos = self._clamp_to_page(QPointF(new_x, new_y))
+            new_points[idx] = (int(new_pos.x()), int(new_pos.y()))
+        
+        block.polygon_points = new_points
+        
+        # Пересчитываем bounding box
+        xs = [p[0] for p in new_points]
+        ys = [p[1] for p in new_points]
+        block.coords_px = (min(xs), min(ys), max(xs), max(ys))
+        
+        self._redraw_blocks()
+    
     def reset_zoom(self):
         """Сбросить масштаб к 100%"""
         self.resetTransform()
@@ -898,6 +1062,74 @@ class PageViewer(QGraphicsView):
             handle.setBrush(QBrush(QColor(255, 255, 255)))
             self.scene.addItem(handle)
             self.resize_handles.append(handle)
+    
+    def _draw_polygon_handles(self, points: List[tuple]):
+        """Нарисовать хэндлы на вершинах полигона"""
+        handle_size = 8 / self.zoom_factor
+        handle_color = QColor(255, 0, 0)
+        
+        for x, y in points:
+            handle_rect = QRectF(x - handle_size/2, y - handle_size/2, 
+                               handle_size, handle_size)
+            handle = QGraphicsRectItem(handle_rect)
+            handle.setPen(QPen(handle_color, 1))
+            handle.setBrush(QBrush(QColor(255, 255, 255)))
+            self.scene.addItem(handle)
+            self.resize_handles.append(handle)
+    
+    def _get_polygon_vertex_handle(self, pos: QPointF, points: List[tuple]) -> Optional[int]:
+        """
+        Определить, попал ли клик на вершину полигона
+        
+        Returns:
+            Индекс вершины или None
+        """
+        handle_size = 10 / self.zoom_factor
+        
+        for idx, (px, py) in enumerate(points):
+            if abs(pos.x() - px) <= handle_size and abs(pos.y() - py) <= handle_size:
+                return idx
+        
+        return None
+    
+    def _get_polygon_edge_handle(self, pos: QPointF, points: List[tuple]) -> Optional[int]:
+        """
+        Определить, попал ли клик на ребро полигона
+        
+        Returns:
+            Индекс ребра (от вершины i к i+1) или None
+        """
+        edge_threshold = 8 / self.zoom_factor
+        
+        for i in range(len(points)):
+            p1 = points[i]
+            p2 = points[(i + 1) % len(points)]
+            
+            # Расстояние от точки до отрезка
+            dist = self._point_to_segment_distance(pos, p1, p2)
+            if dist <= edge_threshold:
+                return i
+        
+        return None
+    
+    def _point_to_segment_distance(self, point: QPointF, p1: tuple, p2: tuple) -> float:
+        """Расстояние от точки до отрезка"""
+        px, py = point.x(), point.y()
+        x1, y1 = p1
+        x2, y2 = p2
+        
+        dx = x2 - x1
+        dy = y2 - y1
+        
+        if dx == 0 and dy == 0:
+            return ((px - x1)**2 + (py - y1)**2)**0.5
+        
+        t = max(0, min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)))
+        
+        proj_x = x1 + t * dx
+        proj_y = y1 + t * dy
+        
+        return ((px - proj_x)**2 + (py - proj_y)**2)**0.5
     
     def _add_polygon_point(self, point: QPointF):
         """Добавить точку в полигон"""
