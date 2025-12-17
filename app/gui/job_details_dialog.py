@@ -212,23 +212,8 @@ class JobDetailsDialog(QDialog):
     
     def _format_datetime_utc3(self, dt_str: str) -> str:
         """Конвертировать UTC время в UTC+3 (МСК)"""
-        try:
-            # Парсим UTC время (может быть как с Z, так и без)
-            if dt_str.endswith('Z'):
-                dt_utc = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-            elif '+' not in dt_str and 'T' in dt_str:
-                # ISO формат без timezone - считаем UTC
-                dt_utc = datetime.fromisoformat(dt_str).replace(tzinfo=timezone.utc)
-            else:
-                dt_utc = datetime.fromisoformat(dt_str)
-            
-            # Конвертируем в UTC+3
-            utc3 = timezone(timedelta(hours=3))
-            dt_local = dt_utc.astimezone(utc3)
-            
-            return dt_local.strftime("%H:%M %d.%m.%Y")
-        except:
-            return dt_str
+        from app.gui.utils import format_datetime_utc3
+        return format_datetime_utc3(dt_str)
     
     def _copy_to_clipboard(self, text: str):
         """Скопировать текст в буфер обмена"""
