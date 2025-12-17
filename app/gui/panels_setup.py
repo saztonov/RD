@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTabWidget,
     QAbstractItemView,
-    QTreeWidgetItem,
     QSplitter,
 )
 from PySide6.QtCore import Qt
@@ -99,10 +98,6 @@ class PanelsSetupMixin:
         blocks_group = self._create_blocks_group()
         layout.addWidget(blocks_group)
         
-        # Группа: промты
-        prompts_group = self._create_prompts_group()
-        layout.addWidget(prompts_group)
-        
         # Группа: действия
         actions_group = self._create_actions_group()
         layout.addWidget(actions_group)
@@ -144,117 +139,6 @@ class PanelsSetupMixin:
         
         blocks_layout.addWidget(self.blocks_tabs)
         return blocks_group
-    
-    def _create_prompts_group(self) -> QGroupBox:
-        """Создать группу промтов"""
-        prompts_group = QGroupBox("Промты")
-        prompts_layout = QVBoxLayout(prompts_group)
-        
-        # Список промтов с колонками: #, Название, Тип, Обновлено
-        self.prompts_tree = QTreeWidget()
-        self.prompts_tree.setHeaderLabels(["#", "Название", "Тип", "Обновлено"])
-        self.prompts_tree.setColumnWidth(0, 30)
-        self.prompts_tree.setColumnWidth(1, 120)
-        self.prompts_tree.setColumnWidth(2, 70)
-        self.prompts_tree.setColumnWidth(3, 100)
-        self.prompts_tree.setSortingEnabled(True)
-        self.prompts_tree.sortByColumn(1, Qt.AscendingOrder)
-        self.prompts_tree.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.prompts_tree.setMaximumHeight(200)
-        self.prompts_tree.itemSelectionChanged.connect(self._on_prompt_selection_changed)
-        self.prompts_tree.itemDoubleClicked.connect(lambda: self._edit_selected_prompt())
-        
-        # Настройка заголовка для сортировки
-        header = self.prompts_tree.header()
-        header.setSectionsClickable(True)
-        header.setSortIndicatorShown(True)
-        
-        prompts_layout.addWidget(self.prompts_tree)
-        
-        # Кнопка редактирования промта
-        self.edit_prompt_btn = QPushButton("✏️ Редактировать промт")
-        self.edit_prompt_btn.setEnabled(False)
-        self.edit_prompt_btn.clicked.connect(self._edit_selected_prompt)
-        prompts_layout.addWidget(self.edit_prompt_btn)
-        
-        # Заполняем список начальными данными
-        self._populate_prompts_tree()
-        
-        return prompts_group
-    
-    def _populate_prompts_tree(self):
-        """Заполнить список промтов с данными из R2"""
-        self.prompts_tree.clear()
-        
-        # Получаем промты с метаданными из R2
-        prompts_data = []
-        if hasattr(self, 'prompt_manager') and self.prompt_manager.r2_storage:
-            prompts_data = self.prompt_manager.list_prompts_with_metadata()
-        
-        # Создаем словарь дат по именам
-        dates_map = {}
-        for p in prompts_data:
-            dates_map[p['name']] = p.get('last_modified')
-        
-        row_num = 1
-        
-        # Добавляем типы блоков
-        block_types = [
-            ("Текст", "text", "Блок"),
-            ("Таблица", "table", "Блок"),
-            ("Картинка", "image", "Блок")
-        ]
-        
-        for display_name, key, type_str in block_types:
-            item = QTreeWidgetItem(self.prompts_tree)
-            item.setText(0, str(row_num))
-            item.setText(1, display_name)
-            item.setText(2, type_str)
-            
-            # Дата обновления
-            last_mod = dates_map.get(key)
-            if last_mod:
-                item.setText(3, last_mod.strftime("%d.%m.%Y %H:%M"))
-            else:
-                item.setText(3, "—")
-            
-            item.setData(0, Qt.UserRole, key)  # Сохраняем ключ
-            row_num += 1
-    
-    def update_prompts_table(self):
-        """Обновить список промтов (публичный метод)"""
-        if hasattr(self, 'prompts_tree'):
-            self._populate_prompts_tree()
-    
-    def _on_prompt_selection_changed(self):
-        """Обработчик изменения выбора в списке промтов"""
-        selected = self.prompts_tree.selectedItems()
-        self.edit_prompt_btn.setEnabled(len(selected) > 0)
-    
-    def _edit_selected_prompt(self):
-        """Редактировать выбранный промт"""
-        current_item = self.prompts_tree.currentItem()
-        if not current_item:
-            return
-        
-        display_name = current_item.text(1)
-        prompt_type = current_item.text(2)
-        prompt_key = current_item.data(0, Qt.UserRole)
-        
-        if not hasattr(self, 'prompt_manager'):
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Ошибка", "PromptManager не инициализирован")
-            return
-        
-        if prompt_type == "Блок":
-            # Редактируем промт типа блока (из R2)
-            if prompt_key:
-                self.prompt_manager.edit_prompt(
-                    prompt_key,
-                    f"Редактирование промта: {display_name}",
-                    None  # Промт загрузится из R2
-                )
-                self._populate_prompts_tree()  # Обновляем список после редактирования
     
     def _create_actions_group(self) -> QGroupBox:
         """Создать группу действий"""

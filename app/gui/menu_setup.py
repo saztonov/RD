@@ -97,6 +97,33 @@ class MenuSetupMixin:
         clear_page_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
         clear_page_action.triggered.connect(self._clear_current_page)
         view_menu.addAction(clear_page_action)
+        
+        # Меню "Промты"
+        prompts_menu = menubar.addMenu("&Промты")
+        
+        text_prompt_action = QAction("📝 Текст", self)
+        text_prompt_action.triggered.connect(lambda: self._edit_prompt_by_key("text"))
+        prompts_menu.addAction(text_prompt_action)
+        
+        table_prompt_action = QAction("📊 Таблица", self)
+        table_prompt_action.triggered.connect(lambda: self._edit_prompt_by_key("table"))
+        prompts_menu.addAction(table_prompt_action)
+        
+        image_prompt_action = QAction("🖼️ Картинка", self)
+        image_prompt_action.triggered.connect(lambda: self._edit_prompt_by_key("image"))
+        prompts_menu.addAction(image_prompt_action)
+    
+    def _edit_prompt_by_key(self, prompt_key: str):
+        """Редактировать промт по ключу"""
+        display_names = {"text": "Текст", "table": "Таблица", "image": "Картинка"}
+        display_name = display_names.get(prompt_key, prompt_key)
+        
+        if hasattr(self, 'prompt_manager'):
+            self.prompt_manager.edit_prompt(
+                prompt_key,
+                f"Редактирование промта: {display_name}",
+                None
+            )
     
     def _setup_toolbar(self):
         """Настройка панели инструментов"""

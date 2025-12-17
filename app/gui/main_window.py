@@ -228,8 +228,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         
         # Проверяем наличие промптов
         self.prompt_manager.ensure_default_prompts()
-        if hasattr(self, 'update_prompts_table'):
-            self.update_prompts_table()
         
         QMessageBox.information(
             self,
