@@ -13,3 +13,7 @@ docker compose logs paddle_ppstructure -f
 
 curl.exe -X POST "http://localhost:8000/ppstructure" `
   -F "file=@C:\Users\svarovsky\Desktop\test.pdf"
+
+
+  /opt/remote-ocr/deploy.sh
+  https://chatgpt.com/c/69405d02-07f4-8329-ab26-509a67868b0d

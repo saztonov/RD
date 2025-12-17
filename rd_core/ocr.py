@@ -8,7 +8,7 @@ import base64
 import io
 import re
 from pathlib import Path
-from typing import Protocol, List, Optional, Callable
+from typing import Protocol, List, Optional
 from PIL import Image
 from rd_core.models import Block, BlockType
 
@@ -377,101 +377,6 @@ RULES:
             # Освобождаем rate limiter
             if self.rate_limiter:
                 self.rate_limiter.release()
-
-
-def run_ocr_for_blocks(blocks: List[Block], ocr_backend: OCRBackend, base_dir: str = "", 
-                       image_description_backend: Optional[OCRBackend] = None,
-                       index_file: Optional[str] = None,
-                       prompt_loader=None,
-                       on_progress: Optional[Callable[[int, int], None]] = None) -> None:
-    """
-    Запустить OCR для блоков с учетом типа
-    
-    Args:
-        blocks: список блоков для обработки
-        ocr_backend: движок OCR для текста и таблиц
-        base_dir: базовая директория для поиска image_file
-        image_description_backend: движок для описания изображений (если None, используется ocr_backend)
-        index_file: путь к файлу индекса для IMAGE блоков (если указан, создается индекс)
-        prompt_loader: функция для загрузки промптов из R2 (принимает имя промпта, возвращает dict с system/user)
-    """
-    processed = 0
-    skipped = 0
-    
-    # Если не указан специальный движок для изображений, используем основной
-    if image_description_backend is None:
-        image_description_backend = ocr_backend
-    
-    total = len(blocks)
-    for idx, block in enumerate(blocks, start=1):
-        # Пропускаем блоки без image_file
-        if not block.image_file:
-            skipped += 1
-            if on_progress:
-                on_progress(idx, total)
-            continue
-        
-        try:
-            # Определяем полный путь к изображению
-            image_path = Path(block.image_file)
-            if not image_path.is_absolute() and base_dir:
-                image_path = Path(base_dir) / image_path
-            
-            # Проверяем существование файла
-            if not image_path.exists():
-                logger.warning(f"Файл изображения не найден: {image_path}")
-                skipped += 1
-                if on_progress:
-                    on_progress(idx, total)
-                continue
-            
-            # Загружаем изображение
-            image = Image.open(image_path)
-            
-            # Получаем промпт из R2 (dict с system/user)
-            prompt_data = None
-            if prompt_loader:
-                type_key = {
-                    BlockType.IMAGE: "image",
-                    BlockType.TABLE: "table",
-                    BlockType.TEXT: "text",
-                }.get(block.block_type, "text")
-                prompt_data = prompt_loader(type_key)
-            
-            # Обрабатываем в зависимости от типа блока
-            if block.block_type == BlockType.IMAGE:
-                ocr_text = image_description_backend.recognize(image, prompt=prompt_data)
-                block.ocr_text = ocr_text
-                
-                # Если указан index_file, обновляем индекс
-                if index_file:
-                    from rd_core.report_md import update_smart_index  # noqa: E402
-                    image_name = Path(block.image_file).name if block.image_file else f"block_{block.id}"
-                    update_smart_index(ocr_text, image_name, index_file)
-                
-                processed += 1
-                
-            elif block.block_type == BlockType.TABLE:
-                ocr_text = ocr_backend.recognize(image, prompt=prompt_data)
-                block.ocr_text = ocr_text
-                processed += 1
-                
-            elif block.block_type == BlockType.TEXT:
-                ocr_text = ocr_backend.recognize(image, prompt=prompt_data)
-                block.ocr_text = ocr_text
-                processed += 1
-            else:
-                skipped += 1
-            
-            if on_progress:
-                on_progress(idx, total)
-        except Exception as e:
-            logger.error(f"Ошибка OCR для блока {block.id}: {e}")
-            skipped += 1
-            if on_progress:
-                on_progress(idx, total)
-    
-    logger.info(f"OCR завершён: {processed} блоков обработано, {skipped} пропущено")
 
 
 def create_ocr_engine(backend: str = "dummy", **kwargs) -> OCRBackend:
