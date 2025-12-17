@@ -17,4 +17,8 @@ class WorkerSignals(QObject):
     # Сигналы для черновика
     draft_created = Signal(object)  # job_info
     draft_create_error = Signal(str, str)  # error_type, message
+    # Сигналы для повторного распознавания
+    rerun_started = Signal(str)  # old_job_id
+    rerun_created = Signal(str, object)  # old_job_id, new_job_info
+    rerun_error = Signal(str, str)  # old_job_id, error_message
 

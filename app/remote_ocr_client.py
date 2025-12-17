@@ -356,6 +356,49 @@ class RemoteOCRClient:
         resp = self._request_with_retry("delete", f"/jobs/{job_id}")
         return resp.json().get("ok", False)
     
+    def restart_job(self, job_id: str) -> bool:
+        """
+        Перезапустить задачу (сбросить результаты и поставить в очередь)
+        
+        Args:
+            job_id: ID задачи
+        
+        Returns:
+            True если успешно
+        """
+        resp = self._request_with_retry("post", f"/jobs/{job_id}/restart")
+        return resp.json().get("ok", False)
+    
+    def start_job(
+        self,
+        job_id: str,
+        engine: str = "openrouter",
+        text_model: Optional[str] = None,
+        table_model: Optional[str] = None,
+        image_model: Optional[str] = None,
+    ) -> bool:
+        """
+        Запустить черновик на распознавание
+        
+        Args:
+            job_id: ID задачи (черновика)
+            engine: движок OCR
+            text_model: модель для текста
+            table_model: модель для таблиц
+            image_model: модель для изображений
+        
+        Returns:
+            True если успешно
+        """
+        data = {
+            "engine": engine,
+            "text_model": text_model or "",
+            "table_model": table_model or "",
+            "image_model": image_model or "",
+        }
+        resp = self._request_with_retry("post", f"/jobs/{job_id}/start", data=data)
+        return resp.json().get("ok", False)
+    
     def create_draft(
         self,
         pdf_path: str,

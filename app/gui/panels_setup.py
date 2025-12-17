@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QAbstractItemView,
     QSplitter,
+    QPlainTextEdit,
 )
 from PySide6.QtCore import Qt
 from app.gui.page_viewer import PageViewer
@@ -98,6 +99,10 @@ class PanelsSetupMixin:
         blocks_group = self._create_blocks_group()
         layout.addWidget(blocks_group)
         
+        # Группа: подсказка для IMAGE блока
+        hint_group = self._create_hint_group()
+        layout.addWidget(hint_group)
+        
         # Группа: действия
         actions_group = self._create_actions_group()
         layout.addWidget(actions_group)
@@ -139,6 +144,28 @@ class PanelsSetupMixin:
         
         blocks_layout.addWidget(self.blocks_tabs)
         return blocks_group
+    
+    def _create_hint_group(self) -> QGroupBox:
+        """Создать группу подсказки для IMAGE блока"""
+        self.hint_group = QGroupBox("Подсказка (IMAGE)")
+        hint_layout = QVBoxLayout(self.hint_group)
+        
+        self.hint_edit = QPlainTextEdit()
+        self.hint_edit.setPlaceholderText("Введите описание содержимого картинки...")
+        self.hint_edit.setMaximumHeight(100)
+        self.hint_edit.textChanged.connect(self._on_hint_changed)
+        hint_layout.addWidget(self.hint_edit)
+        
+        # Неактивен по умолчанию
+        self.hint_group.setEnabled(False)
+        self._selected_image_block = None
+        
+        return self.hint_group
+    
+    def _on_hint_changed(self):
+        """Автосохранение подсказки при изменении"""
+        if self._selected_image_block:
+            self._selected_image_block.hint = self.hint_edit.toPlainText() or None
     
     def _create_actions_group(self) -> QGroupBox:
         """Создать группу действий"""

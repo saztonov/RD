@@ -18,6 +18,8 @@ from .storage import (
     init_db,
     job_to_dict,
     list_jobs,
+    reset_job_for_restart,
+    update_job_status,
 )
 from .worker import start_worker, stop_worker
 
@@ -317,6 +319,17 @@ def get_job_details_endpoint(
         except:
             pass
     
+    # Читаем job_settings.json
+    job_settings_path = os.path.join(job.job_dir, "job_settings.json")
+    if os.path.exists(job_settings_path):
+        try:
+            with open(job_settings_path, "r", encoding="utf-8") as f:
+                result["job_settings"] = json.load(f)
+        except:
+            result["job_settings"] = {}
+    else:
+        result["job_settings"] = {}
+    
     # Формируем публичный URL для R2 если доступен
     if job.r2_prefix:
         r2_public_url = os.getenv("R2_PUBLIC_URL")  # Публичный URL R2 bucket
@@ -393,6 +406,89 @@ def download_result(
         media_type="application/zip",
         filename=f"result_{job_id}.zip"
     )
+
+
+@app.post("/jobs/{job_id}/restart")
+def restart_job_endpoint(
+    job_id: str,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Перезапустить задачу (удаляет результаты, сбрасывает статус в queued)"""
+    _check_api_key(x_api_key)
+    
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Удаляем результаты из job_dir (annotation.json, result.md, crops/)
+    import shutil
+    for fname in ["annotation.json", "result.md", "result.zip"]:
+        fpath = os.path.join(job.job_dir, fname)
+        if os.path.exists(fpath):
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
+    
+    crops_dir = os.path.join(job.job_dir, "crops")
+    if os.path.exists(crops_dir):
+        try:
+            shutil.rmtree(crops_dir)
+            os.makedirs(crops_dir)
+        except Exception:
+            pass
+    
+    # Сбрасываем статус задачи
+    if not reset_job_for_restart(job_id):
+        raise HTTPException(status_code=500, detail="Failed to reset job")
+    
+    return {"ok": True, "job_id": job_id, "status": "queued"}
+
+
+@app.post("/jobs/{job_id}/start")
+def start_job_endpoint(
+    job_id: str,
+    engine: str = Form("openrouter"),
+    text_model: str = Form(""),
+    table_model: str = Form(""),
+    image_model: str = Form(""),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Запустить черновик на распознавание"""
+    _check_api_key(x_api_key)
+    
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != "draft":
+        raise HTTPException(status_code=400, detail=f"Job is not a draft, status: {job.status}")
+    
+    # Обновляем job_settings.json
+    settings_path = os.path.join(job.job_dir, "job_settings.json")
+    with open(settings_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "text_model": text_model,
+            "table_model": table_model,
+            "image_model": image_model,
+        }, f, ensure_ascii=False, indent=2)
+    
+    # Обновляем engine в БД и меняем статус на queued
+    from datetime import datetime
+    now = datetime.utcnow().isoformat()
+    from .storage import _db_lock, _get_connection
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            conn.execute(
+                "UPDATE jobs SET status = 'queued', engine = ?, updated_at = ? WHERE id = ?",
+                (engine, now, job_id)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    
+    return {"ok": True, "job_id": job_id, "status": "queued"}
 
 
 @app.delete("/jobs/{job_id}")

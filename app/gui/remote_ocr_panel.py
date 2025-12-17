@@ -50,6 +50,8 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         self._signals.download_error.connect(self._on_download_error)
         self._signals.draft_created.connect(self._on_draft_created)
         self._signals.draft_create_error.connect(self._on_draft_create_error)
+        self._signals.rerun_created.connect(self._on_rerun_created)
+        self._signals.rerun_error.connect(self._on_rerun_error)
         
         self._download_dialog: Optional[QProgressDialog] = None
         self._pending_open_in_editor: Optional[str] = None
@@ -209,24 +211,30 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             
             actions_widget = QWidget()
             actions_layout = QHBoxLayout(actions_widget)
-            actions_layout.setContentsMargins(2, 2, 2, 2)
-            actions_layout.setSpacing(4)
+            actions_layout.setContentsMargins(1, 1, 1, 1)
+            actions_layout.setSpacing(2)
             
             open_btn = QPushButton("✏️")
             open_btn.setToolTip("Открыть в редакторе")
-            open_btn.setMaximumWidth(40)
+            open_btn.setFixedSize(26, 26)
             open_btn.clicked.connect(lambda checked, jid=job.id: self._open_job_in_editor(jid))
             actions_layout.addWidget(open_btn)
             
+            rerun_btn = QPushButton("🔁")
+            rerun_btn.setToolTip("Повторное распознавание")
+            rerun_btn.setFixedSize(26, 26)
+            rerun_btn.clicked.connect(lambda checked, jid=job.id: self._rerun_job(jid))
+            actions_layout.addWidget(rerun_btn)
+            
             info_btn = QPushButton("ℹ️")
             info_btn.setToolTip("Информация о задаче")
-            info_btn.setMaximumWidth(40)
+            info_btn.setFixedSize(26, 26)
             info_btn.clicked.connect(lambda checked, jid=job.id: self._show_job_details(jid))
             actions_layout.addWidget(info_btn)
             
             delete_btn = QPushButton("🗑️")
             delete_btn.setToolTip("Удалить задачу")
-            delete_btn.setMaximumWidth(40)
+            delete_btn.setFixedSize(26, 26)
             delete_btn.clicked.connect(lambda checked, jid=job.id: self._delete_job(jid))
             actions_layout.addWidget(delete_btn)
             
@@ -709,6 +717,103 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         except Exception as e:
             logger.error(f"Ошибка удаления задачи: {e}")
             QMessageBox.critical(self, "Ошибка", f"Не удалось удалить задачу:\n{e}")
+    
+    def _rerun_job(self, job_id: str):
+        """Повторное распознавание с сохранёнными настройками"""
+        reply = QMessageBox.question(
+            self, "Повторное распознавание",
+            f"Повторить распознавание задачи {job_id[:8]}?\n\nВсе результаты будут удалены и созданы заново.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        
+        from app.gui.toast import show_toast
+        show_toast(self, "Подготовка повторного распознавания...", duration=1500)
+        
+        self._executor.submit(self._rerun_job_bg, job_id)
+    
+    def _rerun_job_bg(self, job_id: str):
+        """Фоновая повторная отправка на распознавание"""
+        try:
+            client = self._get_client()
+            if client is None:
+                self._signals.rerun_error.emit(job_id, "Клиент не инициализирован")
+                return
+            
+            # Получаем детали задачи
+            job_details = client.get_job_details(job_id)
+            r2_prefix = job_details.get("r2_prefix")
+            
+            # Удаляем локальные файлы результатов (но сохраняем PDF)
+            if job_id in self._job_output_dirs:
+                local_dir = Path(self._job_output_dirs[job_id])
+                if local_dir.exists():
+                    import shutil
+                    for fname in ["annotation.json", "result.md"]:
+                        fpath = local_dir / fname
+                        if fpath.exists():
+                            try:
+                                fpath.unlink()
+                            except Exception:
+                                pass
+                    crops_dir = local_dir / "crops"
+                    if crops_dir.exists():
+                        try:
+                            shutil.rmtree(crops_dir)
+                        except Exception:
+                            pass
+            
+            # Удаляем файлы из R2
+            if r2_prefix:
+                try:
+                    from rd_core.r2_storage import R2Storage
+                    r2 = R2Storage()
+                    r2_prefix_normalized = r2_prefix if r2_prefix.endswith('/') else f"{r2_prefix}/"
+                    files_to_delete = []
+                    paginator = r2.s3_client.get_paginator('list_objects_v2')
+                    for page in paginator.paginate(Bucket=r2.bucket_name, Prefix=r2_prefix_normalized):
+                        if 'Contents' in page:
+                            for obj in page['Contents']:
+                                key = obj['Key']
+                                if key.startswith(r2_prefix_normalized):
+                                    files_to_delete.append({'Key': key})
+                    if files_to_delete:
+                        for i in range(0, len(files_to_delete), 1000):
+                            batch = files_to_delete[i:i+1000]
+                            r2.s3_client.delete_objects(Bucket=r2.bucket_name, Delete={'Objects': batch})
+                except Exception:
+                    pass
+            
+            # Перезапускаем задачу на сервере (статус -> queued)
+            from app.remote_ocr_client import AuthenticationError, ServerError
+            
+            if not client.restart_job(job_id):
+                self._signals.rerun_error.emit(job_id, "Не удалось перезапустить задачу")
+                return
+            
+            self._signals.rerun_created.emit(job_id, None)
+            
+        except AuthenticationError:
+            self._signals.rerun_error.emit(job_id, "Неверный API ключ")
+        except ServerError as e:
+            self._signals.rerun_error.emit(job_id, f"Сервер недоступен: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка повторного распознавания: {e}")
+            self._signals.rerun_error.emit(job_id, str(e))
+    
+    def _on_rerun_created(self, old_job_id: str, new_job_info):
+        """Слот: повторное распознавание создано"""
+        from app.gui.toast import show_toast
+        if new_job_info:
+            show_toast(self, f"Задача пересоздана: {new_job_info.id[:8]}...", duration=2500)
+        else:
+            show_toast(self, f"Задача перезапущена: {old_job_id[:8]}...", duration=2500)
+        self._refresh_jobs()
+    
+    def _on_rerun_error(self, job_id: str, error_msg: str):
+        """Слот: ошибка повторного распознавания"""
+        QMessageBox.critical(self, "Ошибка", f"Не удалось повторить распознавание:\n{error_msg}")
     
     def showEvent(self, event):
         """При показе панели обновляем список"""

@@ -294,6 +294,29 @@ def delete_job(job_id: str) -> bool:
             conn.close()
 
 
+def reset_job_for_restart(job_id: str) -> bool:
+    """Сбросить задачу для повторного запуска"""
+    now = datetime.utcnow().isoformat()
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            cursor = conn.execute(
+                """UPDATE jobs SET 
+                   status = 'queued', 
+                   progress = 0, 
+                   error_message = NULL,
+                   result_path = NULL,
+                   r2_prefix = NULL,
+                   updated_at = ?
+                   WHERE id = ?""",
+                (now, job_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
 def recover_stuck_jobs() -> int:
     """
     Восстановить застрявшие задачи: сбросить 'processing' обратно в 'queued'.

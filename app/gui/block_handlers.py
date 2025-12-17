@@ -113,16 +113,45 @@ class BlockHandlersMixin:
     def _on_block_selected(self, block_idx: int):
         """Обработка выбора блока"""
         if not self.annotation_document:
+            self._hide_hint_panel()
             return
         
         current_page_data = self._get_or_create_page(self.current_page)
         if not current_page_data or not (0 <= block_idx < len(current_page_data.blocks)):
+            self._hide_hint_panel()
             return
+        
+        block = current_page_data.blocks[block_idx]
+        
+        # Показываем панель подсказки для IMAGE блоков
+        if block.block_type == BlockType.IMAGE:
+            self._show_hint_panel(block)
+        else:
+            self._hide_hint_panel()
         
         self.blocks_tree_manager.select_block_in_tree(block_idx)
     
+    def _show_hint_panel(self, block):
+        """Активировать панель подсказки для блока"""
+        if hasattr(self, 'hint_group'):
+            self._selected_image_block = block
+            self.hint_edit.blockSignals(True)
+            self.hint_edit.setPlainText(block.hint or "")
+            self.hint_edit.blockSignals(False)
+            self.hint_group.setEnabled(True)
+    
+    def _hide_hint_panel(self):
+        """Деактивировать панель подсказки"""
+        if hasattr(self, 'hint_group'):
+            self._selected_image_block = None
+            self.hint_edit.blockSignals(True)
+            self.hint_edit.clear()
+            self.hint_edit.blockSignals(False)
+            self.hint_group.setEnabled(False)
+    
     def _on_blocks_selected(self, block_indices: list):
         """Обработка множественного выбора блоков"""
+        self._hide_hint_panel()
         if not self.annotation_document or not block_indices:
             return
         
@@ -241,6 +270,7 @@ class BlockHandlersMixin:
                 self.page_viewer.selected_block_idx = None
                 self.page_viewer._redraw_blocks()
                 
+                self._hide_hint_panel()
                 self._update_ui()
                 return
         
@@ -268,7 +298,15 @@ class BlockHandlersMixin:
         self.page_viewer._redraw_blocks()
         
         self._update_ui()
-        self._on_block_selected(block_idx)
+        
+        # Показ/скрытие панели подсказки для IMAGE
+        current_page_data = self._get_or_create_page(self.current_page)
+        if current_page_data and 0 <= block_idx < len(current_page_data.blocks):
+            block = current_page_data.blocks[block_idx]
+            if block.block_type == BlockType.IMAGE:
+                self._show_hint_panel(block)
+            else:
+                self._hide_hint_panel()
     
     def _on_tree_block_double_clicked(self, item: QTreeWidgetItem, column: int):
         """Двойной клик по дереву блоков"""
