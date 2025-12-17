@@ -31,6 +31,9 @@ class _WorkerSignals(QObject):
     download_progress = Signal(str, int, str)  # job_id, current_file_num, filename
     download_finished = Signal(str, str)  # job_id, extract_dir
     download_error = Signal(str, str)  # job_id, error_message
+    # Сигналы для черновика
+    draft_created = Signal(object)  # job_info
+    draft_create_error = Signal(str, str)  # error_type, message
 
 if TYPE_CHECKING:
     from app.gui.main_window import MainWindow
@@ -64,6 +67,9 @@ class RemoteOCRPanel(QDockWidget):
         self._signals.download_progress.connect(self._on_download_progress)
         self._signals.download_finished.connect(self._on_download_finished)
         self._signals.download_error.connect(self._on_download_error)
+        # Сигналы черновика
+        self._signals.draft_created.connect(self._on_draft_created)
+        self._signals.draft_create_error.connect(self._on_draft_create_error)
         
         self._download_dialog: Optional[QProgressDialog] = None
         self._pending_open_in_editor: Optional[str] = None  # job_id для открытия после скачивания
@@ -234,6 +240,7 @@ class RemoteOCRPanel(QDockWidget):
             
             # Статус
             status_text = {
+                "draft": "📝 Черновик",
                 "queued": "⏳ В очереди",
                 "processing": "🔄 Обработка",
                 "done": "✅ Готово",
@@ -533,6 +540,128 @@ class RemoteOCRPanel(QDockWidget):
     
     def _on_job_create_error(self, error_type: str, message: str):
         """Слот: ошибка создания задачи"""
+        titles = {
+            "auth": "Ошибка авторизации",
+            "size": "Файл слишком большой",
+            "server": "Ошибка сервера",
+            "generic": "Ошибка"
+        }
+        QMessageBox.critical(self, titles.get(error_type, "Ошибка"), message)
+    
+    def _save_draft(self):
+        """Сохранить черновик (PDF + разметка) на сервере"""
+        # Проверяем наличие PDF
+        if not self.main_window.pdf_document or not self.main_window.annotation_document:
+            QMessageBox.warning(self, "Ошибка", "Откройте PDF документ")
+            return
+        
+        pdf_path = self.main_window.annotation_document.pdf_path
+        if not pdf_path or not Path(pdf_path).exists():
+            QMessageBox.warning(self, "Ошибка", "PDF файл не найден")
+            return
+        
+        # Проверяем наличие блоков
+        total_blocks = sum(len(p.blocks) for p in self.main_window.annotation_document.pages)
+        if total_blocks == 0:
+            QMessageBox.warning(self, "Ошибка", "Нет блоков для сохранения")
+            return
+        
+        client = self._get_client()
+        if client is None:
+            QMessageBox.warning(self, "Ошибка", "Клиент не инициализирован")
+            return
+        
+        # Получаем имя задания
+        task_name = ""
+        active_project = self.main_window.project_manager.get_active_project()
+        if active_project:
+            task_name = active_project.name
+        
+        # Сохраняем output_dir для использования после создания
+        from app.gui.folder_settings_dialog import get_new_jobs_dir
+        from app.gui.ocr_dialog import transliterate_to_latin
+        from datetime import datetime
+        
+        base_dir = get_new_jobs_dir()
+        if base_dir:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_task_name = transliterate_to_latin(task_name) if task_name else "draft"
+            unique_name = f"{safe_task_name}_{timestamp}"
+            self._pending_output_dir = str(Path(base_dir) / unique_name)
+        else:
+            import tempfile
+            self._pending_output_dir = str(Path(tempfile.gettempdir()) / "rd_draft")
+        
+        from app.gui.toast import show_toast
+        show_toast(self, "Сохранение черновика...", duration=1500)
+        
+        # Запускаем сохранение в фоне
+        self._executor.submit(
+            self._save_draft_bg,
+            client,
+            pdf_path,
+            self.main_window.annotation_document,
+            task_name
+        )
+    
+    def _save_draft_bg(self, client, pdf_path, annotation_document, task_name):
+        """Фоновое сохранение черновика"""
+        try:
+            from app.remote_ocr_client import AuthenticationError, PayloadTooLargeError, ServerError
+            
+            logger.info(f"[BG] Сохранение черновика: {task_name}")
+            job_info = client.create_draft(
+                pdf_path,
+                annotation_document,
+                task_name=task_name
+            )
+            logger.info(f"[BG] Черновик создан: {job_info.id}")
+            self._signals.draft_created.emit(job_info)
+        except AuthenticationError:
+            logger.error("[BG] Ошибка авторизации при сохранении черновика")
+            self._signals.draft_create_error.emit("auth", "Неверный API ключ.\n\nПроверьте REMOTE_OCR_API_KEY в .env файле.")
+        except PayloadTooLargeError:
+            logger.error("[BG] Файл слишком большой")
+            self._signals.draft_create_error.emit("size", "PDF файл превышает лимит сервера.\n\nМаксимум: 500 МБ")
+        except ServerError as e:
+            logger.error(f"[BG] Ошибка сервера: {e}")
+            self._signals.draft_create_error.emit("server", f"Сервер временно недоступен.\n\nПопробуйте позже.\n{e}")
+        except Exception as e:
+            logger.error(f"[BG] Ошибка сохранения черновика: {e}", exc_info=True)
+            self._signals.draft_create_error.emit("generic", str(e))
+    
+    def _on_draft_created(self, job_info):
+        """Слот: черновик создан"""
+        logger.info(f"[SLOT] draft_created: {job_info.id}")
+        self._job_output_dirs[job_info.id] = self._pending_output_dir
+        self._save_job_mappings()
+        
+        # Сохраняем локально в output_dir
+        try:
+            output_dir = Path(self._pending_output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Копируем PDF
+            import shutil
+            pdf_path = self.main_window.annotation_document.pdf_path
+            shutil.copy2(pdf_path, output_dir / "document.pdf")
+            
+            # Сохраняем annotation.json
+            from rd_core.annotation_io import AnnotationIO
+            AnnotationIO.save_annotation(
+                self.main_window.annotation_document,
+                str(output_dir / "annotation.json")
+            )
+            logger.info(f"Черновик сохранён локально: {output_dir}")
+        except Exception as e:
+            logger.warning(f"Ошибка локального сохранения черновика: {e}")
+        
+        from app.gui.toast import show_toast
+        show_toast(self, f"Черновик сохранён: {job_info.id[:8]}...", duration=2500)
+        self._refresh_jobs()
+    
+    def _on_draft_create_error(self, error_type: str, message: str):
+        """Слот: ошибка создания черновика"""
         titles = {
             "auth": "Ошибка авторизации",
             "size": "Файл слишком большой",

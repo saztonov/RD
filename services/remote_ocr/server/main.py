@@ -46,6 +46,92 @@ def health() -> dict:
     return {"ok": True}
 
 
+@app.post("/jobs/draft")
+async def create_draft_endpoint(
+    client_id: str = Form(...),
+    document_id: str = Form(...),
+    document_name: str = Form(...),
+    task_name: str = Form(""),
+    annotation_json: str = Form(...),
+    pdf: UploadFile = File(...),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """
+    Создать черновик задачи (без OCR, только сохранение)
+    
+    - client_id: идентификатор клиента
+    - document_id: sha256 хеш PDF
+    - document_name: имя документа
+    - task_name: название задания
+    - annotation_json: JSON с разметкой (Document)
+    - pdf: PDF файл
+    """
+    _check_api_key(x_api_key)
+    
+    # Парсим аннотацию
+    try:
+        annotation_data = json.loads(annotation_json)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid annotation_json: {e}")
+    
+    # Создаём директорию для задачи
+    import uuid
+    job_id = str(uuid.uuid4())
+    job_dir = os.path.join(settings.data_dir, "jobs", job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    
+    # Сохраняем PDF
+    pdf_path = os.path.join(job_dir, "document.pdf")
+    content = await pdf.read()
+    with open(pdf_path, "wb") as f:
+        f.write(content)
+    
+    # Сохраняем annotation.json
+    annotation_path = os.path.join(job_dir, "annotation.json")
+    with open(annotation_path, "w", encoding="utf-8") as f:
+        json.dump(annotation_data, f, ensure_ascii=False, indent=2)
+    
+    # Создаём запись в БД со статусом draft
+    job = create_job(
+        client_id=client_id,
+        document_id=document_id,
+        document_name=document_name,
+        task_name=task_name,
+        engine="",
+        job_dir=job_dir,
+        status="draft"
+    )
+    
+    # Загружаем в R2 если настроено
+    r2_prefix = None
+    try:
+        from rd_core.r2_storage import R2Storage
+        r2 = R2Storage()
+        r2_prefix = f"ocr_results/{job.id}"
+        
+        # Загружаем PDF и annotation.json
+        r2.upload_file(pdf_path, f"{r2_prefix}/document.pdf")
+        r2.upload_file(annotation_path, f"{r2_prefix}/annotation.json")
+        
+        # Обновляем r2_prefix в БД
+        from .storage import update_job_status
+        update_job_status(job.id, "draft", r2_prefix=r2_prefix)
+        
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"R2 upload failed for draft: {e}")
+    
+    return {
+        "id": job.id,
+        "status": job.status,
+        "progress": job.progress,
+        "document_id": job.document_id,
+        "document_name": job.document_name,
+        "task_name": job.task_name,
+        "r2_prefix": r2_prefix
+    }
+
+
 @app.post("/jobs")
 async def create_job_endpoint(
     client_id: str = Form(...),

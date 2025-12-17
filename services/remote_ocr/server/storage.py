@@ -19,7 +19,7 @@ class Job:
     document_id: str
     document_name: str
     task_name: str
-    status: str  # queued|processing|done|error
+    status: str  # draft|queued|processing|done|error
     progress: float
     created_at: str
     updated_at: str
@@ -103,7 +103,8 @@ def create_job(
     document_name: str,
     task_name: str,
     engine: str,
-    job_dir: str
+    job_dir: str,
+    status: str = "queued"
 ) -> Job:
     """Создать новую задачу"""
     job_id = str(uuid.uuid4())
@@ -115,7 +116,7 @@ def create_job(
         document_id=document_id,
         document_name=document_name,
         task_name=task_name,
-        status="queued",
+        status=status,
         progress=0.0,
         created_at=now,
         updated_at=now,

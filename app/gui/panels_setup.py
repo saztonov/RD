@@ -265,6 +265,10 @@ class PanelsSetupMixin:
         self.clear_page_btn.clicked.connect(self._clear_current_page)
         actions_layout.addWidget(self.clear_page_btn)
         
+        self.save_draft_btn = QPushButton("💾 Сохранить черновик на сервере")
+        self.save_draft_btn.clicked.connect(self._save_draft_to_server)
+        actions_layout.addWidget(self.save_draft_btn)
+        
         self.remote_ocr_btn = QPushButton("Запустить Remote OCR")
         self.remote_ocr_btn.clicked.connect(self._send_to_remote_ocr)
         actions_layout.addWidget(self.remote_ocr_btn)

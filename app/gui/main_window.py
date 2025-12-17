@@ -389,3 +389,9 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         if self.remote_ocr_panel:
             self.remote_ocr_panel.show()
             self.remote_ocr_panel._create_job()
+    
+    def _save_draft_to_server(self):
+        """Сохранить черновик (PDF + разметка) на сервере"""
+        if self.remote_ocr_panel:
+            self.remote_ocr_panel.show()
+            self.remote_ocr_panel._save_draft()
