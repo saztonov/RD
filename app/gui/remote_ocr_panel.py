@@ -326,16 +326,13 @@ class RemoteOCRPanel(QDockWidget):
             # Сохраняем текущую аннотацию в кеш перед переключением
             self.main_window._save_current_annotation_to_cache()
             
-            # Сбрасываем маркеры проекта/файла
-            self.main_window._current_project_id = None
-            self.main_window._current_file_index = -1
-            
             # Сохраняем зум перед переключением
             if hasattr(self.main_window, 'navigation_manager') and self.main_window.navigation_manager:
                 self.main_window.navigation_manager.save_current_zoom()
             
             extract_dir = Path(self._job_output_dirs[job_id])
             annotation_path = extract_dir / "annotation.json"
+            pdf_path = extract_dir / "document.pdf"
 
             if not annotation_path.exists():
                 QMessageBox.warning(self, "Нет результата", "annotation.json не найден (задача не готова или результат не скачан).")
@@ -347,18 +344,45 @@ class RemoteOCRPanel(QDockWidget):
                 QMessageBox.critical(self, "Ошибка", "Не удалось загрузить annotation.json")
                 return
 
-            # Поддержка относительных путей внутри annotation.json
-            try:
-                pdf_path_obj = Path(loaded_doc.pdf_path)
-                if not pdf_path_obj.is_absolute():
-                    loaded_doc.pdf_path = str((annotation_path.parent / pdf_path_obj).resolve())
-            except Exception:
-                pass
+            # Используем локальный document.pdf если есть
+            if pdf_path.exists():
+                loaded_doc.pdf_path = str(pdf_path)
+            else:
+                # Поддержка относительных путей внутри annotation.json
+                try:
+                    pdf_path_obj = Path(loaded_doc.pdf_path)
+                    if not pdf_path_obj.is_absolute():
+                        loaded_doc.pdf_path = str((annotation_path.parent / pdf_path_obj).resolve())
+                except Exception:
+                    pass
 
             pdf_abs_path = Path(loaded_doc.pdf_path)
             if not pdf_abs_path.exists():
                 QMessageBox.warning(self, "PDF не найден", f"PDF файл не найден:\n{loaded_doc.pdf_path}")
                 return
+
+            # Получаем task_name из задачи для создания проекта
+            task_name = None
+            try:
+                client = self._get_client()
+                if client:
+                    job_details = client.get_job_details(job_id)
+                    task_name = job_details.get("task_name") or job_details.get("document_name", "")
+            except Exception:
+                pass
+            
+            if not task_name:
+                task_name = pdf_abs_path.stem  # Используем имя файла без расширения
+            
+            # Создаём проект в боковом меню
+            project_id = self.main_window.project_manager.create_project(task_name)
+            self.main_window.project_manager.add_file_to_project(project_id, str(pdf_abs_path), str(annotation_path))
+            self.main_window.project_manager.set_active_project(project_id)
+            self.main_window.project_manager.set_active_file_in_project(project_id, 0)
+            
+            # Устанавливаем маркеры проекта/файла
+            self.main_window._current_project_id = project_id
+            self.main_window._current_file_index = 0
 
             # Нормализуем страницы: индекс списка == номер страницы (иначе GUI рисует блоки не на тех страницах)
             try:
