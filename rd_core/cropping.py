@@ -185,7 +185,8 @@ def group_blocks_into_strips(
     block_crops: Dict[str, Image.Image]
 ) -> Tuple[List[MergedStrip], List[Tuple[Block, Image.Image, int, int]]]:
     """Группировка TEXT/TABLE блоков в полосы, IMAGE блоки отдельно"""
-    sorted_blocks = sorted(blocks, key=lambda b: (b.page_index, b.coords_px[1]))
+    # Блоки обрабатываются в порядке как указаны (без сортировки по координатам)
+    sorted_blocks = blocks
     
     strips: List[MergedStrip] = []
     image_blocks: List[Tuple[Block, Image.Image, int, int]] = []
