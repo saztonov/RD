@@ -438,6 +438,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             getattr(dialog, "table_model", None),
             getattr(dialog, "image_model", None),
         )
+        logger.info(f"OCR задача: image_model={getattr(dialog, 'image_model', None)}")
     
     def _create_job_bg(self, client, pdf_path, blocks, task_name, engine, text_model, table_model, image_model):
         """Фоновое создание задачи"""

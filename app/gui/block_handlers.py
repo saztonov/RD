@@ -2,10 +2,13 @@
 Миксин для обработки блоков и событий
 """
 
+import logging
 from PySide6.QtWidgets import QTreeWidgetItem, QMessageBox
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QKeyEvent
 from rd_core.models import Block, BlockType, BlockSource, ShapeType, Page
+
+logger = logging.getLogger(__name__)
 
 
 class BlockHandlersMixin:
@@ -60,6 +63,8 @@ class BlockHandlersMixin:
             shape_type=ShapeType.RECTANGLE
         )
         
+        logger.debug(f"Block created: {block.id} coords_px={block.coords_px} page_size={current_page_data.width}x{current_page_data.height}")
+        
         current_page_data.blocks.append(block)
         new_block_idx = len(current_page_data.blocks) - 1
         self.page_viewer.set_blocks(current_page_data.blocks)
@@ -99,6 +104,8 @@ class BlockHandlersMixin:
             shape_type=ShapeType.POLYGON,
             polygon_points=points
         )
+        
+        logger.debug(f"Polygon created: {block.id} bbox={block.coords_px} vertices={len(points)}")
         
         current_page_data.blocks.append(block)
         new_block_idx = len(current_page_data.blocks) - 1

@@ -84,7 +84,7 @@ class OCRDialog(QDialog):
         # Модели для разных типов блоков
         self.text_model = "qwen/qwen3-vl-30b-a3b-instruct"
         self.table_model = "qwen/qwen3-vl-30b-a3b-instruct"
-        self.image_model = "qwen/qwen3-vl-30b-a3b-instruct"
+        self.image_model = "google/gemini-3-flash-preview"
         
         # Batch оптимизация
         self.use_batch_ocr = True
@@ -143,9 +143,10 @@ class OCRDialog(QDialog):
         image_model_layout = QHBoxLayout()
         image_model_layout.addWidget(QLabel("Модель:"))
         self.datalab_image_model_combo = QComboBox()
+        self.datalab_image_model_combo.addItem("gemini-3-flash (HD-зрение)", "google/gemini-3-flash-preview")
         self.datalab_image_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
         self.datalab_image_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
-        self.datalab_image_model_combo.setCurrentIndex(1)
+        self.datalab_image_model_combo.setCurrentIndex(0)
         image_model_layout.addWidget(self.datalab_image_model_combo)
         datalab_image_layout.addLayout(image_model_layout)
         
@@ -178,9 +179,10 @@ class OCRDialog(QDialog):
         image_layout = QHBoxLayout()
         image_layout.addWidget(QLabel("Картинка:"))
         self.image_model_combo = QComboBox()
+        self.image_model_combo.addItem("gemini-3-flash (HD-зрение)", "google/gemini-3-flash-preview")
         self.image_model_combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
         self.image_model_combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
-        self.image_model_combo.setCurrentIndex(1)
+        self.image_model_combo.setCurrentIndex(0)
         image_layout.addWidget(self.image_model_combo)
         models_layout.addLayout(image_layout)
         

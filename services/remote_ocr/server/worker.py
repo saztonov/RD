@@ -139,6 +139,7 @@ def _process_job(job: Job) -> None:
 
         if settings.openrouter_api_key:
             img_model = image_model or text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
+            logger.info(f"IMAGE модель: {img_model} (из job_settings.image_model={image_model!r})")
             image_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key, model_name=img_model)
         else:
             image_backend = create_ocr_engine("dummy")
@@ -198,6 +199,9 @@ def _process_job(job: Job) -> None:
                 
                 text = image_backend.recognize(crop, prompt=prompt_data)
                 text = inject_pdfplumber_to_ocr_text(text, pdfplumber_text)
+                
+                # Сохраняем pdfplumber_text в блоке для последующей генерации markdown
+                block.pdfplumber_text = pdfplumber_text
                 
                 return block.id, text, part_idx, total_parts
                 
@@ -315,7 +319,7 @@ def _process_job(job: Job) -> None:
                 pages.append(Page(page_number=page_idx, width=width, height=height, blocks=page_blocks))
 
         result_md_path = job_dir / "result.md"
-        generate_structured_markdown(pages, str(result_md_path), project_name=job.id)
+        generate_structured_markdown(pages, str(result_md_path), project_name=job.id, doc_name=pdf_path.name)
         
         annotation_path = job_dir / "annotation.json"
         doc = Document(pdf_path=pdf_path.name, pages=pages)

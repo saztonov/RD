@@ -42,6 +42,7 @@ def fill_image_prompt_variables(
         "{TILE_HINT_OR_NULL}": hint if hint else "null",
         "{OPERATOR_HINT_OR_EMPTY}": hint if hint else "",
         "{PDFPLUMBER_TEXT_OR_EMPTY}": pdfplumber_text or "",
+        "{PDFPLUMBER_TEXT_RAW}": pdfplumber_text or "",
     }
     
     for key, value in variables.items():

@@ -47,6 +47,7 @@ class Block:
         ocr_text: результат OCR распознавания
         prompt: промпт для OCR (dict с ключами system/user)
         hint: подсказка пользователя для IMAGE блока (описание содержимого)
+        pdfplumber_text: сырой текст извлечённый pdfplumber для блока
     """
     id: str
     page_index: int
@@ -60,6 +61,7 @@ class Block:
     ocr_text: Optional[str] = None
     prompt: Optional[dict] = None  # {"system": "...", "user": "..."}
     hint: Optional[str] = None  # Подсказка пользователя для IMAGE блока
+    pdfplumber_text: Optional[str] = None  # Сырой текст pdfplumber
     
     @staticmethod
     def generate_id() -> str:
@@ -126,7 +128,8 @@ class Block:
                ocr_text: Optional[str] = None,
                block_id: Optional[str] = None,
                prompt: Optional[dict] = None,
-               hint: Optional[str] = None) -> 'Block':
+               hint: Optional[str] = None,
+               pdfplumber_text: Optional[str] = None) -> 'Block':
         """
         Создать блок с автоматическим вычислением нормализованных координат
         
@@ -144,6 +147,7 @@ class Block:
             block_id: ID блока (если None, генерируется автоматически)
             prompt: промпт для OCR
             hint: подсказка пользователя для IMAGE блока
+            pdfplumber_text: сырой текст pdfplumber
         
         Returns:
             Новый экземпляр Block
@@ -162,7 +166,8 @@ class Block:
             image_file=image_file,
             ocr_text=ocr_text,
             prompt=prompt,
-            hint=hint
+            hint=hint,
+            pdfplumber_text=pdfplumber_text
         )
     
     def get_width_height_px(self) -> Tuple[int, int]:
@@ -207,6 +212,8 @@ class Block:
             result["prompt"] = self.prompt
         if self.hint:
             result["hint"] = self.hint
+        if self.pdfplumber_text:
+            result["pdfplumber_text"] = self.pdfplumber_text
         return result
     
     @classmethod
@@ -241,7 +248,8 @@ class Block:
             image_file=data.get("image_file"),
             ocr_text=data.get("ocr_text"),
             prompt=data.get("prompt"),
-            hint=data.get("hint")
+            hint=data.get("hint"),
+            pdfplumber_text=data.get("pdfplumber_text")
         )
 
 

@@ -36,6 +36,29 @@ def image_to_base64(image: Image.Image, max_size: int = 1500) -> str:
     return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 
+def image_to_pdf_base64(image: Image.Image) -> str:
+    """
+    Конвертировать PIL Image в PDF base64 (векторное качество)
+    
+    Args:
+        image: PIL изображение
+    
+    Returns:
+        Base64 строка PDF
+    """
+    buffer = io.BytesIO()
+    # Конвертируем в RGB если нужно (PDF не поддерживает RGBA)
+    if image.mode == 'RGBA':
+        rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+        rgb_image.paste(image, mask=image.split()[3])
+        image = rgb_image
+    elif image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    image.save(buffer, format='PDF', resolution=300.0)
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+
 
 
 class OCRBackend(Protocol):
@@ -43,13 +66,14 @@ class OCRBackend(Protocol):
     Интерфейс для OCR-движков
     """
     
-    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
+    def recognize(self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None) -> str:
         """
         Распознать текст на изображении
         
         Args:
             image: изображение для распознавания
             prompt: dict с ключами 'system' и 'user' (опционально)
+            json_mode: принудительный JSON режим вывода
         
         Returns:
             Распознанный текст
@@ -144,14 +168,18 @@ class OpenRouterBackend:
             logger.warning(f"Ошибка получения провайдеров: {e}")
             return None
     
-    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
-        """Распознать текст через OpenRouter API"""
+    def recognize(self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None) -> str:
+        """Распознать текст через OpenRouter API
+        
+        Args:
+            image: изображение для распознавания
+            prompt: dict с ключами 'system' и 'user'
+            json_mode: принудительный JSON режим (None = автоопределение по промпту)
+        """
         try:
             # Получаем порядок провайдеров (кэшируется)
             if self._provider_order is None:
                 self._provider_order = self._fetch_cheapest_providers() or []
-            
-            image_b64 = image_to_base64(image)
             
             # Извлекаем system и user из промта
             if prompt and isinstance(prompt, dict):
@@ -160,6 +188,22 @@ class OpenRouterBackend:
             else:
                 system_prompt = self.DEFAULT_SYSTEM
                 user_prompt = self.DEFAULT_USER
+            
+            # Автоопределение JSON mode по промпту
+            if json_mode is None:
+                prompt_text = (system_prompt + user_prompt).lower()
+                json_mode = "json" in prompt_text and ("верни" in prompt_text or "return" in prompt_text)
+            
+            # Специальные параметры для Gemini 3 Flash
+            is_gemini3 = "gemini-3" in self.model_name.lower()
+            
+            # Для Gemini 3 отправляем PDF (векторный формат), иначе PNG
+            if is_gemini3:
+                file_b64 = image_to_pdf_base64(image)
+                media_type = "application/pdf"
+            else:
+                file_b64 = image_to_base64(image)
+                media_type = "image/png"
             
             payload = {
                 "model": self.model_name,
@@ -172,14 +216,24 @@ class OpenRouterBackend:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": user_prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
+                            {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{file_b64}"}}
                         ]
                     }
                 ],
                 "max_tokens": 16384,
-                "temperature": 0.1,
+                "temperature": 0.0 if is_gemini3 else 0.1,
                 "top_p": 0.9
             }
+            
+            # JSON mode для структурированного вывода
+            if json_mode:
+                payload["response_format"] = {"type": "json_object"}
+            
+            # Gemini 3 специфичные параметры через transforms
+            if is_gemini3:
+                payload["transforms"] = {
+                    "media_resolution": "MEDIA_RESOLUTION_HIGH"
+                }
             
             # Добавляем provider.order если есть
             if self._provider_order:
@@ -211,7 +265,7 @@ class OpenRouterBackend:
 
 class DummyOCRBackend:
     """Заглушка для OCR"""
-    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
+    def recognize(self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None) -> str:
         return "[OCR placeholder - OCR engine not configured]"
 
 
@@ -261,8 +315,8 @@ RULES:
             raise ImportError("Требуется установить requests: pip install requests")
         logger.info("Datalab OCR инициализирован")
     
-    def recognize(self, image: Image.Image, prompt: Optional[dict] = None) -> str:
-        """Распознать изображение через Datalab API"""
+    def recognize(self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None) -> str:
+        """Распознать изображение через Datalab API (json_mode игнорируется)"""
         import tempfile
         import time
         import os
@@ -410,7 +464,7 @@ def create_ocr_engine(backend: str = "dummy", **kwargs) -> OCRBackend:
         return DummyOCRBackend()
 
 
-def generate_structured_markdown(pages: List, output_path: str, images_dir: str = "images", project_name: str = None) -> str:
+def generate_structured_markdown(pages: List, output_path: str, images_dir: str = "images", project_name: str = None, doc_name: str = None) -> str:
     """
     Генерация markdown документа из размеченных блоков с учетом типов
     Блоки выводятся последовательно без разделения по страницам
@@ -420,6 +474,7 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
         output_path: путь для сохранения markdown файла
         images_dir: имя директории для изображений (относительно output_path)
         project_name: имя проекта для формирования ссылки на R2
+        doc_name: имя документа PDF
     
     Returns:
         Путь к сохраненному файлу
@@ -427,6 +482,7 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
     try:
         from rd_core.models import Page, BlockType
         import os
+        import json as json_module
         
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -462,15 +518,51 @@ def generate_structured_markdown(pages: List, output_path: str, images_dir: str 
             text = re.sub(r'\n{3,}', '\n\n', text)
             
             if block.block_type == BlockType.IMAGE:
-                # Для изображений: описание + ссылка на кроп в R2
-                markdown_parts.append(f"*Изображение:*\n\n")
-                markdown_parts.append(f"{text}\n\n")
+                # Для IMAGE блоков: собираем JSON с метаданными
+                # Парсим analysis из ocr_text (модель возвращает JSON)
+                analysis = None
+                try:
+                    # Пробуем найти JSON в тексте
+                    json_match = re.search(r'\{[\s\S]*\}', text)
+                    if json_match:
+                        analysis = json_module.loads(json_match.group(0))
+                    else:
+                        # Если JSON не найден, используем текст как есть
+                        analysis = {"raw_text": text}
+                except json_module.JSONDecodeError:
+                    analysis = {"raw_text": text}
                 
-                # Добавляем ссылку на кроп в R2
+                # Формируем URI изображения
+                image_uri = ""
+                mime_type = "image/png"
                 if block.image_file:
                     crop_filename = Path(block.image_file).name
-                    r2_url = f"{r2_public_url}/ocr_results/{project_name}/crops/{crop_filename}"
-                    markdown_parts.append(f"![Изображение]({r2_url})\n\n")
+                    image_uri = f"{r2_public_url}/ocr_results/{project_name}/crops/{crop_filename}"
+                    # Определяем mime_type по расширению
+                    ext = Path(block.image_file).suffix.lower()
+                    if ext == ".pdf":
+                        mime_type = "application/pdf"
+                    elif ext in (".jpg", ".jpeg"):
+                        mime_type = "image/jpeg"
+                
+                # Собираем финальный JSON объект
+                final_json = {
+                    "doc_metadata": {
+                        "doc_name": doc_name or "",
+                        "page": page_num + 1 if page_num is not None else None,
+                        "operator_hint": block.hint or ""
+                    },
+                    "image": {
+                        "uri": image_uri,
+                        "mime_type": mime_type
+                    },
+                    "raw_pdfplumber_text": block.pdfplumber_text or "",
+                    "analysis": analysis
+                }
+                
+                # Сериализуем через json-энкодер
+                json_str = json_module.dumps(final_json, ensure_ascii=False, indent=2)
+                markdown_parts.append(f"```json\n{json_str}\n```\n\n")
             
             elif block.block_type == BlockType.TABLE:
                 markdown_parts.append(f"{text}\n\n")
