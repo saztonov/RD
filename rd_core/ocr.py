@@ -219,9 +219,10 @@ class DatalabOCRBackend:
     """OCR через Datalab Marker API"""
     
     API_URL = "https://www.datalab.to/api/v1/marker"
-    POLL_INTERVAL = 2
-    MAX_POLL_ATTEMPTS = 60
+    POLL_INTERVAL = 3
+    MAX_POLL_ATTEMPTS = 180  # ~9 минут ожидания
     MAX_RETRIES = 3  # Количество попыток при 429
+    MAX_WIDTH = 4000  # Максимальная ширина изображения (Datalab ограничение)
     
     # Промпт для коррекции блоков (Russian Construction Documentation QA)
     BLOCK_CORRECTION_PROMPT = """You are a specialized QA OCR assistant for Russian Construction Documentation (Stages P & RD). Your goal is to transcribe image blocks into strict Markdown for automated error checking.
@@ -272,6 +273,14 @@ RULES:
                 return "[Ошибка: таймаут ожидания rate limiter]"
         
         try:
+            # Пропорциональное сжатие широких изображений (таблиц)
+            if image.width > self.MAX_WIDTH:
+                ratio = self.MAX_WIDTH / image.width
+                new_width = self.MAX_WIDTH
+                new_height = int(image.height * ratio)
+                logger.info(f"Сжатие изображения {image.width}x{image.height} -> {new_width}x{new_height}")
+                image = image.resize((new_width, new_height), Image.LANCZOS)
+            
             # Сохраняем изображение во временный файл
             with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                 image.save(tmp, format='PNG')

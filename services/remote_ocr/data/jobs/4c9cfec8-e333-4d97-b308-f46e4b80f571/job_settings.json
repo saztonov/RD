@@ -1,0 +1,5 @@
+{
+  "text_model": "qwen/qwen3-vl-30b-a3b-instruct",
+  "table_model": "qwen/qwen3-vl-30b-a3b-instruct",
+  "image_model": "qwen/qwen3-vl-235b-a22b-instruct"
+}
