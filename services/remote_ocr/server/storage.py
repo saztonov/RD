@@ -231,11 +231,34 @@ def update_job_status(
             conn.close()
 
 
-def claim_next_job() -> Optional[Job]:
-    """Взять следующую задачу в очереди (атомарно переключить в processing)"""
+def count_processing_jobs() -> int:
+    """Подсчитать количество задач в статусе processing"""
     with _db_lock:
         conn = _get_connection()
         try:
+            row = conn.execute("SELECT COUNT(*) as cnt FROM jobs WHERE status = 'processing'").fetchone()
+            return row["cnt"] if row else 0
+        finally:
+            conn.close()
+
+
+def claim_next_job(max_concurrent: int = 2) -> Optional[Job]:
+    """Взять следующую задачу в очереди (атомарно переключить в processing)
+    
+    Args:
+        max_concurrent: максимум параллельных задач (по умолчанию 2)
+    """
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            # Проверяем лимит параллельных задач
+            processing_count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM jobs WHERE status = 'processing'"
+            ).fetchone()["cnt"]
+            
+            if processing_count >= max_concurrent:
+                return None
+            
             # Находим первую queued задачу
             row = conn.execute(
                 "SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1"

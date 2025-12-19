@@ -15,6 +15,9 @@ class Settings:
     # Лимиты Datalab API (для глобального rate limiter)
     datalab_max_rpm: int = int(os.getenv("DATALAB_MAX_RPM", "180"))  # запросов/минуту
     datalab_max_concurrent: int = int(os.getenv("DATALAB_MAX_CONCURRENT", "5"))  # параллельных
+    
+    # Лимит параллельных задач (job-ов) - остальные ждут в очереди
+    max_concurrent_jobs: int = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
 
 
 settings = Settings()

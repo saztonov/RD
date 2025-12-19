@@ -65,18 +65,41 @@ def stop_worker() -> None:
 
 
 def _worker_loop() -> None:
-    """Главный цикл воркера"""
+    """Главный цикл воркера с параллельной обработкой задач"""
+    max_jobs = settings.max_concurrent_jobs
+    job_executor = ThreadPoolExecutor(max_workers=max_jobs, thread_name_prefix="job-worker")
+    active_futures = set()
+    
+    logger.info(f"Worker запущен с лимитом {max_jobs} параллельных задач")
+    
     while not _stop_event.is_set():
         try:
-            job = claim_next_job()
-            if job:
-                logger.info(f"Взята задача {job.id}")
-                _process_job(job)
+            # Убираем завершённые задачи
+            done_futures = {f for f in active_futures if f.done()}
+            for f in done_futures:
+                try:
+                    f.result()  # Получаем исключения если были
+                except Exception as e:
+                    logger.error(f"Ошибка в задаче: {e}")
+            active_futures -= done_futures
+            
+            # Берём новую задачу если есть слоты
+            if len(active_futures) < max_jobs:
+                job = claim_next_job(max_concurrent=max_jobs)
+                if job:
+                    logger.info(f"Взята задача {job.id} (активных: {len(active_futures) + 1}/{max_jobs})")
+                    future = job_executor.submit(_process_job, job)
+                    active_futures.add(future)
+                else:
+                    time.sleep(2.0)
             else:
-                time.sleep(2.0)
+                time.sleep(1.0)
         except Exception as e:
             logger.error(f"Ошибка в worker loop: {e}")
             time.sleep(5.0)
+    
+    # Ожидаем завершения активных задач
+    job_executor.shutdown(wait=True)
 
 
 def _process_job(job: Job) -> None:

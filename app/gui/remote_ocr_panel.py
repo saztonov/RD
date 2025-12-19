@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 class RemoteOCRPanel(DownloadMixin, QDockWidget):
     """Dock-панель для Remote OCR задач"""
     
+    # Интервалы опроса (мс)
+    POLL_INTERVAL_PROCESSING = 2000   # при активных задачах
+    POLL_INTERVAL_IDLE = 10000        # в покое
+    POLL_INTERVAL_ERROR = 30000       # при ошибках (backoff)
+    
     def __init__(self, main_window: "MainWindow", parent=None):
         super().__init__("Remote OCR Jobs", parent)
         self.setObjectName("RemoteOCRPanel")
@@ -37,6 +42,8 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         self._last_engine = None
         self._job_output_dirs = {}
         self._config_file = Path.home() / ".rd" / "remote_ocr_jobs.json"
+        self._has_active_jobs = False
+        self._consecutive_errors = 0
         
         self._executor = ThreadPoolExecutor(max_workers=2)
         self._signals = WorkerSignals()
@@ -159,10 +166,22 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         """Слот: список задач получен"""
         self._update_table(jobs)
         self.status_label.setText("🟢 Подключено")
+        self._consecutive_errors = 0
+        
+        # Адаптивный интервал опроса
+        self._has_active_jobs = any(j.status in ("queued", "processing") for j in jobs)
+        new_interval = self.POLL_INTERVAL_PROCESSING if self._has_active_jobs else self.POLL_INTERVAL_IDLE
+        if self.refresh_timer.interval() != new_interval:
+            self.refresh_timer.setInterval(new_interval)
     
     def _on_jobs_error(self, error_msg: str):
         """Слот: ошибка загрузки списка"""
         self.status_label.setText("🔴 Сервер недоступен")
+        self._consecutive_errors += 1
+        # Exponential backoff при ошибках
+        backoff_interval = min(self.POLL_INTERVAL_ERROR * (2 ** min(self._consecutive_errors - 1, 3)), 120000)
+        if self.refresh_timer.interval() != backoff_interval:
+            self.refresh_timer.setInterval(backoff_interval)
     
     def _update_table(self, jobs):
         """Обновить таблицу задач"""
@@ -838,7 +857,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         """При показе панели обновляем список"""
         super().showEvent(event)
         self._refresh_jobs()
-        self.refresh_timer.start(30000)
+        self.refresh_timer.start(self.POLL_INTERVAL_IDLE)
     
     def hideEvent(self, event):
         """При скрытии останавливаем таймер"""
