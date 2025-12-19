@@ -18,7 +18,9 @@ from .storage import (
     init_db,
     job_to_dict,
     list_jobs,
+    pause_job,
     reset_job_for_restart,
+    resume_job,
     update_job_status,
 )
 from .worker import start_worker, stop_worker
@@ -519,6 +521,48 @@ def start_job_endpoint(
             conn.commit()
         finally:
             conn.close()
+    
+    return {"ok": True, "job_id": job_id, "status": "queued"}
+
+
+@app.post("/jobs/{job_id}/pause")
+def pause_job_endpoint(
+    job_id: str,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Поставить задачу на паузу"""
+    _check_api_key(x_api_key)
+    
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status not in ("queued", "processing"):
+        raise HTTPException(status_code=400, detail=f"Cannot pause job in status: {job.status}")
+    
+    if not pause_job(job_id):
+        raise HTTPException(status_code=500, detail="Failed to pause job")
+    
+    return {"ok": True, "job_id": job_id, "status": "paused"}
+
+
+@app.post("/jobs/{job_id}/resume")
+def resume_job_endpoint(
+    job_id: str,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Возобновить задачу с паузы"""
+    _check_api_key(x_api_key)
+    
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != "paused":
+        raise HTTPException(status_code=400, detail=f"Job is not paused, status: {job.status}")
+    
+    if not resume_job(job_id):
+        raise HTTPException(status_code=500, detail="Failed to resume job")
     
     return {"ok": True, "job_id": job_id, "status": "queued"}
 

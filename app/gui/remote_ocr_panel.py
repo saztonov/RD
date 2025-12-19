@@ -215,7 +215,8 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
                 "queued": "⏳ В очереди",
                 "processing": "🔄 Обработка",
                 "done": "✅ Готово",
-                "error": "❌ Ошибка"
+                "error": "❌ Ошибка",
+                "paused": "⏸️ Пауза"
             }.get(job.status, job.status)
             
             status_item = QTableWidgetItem(status_text)
@@ -244,6 +245,20 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             rerun_btn.setFixedSize(26, 26)
             rerun_btn.clicked.connect(lambda checked, jid=job.id: self._rerun_job(jid))
             actions_layout.addWidget(rerun_btn)
+            
+            # Кнопка Пауза/Возобновить
+            if job.status in ("queued", "processing"):
+                pause_btn = QPushButton("⏸️")
+                pause_btn.setToolTip("Поставить на паузу")
+                pause_btn.setFixedSize(26, 26)
+                pause_btn.clicked.connect(lambda checked, jid=job.id: self._pause_job(jid))
+                actions_layout.addWidget(pause_btn)
+            elif job.status == "paused":
+                resume_btn = QPushButton("▶️")
+                resume_btn.setToolTip("Возобновить")
+                resume_btn.setFixedSize(26, 26)
+                resume_btn.clicked.connect(lambda checked, jid=job.id: self._resume_job(jid))
+                actions_layout.addWidget(resume_btn)
             
             info_btn = QPushButton("ℹ️")
             info_btn.setToolTip("Информация о задаче")
@@ -755,6 +770,40 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         except Exception as e:
             logger.error(f"Ошибка удаления задачи: {e}")
             QMessageBox.critical(self, "Ошибка", f"Не удалось удалить задачу:\n{e}")
+    
+    def _pause_job(self, job_id: str):
+        """Поставить задачу на паузу"""
+        client = self._get_client()
+        if client is None:
+            return
+        
+        try:
+            if client.pause_job(job_id):
+                from app.gui.toast import show_toast
+                show_toast(self, f"Задача {job_id[:8]}... на паузе")
+                self._refresh_jobs()
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось поставить на паузу")
+        except Exception as e:
+            logger.error(f"Ошибка паузы задачи: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось поставить на паузу:\n{e}")
+    
+    def _resume_job(self, job_id: str):
+        """Возобновить задачу с паузы"""
+        client = self._get_client()
+        if client is None:
+            return
+        
+        try:
+            if client.resume_job(job_id):
+                from app.gui.toast import show_toast
+                show_toast(self, f"Задача {job_id[:8]}... возобновлена")
+                self._refresh_jobs()
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось возобновить")
+        except Exception as e:
+            logger.error(f"Ошибка возобновления задачи: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось возобновить:\n{e}")
     
     def _rerun_job(self, job_id: str):
         """Повторное распознавание с сохранёнными настройками"""

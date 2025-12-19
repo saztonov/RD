@@ -19,7 +19,7 @@ class Job:
     document_id: str
     document_name: str
     task_name: str
-    status: str  # draft|queued|processing|done|error
+    status: str  # draft|queued|processing|done|error|paused
     progress: float
     created_at: str
     updated_at: str
@@ -342,11 +342,11 @@ def reset_job_for_restart(job_id: str) -> bool:
 
 def recover_stuck_jobs() -> int:
     """
-    Восстановить застрявшие задачи: сбросить 'processing' обратно в 'queued'.
-    Вызывается при старте воркера.
+    При старте воркера: ставим ВСЕ активные задачи (queued + processing) на паузу.
+    Это предотвращает одновременный запуск всех задач после рестарта.
     
     Returns:
-        Количество восстановленных задач
+        Количество задач поставленных на паузу
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -356,14 +356,57 @@ def recover_stuck_jobs() -> int:
         try:
             now = datetime.utcnow().isoformat()
             cursor = conn.execute(
-                "UPDATE jobs SET status = 'queued', updated_at = ?, progress = 0 WHERE status = 'processing'",
+                "UPDATE jobs SET status = 'paused', updated_at = ? WHERE status IN ('queued', 'processing')",
                 (now,)
             )
             conn.commit()
             count = cursor.rowcount
             if count > 0:
-                logger.warning(f"⚠️ Восстановлено {count} застрявших задач (processing -> queued)")
+                logger.warning(f"⏸️ При старте: {count} задач поставлено на паузу (queued/processing -> paused)")
             return count
+        finally:
+            conn.close()
+
+
+def pause_job(job_id: str) -> bool:
+    """Поставить задачу на паузу (queued/processing -> paused)"""
+    now = datetime.utcnow().isoformat()
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            cursor = conn.execute(
+                "UPDATE jobs SET status = 'paused', updated_at = ? WHERE id = ? AND status IN ('queued', 'processing')",
+                (now, job_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+def resume_job(job_id: str) -> bool:
+    """Возобновить задачу (paused -> queued)"""
+    now = datetime.utcnow().isoformat()
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            cursor = conn.execute(
+                "UPDATE jobs SET status = 'queued', updated_at = ? WHERE id = ? AND status = 'paused'",
+                (now, job_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+def is_job_paused(job_id: str) -> bool:
+    """Проверить, поставлена ли задача на паузу"""
+    with _db_lock:
+        conn = _get_connection()
+        try:
+            row = conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            return row["status"] == "paused" if row else False
         finally:
             conn.close()
 

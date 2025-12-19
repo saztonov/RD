@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional, Dict
 
-from .storage import Job, claim_next_job, update_job_status, recover_stuck_jobs
+from .storage import Job, claim_next_job, update_job_status, recover_stuck_jobs, is_job_paused
 from .settings import settings
 from .rate_limiter import get_datalab_limiter
 from .worker_prompts import (
@@ -44,9 +44,9 @@ def start_worker() -> None:
         logger.warning("Worker уже запущен")
         return
     
-    recovered = recover_stuck_jobs()
-    if recovered > 0:
-        print(f"[WORKER] Восстановлено {recovered} застрявших задач", flush=True)
+    paused = recover_stuck_jobs()
+    if paused > 0:
+        print(f"[WORKER] ⏸️ При старте: {paused} задач поставлено на паузу", flush=True)
     
     _stop_event.clear()
     _worker_thread = threading.Thread(target=_worker_loop, daemon=True, name="ocr-worker")
@@ -102,9 +102,21 @@ def _worker_loop() -> None:
     job_executor.shutdown(wait=True)
 
 
+def _check_paused(job_id: str) -> bool:
+    """Проверить, не поставлена ли задача на паузу"""
+    if is_job_paused(job_id):
+        logger.info(f"Задача {job_id} поставлена на паузу, прерываем обработку")
+        return True
+    return False
+
+
 def _process_job(job: Job) -> None:
     """Обработать одну задачу OCR"""
     try:
+        # Проверяем паузу в начале
+        if _check_paused(job.id):
+            return
+        
         job_dir = Path(job.job_dir)
         pdf_path = job_dir / "document.pdf"
         blocks_path = job_dir / "blocks.json"
@@ -128,6 +140,10 @@ def _process_job(job: Job) -> None:
         total_blocks = len(blocks)
         
         logger.info(f"Задача {job.id}: {total_blocks} блоков")
+        
+        # Проверяем паузу перед тяжёлой обработкой
+        if _check_paused(job.id):
+            return
         
         update_job_status(job.id, "processing", progress=0.1)
         strip_paths, strip_images, strips, image_blocks, image_pdf_paths = crop_and_merge_blocks_from_pdf(
@@ -177,7 +193,9 @@ def _process_job(job: Job) -> None:
                 processed += 1
                 if total_requests > 0:
                     progress = 0.1 + 0.8 * (processed / total_requests)
-                    update_job_status(job.id, "processing", progress=progress)
+                    # Не обновляем статус если задача на паузе
+                    if not is_job_paused(job.id):
+                        update_job_status(job.id, "processing", progress=progress)
         
         def _process_strip(strip_idx: int, strip):
             """Обработать одну полосу TEXT/TABLE блоков"""
