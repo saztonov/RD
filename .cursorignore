@@ -5,3 +5,4 @@ build/
 coverage/
 *.map
 *.lock
+services/remote_ocr/data/
