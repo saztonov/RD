@@ -6,7 +6,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, Header, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Header, UploadFile, Request
 from fastapi.responses import FileResponse
 
 from .settings import settings
@@ -34,12 +34,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="rd-remote-ocr", lifespan=lifespan)
-
-# Увеличиваем лимит для multipart form fields (по умолчанию 1MB)
-from starlette.datastructures import UploadFile as StarletteUploadFile
-import starlette.formparsers as formparsers
-formparsers.MultiPartParser.max_file_size = 1024 * 1024 * 100  # 100MB для PDF
-formparsers.MultiPartParser.max_part_size = 1024 * 1024 * 50   # 50MB для blocks_json
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -179,7 +173,7 @@ async def create_job_endpoint(
     text_model: str = Form(""),
     table_model: str = Form(""),
     image_model: str = Form(""),
-    blocks_json: str = Form(...),
+    blocks_file: UploadFile = File(..., alias="blocks_file"),
     pdf: UploadFile = File(...),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
@@ -196,14 +190,13 @@ async def create_job_endpoint(
     """
     _check_api_key(x_api_key)
     
-    # Парсим блоки
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info(f"POST /jobs: client_id={client_id}, document_id={document_id[:16]}..., blocks_json length={len(blocks_json)}")
+    # Парсим блоки из файла
+    blocks_json = (await blocks_file.read()).decode("utf-8")
+    _logger.info(f"POST /jobs: client_id={client_id}, document_id={document_id[:16]}..., blocks_json length={len(blocks_json)}")
     try:
         blocks_data = json.loads(blocks_json)
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid blocks_json: {e}, first 500 chars: {blocks_json[:500]}")
+        _logger.error(f"Invalid blocks_json: {e}, first 500 chars: {blocks_json[:500]}")
         raise HTTPException(status_code=400, detail=f"Invalid blocks_json: {e}")
     
     # Создаём директорию для задачи

@@ -230,6 +230,7 @@ class RemoteOCRClient:
         # Сериализуем блоки
         blocks_data = [block.to_dict() for block in selected_blocks]
         blocks_json = json.dumps(blocks_data, ensure_ascii=False)
+        blocks_bytes = blocks_json.encode("utf-8")
         
         # Используем увеличенный таймаут для загрузки
         with httpx.Client(base_url=self.base_url, timeout=self.upload_timeout) as client:
@@ -240,7 +241,6 @@ class RemoteOCRClient:
                     "document_name": document_name,
                     "task_name": task_name,
                     "engine": engine,
-                    "blocks_json": blocks_json,
                 }
                 if text_model:
                     form_data["text_model"] = text_model
@@ -253,7 +253,10 @@ class RemoteOCRClient:
                     "/jobs",
                     headers=self._headers(),
                     data=form_data,
-                    files={"pdf": (document_name, pdf_file, "application/pdf")}
+                    files={
+                        "pdf": (document_name, pdf_file, "application/pdf"),
+                        "blocks_file": ("blocks.json", blocks_bytes, "application/json"),
+                    }
                 )
             logger.info(f"POST /jobs response: {resp.status_code}")
             if resp.status_code >= 400:
