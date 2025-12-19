@@ -35,6 +35,41 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="rd-remote-ocr", lifespan=lifespan)
 
+# Увеличиваем лимит для multipart form fields (по умолчанию 1MB)
+from starlette.datastructures import UploadFile as StarletteUploadFile
+import starlette.formparsers as formparsers
+formparsers.MultiPartParser.max_file_size = 1024 * 1024 * 100  # 100MB для PDF
+formparsers.MultiPartParser.max_part_size = 1024 * 1024 * 50   # 50MB для blocks_json
+
+import logging
+_logger = logging.getLogger(__name__)
+
+from fastapi import Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class LogRequestMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "POST" and "/jobs" in str(request.url.path):
+            content_type = request.headers.get("content-type", "")
+            _logger.info(f"POST /jobs Content-Type: {content_type}")
+        try:
+            response = await call_next(request)
+            if response.status_code >= 400:
+                _logger.error(f"{request.method} {request.url.path} -> {response.status_code}")
+            return response
+        except Exception as e:
+            _logger.exception(f"Exception in {request.method} {request.url.path}: {e}")
+            raise
+
+app.add_middleware(LogRequestMiddleware)
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    _logger.error(f"Validation error on {request.method} {request.url.path}: {exc.errors()}")
+    return JSONResponse(status_code=400, content={"detail": exc.errors()})
+
 
 def _check_api_key(x_api_key: Optional[str]) -> None:
     """Проверить API ключ если он задан в настройках"""
@@ -162,9 +197,13 @@ async def create_job_endpoint(
     _check_api_key(x_api_key)
     
     # Парсим блоки
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"POST /jobs: client_id={client_id}, document_id={document_id[:16]}..., blocks_json length={len(blocks_json)}")
     try:
         blocks_data = json.loads(blocks_json)
     except json.JSONDecodeError as e:
+        logger.error(f"Invalid blocks_json: {e}, first 500 chars: {blocks_json[:500]}")
         raise HTTPException(status_code=400, detail=f"Invalid blocks_json: {e}")
     
     # Создаём директорию для задачи

@@ -255,6 +255,9 @@ class RemoteOCRClient:
                     data=form_data,
                     files={"pdf": (document_name, pdf_file, "application/pdf")}
                 )
+            logger.info(f"POST /jobs response: {resp.status_code}")
+            if resp.status_code >= 400:
+                logger.error(f"POST /jobs error response: {resp.text[:1000]}")
             self._handle_response_error(resp)
             data = resp.json()
         

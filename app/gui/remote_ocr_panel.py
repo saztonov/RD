@@ -391,6 +391,15 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             return
         
         pdf_path = self.main_window.annotation_document.pdf_path
+        # Fallback: использовать путь из активного файла проекта
+        if not pdf_path or not Path(pdf_path).exists():
+            active_project = self.main_window.project_manager.get_active_project()
+            if active_project:
+                active_file = active_project.get_active_file()
+                if active_file and Path(active_file.pdf_path).exists():
+                    pdf_path = active_file.pdf_path
+                    self.main_window.annotation_document.pdf_path = pdf_path
+        
         if not pdf_path or not Path(pdf_path).exists():
             QMessageBox.warning(self, "Ошибка", "PDF файл не найден")
             return
@@ -478,6 +487,15 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             return
         
         pdf_path = self.main_window.annotation_document.pdf_path
+        # Fallback: использовать путь из активного файла проекта
+        if not pdf_path or not Path(pdf_path).exists():
+            active_project = self.main_window.project_manager.get_active_project()
+            if active_project:
+                active_file = active_project.get_active_file()
+                if active_file and Path(active_file.pdf_path).exists():
+                    pdf_path = active_file.pdf_path
+                    self.main_window.annotation_document.pdf_path = pdf_path
+        
         if not pdf_path or not Path(pdf_path).exists():
             QMessageBox.warning(self, "Ошибка", "PDF файл не найден")
             return
