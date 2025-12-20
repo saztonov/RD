@@ -68,46 +68,68 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                 background-color: #0e639c;
                 color: white;
                 border: none;
-                padding: 6px 12px;
-                border-radius: 2px;
+                padding: 6px 16px;
+                border-radius: 4px;
+                font-weight: 500;
             }
-            QPushButton:hover { background-color: #1177bb; }
+            QPushButton:hover { 
+                background-color: #1177bb;
+            }
+            QPushButton:pressed {
+                background-color: #0a4d78;
+            }
         """)
         self.create_btn.clicked.connect(self._create_project)
         
-        self.refresh_btn = QPushButton("🔄")
+        self.refresh_btn = QPushButton("↻")
         self.refresh_btn.setCursor(Qt.PointingHandCursor)
         self.refresh_btn.setToolTip("Обновить")
         self.refresh_btn.setFixedSize(32, 32)
         self.refresh_btn.setStyleSheet("""
             QPushButton {
                 background-color: #3e3e42;
-                color: white;
+                color: #cccccc;
                 border: none;
-                border-radius: 2px;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: bold;
             }
-            QPushButton:hover { background-color: #4e4e52; }
+            QPushButton:hover { 
+                background-color: #505054;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #0e639c;
+            }
         """)
         self.refresh_btn.clicked.connect(self._refresh_tree)
         
         icon_btn_style = """
             QPushButton {
                 background-color: #3e3e42;
-                color: white;
+                color: #cccccc;
                 border: none;
-                border-radius: 2px;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: bold;
             }
-            QPushButton:hover { background-color: #4e4e52; }
+            QPushButton:hover { 
+                background-color: #505054;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #0e639c;
+            }
         """
         
-        self.expand_all_btn = QPushButton("⊞")
+        self.expand_all_btn = QPushButton("▼")
         self.expand_all_btn.setCursor(Qt.PointingHandCursor)
         self.expand_all_btn.setToolTip("Развернуть все")
         self.expand_all_btn.setFixedSize(32, 32)
         self.expand_all_btn.setStyleSheet(icon_btn_style)
         self.expand_all_btn.clicked.connect(self._expand_all)
         
-        self.collapse_all_btn = QPushButton("⊟")
+        self.collapse_all_btn = QPushButton("▲")
         self.collapse_all_btn.setCursor(Qt.PointingHandCursor)
         self.collapse_all_btn.setToolTip("Свернуть все")
         self.collapse_all_btn.setFixedSize(32, 32)
@@ -301,6 +323,12 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                     action = menu.addAction("📄 Добавить файл")
                     action.setData(("upload", node))
                 
+                if node.node_type == NodeType.DOCUMENT:
+                    local_path = node.attributes.get("local_path", "")
+                    if local_path and local_path.lower().endswith(".pdf"):
+                        action = menu.addAction("🗑️ Удалить рамки/QR")
+                        action.setData(("remove_stamps", node))
+                
                 menu.addSeparator()
                 menu.addAction("✏️ Переименовать").setData(("rename", node))
                 menu.addSeparator()
@@ -342,6 +370,9 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         elif action == "delete":
             node = data[1]
             self._delete_node(node)
+        elif action == "remove_stamps":
+            node = data[1]
+            self._remove_stamps_from_document(node)
     
     def _filter_tree(self, text: str):
         """Фильтровать дерево по тексту"""

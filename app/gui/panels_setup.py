@@ -12,8 +12,8 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTabWidget,
     QAbstractItemView,
-    QSplitter,
     QPlainTextEdit,
+    QDockWidget,
 )
 from PySide6.QtCore import Qt
 from app.gui.page_viewer import PageViewer
@@ -25,56 +25,13 @@ class PanelsSetupMixin:
     """Миксин для создания панелей интерфейса"""
     
     def _setup_ui(self):
-        """Настройка интерфейса"""
+        """Настройка интерфейса с док-панелями"""
+        # Центральный виджет — только PageViewer
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        main_layout = QHBoxLayout(central_widget)
+        main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Главный сплиттер для изменения размеров панелей
-        self.main_splitter = QSplitter(Qt.Horizontal)
-        
-        # Боковая панель проектов + задания
-        left_sidebar = self._create_left_sidebar()
-        self.main_splitter.addWidget(left_sidebar)
-        
-        # Левая панель: просмотр страниц
-        left_panel = self._create_left_panel()
-        self.main_splitter.addWidget(left_panel)
-        
-        # Правая панель: инструменты и свойства блоков
-        right_panel = self._create_right_panel()
-        self.main_splitter.addWidget(right_panel)
-        
-        # Устанавливаем начальные размеры (левая боковая 280, центр 600, правая 320)
-        self.main_splitter.setSizes([280, 600, 320])
-        self.main_splitter.setStretchFactor(0, 0)  # Боковая панель не растягивается
-        self.main_splitter.setStretchFactor(1, 1)  # Центр растягивается
-        self.main_splitter.setStretchFactor(2, 0)  # Правая панель не растягивается
-        
-        main_layout.addWidget(self.main_splitter)
-    
-    def _create_left_sidebar(self) -> QWidget:
-        """Создать боковую панель дерева проектов"""
-        left_sidebar = QWidget()
-        left_sidebar_layout = QVBoxLayout(left_sidebar)
-        left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        left_sidebar_layout.setSpacing(0)
-        
-        # Дерево проектов (Supabase)
-        self.project_tree_widget = ProjectTreeWidget()
-        self.project_tree_widget.file_uploaded.connect(self._on_tree_file_uploaded)
-        self.project_tree_widget.document_selected.connect(self._on_tree_document_selected)
-        left_sidebar_layout.addWidget(self.project_tree_widget)
-        
-        left_sidebar.setMinimumWidth(200)
-        return left_sidebar
-    
-    def _create_left_panel(self) -> QWidget:
-        """Создать левую панель с просмотром страниц"""
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
         
         self.page_viewer = PageViewer()
         self.page_viewer.blockDrawn.connect(self._on_block_drawn)
@@ -86,80 +43,145 @@ class PanelsSetupMixin:
         self.page_viewer.blocks_deleted.connect(self._on_blocks_deleted)
         self.page_viewer.blockMoved.connect(self._on_block_moved)
         self.page_viewer.page_changed.connect(self._on_page_changed)
-        layout.addWidget(self.page_viewer)
+        main_layout.addWidget(self.page_viewer)
         
-        return panel
+        # Создаём док-панели
+        self._setup_dock_panels()
     
-    def _create_right_panel(self) -> QWidget:
-        """Создать правую панель с вкладками"""
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
+    def _setup_dock_panels(self):
+        """Создать все док-панели"""
+        # Дерево проектов (слева)
+        self.project_dock = QDockWidget("Дерево проектов", self)
+        self.project_dock.setObjectName("ProjectTreeDock")
+        self.project_tree_widget = ProjectTreeWidget()
+        self.project_tree_widget.file_uploaded.connect(self._on_tree_file_uploaded)
+        self.project_tree_widget.document_selected.connect(self._on_tree_document_selected)
+        self.project_dock.setWidget(self.project_tree_widget)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.project_dock)
+        self.resizeDocks([self.project_dock], [280], Qt.Horizontal)
         
-        # Вкладки: Инструменты / Настройки
-        self.right_tabs = QTabWidget()
-        self.right_tabs.setDocumentMode(True)
-        self.right_tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: none;
-            }
-            QTabBar::tab {
-                padding: 6px 12px;
-            }
-        """)
+        # Блоки (справа сверху)
+        self.blocks_dock = QDockWidget("Блоки", self)
+        self.blocks_dock.setObjectName("BlocksDock")
+        blocks_widget = self._create_blocks_widget()
+        self.blocks_dock.setWidget(blocks_widget)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.blocks_dock)
         
-        # Вкладка 1: Инструменты
-        tools_widget = self._create_tools_tab()
-        self.right_tabs.addTab(tools_widget, "🛠️ Инструменты")
+        # Инструменты/Настройки (справа снизу)
+        self.tools_dock = QDockWidget("Инструменты", self)
+        self.tools_dock.setObjectName("ToolsDock")
+        tools_widget = self._create_tools_settings_widget()
+        self.tools_dock.setWidget(tools_widget)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.tools_dock)
         
-        # Вкладка 2: Настройки
-        settings_widget = self._create_settings_tab()
-        self.right_tabs.addTab(settings_widget, "⚙️ Настройки")
-        
-        layout.addWidget(self.right_tabs)
-        
-        return panel
+        # Устанавливаем размеры правых доков
+        self.resizeDocks([self.blocks_dock, self.tools_dock], [320, 320], Qt.Horizontal)
     
-    def _create_tools_tab(self) -> QWidget:
-        """Создать вкладку инструментов"""
+    def _create_blocks_widget(self) -> QWidget:
+        """Создать виджет блоков"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
         
-        # Группа: список блоков
-        blocks_group = self._create_blocks_group()
-        layout.addWidget(blocks_group)
+        # Кнопки перемещения блоков
+        move_buttons_layout = QHBoxLayout()
+        self.move_block_up_btn = QPushButton("↑ Вверх")
+        self.move_block_up_btn.clicked.connect(self._move_block_up)
+        move_buttons_layout.addWidget(self.move_block_up_btn)
         
-        # Группа: подсказка для IMAGE блока
-        hint_group = self._create_hint_group()
-        layout.addWidget(hint_group)
+        self.move_block_down_btn = QPushButton("↓ Вниз")
+        self.move_block_down_btn.clicked.connect(self._move_block_down)
+        move_buttons_layout.addWidget(self.move_block_down_btn)
         
-        # Группа: действия
-        actions_group = self._create_actions_group()
-        layout.addWidget(actions_group)
+        layout.addLayout(move_buttons_layout)
+        
+        self.blocks_tabs = QTabWidget()
+        
+        # Вкладка: Страница → Блок
+        self.blocks_tree = QTreeWidget()
+        self.blocks_tree.setHeaderLabels(["Название", "Тип"])
+        self.blocks_tree.setColumnWidth(0, 150)
+        self.blocks_tree.setSortingEnabled(False)
+        self.blocks_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.blocks_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.blocks_tree.customContextMenuRequested.connect(
+            lambda pos: self.blocks_tree_manager.on_tree_context_menu(pos))
+        self.blocks_tree.itemClicked.connect(self._on_tree_block_clicked)
+        self.blocks_tree.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
+        self.blocks_tree.installEventFilter(self)
+        self.blocks_tabs.addTab(self.blocks_tree, "Страница")
+        
+        layout.addWidget(self.blocks_tabs)
+        
+        # Подсказка для IMAGE блока
+        self.hint_group = QGroupBox("Подсказка (IMAGE)")
+        hint_layout = QVBoxLayout(self.hint_group)
+        
+        self.hint_edit = QPlainTextEdit()
+        self.hint_edit.setPlaceholderText("Введите описание содержимого картинки...")
+        self.hint_edit.setMaximumHeight(100)
+        self.hint_edit.textChanged.connect(self._on_hint_changed)
+        hint_layout.addWidget(self.hint_edit)
+        
+        self.hint_group.setEnabled(False)
+        self._selected_image_block = None
+        layout.addWidget(self.hint_group)
         
         return widget
     
-    def _create_settings_tab(self) -> QWidget:
-        """Создать вкладку настроек"""
+    def _create_tools_settings_widget(self) -> QWidget:
+        """Создать виджет с вкладками Инструменты/Настройки"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
         
-        # Настройка папок
-        folders_group = QGroupBox("Папки")
-        folders_layout = QVBoxLayout(folders_group)
+        self.right_tabs = QTabWidget()
+        self.right_tabs.setDocumentMode(True)
+        
+        # Вкладка: Инструменты
+        tools_tab = QWidget()
+        tools_layout = QVBoxLayout(tools_tab)
+        tools_layout.setContentsMargins(4, 4, 4, 4)
+        
+        self.clear_page_btn = QPushButton("Очистить разметку")
+        self.clear_page_btn.clicked.connect(self._clear_current_page)
+        tools_layout.addWidget(self.clear_page_btn)
+        
+        self.save_draft_btn = QPushButton("💾 Сохранить черновик на сервере")
+        self.save_draft_btn.clicked.connect(self._save_draft_to_server)
+        tools_layout.addWidget(self.save_draft_btn)
+        
+        self.remote_ocr_btn = QPushButton("Запустить Remote OCR")
+        self.remote_ocr_btn.clicked.connect(self._send_to_remote_ocr)
+        tools_layout.addWidget(self.remote_ocr_btn)
+        
+        tools_layout.addStretch()
+        self.right_tabs.addTab(tools_tab, "🛠️ Инструменты")
+        
+        # Вкладка: Настройки
+        settings_tab = QWidget()
+        settings_layout = QVBoxLayout(settings_tab)
+        settings_layout.setContentsMargins(4, 4, 4, 4)
+        
         folders_btn = QPushButton("📁 Настройка папок")
         folders_btn.clicked.connect(self._show_folder_settings)
-        folders_layout.addWidget(folders_btn)
-        layout.addWidget(folders_group)
+        settings_layout.addWidget(folders_btn)
         
-        # Настройка дерева
         tree_group = QGroupBox("Дерево проектов")
         tree_layout = QVBoxLayout(tree_group)
         self.tree_settings_widget = TreeSettingsWidget()
         tree_layout.addWidget(self.tree_settings_widget)
-        layout.addWidget(tree_group, stretch=1)
+        settings_layout.addWidget(tree_group, stretch=1)
         
+        self.right_tabs.addTab(settings_tab, "⚙️ Настройки")
+        
+        layout.addWidget(self.right_tabs)
         return widget
+    
+    def _on_hint_changed(self):
+        """Автосохранение подсказки при изменении"""
+        if self._selected_image_block:
+            self._selected_image_block.hint = self.hint_edit.toPlainText() or None
     
     def _create_blocks_group(self) -> QGroupBox:
         """Создать группу списка блоков"""

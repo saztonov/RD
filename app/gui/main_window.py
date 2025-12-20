@@ -50,6 +50,9 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         # Remote OCR панель
         self._setup_remote_ocr_panel()
         
+        # Добавляем действия панелей в меню
+        self._setup_panels_menu()
+        
         # Инициализация менеджеров после создания UI
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree)
         self.navigation_manager = NavigationManager(self)
@@ -82,14 +85,14 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
     def _update_ui(self):
         """Обновить UI элементы"""
         if self.pdf_document:
-            self.page_label.setText(f"Страница: {self.current_page + 1} / {self.pdf_document.page_count}")
+            self.page_label.setText(f"/ {self.pdf_document.page_count}")
             self.page_input.setEnabled(True)
             self.page_input.setMaximum(self.pdf_document.page_count)
             self.page_input.blockSignals(True)
             self.page_input.setValue(self.current_page + 1)
             self.page_input.blockSignals(False)
         else:
-            self.page_label.setText("Страница: 0 / 0")
+            self.page_label.setText("/ 0")
             self.page_input.setEnabled(False)
             self.page_input.setMaximum(1)
     
@@ -251,9 +254,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         settings = QSettings("PDFAnnotationTool", "MainWindow")
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState())
-        
-        if hasattr(self, 'main_splitter'):
-            settings.setValue("splitterSizes", self.main_splitter.saveState())
     
     def _restore_settings(self):
         """Восстановить настройки окна"""
@@ -268,16 +268,28 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         window_state = settings.value("windowState")
         if window_state:
             self.restoreState(window_state)
-        
-        if hasattr(self, 'main_splitter'):
-            splitter_state = settings.value("splitterSizes")
-            if splitter_state:
-                self.main_splitter.restoreState(splitter_state)
     
     def closeEvent(self, event):
         """Обработка закрытия окна"""
         self._save_settings()
         event.accept()
+    
+    def _setup_panels_menu(self):
+        """Добавить действия панелей в меню Вид → Панели"""
+        menubar = self.menuBar()
+        for action in menubar.actions():
+            if action.text() == "&Вид":
+                view_menu = action.menu()
+                for sub_action in view_menu.actions():
+                    if sub_action.menu() and "Панели" in sub_action.text():
+                        panels_menu = sub_action.menu()
+                        # Добавляем toggle-действия для каждой док-панели
+                        panels_menu.addAction(self.project_dock.toggleViewAction())
+                        panels_menu.addAction(self.blocks_dock.toggleViewAction())
+                        panels_menu.addAction(self.tools_dock.toggleViewAction())
+                        panels_menu.addAction(self.remote_ocr_panel.toggleViewAction())
+                        break
+                break
     
     # === Remote OCR ===
     def _setup_remote_ocr_panel(self):

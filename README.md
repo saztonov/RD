@@ -265,6 +265,16 @@ python build.py
 
 ## Документация
 
+### Основная
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — **полная техническая документация**
+- [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — руководство разработчика
+- [`docs/GUI_COMPONENTS.md`](docs/GUI_COMPONENTS.md) — компоненты GUI
+- [`docs/DATABASE.md`](docs/DATABASE.md) — схема базы данных (Supabase)
+- [`docs/REMOTE_OCR_SERVER.md`](docs/REMOTE_OCR_SERVER.md) — Remote OCR сервер
+
+### Дополнительная
+
 - [`ЗАПУСК.md`](ЗАПУСК.md) — команды запуска
 - [`docs/R2_STORAGE_INTEGRATION.md`](docs/R2_STORAGE_INTEGRATION.md) — R2 Storage
 - [`docs/PROMPTS_R2_INTEGRATION.md`](docs/PROMPTS_R2_INTEGRATION.md) — промпты

@@ -198,4 +198,54 @@ class TreeNodeOperationsMixin:
                         del self._node_map[node.id]
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
+    
+    def _remove_stamps_from_document(self, node: TreeNode):
+        """Удалить рамки и QR-коды из PDF документа"""
+        local_path = node.attributes.get("local_path", "")
+        if not local_path:
+            QMessageBox.warning(self, "Ошибка", "Локальный путь к файлу не найден")
+            return
+        
+        file_path = Path(local_path)
+        if not file_path.exists():
+            QMessageBox.warning(self, "Ошибка", f"Файл не найден:\n{local_path}")
+            return
+        
+        from rd_core.pdf_stamp_remover import remove_stamps_from_pdf
+        
+        output_path = file_path.parent / f"{file_path.stem}_clean{file_path.suffix}"
+        
+        success, result = remove_stamps_from_pdf(str(file_path), str(output_path))
+        
+        if success:
+            try:
+                parent_item = self._node_map.get(node.id)
+                if parent_item:
+                    parent = parent_item.parent()
+                    if parent:
+                        parent_node = parent.data(0, self._get_user_role())
+                        if isinstance(parent_node, TreeNode):
+                            doc_node = self.client.add_document(
+                                parent_id=parent_node.id,
+                                name=output_path.name,
+                                r2_key="",
+                                file_size=output_path.stat().st_size,
+                                local_path=str(output_path)
+                            )
+                            child_item = self._create_tree_item(doc_node)
+                            parent.addChild(child_item)
+                            logger.info(f"Clean document added: {doc_node.id}")
+                
+                QMessageBox.information(
+                    self, "Готово",
+                    f"Рамки удалены.\nФайл: {output_path.name}"
+                )
+            except Exception as e:
+                logger.exception(f"Error adding clean document: {e}")
+                QMessageBox.information(
+                    self, "Готово",
+                    f"Рамки удалены.\nФайл: {output_path.name}\n\n(Не добавлен в дерево: {e})"
+                )
+        else:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось обработать файл:\n{result}")
 

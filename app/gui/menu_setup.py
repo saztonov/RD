@@ -98,6 +98,11 @@ class MenuSetupMixin:
         clear_page_action.triggered.connect(self._clear_current_page)
         view_menu.addAction(clear_page_action)
         
+        view_menu.addSeparator()
+        
+        # Подменю "Панели"
+        panels_menu = view_menu.addMenu("📋 Панели")
+        
         # Меню "Промты"
         prompts_menu = menubar.addMenu("&Промты")
         
@@ -132,66 +137,91 @@ class MenuSetupMixin:
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
         
-        # Кнопки навигации
-        self.open_action = QAction("📂 Открыть", self)
-        self.open_action.triggered.connect(self._open_pdf)
-        toolbar.addAction(self.open_action)
+        # Навигация по страницам - компактный современный виджет
+        from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton
         
-        self.save_action = QAction("💾 Сохранить", self)
-        self.save_action.triggered.connect(self._save_annotation)
-        toolbar.addAction(self.save_action)
+        nav_widget = QWidget()
+        nav_layout = QHBoxLayout(nav_widget)
+        nav_layout.setContentsMargins(4, 2, 4, 2)
+        nav_layout.setSpacing(2)
         
-        self.load_action = QAction("📥 Загрузить", self)
-        self.load_action.triggered.connect(self._load_annotation)
-        toolbar.addAction(self.load_action)
+        nav_style = """
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 14px;
+                font-weight: 600;
+                color: #888;
+            }
+            QPushButton:hover {
+                background: rgba(100, 100, 100, 0.15);
+                color: #fff;
+            }
+            QPushButton:pressed {
+                background: rgba(100, 100, 100, 0.25);
+            }
+            QPushButton:disabled {
+                color: #444;
+            }
+        """
         
-        toolbar.addSeparator()
-        
-        # Навигация по страницам
-        self.prev_action = QAction("◀ Назад", self)
-        self.prev_action.triggered.connect(self._prev_page)
-        toolbar.addAction(self.prev_action)
-        
-        self.page_label = QLabel("Страница: 0 / 0")
-        toolbar.addWidget(self.page_label)
+        self.prev_btn = QPushButton("❮")
+        self.prev_btn.setFixedSize(32, 28)
+        self.prev_btn.setToolTip("Предыдущая страница (←)")
+        self.prev_btn.setStyleSheet(nav_style)
+        self.prev_btn.clicked.connect(self._prev_page)
+        nav_layout.addWidget(self.prev_btn)
         
         # Поле ввода номера страницы
         self.page_input = QSpinBox(self)
         self.page_input.setMinimum(1)
         self.page_input.setMaximum(1)
-        self.page_input.setFixedSize(50, 24)
+        self.page_input.setFixedSize(48, 28)
         self.page_input.setEnabled(False)
         self.page_input.setAlignment(Qt.AlignCenter)
         self.page_input.setButtonSymbols(QSpinBox.NoButtons)
-        self.page_input.setToolTip("Введите номер страницы и нажмите Enter")
+        self.page_input.setToolTip("Введите номер страницы")
         self.page_input.setStyleSheet("""
             QSpinBox {
                 padding: 2px;
-                border: none;
-                border-bottom: 2px solid #666;
-                border-radius: 0px;
-                background: transparent;
-                font-size: 12px;
-                font-weight: 500;
+                border: 1px solid #555;
+                border-radius: 4px;
+                background: rgba(50, 50, 50, 0.5);
+                font-size: 13px;
+                font-weight: 600;
+                color: #ddd;
             }
             QSpinBox:hover {
-                border-bottom: 2px solid #0078d4;
+                border: 1px solid #777;
+                background: rgba(60, 60, 60, 0.6);
             }
             QSpinBox:focus {
-                border-bottom: 2px solid #0078d4;
-                background: rgba(0, 120, 212, 0.05);
+                border: 1px solid #0078d4;
+                background: rgba(0, 120, 212, 0.1);
             }
             QSpinBox:disabled {
-                border-bottom: 2px solid #ccc;
-                color: #999;
+                border: 1px solid #444;
+                color: #666;
+                background: rgba(40, 40, 40, 0.3);
             }
         """)
         self.page_input.valueChanged.connect(self._goto_page_from_input)
-        toolbar.addWidget(self.page_input)
+        nav_layout.addWidget(self.page_input)
         
-        self.next_action = QAction("Вперед ▶", self)
-        self.next_action.triggered.connect(self._next_page)
-        toolbar.addAction(self.next_action)
+        self.page_label = QLabel("/ 0")
+        self.page_label.setStyleSheet("color: #888; font-size: 13px; font-weight: 500; padding: 0 4px;")
+        nav_layout.addWidget(self.page_label)
+        
+        self.next_btn = QPushButton("❯")
+        self.next_btn.setFixedSize(32, 28)
+        self.next_btn.setToolTip("Следующая страница (→)")
+        self.next_btn.setStyleSheet(nav_style)
+        self.next_btn.clicked.connect(self._next_page)
+        nav_layout.addWidget(self.next_btn)
+        
+        toolbar.addWidget(nav_widget)
         
         toolbar.addSeparator()
         
