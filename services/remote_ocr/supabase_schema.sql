@@ -54,11 +54,13 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_jobs_updated_at ON jobs;
 CREATE TRIGGER update_jobs_updated_at
     BEFORE UPDATE ON jobs
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_job_settings_updated_at ON job_settings;
 CREATE TRIGGER update_job_settings_updated_at
     BEFORE UPDATE ON job_settings
     FOR EACH ROW
