@@ -1,7 +1,7 @@
 """
 Утилиты для работы с PDF
 Загрузка PDF, рендеринг страниц в изображения через PyMuPDF
-Извлечение текста через pdfplumber
+Извлечение текста через PyMuPDF
 """
 
 import fitz  # PyMuPDF
@@ -306,7 +306,7 @@ class PDFDocument:
         self.close()
 
 
-# ========== ФУНКЦИИ ИЗВЛЕЧЕНИЯ ТЕКСТА PDFPLUMBER ==========
+# ========== ФУНКЦИИ ИЗВЛЕЧЕНИЯ ТЕКСТА PyMuPDF ==========
 
 def extract_text_pdfplumber(
     pdf_path: str,
@@ -314,7 +314,7 @@ def extract_text_pdfplumber(
     bbox: Optional[Tuple[float, float, float, float]] = None
 ) -> str:
     """
-    Извлечь текст из PDF страницы с помощью pdfplumber
+    Извлечь текст из PDF страницы с помощью PyMuPDF
     
     Args:
         pdf_path: путь к PDF файлу
@@ -326,32 +326,26 @@ def extract_text_pdfplumber(
         Извлечённый текст (может быть пустой строкой)
     """
     try:
-        import pdfplumber
-    except ImportError:
-        logger.warning("pdfplumber не установлен, текст не извлечён")
-        return ""
-    
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            if page_index < 0 or page_index >= len(pdf.pages):
-                logger.warning(f"Страница {page_index} не существует в PDF")
-                return ""
-            
-            page = pdf.pages[page_index]
-            
-            if bbox:
-                # Извлекаем текст из области
-                # pdfplumber использует координаты (x0, top, x1, bottom)
-                cropped = page.within_bbox(bbox)
-                text = cropped.extract_text() or ""
-            else:
-                # Извлекаем весь текст страницы
-                text = page.extract_text() or ""
-            
-            return text.strip()
-            
+        doc = fitz.open(pdf_path)
+        if page_index < 0 or page_index >= len(doc):
+            logger.warning(f"Страница {page_index} не существует в PDF")
+            doc.close()
+            return ""
+        
+        page = doc[page_index]
+        
+        if bbox:
+            # PyMuPDF использует fitz.Rect(x0, y0, x1, y1)
+            rect = fitz.Rect(bbox)
+            text = page.get_text("text", clip=rect) or ""
+        else:
+            text = page.get_text("text") or ""
+        
+        doc.close()
+        return text.strip()
+        
     except Exception as e:
-        logger.error(f"Ошибка извлечения текста pdfplumber: {e}")
+        logger.error(f"Ошибка извлечения текста PyMuPDF: {e}")
         return ""
 
 
@@ -381,7 +375,7 @@ def extract_text_for_block(
     x1 = coords_norm[2] * page_width_pdf
     y1 = coords_norm[3] * page_height_pdf
     
-    # pdfplumber использует (x0, top, x1, bottom)
+    # PyMuPDF использует (x0, y0, x1, y1)
     bbox = (x0, y0, x1, y1)
     
     return extract_text_pdfplumber(pdf_path, page_index, bbox)
@@ -413,12 +407,14 @@ def get_pdf_page_size(pdf_path: str, page_index: int) -> Optional[Tuple[float, f
         (width, height) в PDF-единицах или None при ошибке
     """
     try:
-        import pdfplumber
-        with pdfplumber.open(pdf_path) as pdf:
-            if page_index < 0 or page_index >= len(pdf.pages):
-                return None
-            page = pdf.pages[page_index]
-            return (page.width, page.height)
+        doc = fitz.open(pdf_path)
+        if page_index < 0 or page_index >= len(doc):
+            doc.close()
+            return None
+        page = doc[page_index]
+        rect = page.rect
+        doc.close()
+        return (rect.width, rect.height)
     except Exception as e:
         logger.error(f"Ошибка получения размера страницы: {e}")
         return None
