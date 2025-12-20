@@ -294,14 +294,6 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
 
     def _open_job_in_editor(self, job_id: str):
         """Открыть результат задачи в редакторе"""
-        # Проверяем, не открыт ли уже этот job
-        for project in self.main_window.project_manager.projects.values():
-            if project.remote_job_id == job_id:
-                QMessageBox.information(self, "Задание открыто", 
-                    f"Это задание уже открыто в проекте «{project.name}»")
-                self.main_window.project_manager.set_active_project(project.id)
-                return
-        
         if job_id in self._job_output_dirs:
             extract_dir = Path(self._job_output_dirs[job_id])
         else:
@@ -329,11 +321,6 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
     def _open_job_in_editor_internal(self, job_id: str):
         """Внутренний метод открытия задачи"""
         try:
-            self.main_window._save_current_annotation_to_cache()
-            
-            if hasattr(self.main_window, 'navigation_manager') and self.main_window.navigation_manager:
-                self.main_window.navigation_manager.save_current_zoom()
-            
             extract_dir = Path(self._job_output_dirs[job_id])
             annotation_path = extract_dir / "annotation.json"
             pdf_path = extract_dir / "document.pdf"
@@ -362,29 +349,6 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             if not pdf_abs_path.exists():
                 QMessageBox.warning(self, "PDF не найден", f"PDF файл не найден:\n{loaded_doc.pdf_path}")
                 return
-
-            task_name = None
-            try:
-                client = self._get_client()
-                if client:
-                    job_details = client.get_job_details(job_id)
-                    task_name = job_details.get("task_name") or job_details.get("document_name", "")
-            except Exception:
-                pass
-            
-            if not task_name:
-                task_name = pdf_abs_path.stem
-            
-            project_id = self.main_window.project_manager.create_project(task_name)
-            project = self.main_window.project_manager.get_project(project_id)
-            if project:
-                project.remote_job_id = job_id
-            self.main_window.project_manager.add_file_to_project(project_id, str(pdf_abs_path), str(annotation_path))
-            self.main_window.project_manager.set_active_project(project_id)
-            self.main_window.project_manager.set_active_file_in_project(project_id, 0)
-            
-            self.main_window._current_project_id = project_id
-            self.main_window._current_file_index = 0
 
             try:
                 from rd_core.models import Page
@@ -426,7 +390,12 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             except Exception:
                 pass
 
+            # Открываем PDF напрямую
+            self.main_window._open_pdf_file(str(pdf_abs_path))
+            
+            # Устанавливаем аннотацию
             self.main_window.annotation_document = loaded_doc
+            self.main_window._current_pdf_path = str(pdf_abs_path)
 
             if hasattr(self.main_window, "page_viewer") and self.main_window.page_viewer:
                 try:
@@ -435,7 +404,8 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
                 except Exception:
                     pass
 
-            self.main_window._load_cleaned_pdf(loaded_doc.pdf_path, keep_annotation=True)
+            # Перерисовываем
+            self.main_window._render_current_page()
 
             if getattr(self.main_window, "blocks_tree_manager", None):
                 self.main_window.blocks_tree_manager.update_blocks_tree()
@@ -451,14 +421,11 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             return
         
         pdf_path = self.main_window.annotation_document.pdf_path
-        # Fallback: использовать путь из активного файла проекта
+        # Fallback: использовать _current_pdf_path
         if not pdf_path or not Path(pdf_path).exists():
-            active_project = self.main_window.project_manager.get_active_project()
-            if active_project:
-                active_file = active_project.get_active_file()
-                if active_file and Path(active_file.pdf_path).exists():
-                    pdf_path = active_file.pdf_path
-                    self.main_window.annotation_document.pdf_path = pdf_path
+            if hasattr(self.main_window, '_current_pdf_path') and self.main_window._current_pdf_path:
+                pdf_path = self.main_window._current_pdf_path
+                self.main_window.annotation_document.pdf_path = pdf_path
         
         if not pdf_path or not Path(pdf_path).exists():
             QMessageBox.warning(self, "Ошибка", "PDF файл не найден")
@@ -467,10 +434,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         from PySide6.QtWidgets import QDialog
         from app.gui.ocr_dialog import OCRDialog
         
-        task_name = ""
-        active_project = self.main_window.project_manager.get_active_project()
-        if active_project:
-            task_name = active_project.name
+        task_name = Path(pdf_path).stem if pdf_path else ""
         
         dialog = OCRDialog(self.main_window, task_name=task_name)
         if dialog.exec() != QDialog.Accepted:
@@ -496,7 +460,6 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             engine = "openrouter"
         
         self._pending_output_dir = dialog.output_dir
-        task_name = self.main_window.project_manager.get_active_project().name if self.main_window.project_manager.get_active_project() else ""
         
         from app.gui.toast import show_toast
         show_toast(self, "Отправка задачи...", duration=1500)
@@ -547,14 +510,11 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             return
         
         pdf_path = self.main_window.annotation_document.pdf_path
-        # Fallback: использовать путь из активного файла проекта
+        # Fallback: использовать _current_pdf_path
         if not pdf_path or not Path(pdf_path).exists():
-            active_project = self.main_window.project_manager.get_active_project()
-            if active_project:
-                active_file = active_project.get_active_file()
-                if active_file and Path(active_file.pdf_path).exists():
-                    pdf_path = active_file.pdf_path
-                    self.main_window.annotation_document.pdf_path = pdf_path
+            if hasattr(self.main_window, '_current_pdf_path') and self.main_window._current_pdf_path:
+                pdf_path = self.main_window._current_pdf_path
+                self.main_window.annotation_document.pdf_path = pdf_path
         
         if not pdf_path or not Path(pdf_path).exists():
             QMessageBox.warning(self, "Ошибка", "PDF файл не найден")
@@ -570,10 +530,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             QMessageBox.warning(self, "Ошибка", "Клиент не инициализирован")
             return
         
-        task_name = ""
-        active_project = self.main_window.project_manager.get_active_project()
-        if active_project:
-            task_name = active_project.name
+        task_name = Path(pdf_path).stem if pdf_path else ""
         
         from app.gui.folder_settings_dialog import get_new_jobs_dir
         from app.gui.ocr_dialog import transliterate_to_latin

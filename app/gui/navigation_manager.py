@@ -43,8 +43,8 @@ class NavigationManager:
     
     def save_current_zoom(self):
         """Сохранить зум текущей страницы"""
-        if self.parent._current_project_id and self.parent._current_file_index >= 0:
-            zoom_key = (self.parent._current_project_id, self.parent._current_file_index, self.parent.current_page)
+        if hasattr(self.parent, '_current_pdf_path') and self.parent._current_pdf_path:
+            zoom_key = (self.parent._current_pdf_path, self.parent.current_page)
             self.parent.page_zoom_states[zoom_key] = (
                 self.parent.page_viewer.transform(),
                 self.parent.page_viewer.zoom_factor

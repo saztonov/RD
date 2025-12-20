@@ -1,5 +1,5 @@
 """
-Диалог настройки папок для заданий OCR
+Диалог настройки папок для проектов
 """
 
 import os
@@ -9,23 +9,19 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PySide6.QtCore import QSettings
 
 
-def get_folder_settings():
-    """Получить настройки папок"""
+def get_projects_dir() -> str:
+    """Получить папку для проектов"""
     settings = QSettings("RDApp", "FolderSettings")
-    return {
-        "new_jobs_dir": settings.value("new_jobs_dir", ""),
-        "download_jobs_dir": settings.value("download_jobs_dir", "")
-    }
+    return settings.value("projects_dir", "")
 
 
+# Для обратной совместимости
 def get_new_jobs_dir() -> str:
-    """Получить папку для новых заданий"""
-    return get_folder_settings()["new_jobs_dir"]
+    return get_projects_dir()
 
 
 def get_download_jobs_dir() -> str:
-    """Получить папку для скачивания заданий"""
-    return get_folder_settings()["download_jobs_dir"]
+    return get_projects_dir()
 
 
 class FolderSettingsDialog(QDialog):
@@ -41,41 +37,25 @@ class FolderSettingsDialog(QDialog):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         
-        # Папка для новых заданий
-        new_jobs_group = QGroupBox("Папка для новых заданий")
-        new_jobs_layout = QVBoxLayout(new_jobs_group)
+        # Папка для проектов
+        projects_group = QGroupBox("Папка для проектов")
+        projects_layout = QVBoxLayout(projects_group)
         
-        new_jobs_layout.addWidget(QLabel("Сюда сохраняются результаты OCR задач:"))
+        projects_layout.addWidget(QLabel("Сюда сохраняются и скачиваются файлы из дерева проектов:"))
         
-        new_jobs_path_layout = QHBoxLayout()
-        self.new_jobs_edit = QLineEdit()
-        self.new_jobs_edit.setPlaceholderText("Выберите папку...")
-        new_jobs_path_layout.addWidget(self.new_jobs_edit)
+        path_layout = QHBoxLayout()
+        self.projects_edit = QLineEdit()
+        self.projects_edit.setPlaceholderText("Выберите папку...")
+        path_layout.addWidget(self.projects_edit)
         
-        new_jobs_browse_btn = QPushButton("Обзор...")
-        new_jobs_browse_btn.clicked.connect(self._select_new_jobs_dir)
-        new_jobs_path_layout.addWidget(new_jobs_browse_btn)
+        browse_btn = QPushButton("Обзор...")
+        browse_btn.clicked.connect(self._select_dir)
+        path_layout.addWidget(browse_btn)
         
-        new_jobs_layout.addLayout(new_jobs_path_layout)
-        layout.addWidget(new_jobs_group)
+        projects_layout.addLayout(path_layout)
+        layout.addWidget(projects_group)
         
-        # Папка для скачивания заданий
-        download_group = QGroupBox("Папка для скачивания заданий")
-        download_layout = QVBoxLayout(download_group)
-        
-        download_layout.addWidget(QLabel("Сюда скачиваются задания при открытии в редакторе:"))
-        
-        download_path_layout = QHBoxLayout()
-        self.download_edit = QLineEdit()
-        self.download_edit.setPlaceholderText("Выберите папку...")
-        download_path_layout.addWidget(self.download_edit)
-        
-        download_browse_btn = QPushButton("Обзор...")
-        download_browse_btn.clicked.connect(self._select_download_dir)
-        download_path_layout.addWidget(download_browse_btn)
-        
-        download_layout.addLayout(download_path_layout)
-        layout.addWidget(download_group)
+        layout.addStretch()
         
         # Кнопки
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -84,40 +64,27 @@ class FolderSettingsDialog(QDialog):
         layout.addWidget(buttons)
     
     def _load_settings(self):
-        settings = get_folder_settings()
-        self.new_jobs_edit.setText(settings["new_jobs_dir"])
-        self.download_edit.setText(settings["download_jobs_dir"])
+        self.projects_edit.setText(get_projects_dir())
     
-    def _select_new_jobs_dir(self):
-        dir_path = QFileDialog.getExistingDirectory(self, "Папка для новых заданий")
+    def _select_dir(self):
+        dir_path = QFileDialog.getExistingDirectory(self, "Папка для проектов")
         if dir_path:
-            self.new_jobs_edit.setText(dir_path)
-    
-    def _select_download_dir(self):
-        dir_path = QFileDialog.getExistingDirectory(self, "Папка для скачивания")
-        if dir_path:
-            self.download_edit.setText(dir_path)
+            self.projects_edit.setText(dir_path)
     
     def _accept(self):
         from PySide6.QtWidgets import QMessageBox
         
-        new_jobs_dir = self.new_jobs_edit.text().strip()
-        download_dir = self.download_edit.text().strip()
+        projects_dir = self.projects_edit.text().strip()
         
-        if not new_jobs_dir or not download_dir:
-            QMessageBox.warning(self, "Ошибка", "Укажите обе папки")
+        if not projects_dir:
+            QMessageBox.warning(self, "Ошибка", "Укажите папку для проектов")
             return
         
-        if not os.path.exists(new_jobs_dir):
-            os.makedirs(new_jobs_dir, exist_ok=True)
-        
-        if not os.path.exists(download_dir):
-            os.makedirs(download_dir, exist_ok=True)
+        if not os.path.exists(projects_dir):
+            os.makedirs(projects_dir, exist_ok=True)
         
         # Сохраняем
         settings = QSettings("RDApp", "FolderSettings")
-        settings.setValue("new_jobs_dir", new_jobs_dir)
-        settings.setValue("download_jobs_dir", download_dir)
+        settings.setValue("projects_dir", projects_dir)
         
         self.accept()
-

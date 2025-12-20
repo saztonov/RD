@@ -3,8 +3,9 @@
 """
 
 import logging
+import tempfile
 from pathlib import Path
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 from rd_core.models import Document, Page
 from rd_core.pdf_utils import PDFDocument
 from rd_core.annotation_io import AnnotationIO
@@ -19,7 +20,6 @@ class FileOperationsMixin:
         """Создать пустой документ аннотации со страницами"""
         doc = Document(pdf_path=pdf_path)
         for page_num in range(self.pdf_document.page_count):
-            # Приоритет: реальное изображение > get_page_dimensions
             if page_num in self.page_images:
                 img = self.page_images[page_num]
                 page = Page(page_number=page_num, width=img.width, height=img.height)
@@ -33,108 +33,91 @@ class FileOperationsMixin:
         return doc
     
     def _open_pdf(self):
-        """Открыть PDF файл"""
-        active_project = self.project_manager.get_active_project()
-        if not active_project:
-            reply = QMessageBox.question(
-                self, "Создать задание?",
-                "Нет активного задания. Создать новое?",
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if reply == QMessageBox.Yes:
-                name, ok = QInputDialog.getText(self, "Новое задание", "Название:")
-                if ok and name.strip():
-                    project_id = self.project_manager.create_project(name.strip())
-                    active_project = self.project_manager.get_project(project_id)
-                else:
-                    return
-            else:
-                return
-        
-        file_paths, _ = QFileDialog.getOpenFileNames(self, "Открыть PDF", "", "PDF Files (*.pdf)")
-        if not file_paths:
-            return
-        
-        # Добавляем все выбранные файлы
-        for file_path in file_paths:
-            self.project_manager.add_file_to_project(active_project.id, file_path)
-        
-        # Загружаем последний добавленный файл
-        file_index = len(active_project.files) - 1
-        self.project_manager.set_active_file_in_project(active_project.id, file_index)
-        self._load_pdf_from_project(active_project.id, file_index)
+        """Открыть PDF файл через диалог"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Открыть PDF", "", "PDF Files (*.pdf)"
+        )
+        if file_path:
+            self._open_pdf_file(file_path)
     
-    def _load_pdf_from_project(self, project_id: str, file_index: int):
-        """Загрузить PDF из проекта"""
-        project = self.project_manager.get_project(project_id)
-        if not project or file_index < 0 or file_index >= len(project.files):
-            return
-        
-        project_file = project.files[file_index]
-        
+    def _open_pdf_file(self, pdf_path: str):
+        """Открыть PDF файл напрямую"""
         if self.pdf_document:
             self.pdf_document.close()
         
         self.page_images.clear()
+        self.undo_stack.clear()
+        self.redo_stack.clear()
         
-        self.pdf_document = PDFDocument(project_file.pdf_path)
-        if not self.pdf_document.open():
-            QMessageBox.critical(self, "Ошибка", "Не удалось открыть PDF")
+        self.pdf_document = PDFDocument(pdf_path)
+        if not self.pdf_document.open() or self.pdf_document.page_count == 0:
+            QMessageBox.warning(self, "Ошибка", "PDF файл пустой или повреждён")
             return
         
-        self._current_project_id = project_id
-        self._current_file_index = file_index
+        self.current_page = 0
+        self._current_pdf_path = pdf_path
         
-        cache_key = (project_id, file_index)
-        if cache_key in self.annotations_cache:
-            self.annotation_document = self.annotations_cache[cache_key]
-        elif project_file.annotation_path and Path(project_file.annotation_path).exists():
-            self.annotation_document = AnnotationIO.load_annotation(project_file.annotation_path)
+        # Создаём пустой документ аннотации
+        self.annotation_document = self._create_empty_annotation(pdf_path)
+        
+        # Рендерим первую страницу
+        self._render_current_page()
+        self._update_ui()
+        
+        # Обновляем заголовок
+        self.setWindowTitle(f"PDF Annotation Tool - {Path(pdf_path).name}")
+    
+    def _on_tree_file_uploaded(self, local_path: str):
+        """Открыть загруженный из дерева файл в редакторе"""
+        self._open_pdf_file(local_path)
+    
+    def _on_tree_document_selected(self, node_id: str, r2_key: str):
+        """Открыть документ из дерева (скачать из R2 и открыть)"""
+        from rd_core.r2_storage import R2Storage
+        from app.gui.folder_settings_dialog import get_projects_dir
+        
+        if not r2_key:
+            return
+        
+        try:
+            r2 = R2Storage()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка R2", f"Не удалось подключиться к R2:\n{e}")
+            return
+        
+        projects_dir = get_projects_dir()
+        if projects_dir and Path(projects_dir).exists():
+            download_dir = Path(projects_dir) / "temp"
         else:
-            self.annotation_document = self._create_empty_annotation(project_file.pdf_path)
+            download_dir = Path(tempfile.gettempdir()) / "rd_tree_docs"
         
-        self.current_page = 0
-        self._render_current_page()
-        self._update_ui()
-    
-    def _load_cleaned_pdf(self, file_path: str, keep_annotation: bool = False):
-        """Загрузить PDF (исходный или очищенный)"""
-        if self.pdf_document:
-            self.pdf_document.close()
+        download_dir.mkdir(parents=True, exist_ok=True)
         
-        self.page_images.clear()
+        filename = Path(r2_key).name
+        local_path = download_dir / filename
         
-        self.pdf_document = PDFDocument(file_path)
-        if not self.pdf_document.open():
-            QMessageBox.critical(self, "Ошибка", "Не удалось открыть PDF")
+        logger.info(f"Downloading from R2: {r2_key} -> {local_path}")
+        
+        if not r2.download_file(r2_key, str(local_path)):
+            QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
             return
         
-        if not keep_annotation:
-            self.annotation_document = self._create_empty_annotation(file_path)
-        
-        self.current_page = 0
-        self._render_current_page()
-        self._update_ui()
+        self._open_pdf_file(str(local_path))
     
     def _save_annotation(self):
         """Сохранить разметку в JSON"""
         if not self.annotation_document:
             return
         
-        active_project = self.project_manager.get_active_project()
-        if active_project:
-            active_file = active_project.get_active_file()
-            if active_file:
-                pdf_path = Path(active_file.pdf_path)
-                annotation_path = pdf_path.parent / f"{pdf_path.stem}_annotation.json"
-                AnnotationIO.save_annotation(self.annotation_document, str(annotation_path))
-                active_file.annotation_path = str(annotation_path)
-                from app.gui.toast import show_toast
-                show_toast(self, "Разметка сохранена")
-                return
+        # Определяем путь по умолчанию рядом с PDF
+        default_path = ""
+        if hasattr(self, '_current_pdf_path') and self._current_pdf_path:
+            pdf_path = Path(self._current_pdf_path)
+            default_path = str(pdf_path.parent / f"{pdf_path.stem}_annotation.json")
         
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Сохранить разметку", "blocks.json", "JSON Files (*.json)")
+            self, "Сохранить разметку", default_path, "JSON Files (*.json)"
+        )
         if file_path:
             AnnotationIO.save_annotation(self.annotation_document, file_path)
             from app.gui.toast import show_toast
@@ -143,13 +126,14 @@ class FileOperationsMixin:
     def _load_annotation(self):
         """Загрузить разметку из JSON"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Загрузить разметку", "", "JSON Files (*.json)")
+            self, "Загрузить разметку", "", "JSON Files (*.json)"
+        )
         if not file_path:
             return
         
         loaded_doc = AnnotationIO.load_annotation(file_path)
         if loaded_doc:
-            # Поддержка относительного пути в annotation.json (например "document.pdf")
+            # Поддержка относительного пути
             try:
                 pdf_path_obj = Path(loaded_doc.pdf_path)
                 if not pdf_path_obj.is_absolute():
@@ -161,19 +145,11 @@ class FileOperationsMixin:
             self.annotation_document = loaded_doc
             pdf_path = loaded_doc.pdf_path
             if Path(pdf_path).exists():
-                self._load_cleaned_pdf(pdf_path, keep_annotation=True)
-            elif self.pdf_document:
-                self.current_page = 0
+                self._open_pdf_file(pdf_path)
+                # Восстанавливаем аннотацию после открытия
+                self.annotation_document = loaded_doc
                 self._render_current_page()
-                self._update_ui()
             
             self.blocks_tree_manager.update_blocks_tree()
             from app.gui.toast import show_toast
             show_toast(self, "Разметка загружена")
-    
-    def _save_current_annotation_to_cache(self):
-        """Сохранить текущую аннотацию в кеш"""
-        if self._current_project_id and self._current_file_index >= 0 and self.annotation_document:
-            key = (self._current_project_id, self._current_file_index)
-            self.annotations_cache[key] = self.annotation_document
-

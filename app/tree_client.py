@@ -271,9 +271,10 @@ class TreeClient:
         self,
         parent_id: str,
         name: str,
-        r2_key: str,
+        r2_key: str = "",
         file_size: int = 0,
         mime_type: str = "application/pdf",
+        local_path: str = "",
     ) -> TreeNode:
         """Добавить документ в папку заданий"""
         # Проверяем версионность - ищем существующий документ с таким именем
@@ -287,11 +288,14 @@ class TreeClient:
             new_name = name
         
         # Создаём узел документа
+        attrs = {"original_name": name, "r2_key": r2_key, "file_size": file_size, "mime_type": mime_type}
+        if local_path:
+            attrs["local_path"] = local_path
         node = self.create_node(
             node_type=NodeType.DOCUMENT,
             name=new_name,
             parent_id=parent_id,
-            attributes={"original_name": name, "r2_key": r2_key, "file_size": file_size, "mime_type": mime_type}
+            attributes=attrs
         )
         
         # Обновляем версию

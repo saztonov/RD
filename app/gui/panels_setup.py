@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from app.gui.page_viewer import PageViewer
-from app.gui.project_sidebar import ProjectSidebar
 from app.gui.project_tree_widget import ProjectTreeWidget
 from app.gui.tree_settings_widget import TreeSettingsWidget
 
@@ -57,51 +56,17 @@ class PanelsSetupMixin:
         main_layout.addWidget(self.main_splitter)
     
     def _create_left_sidebar(self) -> QWidget:
-        """Создать боковую панель проектов с вкладками"""
+        """Создать боковую панель дерева проектов"""
         left_sidebar = QWidget()
         left_sidebar_layout = QVBoxLayout(left_sidebar)
         left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
         left_sidebar_layout.setSpacing(0)
         
-        # Создаём TabWidget для переключения между режимами
-        self.sidebar_tabs = QTabWidget()
-        self.sidebar_tabs.setDocumentMode(True)
-        self.sidebar_tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: none;
-                background-color: #1e1e1e;
-            }
-            QTabBar::tab {
-                background-color: #2d2d2d;
-                color: #bbbbbb;
-                padding: 8px 16px;
-                border: none;
-                border-bottom: 2px solid transparent;
-            }
-            QTabBar::tab:selected {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border-bottom: 2px solid #0e639c;
-            }
-            QTabBar::tab:hover:!selected {
-                background-color: #3e3e42;
-            }
-        """)
-        
-        # Вкладка 1: Дерево проектов (Supabase)
+        # Дерево проектов (Supabase)
         self.project_tree_widget = ProjectTreeWidget()
-        self.sidebar_tabs.addTab(self.project_tree_widget, "🌳 Дерево")
-        
-        # Вкладка 2: Задания (локальные)
-        self.project_sidebar = ProjectSidebar(self.project_manager)
-        self.project_sidebar.project_switched.connect(self._on_project_switched)
-        self.project_sidebar.file_switched.connect(self._on_file_switched)
-        self.project_manager.file_removed.connect(self._on_file_removed)
-        self.project_manager.project_removed.connect(self._on_project_removed)
-        self.project_manager.project_renamed.connect(self._on_project_renamed)
-        self.sidebar_tabs.addTab(self.project_sidebar, "📋 Задания")
-        
-        left_sidebar_layout.addWidget(self.sidebar_tabs)
+        self.project_tree_widget.file_uploaded.connect(self._on_tree_file_uploaded)
+        self.project_tree_widget.document_selected.connect(self._on_tree_document_selected)
+        left_sidebar_layout.addWidget(self.project_tree_widget)
         
         left_sidebar.setMinimumWidth(200)
         return left_sidebar

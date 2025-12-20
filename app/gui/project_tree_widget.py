@@ -116,6 +116,7 @@ class ProjectTreeWidget(QWidget):
     """Виджет дерева проектов"""
     
     document_selected = Signal(str, str)  # node_id, r2_key
+    file_uploaded = Signal(str)  # local_path - сигнал для открытия файла в редакторе
     refresh_requested = Signal()
     
     def __init__(self, parent=None):
@@ -308,6 +309,12 @@ class ProjectTreeWidget(QWidget):
         """Двойной клик - открыть документ"""
         node = item.data(0, Qt.UserRole)
         if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
+            local_path = node.attributes.get("local_path", "")
+            if local_path:
+                from pathlib import Path
+                if Path(local_path).exists():
+                    self.file_uploaded.emit(local_path)
+                    return
             r2_key = node.attributes.get("r2_key", "")
             if r2_key:
                 self.document_selected.emit(node.id, r2_key)
@@ -330,9 +337,9 @@ class ProjectTreeWidget(QWidget):
                     action = menu.addAction(f"{icon} Добавить {NODE_TYPE_NAMES[child_type]}")
                     action.setData(("add", child_type, node))
                 
-                # Если это папка заданий - загрузить файл
+                # Если это папка заданий - добавить файл
                 if node.node_type == NodeType.TASK_FOLDER:
-                    action = menu.addAction("📤 Загрузить файл")
+                    action = menu.addAction("📄 Добавить файл")
                     action.setData(("upload", node))
                 
                 menu.addSeparator()
@@ -435,21 +442,72 @@ class ProjectTreeWidget(QWidget):
                     QMessageBox.critical(self, "Ошибка", str(e))
     
     def _upload_file(self, node: TreeNode):
-        """Загрузить файл в папку заданий"""
+        """Добавить файл в папку заданий (копирует локально)"""
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Выберите файлы", "", "PDF Files (*.pdf);;All Files (*)"
         )
         if not paths:
             return
         
-        # TODO: Реализовать загрузку в R2 и добавление документа
+        from pathlib import Path
+        import shutil
+        from app.gui.folder_settings_dialog import get_projects_dir
+        
+        projects_dir = get_projects_dir()
+        if not projects_dir or not Path(projects_dir).exists():
+            QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
+            return
+        
+        parent_item = self._node_map.get(node.id)
+        
         for path in paths:
-            from pathlib import Path
-            filename = Path(path).name
-            QMessageBox.information(
-                self, "Загрузка", 
-                f"Файл {filename} будет загружен.\n(Требуется интеграция с R2)"
-            )
+            file_path = Path(path)
+            filename = file_path.name
+            file_size = file_path.stat().st_size
+            
+            # Создаём папку для документа: projects_dir/{node_name}/
+            doc_folder = Path(projects_dir) / node.name
+            doc_folder.mkdir(parents=True, exist_ok=True)
+            
+            # Копируем файл
+            local_path = doc_folder / filename
+            try:
+                shutil.copy2(file_path, local_path)
+                logger.info(f"File copied to: {local_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка", f"Не удалось скопировать файл:\n{e}")
+                continue
+            
+            # Добавляем документ в дерево
+            try:
+                doc_node = self.client.add_document(
+                    parent_id=node.id,
+                    name=filename,
+                    r2_key="",
+                    file_size=file_size,
+                    local_path=str(local_path)
+                )
+                
+                # Добавляем в UI
+                if parent_item:
+                    # Удаляем placeholder если есть
+                    if parent_item.childCount() == 1:
+                        child = parent_item.child(0)
+                        if child.data(0, Qt.UserRole) == "placeholder":
+                            parent_item.removeChild(child)
+                    
+                    child_item = self._create_tree_item(doc_node)
+                    parent_item.addChild(child_item)
+                    parent_item.setExpanded(True)
+                
+                logger.info(f"Document added: {doc_node.id}")
+                
+                # Открыть файл в редакторе
+                self.file_uploaded.emit(str(local_path))
+                
+            except Exception as e:
+                logger.exception(f"Failed to add document: {e}")
+                QMessageBox.critical(self, "Ошибка", f"Файл скопирован, но не добавлен в дерево:\n{e}")
     
     def _rename_node(self, node: TreeNode):
         """Переименовать узел"""

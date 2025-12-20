@@ -9,7 +9,6 @@ from rd_core.models import Document, BlockType
 from rd_core.pdf_utils import PDFDocument
 from app.gui.blocks_tree_manager import BlocksTreeManager
 from app.gui.prompt_manager import PromptManager
-from app.gui.project_manager import ProjectManager
 from app.gui.navigation_manager import NavigationManager
 from app.gui.menu_setup import MenuSetupMixin
 from app.gui.panels_setup import PanelsSetupMixin
@@ -31,19 +30,15 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.current_page: int = 0
         self.page_images: dict = {}
         self.page_zoom_states: dict = {}
-        self.annotations_cache: dict = {}
-        self._current_project_id: Optional[str] = None
-        self._current_file_index: int = -1
+        self._current_pdf_path: Optional[str] = None
         
         # Undo/Redo стек
         self.undo_stack: list = []  # [(page_num, blocks_copy), ...]
         self.redo_stack: list = []
         
         # Менеджеры (инициализируются после setup_ui)
-        self.project_manager = ProjectManager()
         self.prompt_manager = PromptManager(self)
         self.blocks_tree_manager = None
-        self.project_sidebar = None
         self.navigation_manager = None
         self.remote_ocr_panel = None
         
@@ -235,99 +230,19 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             "Промпты обновлены"
         )
     
-    def _on_project_switched(self, project_id: str):
-        """Обработка переключения проекта"""
-        self._save_current_annotation_to_cache()
-        # Сохранить текущий зум перед переключением
-        if hasattr(self, 'navigation_manager') and self.navigation_manager:
-            self.navigation_manager.save_current_zoom()
-        
-        project = self.project_manager.get_project(project_id)
-        if not project:
-            return
-        
-        active_file = project.get_active_file()
-        if active_file:
-            self._load_pdf_from_project(project_id, project.active_file_index)
-        else:
-            if self.pdf_document:
-                self.pdf_document.close()
-            self.pdf_document = None
-            self.annotation_document = None
-            self._current_project_id = project_id
-            self._current_file_index = -1
-            self.page_images.clear()
-            self.page_viewer.set_page_image(None, 0)
-            self._update_ui()
-    
-    def _on_file_switched(self, project_id: str, file_index: int):
-        """Обработка переключения файла в проекте"""
-        self._save_current_annotation_to_cache()
-        # Сохранить текущий зум перед переключением
-        if hasattr(self, 'navigation_manager') and self.navigation_manager:
-            self.navigation_manager.save_current_zoom()
-        self._load_pdf_from_project(project_id, file_index)
-    
-    def _on_file_removed(self, project_id: str, file_index: int):
-        """Обработка удаления файла из проекта"""
-        # Очищаем кеш для удалённого файла
-        cache_key = (project_id, file_index)
-        if cache_key in self.annotations_cache:
-            del self.annotations_cache[cache_key]
-        
-        # Очищаем зумы для удалённого файла
-        zoom_keys_to_remove = [k for k in self.page_zoom_states.keys() 
-                               if k[0] == project_id and k[1] == file_index]
-        for key in zoom_keys_to_remove:
-            del self.page_zoom_states[key]
-        
-        # Если удалён текущий активный файл
-        if self._current_project_id == project_id and self._current_file_index == file_index:
-            # Загружаем следующий доступный файл или очищаем интерфейс
-            project = self.project_manager.get_project(project_id)
-            if project and project.files:
-                active_file = project.get_active_file()
-                if active_file:
-                    self._load_pdf_from_project(project_id, project.active_file_index)
-                else:
-                    self._clear_interface()
-            else:
-                self._clear_interface()
-    
     def _clear_interface(self):
         """Очистить интерфейс при отсутствии файлов"""
         if self.pdf_document:
             self.pdf_document.close()
         self.pdf_document = None
         self.annotation_document = None
-        self._current_file_index = -1
+        self._current_pdf_path = None
         self.page_images.clear()
         self.page_viewer.set_page_image(None, 0)
         self.page_viewer.set_blocks([])
         if self.blocks_tree_manager:
             self.blocks_tree_manager.update_blocks_tree()
         self._update_ui()
-    
-    def _on_project_removed(self, project_id: str):
-        """Обработка удаления проекта"""
-        # Очищаем кеш для удалённого проекта
-        cache_keys_to_remove = [k for k in self.annotations_cache.keys() if k[0] == project_id]
-        for key in cache_keys_to_remove:
-            del self.annotations_cache[key]
-        
-        zoom_keys_to_remove = [k for k in self.page_zoom_states.keys() if k[0] == project_id]
-        for key in zoom_keys_to_remove:
-            del self.page_zoom_states[key]
-        
-        # Если удалён текущий активный проект - очищаем интерфейс
-        if self._current_project_id == project_id:
-            self._current_project_id = None
-            self._clear_interface()
-    
-    def _on_project_renamed(self, job_id: str, new_name: str):
-        """Обработка переименования проекта - обновить Remote OCR панель"""
-        if hasattr(self, 'remote_ocr_panel') and self.remote_ocr_panel:
-            self.remote_ocr_panel._refresh_jobs(manual=True)
     
     def _save_settings(self):
         """Сохранить настройки окна"""
