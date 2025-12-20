@@ -70,6 +70,11 @@ def _worker_loop() -> None:
     job_executor = ThreadPoolExecutor(max_workers=max_jobs, thread_name_prefix="job-worker")
     active_futures = set()
     
+    # Exponential backoff при пустой очереди
+    base_interval = settings.poll_interval
+    max_interval = settings.poll_max_interval
+    current_interval = base_interval
+    
     logger.info(f"Worker запущен с лимитом {max_jobs} параллельных задач")
     
     while not _stop_event.is_set():
@@ -90,13 +95,15 @@ def _worker_loop() -> None:
                     logger.info(f"Взята задача {job.id} (активных: {len(active_futures) + 1}/{max_jobs})")
                     future = job_executor.submit(_process_job, job)
                     active_futures.add(future)
+                    current_interval = base_interval  # Сброс при наличии задач
                 else:
-                    time.sleep(2.0)
+                    time.sleep(current_interval)
+                    current_interval = min(current_interval * 1.5, max_interval)
             else:
-                time.sleep(1.0)
+                time.sleep(base_interval)
         except Exception as e:
             logger.error(f"Ошибка в worker loop: {e}")
-            time.sleep(5.0)
+            time.sleep(base_interval)
     
     # Ожидаем завершения активных задач
     job_executor.shutdown(wait=True)

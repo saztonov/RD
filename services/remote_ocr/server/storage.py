@@ -1,13 +1,13 @@
-"""SQLite-хранилище для задач OCR"""
+"""Supabase-хранилище для задач OCR"""
 from __future__ import annotations
 
 import os
-import sqlite3
-import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, List, Any
+
+from supabase import create_client, Client
 
 from .settings import settings
 
@@ -30,71 +30,32 @@ class Job:
     r2_prefix: Optional[str] = None
 
 
-_db_lock = threading.Lock()
-_db_path: Optional[str] = None
+_supabase: Optional[Client] = None
 
 
-def _get_db_path() -> str:
-    global _db_path
-    if _db_path is None:
-        os.makedirs(settings.data_dir, exist_ok=True)
-        _db_path = os.path.join(settings.data_dir, "jobs.sqlite")
-    return _db_path
-
-
-def _get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(_get_db_path(), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _get_client() -> Client:
+    """Получить Supabase клиент (singleton)"""
+    global _supabase
+    if _supabase is None:
+        if not settings.supabase_url or not settings.supabase_key:
+            raise RuntimeError("SUPABASE_URL и SUPABASE_KEY должны быть заданы")
+        _supabase = create_client(settings.supabase_url, settings.supabase_key)
+    return _supabase
 
 
 def init_db() -> None:
-    """Инициализировать БД (создать таблицу если не существует)"""
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS jobs (
-                    id TEXT PRIMARY KEY,
-                    client_id TEXT NOT NULL,
-                    document_id TEXT NOT NULL,
-                    document_name TEXT NOT NULL,
-                    task_name TEXT NOT NULL DEFAULT '',
-                    status TEXT NOT NULL DEFAULT 'queued',
-                    progress REAL DEFAULT 0,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    error_message TEXT,
-                    job_dir TEXT NOT NULL,
-                    result_path TEXT,
-                    engine TEXT DEFAULT '',
-                    r2_prefix TEXT
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_client_id ON jobs(client_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_document_id ON jobs(document_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON jobs(status)")
-            conn.commit()
-            
-            # Миграция: добавляем r2_prefix если его нет
-            try:
-                cursor = conn.execute("PRAGMA table_info(jobs)")
-                columns = [row[1] for row in cursor.fetchall()]
-                if "r2_prefix" not in columns:
-                    conn.execute("ALTER TABLE jobs ADD COLUMN r2_prefix TEXT")
-                    conn.commit()
-                    import logging
-                    logging.getLogger(__name__).info("✅ Миграция БД: добавлена колонка r2_prefix")
-                if "task_name" not in columns:
-                    conn.execute("ALTER TABLE jobs ADD COLUMN task_name TEXT NOT NULL DEFAULT ''")
-                    conn.commit()
-                    import logging
-                    logging.getLogger(__name__).info("✅ Миграция БД: добавлена колонка task_name")
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"⚠️ Ошибка миграции БД: {e}")
-        finally:
-            conn.close()
+    """Инициализировать подключение к Supabase (проверка соединения)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        client = _get_client()
+        # Проверяем соединение простым запросом
+        client.table("jobs").select("id").limit(1).execute()
+        logger.info("✅ Supabase: подключение установлено")
+    except Exception as e:
+        logger.error(f"❌ Supabase: ошибка подключения: {e}")
+        raise
 
 
 def create_job(
@@ -127,63 +88,51 @@ def create_job(
         r2_prefix=None
     )
     
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            conn.execute("""
-                INSERT INTO jobs (id, client_id, document_id, document_name, task_name, status, progress,
-                                  created_at, updated_at, error_message, job_dir, result_path, engine, r2_prefix)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (job.id, job.client_id, job.document_id, job.document_name, job.task_name, job.status,
-                  job.progress, job.created_at, job.updated_at, job.error_message,
-                  job.job_dir, job.result_path, job.engine, job.r2_prefix))
-            conn.commit()
-        finally:
-            conn.close()
+    client = _get_client()
+    client.table("jobs").insert({
+        "id": job.id,
+        "client_id": job.client_id,
+        "document_id": job.document_id,
+        "document_name": job.document_name,
+        "task_name": job.task_name,
+        "status": job.status,
+        "progress": job.progress,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+        "error_message": job.error_message,
+        "job_dir": job.job_dir,
+        "result_path": job.result_path,
+        "engine": job.engine,
+        "r2_prefix": job.r2_prefix
+    }).execute()
     
     return job
 
 
 def get_job(job_id: str) -> Optional[Job]:
     """Получить задачу по ID"""
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-            if row is None:
-                return None
-            return _row_to_job(row)
-        finally:
-            conn.close()
+    client = _get_client()
+    result = client.table("jobs").select("*").eq("id", job_id).execute()
+    
+    if not result.data:
+        return None
+    return _row_to_job(result.data[0])
 
 
 def list_jobs(client_id: Optional[str] = None, document_id: Optional[str] = None) -> List[Job]:
     """Получить список задач. Если client_id не указан - возвращает все задачи."""
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            if client_id and document_id:
-                rows = conn.execute(
-                    "SELECT * FROM jobs WHERE client_id = ? AND document_id = ? ORDER BY created_at DESC",
-                    (client_id, document_id)
-                ).fetchall()
-            elif client_id:
-                rows = conn.execute(
-                    "SELECT * FROM jobs WHERE client_id = ? ORDER BY created_at DESC",
-                    (client_id,)
-                ).fetchall()
-            elif document_id:
-                rows = conn.execute(
-                    "SELECT * FROM jobs WHERE document_id = ? ORDER BY created_at DESC",
-                    (document_id,)
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM jobs ORDER BY created_at DESC"
-                ).fetchall()
-            return [_row_to_job(row) for row in rows]
-        finally:
-            conn.close()
+    client = _get_client()
+    query = client.table("jobs").select("*")
+    
+    if client_id and document_id:
+        query = query.eq("client_id", client_id).eq("document_id", document_id)
+    elif client_id:
+        query = query.eq("client_id", client_id)
+    elif document_id:
+        query = query.eq("document_id", document_id)
+    
+    result = query.order("created_at", desc=True).execute()
+    return [_row_to_job(row) for row in result.data]
 
 
 def update_job_status(
@@ -197,49 +146,29 @@ def update_job_status(
     """Обновить статус задачи"""
     now = datetime.utcnow().isoformat()
     
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            # Собираем SET-части запроса
-            updates = ["status = ?", "updated_at = ?"]
-            values: List[Any] = [status, now]
-            
-            if progress is not None:
-                updates.append("progress = ?")
-                values.append(progress)
-            
-            if error_message is not None:
-                updates.append("error_message = ?")
-                values.append(error_message)
-            
-            if result_path is not None:
-                updates.append("result_path = ?")
-                values.append(result_path)
-            
-            if r2_prefix is not None:
-                updates.append("r2_prefix = ?")
-                values.append(r2_prefix)
-            
-            values.append(job_id)
-            
-            conn.execute(
-                f"UPDATE jobs SET {', '.join(updates)} WHERE id = ?",
-                tuple(values)
-            )
-            conn.commit()
-        finally:
-            conn.close()
+    updates: dict[str, Any] = {
+        "status": status,
+        "updated_at": now
+    }
+    
+    if progress is not None:
+        updates["progress"] = progress
+    if error_message is not None:
+        updates["error_message"] = error_message
+    if result_path is not None:
+        updates["result_path"] = result_path
+    if r2_prefix is not None:
+        updates["r2_prefix"] = r2_prefix
+    
+    client = _get_client()
+    client.table("jobs").update(updates).eq("id", job_id).execute()
 
 
 def count_processing_jobs() -> int:
     """Подсчитать количество задач в статусе processing"""
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            row = conn.execute("SELECT COUNT(*) as cnt FROM jobs WHERE status = 'processing'").fetchone()
-            return row["cnt"] if row else 0
-        finally:
-            conn.close()
+    client = _get_client()
+    result = client.table("jobs").select("id", count="exact").eq("status", "processing").execute()
+    return result.count or 0
 
 
 def claim_next_job(max_concurrent: int = 2) -> Optional[Job]:
@@ -248,96 +177,75 @@ def claim_next_job(max_concurrent: int = 2) -> Optional[Job]:
     Args:
         max_concurrent: максимум параллельных задач (по умолчанию 2)
     """
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            # Проверяем лимит параллельных задач
-            processing_count = conn.execute(
-                "SELECT COUNT(*) as cnt FROM jobs WHERE status = 'processing'"
-            ).fetchone()["cnt"]
-            
-            if processing_count >= max_concurrent:
-                return None
-            
-            # Находим первую queued задачу
-            row = conn.execute(
-                "SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1"
-            ).fetchone()
-            
-            if row is None:
-                return None
-            
-            job_id = row["id"]
-            now = datetime.utcnow().isoformat()
-            
-            # Атомарно помечаем как processing
-            conn.execute(
-                "UPDATE jobs SET status = 'processing', updated_at = ? WHERE id = ? AND status = 'queued'",
-                (now, job_id)
-            )
-            conn.commit()
-            
-            # Перечитываем
-            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-            if row and row["status"] == "processing":
-                return _row_to_job(row)
-            return None
-        finally:
-            conn.close()
+    client = _get_client()
+    
+    # Проверяем лимит параллельных задач
+    processing_count = count_processing_jobs()
+    if processing_count >= max_concurrent:
+        return None
+    
+    # Находим первую queued задачу
+    result = client.table("jobs").select("*").eq("status", "queued").order("created_at").limit(1).execute()
+    
+    if not result.data:
+        return None
+    
+    job_id = result.data[0]["id"]
+    now = datetime.utcnow().isoformat()
+    
+    # Атомарно помечаем как processing (с условием что status = queued)
+    update_result = client.table("jobs").update({
+        "status": "processing",
+        "updated_at": now
+    }).eq("id", job_id).eq("status", "queued").execute()
+    
+    # Перечитываем
+    if update_result.data:
+        return _row_to_job(update_result.data[0])
+    
+    # Если update не прошёл (status уже изменился), возвращаем None
+    return None
 
 
-def _row_to_job(row: sqlite3.Row) -> Job:
+def _row_to_job(row: dict) -> Job:
     return Job(
         id=row["id"],
         client_id=row["client_id"],
         document_id=row["document_id"],
         document_name=row["document_name"],
-        task_name=row["task_name"] if "task_name" in row.keys() else "",
+        task_name=row.get("task_name", ""),
         status=row["status"],
         progress=row["progress"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
-        error_message=row["error_message"],
+        error_message=row.get("error_message"),
         job_dir=row["job_dir"],
-        result_path=row["result_path"],
-        engine=row["engine"] if "engine" in row.keys() else "",
-        r2_prefix=row["r2_prefix"] if "r2_prefix" in row.keys() else None
+        result_path=row.get("result_path"),
+        engine=row.get("engine", ""),
+        r2_prefix=row.get("r2_prefix")
     )
 
 
 def delete_job(job_id: str) -> bool:
     """Удалить задачу из БД"""
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            cursor = conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
+    client = _get_client()
+    result = client.table("jobs").delete().eq("id", job_id).execute()
+    return len(result.data) > 0
 
 
 def reset_job_for_restart(job_id: str) -> bool:
     """Сбросить задачу для повторного запуска"""
     now = datetime.utcnow().isoformat()
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            cursor = conn.execute(
-                """UPDATE jobs SET 
-                   status = 'queued', 
-                   progress = 0, 
-                   error_message = NULL,
-                   result_path = NULL,
-                   r2_prefix = NULL,
-                   updated_at = ?
-                   WHERE id = ?""",
-                (now, job_id)
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
+    client = _get_client()
+    result = client.table("jobs").update({
+        "status": "queued",
+        "progress": 0,
+        "error_message": None,
+        "result_path": None,
+        "r2_prefix": None,
+        "updated_at": now
+    }).eq("id", job_id).execute()
+    return len(result.data) > 0
 
 
 def recover_stuck_jobs() -> int:
@@ -351,64 +259,65 @@ def recover_stuck_jobs() -> int:
     import logging
     logger = logging.getLogger(__name__)
     
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            now = datetime.utcnow().isoformat()
-            cursor = conn.execute(
-                "UPDATE jobs SET status = 'paused', updated_at = ? WHERE status IN ('queued', 'processing')",
-                (now,)
-            )
-            conn.commit()
-            count = cursor.rowcount
-            if count > 0:
-                logger.warning(f"⏸️ При старте: {count} задач поставлено на паузу (queued/processing -> paused)")
-            return count
-        finally:
-            conn.close()
+    now = datetime.utcnow().isoformat()
+    client = _get_client()
+    
+    # Ставим на паузу queued
+    result1 = client.table("jobs").update({
+        "status": "paused",
+        "updated_at": now
+    }).eq("status", "queued").execute()
+    
+    # Ставим на паузу processing
+    result2 = client.table("jobs").update({
+        "status": "paused",
+        "updated_at": now
+    }).eq("status", "processing").execute()
+    
+    count = len(result1.data) + len(result2.data)
+    if count > 0:
+        logger.warning(f"⏸️ При старте: {count} задач поставлено на паузу (queued/processing -> paused)")
+    return count
 
 
 def pause_job(job_id: str) -> bool:
     """Поставить задачу на паузу (queued/processing -> paused)"""
     now = datetime.utcnow().isoformat()
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            cursor = conn.execute(
-                "UPDATE jobs SET status = 'paused', updated_at = ? WHERE id = ? AND status IN ('queued', 'processing')",
-                (now, job_id)
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
+    client = _get_client()
+    
+    # Сначала пробуем с queued
+    result = client.table("jobs").update({
+        "status": "paused",
+        "updated_at": now
+    }).eq("id", job_id).eq("status", "queued").execute()
+    
+    if result.data:
+        return True
+    
+    # Потом с processing
+    result = client.table("jobs").update({
+        "status": "paused",
+        "updated_at": now
+    }).eq("id", job_id).eq("status", "processing").execute()
+    
+    return len(result.data) > 0
 
 
 def resume_job(job_id: str) -> bool:
     """Возобновить задачу (paused -> queued)"""
     now = datetime.utcnow().isoformat()
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            cursor = conn.execute(
-                "UPDATE jobs SET status = 'queued', updated_at = ? WHERE id = ? AND status = 'paused'",
-                (now, job_id)
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
+    client = _get_client()
+    result = client.table("jobs").update({
+        "status": "queued",
+        "updated_at": now
+    }).eq("id", job_id).eq("status", "paused").execute()
+    return len(result.data) > 0
 
 
 def is_job_paused(job_id: str) -> bool:
     """Проверить, поставлена ли задача на паузу"""
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            row = conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
-            return row["status"] == "paused" if row else False
-        finally:
-            conn.close()
+    job = get_job(job_id)
+    return job.status == "paused" if job else False
 
 
 def job_to_dict(job: Job) -> dict:
@@ -429,3 +338,16 @@ def job_to_dict(job: Job) -> dict:
         "engine": job.engine,
         "r2_prefix": job.r2_prefix
     }
+
+
+# --- Вспомогательные функции для main.py ---
+
+def update_job_engine(job_id: str, engine: str) -> None:
+    """Обновить engine задачи"""
+    now = datetime.utcnow().isoformat()
+    client = _get_client()
+    client.table("jobs").update({
+        "engine": engine,
+        "status": "queued",
+        "updated_at": now
+    }).eq("id", job_id).execute()

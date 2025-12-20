@@ -1,5 +1,0 @@
-{
-  "text_model": "qwen/qwen3-vl-30b-a3b-instruct",
-  "table_model": "qwen/qwen3-vl-30b-a3b-instruct",
-  "image_model": "google/gemini-3-flash-preview"
-}

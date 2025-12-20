@@ -508,19 +508,8 @@ def start_job_endpoint(
         }, f, ensure_ascii=False, indent=2)
     
     # Обновляем engine в БД и меняем статус на queued
-    from datetime import datetime
-    now = datetime.utcnow().isoformat()
-    from .storage import _db_lock, _get_connection
-    with _db_lock:
-        conn = _get_connection()
-        try:
-            conn.execute(
-                "UPDATE jobs SET status = 'queued', engine = ?, updated_at = ? WHERE id = ?",
-                (engine, now, job_id)
-            )
-            conn.commit()
-        finally:
-            conn.close()
+    from .storage import update_job_engine
+    update_job_engine(job_id, engine)
     
     return {"ok": True, "job_id": job_id, "status": "queued"}
 

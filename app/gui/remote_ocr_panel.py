@@ -28,9 +28,9 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
     """Dock-панель для Remote OCR задач"""
     
     # Интервалы опроса (мс)
-    POLL_INTERVAL_PROCESSING = 2000   # при активных задачах
-    POLL_INTERVAL_IDLE = 10000        # в покое
-    POLL_INTERVAL_ERROR = 30000       # при ошибках (backoff)
+    POLL_INTERVAL_PROCESSING = 5000   # при активных задачах
+    POLL_INTERVAL_IDLE = 30000        # в покое
+    POLL_INTERVAL_ERROR = 60000       # при ошибках (backoff)
     
     def __init__(self, main_window: "MainWindow", parent=None):
         super().__init__("Remote OCR Jobs", parent)
@@ -44,6 +44,8 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         self._config_file = Path.home() / ".rd" / "remote_ocr_jobs.json"
         self._has_active_jobs = False
         self._consecutive_errors = 0
+        self._is_fetching = False  # Флаг: запрос уже выполняется
+        self._is_manual_refresh = False  # Флаг: ручное обновление
         
         self._executor = ThreadPoolExecutor(max_workers=2)
         self._signals = WorkerSignals()
@@ -83,7 +85,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         self.refresh_btn = QPushButton("🔄")
         self.refresh_btn.setMaximumWidth(30)
         self.refresh_btn.setToolTip("Обновить список")
-        self.refresh_btn.clicked.connect(self._refresh_jobs)
+        self.refresh_btn.clicked.connect(lambda: self._refresh_jobs(manual=True))
         header_layout.addWidget(self.refresh_btn)
         
         layout.addLayout(header_layout)
@@ -144,9 +146,18 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
                 return None
         return self._client
     
-    def _refresh_jobs(self):
+    def _refresh_jobs(self, manual: bool = False):
         """Обновить список задач"""
-        self.status_label.setText("🔄 Загрузка...")
+        # Защита от множественных одновременных запросов
+        if self._is_fetching:
+            return
+        self._is_fetching = True
+        self._is_manual_refresh = manual
+        
+        # Показываем "Загрузка" только при ручном обновлении
+        if manual:
+            self.status_label.setText("🔄 Загрузка...")
+        
         self._executor.submit(self._fetch_jobs_bg)
     
     def _fetch_jobs_bg(self):
@@ -164,6 +175,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
     
     def _on_jobs_loaded(self, jobs):
         """Слот: список задач получен"""
+        self._is_fetching = False
         self._update_table(jobs)
         self.status_label.setText("🟢 Подключено")
         self._consecutive_errors = 0
@@ -176,10 +188,11 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
     
     def _on_jobs_error(self, error_msg: str):
         """Слот: ошибка загрузки списка"""
+        self._is_fetching = False
         self.status_label.setText("🔴 Сервер недоступен")
         self._consecutive_errors += 1
         # Exponential backoff при ошибках
-        backoff_interval = min(self.POLL_INTERVAL_ERROR * (2 ** min(self._consecutive_errors - 1, 3)), 120000)
+        backoff_interval = min(self.POLL_INTERVAL_ERROR * (2 ** min(self._consecutive_errors - 1, 3)), 180000)
         if self.refresh_timer.interval() != backoff_interval:
             self.refresh_timer.setInterval(backoff_interval)
     
@@ -243,6 +256,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             rerun_btn = QPushButton("🔁")
             rerun_btn.setToolTip("Повторное распознавание")
             rerun_btn.setFixedSize(26, 26)
+            rerun_btn.setStyleSheet("QPushButton { background-color: #e67e22; border: 1px solid #d35400; border-radius: 4px; } QPushButton:hover { background-color: #d35400; }")
             rerun_btn.clicked.connect(lambda checked, jid=job.id: self._rerun_job(jid))
             actions_layout.addWidget(rerun_btn)
             
@@ -263,6 +277,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             info_btn = QPushButton("ℹ️")
             info_btn.setToolTip("Информация о задаче")
             info_btn.setFixedSize(26, 26)
+            info_btn.setStyleSheet("QPushButton { background-color: #7f8c8d; border: 1px solid #636e72; border-radius: 4px; } QPushButton:hover { background-color: #636e72; }")
             info_btn.clicked.connect(lambda checked, jid=job.id: self._show_job_details(jid))
             actions_layout.addWidget(info_btn)
             
@@ -507,7 +522,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         
         from app.gui.toast import show_toast
         show_toast(self, f"Задача создана: {job_info.id[:8]}...", duration=2500)
-        self._refresh_jobs()
+        self._refresh_jobs(manual=True)
     
     def _on_job_create_error(self, error_type: str, message: str):
         """Слот: ошибка создания задачи"""
@@ -603,7 +618,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
         
         from app.gui.toast import show_toast
         show_toast(self, f"Черновик сохранён: {job_info.id[:8]}...", duration=2500)
-        self._refresh_jobs()
+        self._refresh_jobs(manual=True)
     
     def _on_draft_create_error(self, error_type: str, message: str):
         """Слот: ошибка создания черновика"""
@@ -765,7 +780,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             
             from app.gui.toast import show_toast
             show_toast(self, "Задача удалена")
-            self._refresh_jobs()
+            self._refresh_jobs(manual=True)
             
         except Exception as e:
             logger.error(f"Ошибка удаления задачи: {e}")
@@ -781,7 +796,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             if client.pause_job(job_id):
                 from app.gui.toast import show_toast
                 show_toast(self, f"Задача {job_id[:8]}... на паузе")
-                self._refresh_jobs()
+                self._refresh_jobs(manual=True)
             else:
                 QMessageBox.warning(self, "Ошибка", "Не удалось поставить на паузу")
         except Exception as e:
@@ -798,7 +813,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             if client.resume_job(job_id):
                 from app.gui.toast import show_toast
                 show_toast(self, f"Задача {job_id[:8]}... возобновлена")
-                self._refresh_jobs()
+                self._refresh_jobs(manual=True)
             else:
                 QMessageBox.warning(self, "Ошибка", "Не удалось возобновить")
         except Exception as e:
@@ -896,7 +911,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             show_toast(self, f"Задача пересоздана: {new_job_info.id[:8]}...", duration=2500)
         else:
             show_toast(self, f"Задача перезапущена: {old_job_id[:8]}...", duration=2500)
-        self._refresh_jobs()
+        self._refresh_jobs(manual=True)
     
     def _on_rerun_error(self, job_id: str, error_msg: str):
         """Слот: ошибка повторного распознавания"""
@@ -905,7 +920,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
     def showEvent(self, event):
         """При показе панели обновляем список"""
         super().showEvent(event)
-        self._refresh_jobs()
+        self._refresh_jobs(manual=True)
         self.refresh_timer.start(self.POLL_INTERVAL_IDLE)
     
     def hideEvent(self, event):
