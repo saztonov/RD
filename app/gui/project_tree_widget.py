@@ -179,11 +179,56 @@ class ProjectTreeWidget(QWidget):
         """)
         self.refresh_btn.clicked.connect(self._refresh_tree)
         
+        icon_btn_style = """
+            QPushButton {
+                background-color: #3e3e42;
+                color: white;
+                border: none;
+                border-radius: 2px;
+            }
+            QPushButton:hover { background-color: #4e4e52; }
+        """
+        
+        self.expand_all_btn = QPushButton("⊞")
+        self.expand_all_btn.setCursor(Qt.PointingHandCursor)
+        self.expand_all_btn.setToolTip("Развернуть все")
+        self.expand_all_btn.setFixedSize(32, 32)
+        self.expand_all_btn.setStyleSheet(icon_btn_style)
+        self.expand_all_btn.clicked.connect(self._expand_all)
+        
+        self.collapse_all_btn = QPushButton("⊟")
+        self.collapse_all_btn.setCursor(Qt.PointingHandCursor)
+        self.collapse_all_btn.setToolTip("Свернуть все")
+        self.collapse_all_btn.setFixedSize(32, 32)
+        self.collapse_all_btn.setStyleSheet(icon_btn_style)
+        self.collapse_all_btn.clicked.connect(self._collapse_all)
+        
         btns_layout.addWidget(self.create_btn)
         btns_layout.addWidget(self.refresh_btn)
+        btns_layout.addWidget(self.expand_all_btn)
+        btns_layout.addWidget(self.collapse_all_btn)
         header_layout.addLayout(btns_layout)
         
         layout.addWidget(header)
+        
+        # Поле поиска
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Поиск...")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #3c3c3c;
+                color: #e0e0e0;
+                border: 1px solid #555;
+                padding: 6px;
+                border-radius: 2px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #0e639c;
+            }
+        """)
+        self.search_input.textChanged.connect(self._filter_tree)
+        layout.addWidget(self.search_input)
         
         # Дерево
         self.tree = QTreeWidget()
@@ -237,6 +282,14 @@ class ProjectTreeWidget(QWidget):
             logger.error(f"Failed to load types: {e}")
         
         self._refresh_tree()
+    
+    def _expand_all(self):
+        """Развернуть все элементы"""
+        self.tree.expandAll()
+    
+    def _collapse_all(self):
+        """Свернуть все элементы"""
+        self.tree.collapseAll()
     
     def _refresh_tree(self):
         """Обновить дерево"""
@@ -558,4 +611,82 @@ class ProjectTreeWidget(QWidget):
                         del self._node_map[node.id]
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
+    
+    def _filter_tree(self, text: str):
+        """Фильтровать дерево по тексту"""
+        text = text.lower().strip()
+        
+        if not text:
+            # Показать все элементы
+            self._show_all_items()
+            return
+        
+        # Скрыть все, затем показать только совпадающие
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            self._filter_item(item, text)
+    
+    def _show_all_items(self):
+        """Показать все элементы дерева"""
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            self._show_item_recursive(item)
+    
+    def _show_item_recursive(self, item: QTreeWidgetItem):
+        """Рекурсивно показать элемент и его детей"""
+        item.setHidden(False)
+        for i in range(item.childCount()):
+            self._show_item_recursive(item.child(i))
+    
+    def _filter_item(self, item: QTreeWidgetItem, text: str, parent_matches: bool = False) -> bool:
+        """
+        Фильтровать элемент и его детей.
+        Возвращает True если элемент или его дети содержат текст.
+        parent_matches=True означает что родитель совпал - показываем всех потомков.
+        """
+        node = item.data(0, Qt.UserRole)
+        if node == "placeholder":
+            item.setHidden(True)
+            return False
+        
+        # Проверяем текущий элемент
+        item_text = item.text(0).lower()
+        matches = text in item_text
+        
+        # Загружаем детей для поиска в глубину (если placeholder)
+        if isinstance(node, TreeNode):
+            self._ensure_children_loaded(item, node)
+        
+        # Если родитель совпал - показываем этот элемент и всех его потомков
+        if parent_matches:
+            item.setHidden(False)
+            item.setExpanded(True)
+            for i in range(item.childCount()):
+                self._filter_item(item.child(i), text, parent_matches=True)
+            return True
+        
+        # Проверяем детей (передаём parent_matches=True если текущий совпал)
+        has_matching_child = False
+        for i in range(item.childCount()):
+            child = item.child(i)
+            if self._filter_item(child, text, parent_matches=matches):
+                has_matching_child = True
+        
+        # Показываем если есть совпадение или есть совпадающие дети
+        should_show = matches or has_matching_child
+        item.setHidden(not should_show)
+        
+        # Раскрываем если элемент совпадает или есть совпадающие дети
+        if should_show and item.childCount() > 0:
+            item.setExpanded(True)
+        
+        return should_show
+    
+    def _ensure_children_loaded(self, item: QTreeWidgetItem, node: TreeNode):
+        """Загрузить детей если они еще не загружены (placeholder)"""
+        if item.childCount() == 1:
+            child = item.child(0)
+            if child.data(0, Qt.UserRole) == "placeholder":
+                item.removeChild(child)
+                self._load_children(item, node)
 
