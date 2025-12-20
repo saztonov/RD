@@ -324,6 +324,11 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self._current_project_id = None
             self._clear_interface()
     
+    def _on_project_renamed(self, job_id: str, new_name: str):
+        """Обработка переименования проекта - обновить Remote OCR панель"""
+        if hasattr(self, 'remote_ocr_panel') and self.remote_ocr_panel:
+            self.remote_ocr_panel._refresh_jobs(manual=True)
+    
     def _save_settings(self):
         """Сохранить настройки окна"""
         from PySide6.QtCore import QSettings

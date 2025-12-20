@@ -66,6 +66,7 @@ class PanelsSetupMixin:
         self.project_sidebar.file_switched.connect(self._on_file_switched)
         self.project_manager.file_removed.connect(self._on_file_removed)
         self.project_manager.project_removed.connect(self._on_project_removed)
+        self.project_manager.project_renamed.connect(self._on_project_renamed)
         left_sidebar_layout.addWidget(self.project_sidebar, stretch=1)
         
         left_sidebar.setMinimumWidth(200)

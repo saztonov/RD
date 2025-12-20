@@ -36,6 +36,7 @@ class Project:
     created_at: datetime = None
     files: List[ProjectFile] = field(default_factory=list)
     active_file_index: int = 0
+    remote_job_id: Optional[str] = None
     
     def __post_init__(self):
         if self.created_at is None:
@@ -94,6 +95,7 @@ class ProjectManager(QObject):
     project_updated = Signal(str)  # project_id
     project_removed = Signal(str)  # project_id
     project_selected = Signal(str)  # project_id
+    project_renamed = Signal(str, str)  # remote_job_id, new_name
     file_added = Signal(str, int)  # project_id, file_index
     file_removed = Signal(str, int)  # project_id, file_index
     

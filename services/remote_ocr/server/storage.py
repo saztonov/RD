@@ -310,6 +310,17 @@ def resume_job(job_id: str) -> bool:
     return len(result.data) > 0
 
 
+def update_job_task_name(job_id: str, task_name: str) -> bool:
+    """Обновить название задачи"""
+    now = datetime.utcnow().isoformat()
+    client = _get_client()
+    result = client.table("jobs").update({
+        "task_name": task_name,
+        "updated_at": now
+    }).eq("id", job_id).execute()
+    return len(result.data) > 0
+
+
 def is_job_paused(job_id: str) -> bool:
     """Проверить, поставлена ли задача на паузу"""
     job = get_job(job_id)

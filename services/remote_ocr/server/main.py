@@ -31,6 +31,7 @@ from .storage import (
     save_job_settings,
     update_job_engine,
     update_job_status,
+    update_job_task_name,
 )
 from .worker import start_worker, stop_worker
 
@@ -400,6 +401,25 @@ def download_result(
         raise HTTPException(status_code=500, detail=f"Failed to generate download URL: {e}")
 
 
+@app.patch("/jobs/{job_id}")
+def update_job_endpoint(
+    job_id: str,
+    task_name: str = Form(...),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Обновить название задачи"""
+    _check_api_key(x_api_key)
+    
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if not update_job_task_name(job_id, task_name):
+        raise HTTPException(status_code=500, detail="Failed to update job")
+    
+    return {"ok": True, "job_id": job_id, "task_name": task_name}
+
+
 @app.post("/jobs/{job_id}/restart")
 def restart_job_endpoint(
     job_id: str,
@@ -508,22 +528,37 @@ def delete_job_endpoint(
     job_id: str,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
-    """Удалить задачу и её файлы"""
+    """Удалить задачу и все связанные файлы (R2 + Supabase)"""
     _check_api_key(x_api_key)
     
-    job = get_job(job_id, with_files=True)
+    job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    # Удаляем файлы из R2
-    try:
-        r2 = _get_r2_storage()
-        for f in job.files:
-            r2.delete_object(f.r2_key)
-    except Exception as e:
-        _logger.warning(f"Failed to delete files from R2: {e}")
+    # Удаляем ВСЕ файлы из R2 по префиксу
+    if job.r2_prefix:
+        try:
+            r2 = _get_r2_storage()
+            r2_prefix = job.r2_prefix if job.r2_prefix.endswith('/') else f"{job.r2_prefix}/"
+            
+            # Используем paginator для полного списка
+            files_to_delete = []
+            paginator = r2.s3_client.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=r2.bucket_name, Prefix=r2_prefix):
+                if 'Contents' in page:
+                    for obj in page['Contents']:
+                        files_to_delete.append({'Key': obj['Key']})
+            
+            # Удаляем пакетами по 1000
+            if files_to_delete:
+                for i in range(0, len(files_to_delete), 1000):
+                    batch = files_to_delete[i:i+1000]
+                    r2.s3_client.delete_objects(Bucket=r2.bucket_name, Delete={'Objects': batch})
+                _logger.info(f"Deleted {len(files_to_delete)} files from R2 for job {job_id}")
+        except Exception as e:
+            _logger.warning(f"Failed to delete files from R2: {e}")
     
-    # Удаляем из БД (каскадно удалит files и settings)
+    # Удаляем из БД (каскадно удалит job_files и job_settings)
     if not delete_job(job_id):
         raise HTTPException(status_code=500, detail="Failed to delete job from database")
     

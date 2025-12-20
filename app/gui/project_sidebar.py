@@ -264,5 +264,20 @@ class ProjectSidebar(QWidget):
                 text=widget.project.name
             )
             if ok and new_name.strip():
+                old_name = widget.project.name
                 widget.project.name = new_name.strip()
                 self.project_manager.project_updated.emit(widget.project.id)
+                
+                # Обновить на сервере если есть связанный remote job
+                if widget.project.remote_job_id:
+                    self._rename_remote_job(widget.project.remote_job_id, new_name.strip())
+    
+    def _rename_remote_job(self, job_id: str, new_name: str):
+        """Переименовать задачу на сервере"""
+        try:
+            from app.remote_ocr_client import RemoteOCRClient
+            client = RemoteOCRClient()
+            if client.rename_job(job_id, new_name):
+                self.project_manager.project_renamed.emit(job_id, new_name)
+        except Exception:
+            pass  # Молча игнорируем ошибки

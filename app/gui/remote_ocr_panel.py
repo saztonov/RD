@@ -294,6 +294,14 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
 
     def _open_job_in_editor(self, job_id: str):
         """Открыть результат задачи в редакторе"""
+        # Проверяем, не открыт ли уже этот job
+        for project in self.main_window.project_manager.projects.values():
+            if project.remote_job_id == job_id:
+                QMessageBox.information(self, "Задание открыто", 
+                    f"Это задание уже открыто в проекте «{project.name}»")
+                self.main_window.project_manager.set_active_project(project.id)
+                return
+        
         if job_id in self._job_output_dirs:
             extract_dir = Path(self._job_output_dirs[job_id])
         else:
@@ -368,6 +376,9 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
                 task_name = pdf_abs_path.stem
             
             project_id = self.main_window.project_manager.create_project(task_name)
+            project = self.main_window.project_manager.get_project(project_id)
+            if project:
+                project.remote_job_id = job_id
             self.main_window.project_manager.add_file_to_project(project_id, str(pdf_abs_path), str(annotation_path))
             self.main_window.project_manager.set_active_project(project_id)
             self.main_window.project_manager.set_active_file_in_project(project_id, 0)
@@ -725,9 +736,9 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             QMessageBox.critical(self, "Ошибка", f"Не удалось получить информацию:\n{e}")
     
     def _delete_job(self, job_id: str):
-        """Удалить задачу и все связанные файлы"""
+        """Удалить задачу и все связанные файлы (R2, Supabase, локальная папка)"""
         reply = QMessageBox.question(self, "Подтверждение удаления",
-            f"Удалить задачу {job_id[:8]}...?\n\nБудут удалены:\n• Запись на сервере\n• Локальная папка\n• Файлы в R2",
+            f"Удалить задачу {job_id[:8]}...?\n\nБудут удалены:\n• Запись на сервере\n• Файлы в R2\n• Локальная папка",
             QMessageBox.Yes | QMessageBox.No)
         
         if reply != QMessageBox.Yes:
@@ -738,9 +749,10 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
             return
         
         try:
-            job_details = client.get_job_details(job_id)
-            r2_prefix = job_details.get("r2_prefix")
+            # Удаляем на сервере (R2 + Supabase удаляются там)
+            client.delete_job(job_id)
             
+            # Удаляем локальную папку
             if job_id in self._job_output_dirs:
                 local_dir = Path(self._job_output_dirs[job_id])
                 if local_dir.exists():
@@ -752,31 +764,6 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
                 
                 del self._job_output_dirs[job_id]
                 self._save_job_mappings()
-            
-            if r2_prefix:
-                try:
-                    from rd_core.r2_storage import R2Storage
-                    r2 = R2Storage()
-                    
-                    r2_prefix_normalized = r2_prefix if r2_prefix.endswith('/') else f"{r2_prefix}/"
-                    
-                    files_to_delete = []
-                    paginator = r2.s3_client.get_paginator('list_objects_v2')
-                    for page in paginator.paginate(Bucket=r2.bucket_name, Prefix=r2_prefix_normalized):
-                        if 'Contents' in page:
-                            for obj in page['Contents']:
-                                key = obj['Key']
-                                if key.startswith(r2_prefix_normalized):
-                                    files_to_delete.append({'Key': key})
-                    
-                    if files_to_delete:
-                        for i in range(0, len(files_to_delete), 1000):
-                            batch = files_to_delete[i:i+1000]
-                            r2.s3_client.delete_objects(Bucket=r2.bucket_name, Delete={'Objects': batch})
-                except Exception as e:
-                    logger.warning(f"Ошибка удаления файлов из R2: {e}")
-            
-            client.delete_job(job_id)
             
             from app.gui.toast import show_toast
             show_toast(self, "Задача удалена")

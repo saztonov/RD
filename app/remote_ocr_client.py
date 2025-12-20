@@ -385,6 +385,20 @@ class RemoteOCRClient:
         resp = self._request_with_retry("post", f"/jobs/{job_id}/resume")
         return resp.json().get("ok", False)
     
+    def rename_job(self, job_id: str, task_name: str) -> bool:
+        """
+        Переименовать задачу
+        
+        Args:
+            job_id: ID задачи
+            task_name: новое название
+        
+        Returns:
+            True если успешно
+        """
+        resp = self._request_with_retry("patch", f"/jobs/{job_id}", data={"task_name": task_name})
+        return resp.json().get("ok", False)
+    
     def start_job(
         self,
         job_id: str,
