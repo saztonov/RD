@@ -1,31 +1,61 @@
+version: '3.8'
+
 services:
-  remote_ocr:
+  # 1. API СЕРВЕР (Легкий) — принимает задачи, кладёт в Redis
+  web:
     build:
       context: .
       dockerfile: services/remote_ocr/Dockerfile
     command: uvicorn services.remote_ocr.server.main:app --host 0.0.0.0 --port 8000
-    volumes:
-      - ./services/remote_ocr/data:/data
+    ports:
+      - "8000:8000"
     env_file:
       - .env
     environment:
+      - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
-      - DATALAB_API_KEY=${DATALAB_API_KEY}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID}
-      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
-      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
-      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-rd1}
-      - R2_PUBLIC_URL=${R2_PUBLIC_URL}
-    ports:
-      - "8000:8000"
+    depends_on:
+      - redis
     restart: always
-    mem_limit: 9g
-    memswap_limit: 10g
-    pids_limit: 512
+    mem_limit: 512m
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "5"
 
+  # 2. ОЧЕРЕДЬ (Redis) — брокер сообщений
+  redis:
+    image: redis:alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    mem_limit: 256m
+
+  # 3. WORKER (Тяжелый) — Celery, обрабатывает OCR задачи
+  worker:
+    build:
+      context: .
+      dockerfile: services/remote_ocr/Dockerfile
+    command: celery -A services.remote_ocr.server.celery_app worker --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REMOTE_OCR_DATA_DIR=/data
+    depends_on:
+      - redis
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  redis_data:

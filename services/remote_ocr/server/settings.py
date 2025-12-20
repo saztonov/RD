@@ -12,6 +12,9 @@ class Settings:
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
     datalab_api_key: str = os.getenv("DATALAB_API_KEY", "")
     
+    # Redis (брокер Celery)
+    redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    
     # Supabase
     supabase_url: str = os.getenv("SUPABASE_URL", "")
     supabase_key: str = os.getenv("SUPABASE_KEY", "")

@@ -33,7 +33,7 @@ from .storage import (
     update_job_status,
     update_job_task_name,
 )
-from .worker import start_worker, stop_worker
+from .tasks import run_ocr_task
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -47,11 +47,9 @@ def _get_r2_storage():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle: инициализация БД и запуск воркера"""
+    """Lifecycle: инициализация БД (воркер запускается отдельно через Celery)"""
     init_db()
-    start_worker()
     yield
-    stop_worker()
 
 
 app = FastAPI(title="rd-remote-ocr", lifespan=lifespan)
@@ -244,6 +242,9 @@ async def create_job_endpoint(
         _logger.error(f"R2 upload failed: {e}")
         delete_job(job.id)
         raise HTTPException(status_code=500, detail=f"Failed to upload files to R2: {e}")
+    
+    # Отправляем задачу в очередь Celery
+    run_ocr_task.delay(job.id)
     
     return {
         "id": job.id,
@@ -450,6 +451,9 @@ def restart_job_endpoint(
     if not reset_job_for_restart(job_id):
         raise HTTPException(status_code=500, detail="Failed to reset job")
     
+    # Отправляем задачу в очередь Celery
+    run_ocr_task.delay(job_id)
+    
     return {"ok": True, "job_id": job_id, "status": "queued"}
 
 
@@ -477,6 +481,9 @@ def start_job_endpoint(
     
     # Обновляем engine и статус
     update_job_engine(job_id, engine)
+    
+    # Отправляем задачу в очередь Celery
+    run_ocr_task.delay(job_id)
     
     return {"ok": True, "job_id": job_id, "status": "queued"}
 
@@ -519,6 +526,9 @@ def resume_job_endpoint(
     
     if not resume_job(job_id):
         raise HTTPException(status_code=500, detail="Failed to resume job")
+    
+    # Отправляем задачу в очередь Celery
+    run_ocr_task.delay(job_id)
     
     return {"ok": True, "job_id": job_id, "status": "queued"}
 

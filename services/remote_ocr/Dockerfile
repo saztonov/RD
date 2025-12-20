@@ -15,7 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY services/remote_ocr/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
+# Копируем код
+COPY rd_core /app/rd_core
+COPY services /app/services
+
 EXPOSE 8000
 
-# CMD задаётся в docker-compose для dev (с --reload)
+# CMD задаётся в docker-compose (web или worker)
 CMD ["uvicorn", "services.remote_ocr.server.main:app", "--host", "0.0.0.0", "--port", "8000"]
