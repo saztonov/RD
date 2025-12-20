@@ -7,7 +7,6 @@ import uuid
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 from enum import Enum
-from PIL import Image
 
 
 class BlockType(Enum):
@@ -253,95 +252,6 @@ class Block:
         )
 
 
-@dataclass
-class PageModel:
-    """
-    Модель страницы PDF с изображением и блоками (обновлённая версия)
-    
-    Attributes:
-        page_index: индекс страницы (начиная с 0)
-        image: отрендеренное изображение страницы (PIL.Image)
-        blocks: список блоков разметки на этой странице
-    """
-    page_index: int
-    image: Image.Image
-    blocks: List[Block] = field(default_factory=list)
-    
-    @property
-    def width(self) -> int:
-        """Ширина страницы в пикселях"""
-        return self.image.width
-    
-    @property
-    def height(self) -> int:
-        """Высота страницы в пикселях"""
-        return self.image.height
-    
-    @property
-    def size(self) -> Tuple[int, int]:
-        """Размер страницы (ширина, высота)"""
-        return self.image.size
-    
-    def add_block(self, block: Block):
-        """Добавить блок на страницу"""
-        self.blocks.append(block)
-    
-    def remove_block(self, block_id: str) -> bool:
-        """
-        Удалить блок по ID
-        
-        Returns:
-            True если блок найден и удалён
-        """
-        for i, block in enumerate(self.blocks):
-            if block.id == block_id:
-                del self.blocks[i]
-                return True
-        return False
-    
-    def get_block_by_id(self, block_id: str) -> Optional[Block]:
-        """Найти блок по ID"""
-        for block in self.blocks:
-            if block.id == block_id:
-                return block
-        return None
-    
-    def get_blocks_by_type(self, block_type: BlockType) -> List[Block]:
-        """Получить все блоки заданного типа"""
-        return [b for b in self.blocks if b.block_type == block_type]
-    
-    def get_blocks_by_source(self, source: BlockSource) -> List[Block]:
-        """Получить все блоки из заданного источника"""
-        return [b for b in self.blocks if b.source == source]
-    
-    def to_dict(self, include_image: bool = False) -> dict:
-        """
-        Сериализация в словарь для JSON
-        
-        Args:
-            include_image: если True, включить данные изображения (base64)
-        
-        Note:
-            По умолчанию изображение не сериализуется, т.к. оно может быть большим
-        """
-        result = {
-            "page_index": self.page_index,
-            "width": self.width,
-            "height": self.height,
-            "blocks": [block.to_dict() for block in self.blocks]
-        }
-        
-        if include_image:
-            import base64
-            import io
-            buffer = io.BytesIO()
-            self.image.save(buffer, format='PNG')
-            img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-            result["image_base64"] = img_base64
-        
-        return result
-
-
 # ========== LEGACY КЛАССЫ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ ==========
 
 @dataclass
@@ -411,49 +321,4 @@ class Document:
             pdf_path=data["pdf_path"],
             pages=[Page.from_dict(p) for p in data.get("pages", [])]
         )
-
-
-# ========== HELPER ФУНКЦИИ ДЛЯ КОНВЕРТАЦИИ ==========
-
-
-def block_to_legacy_coords(block: Block) -> Tuple[int, int, int, int]:
-    """
-    Конвертировать Block в legacy формат (x, y, width, height)
-    
-    Args:
-        block: экземпляр Block
-    
-    Returns:
-        (x, y, width, height)
-    """
-    x1, y1, x2, y2 = block.coords_px
-    return (x1, y1, x2 - x1, y2 - y1)
-
-
-def coords_xywh_to_xyxy(x: int, y: int, width: int, height: int) -> Tuple[int, int, int, int]:
-    """
-    Конвертировать координаты из формата (x, y, width, height) в (x1, y1, x2, y2)
-    
-    Args:
-        x, y: координаты верхнего левого угла
-        width, height: размеры
-    
-    Returns:
-        (x1, y1, x2, y2)
-    """
-    return (x, y, x + width, y + height)
-
-
-def coords_xyxy_to_xywh(x1: int, y1: int, x2: int, y2: int) -> Tuple[int, int, int, int]:
-    """
-    Конвертировать координаты из формата (x1, y1, x2, y2) в (x, y, width, height)
-    
-    Args:
-        x1, y1: координаты верхнего левого угла
-        x2, y2: координаты нижнего правого угла
-    
-    Returns:
-        (x, y, width, height)
-    """
-    return (x1, y1, x2 - x1, y2 - y1)
 

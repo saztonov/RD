@@ -6,7 +6,7 @@
 
 import fitz  # PyMuPDF
 import logging
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 from PIL import Image
 import io
 from pathlib import Path
@@ -131,65 +131,6 @@ def render_page_to_image(
         raise Exception(f"Не удалось отрендерить страницу {page_index}") from e
 
 
-def render_all_pages(
-    doc: fitz.Document, 
-    zoom: float = PDF_RENDER_ZOOM
-) -> List[Image.Image]:
-    """
-    Рендеринг всех страниц PDF в изображения PIL
-    
-    Args:
-        doc: открытый PDF документ
-        zoom: коэффициент масштабирования (2.0 = 200% = 144 DPI)
-              Применяется одинаково ко всем страницам
-    
-    Returns:
-        List[PIL.Image.Image] - список отрендеренных страниц
-    
-    Raises:
-        ValueError: если zoom <= 0 или документ пустой
-        Exception: для ошибок рендеринга
-    """
-    page_count = len(doc)
-    
-    if page_count == 0:
-        logger.warning("PDF документ не содержит страниц")
-        raise ValueError("PDF документ пустой (0 страниц)")
-    
-    if zoom <= 0:
-        logger.error(f"Некорректный zoom: {zoom}")
-        raise ValueError(f"Zoom должен быть положительным числом, получено: {zoom}")
-    
-    logger.info(f"Начало рендеринга {page_count} страниц с zoom={zoom}")
-    
-    images = []
-    failed_pages = []
-    
-    for page_index in range(page_count):
-        try:
-            img = render_page_to_image(doc, page_index, zoom)
-            images.append(img)
-            
-            # Логируем прогресс каждые 10 страниц или на последней странице
-            if (page_index + 1) % 10 == 0 or page_index == page_count - 1:
-                logger.info(f"Отрендерено страниц: {page_index + 1}/{page_count}")
-                
-        except Exception as e:
-            logger.error(f"Ошибка при рендеринге страницы {page_index}: {e}")
-            failed_pages.append(page_index)
-            # Не прерываем процесс, продолжаем со следующей страницей
-            # Можно изменить поведение, если нужно строгое исполнение
-    
-    if failed_pages:
-        logger.warning(f"Не удалось отрендерить страницы: {failed_pages}")
-        # Если нужно, можно выбросить исключение здесь
-        # raise Exception(f"Не удалось отрендерить некоторые страницы: {failed_pages}")
-    
-    logger.info(f"Рендеринг завершён: {len(images)}/{page_count} страниц успешно")
-    
-    return images
-
-
 # ========== КЛАСС-ОБЁРТКА ДЛЯ СОВМЕСТИМОСТИ ==========
 
 class PDFDocument:
@@ -251,26 +192,6 @@ class PDFDocument:
         except Exception as e:
             logger.error(f"Ошибка рендеринга страницы {page_number}: {e}")
             return None
-    
-    def render_all(self, zoom: float = PDF_RENDER_ZOOM) -> List[Image.Image]:
-        """
-        Рендеринг всех страниц документа
-        
-        Args:
-            zoom: коэффициент масштабирования
-        
-        Returns:
-            Список изображений страниц
-        """
-        if not self.doc:
-            logger.warning("Попытка рендеринга всех страниц на закрытом документе")
-            return []
-        
-        try:
-            return render_all_pages(self.doc, zoom)
-        except Exception as e:
-            logger.error(f"Ошибка рендеринга всех страниц: {e}")
-            return []
     
     def get_page_dimensions(self, page_number: int, zoom: float = PDF_RENDER_ZOOM) -> Optional[tuple]:
         """
@@ -379,20 +300,6 @@ def extract_text_for_block(
     bbox = (x0, y0, x1, y1)
     
     return extract_text_pdfplumber(pdf_path, page_index, bbox)
-
-
-def extract_full_page_text(pdf_path: str, page_index: int) -> str:
-    """
-    Извлечь весь текст со страницы PDF
-    
-    Args:
-        pdf_path: путь к PDF файлу
-        page_index: индекс страницы
-    
-    Returns:
-        Текст страницы
-    """
-    return extract_text_pdfplumber(pdf_path, page_index, bbox=None)
 
 
 def get_pdf_page_size(pdf_path: str, page_index: int) -> Optional[Tuple[float, float]]:
