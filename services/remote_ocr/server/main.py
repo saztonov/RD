@@ -1,29 +1,47 @@
-"""FastAPI сервер для удалённого OCR"""
+"""FastAPI сервер для удалённого OCR (все данные через Supabase + R2)"""
 from __future__ import annotations
 
 import json
 import os
+import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Header, UploadFile, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
 
 from .settings import settings
 from .storage import (
     Job,
+    JobSettings,
+    add_job_file,
     create_job,
     delete_job,
+    delete_job_files,
     get_job,
+    get_job_file_by_type,
+    get_job_files,
+    get_job_settings,
     init_db,
     job_to_dict,
     list_jobs,
     pause_job,
     reset_job_for_restart,
     resume_job,
+    save_job_settings,
+    update_job_engine,
     update_job_status,
 )
 from .worker import start_worker, stop_worker
+
+import logging
+_logger = logging.getLogger(__name__)
+
+
+def _get_r2_storage():
+    """Получить R2 Storage клиент"""
+    from rd_core.r2_storage import R2Storage
+    return R2Storage()
 
 
 @asynccontextmanager
@@ -37,13 +55,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="rd-remote-ocr", lifespan=lifespan)
 
-import logging
-_logger = logging.getLogger(__name__)
 
-from fastapi import Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+
 
 class LogRequestMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -59,7 +74,9 @@ class LogRequestMiddleware(BaseHTTPMiddleware):
             _logger.exception(f"Exception in {request.method} {request.url.path}: {e}")
             raise
 
+
 app.add_middleware(LogRequestMiddleware)
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -89,70 +106,58 @@ async def create_draft_endpoint(
     pdf: UploadFile = File(...),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
-    """
-    Создать черновик задачи (без OCR, только сохранение)
-    
-    - client_id: идентификатор клиента
-    - document_id: sha256 хеш PDF
-    - document_name: имя документа
-    - task_name: название задания
-    - annotation_json: JSON с разметкой (Document)
-    - pdf: PDF файл
-    """
+    """Создать черновик задачи (без OCR, только сохранение в R2)"""
     _check_api_key(x_api_key)
     
-    # Парсим аннотацию
     try:
         annotation_data = json.loads(annotation_json)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid annotation_json: {e}")
     
-    # Создаём директорию для задачи
-    import uuid
     job_id = str(uuid.uuid4())
-    job_dir = os.path.join(settings.data_dir, "jobs", job_id)
-    os.makedirs(job_dir, exist_ok=True)
+    r2_prefix = f"ocr_jobs/{job_id}"
     
-    # Сохраняем PDF
-    pdf_path = os.path.join(job_dir, "document.pdf")
-    content = await pdf.read()
-    with open(pdf_path, "wb") as f:
-        f.write(content)
-    
-    # Сохраняем annotation.json
-    annotation_path = os.path.join(job_dir, "annotation.json")
-    with open(annotation_path, "w", encoding="utf-8") as f:
-        json.dump(annotation_data, f, ensure_ascii=False, indent=2)
-    
-    # Создаём запись в БД со статусом draft
+    # Создаём запись в БД
     job = create_job(
         client_id=client_id,
         document_id=document_id,
         document_name=document_name,
         task_name=task_name,
         engine="",
-        job_dir=job_dir,
+        r2_prefix=r2_prefix,
         status="draft"
     )
     
-    # Загружаем в R2 если настроено
-    r2_prefix = None
+    # Загружаем файлы в R2
     try:
-        from rd_core.r2_storage import R2Storage
-        r2 = R2Storage()
-        r2_prefix = f"ocr_results/{job.id}"
+        r2 = _get_r2_storage()
         
-        # Загружаем PDF и annotation.json
-        r2.upload_file(pdf_path, f"{r2_prefix}/document.pdf")
-        r2.upload_file(annotation_path, f"{r2_prefix}/annotation.json")
+        # PDF
+        pdf_content = await pdf.read()
+        pdf_key = f"{r2_prefix}/document.pdf"
+        r2.s3_client.put_object(
+            Bucket=r2.bucket_name,
+            Key=pdf_key,
+            Body=pdf_content,
+            ContentType="application/pdf"
+        )
+        add_job_file(job.id, "pdf", pdf_key, "document.pdf", len(pdf_content))
         
-        # Обновляем r2_prefix в БД
-        from .storage import update_job_status
-        update_job_status(job.id, "draft", r2_prefix=r2_prefix)
+        # Annotation JSON
+        annotation_bytes = json.dumps(annotation_data, ensure_ascii=False, indent=2).encode("utf-8")
+        annotation_key = f"{r2_prefix}/annotation.json"
+        r2.s3_client.put_object(
+            Bucket=r2.bucket_name,
+            Key=annotation_key,
+            Body=annotation_bytes,
+            ContentType="application/json"
+        )
+        add_job_file(job.id, "annotation", annotation_key, "annotation.json", len(annotation_bytes))
         
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"R2 upload failed for draft: {e}")
+        _logger.error(f"R2 upload failed for draft: {e}")
+        delete_job(job.id)
+        raise HTTPException(status_code=500, detail=f"Failed to upload files to R2: {e}")
     
     return {
         "id": job.id,
@@ -179,58 +184,20 @@ async def create_job_endpoint(
     pdf: UploadFile = File(...),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
-    """
-    Создать новую задачу OCR
-    
-    - client_id: идентификатор клиента
-    - document_id: sha256 хеш PDF
-    - document_name: имя документа
-    - task_name: название задания
-    - engine: движок OCR
-    - blocks_json: JSON со списком блоков
-    - pdf: PDF файл
-    """
+    """Создать новую задачу OCR (файлы сохраняются в R2)"""
     _check_api_key(x_api_key)
     
-    # Парсим блоки из файла
     blocks_json = (await blocks_file.read()).decode("utf-8")
-    _logger.info(f"POST /jobs: client_id={client_id}, document_id={document_id[:16]}..., blocks_json length={len(blocks_json)}")
+    _logger.info(f"POST /jobs: client_id={client_id}, document_id={document_id[:16]}...")
+    
     try:
         blocks_data = json.loads(blocks_json)
     except json.JSONDecodeError as e:
-        _logger.error(f"Invalid blocks_json: {e}, first 500 chars: {blocks_json[:500]}")
+        _logger.error(f"Invalid blocks_json: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid blocks_json: {e}")
     
-    # Создаём директорию для задачи
-    import uuid
     job_id = str(uuid.uuid4())
-    job_dir = os.path.join(settings.data_dir, "jobs", job_id)
-    os.makedirs(job_dir, exist_ok=True)
-    
-    # Сохраняем PDF
-    pdf_path = os.path.join(job_dir, "document.pdf")
-    content = await pdf.read()
-    with open(pdf_path, "wb") as f:
-        f.write(content)
-    
-    # Сохраняем blocks.json
-    blocks_path = os.path.join(job_dir, "blocks.json")
-    with open(blocks_path, "w", encoding="utf-8") as f:
-        json.dump(blocks_data, f, ensure_ascii=False, indent=2)
-
-    # Сохраняем настройки задачи (модели по типам блоков)
-    settings_path = os.path.join(job_dir, "job_settings.json")
-    with open(settings_path, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "text_model": text_model,
-                "table_model": table_model,
-                "image_model": image_model,
-            },
-            f,
-            ensure_ascii=False,
-            indent=2,
-        )
+    r2_prefix = f"ocr_jobs/{job_id}"
     
     # Создаём запись в БД
     job = create_job(
@@ -239,10 +206,43 @@ async def create_job_endpoint(
         document_name=document_name,
         task_name=task_name,
         engine=engine,
-        job_dir=job_dir
+        r2_prefix=r2_prefix,
+        status="queued"
     )
-    # Переназначаем id (create_job генерирует свой)
-    # В нашей реализации это не нужно, т.к. job_dir уже содержит правильный id
+    
+    # Сохраняем настройки
+    save_job_settings(job.id, text_model, table_model, image_model)
+    
+    # Загружаем файлы в R2
+    try:
+        r2 = _get_r2_storage()
+        
+        # PDF
+        pdf_content = await pdf.read()
+        pdf_key = f"{r2_prefix}/document.pdf"
+        r2.s3_client.put_object(
+            Bucket=r2.bucket_name,
+            Key=pdf_key,
+            Body=pdf_content,
+            ContentType="application/pdf"
+        )
+        add_job_file(job.id, "pdf", pdf_key, "document.pdf", len(pdf_content))
+        
+        # Blocks JSON
+        blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
+        blocks_key = f"{r2_prefix}/blocks.json"
+        r2.s3_client.put_object(
+            Bucket=r2.bucket_name,
+            Key=blocks_key,
+            Body=blocks_bytes,
+            ContentType="application/json"
+        )
+        add_job_file(job.id, "blocks", blocks_key, "blocks.json", len(blocks_bytes))
+        
+    except Exception as e:
+        _logger.error(f"R2 upload failed: {e}")
+        delete_job(job.id)
+        raise HTTPException(status_code=500, detail=f"Failed to upload files to R2: {e}")
     
     return {
         "id": job.id,
@@ -260,7 +260,7 @@ def list_jobs_endpoint(
     document_id: Optional[str] = None,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> list:
-    """Получить список задач. Без client_id возвращает все задачи."""
+    """Получить список задач"""
     _check_api_key(x_api_key)
     
     jobs = list_jobs(client_id, document_id)
@@ -303,106 +303,56 @@ def get_job_details_endpoint(
     """Получить детальную информацию о задаче"""
     _check_api_key(x_api_key)
     
-    job = get_job(job_id)
+    job = get_job(job_id, with_files=True, with_settings=True)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     
     result = job_to_dict(job)
     
-    # Читаем blocks.json для статистики
-    blocks_path = os.path.join(job.job_dir, "blocks.json")
-    if os.path.exists(blocks_path):
-        with open(blocks_path, "r", encoding="utf-8") as f:
-            blocks = json.load(f)
-        
-        # Подсчитываем блоки по типам
-        text_count = 0
-        table_count = 0
-        image_count = 0
-        
-        for block in blocks:
-            block_type = block.get("block_type", "text")
-            if block_type == "text":
-                text_count += 1
-            elif block_type == "table":
-                table_count += 1
-            elif block_type == "image":
-                image_count += 1
-        
-        # grouped = текстовые + табличные (объединяются в полосы)
-        grouped_count = text_count + table_count
-        
-        block_stats = {
-            "total": len(blocks),
-            "text": text_count,
-            "table": table_count,
-            "image": image_count,
-            "grouped": grouped_count
+    # Читаем blocks.json из R2 для статистики
+    blocks_file = get_job_file_by_type(job_id, "blocks")
+    if blocks_file:
+        try:
+            r2 = _get_r2_storage()
+            blocks_text = r2.download_text(blocks_file.r2_key)
+            if blocks_text:
+                blocks = json.loads(blocks_text)
+                
+                text_count = sum(1 for b in blocks if b.get("block_type") == "text")
+                table_count = sum(1 for b in blocks if b.get("block_type") == "table")
+                image_count = sum(1 for b in blocks if b.get("block_type") == "image")
+                
+                result["block_stats"] = {
+                    "total": len(blocks),
+                    "text": text_count,
+                    "table": table_count,
+                    "image": image_count,
+                    "grouped": text_count + table_count
+                }
+        except Exception as e:
+            _logger.warning(f"Failed to load blocks from R2: {e}")
+    
+    # Настройки задачи
+    if job.settings:
+        result["job_settings"] = {
+            "text_model": job.settings.text_model,
+            "table_model": job.settings.table_model,
+            "image_model": job.settings.image_model
         }
-        
-        result["block_stats"] = block_stats
-    
-    # Читаем annotation.json для информации о батчах (если есть)
-    annotation_path = os.path.join(job.job_dir, "annotation.json")
-    if os.path.exists(annotation_path):
-        try:
-            with open(annotation_path, "r", encoding="utf-8") as f:
-                annotation = json.load(f)
-            # Подсчитываем количество страниц как прокси для батчей
-            result["num_pages"] = len(annotation.get("pages", []))
-        except:
-            pass
-    
-    # Читаем job_settings.json
-    job_settings_path = os.path.join(job.job_dir, "job_settings.json")
-    if os.path.exists(job_settings_path):
-        try:
-            with open(job_settings_path, "r", encoding="utf-8") as f:
-                result["job_settings"] = json.load(f)
-        except:
-            result["job_settings"] = {}
     else:
         result["job_settings"] = {}
     
-    # Формируем публичный URL для R2 если доступен
-    if job.r2_prefix:
-        r2_public_url = os.getenv("R2_PUBLIC_URL")  # Публичный URL R2 bucket
+    # Формируем публичный URL для R2
+    r2_public_url = os.getenv("R2_PUBLIC_URL")
+    if r2_public_url and job.r2_prefix:
+        base_url = r2_public_url.rstrip('/')
+        result["r2_base_url"] = f"{base_url}/{job.r2_prefix}"
         
-        if r2_public_url:
-            # Убираем trailing slash если есть
-            base_url = r2_public_url.rstrip('/')
-            result["r2_base_url"] = f"{base_url}/{job.r2_prefix}"
-            
-            # Формируем список доступных файлов
-            result["r2_files"] = [
-                {"name": "document.pdf", "path": "document.pdf", "icon": "📄"},
-                {"name": "result.md", "path": "result.md", "icon": "📝"},
-                {"name": "annotation.json", "path": "annotation.json", "icon": "📋"},
-            ]
-            
-            # Добавляем папку crops как элемент-директорию если есть файлы
-            crops_dir = os.path.join(job.job_dir, "crops")
-            if os.path.exists(crops_dir):
-                crop_files = []
-                for f in os.listdir(crops_dir):
-                    if f.endswith(('.png', '.jpg', '.jpeg', '.pdf')):
-                        crop_files.append({
-                            "name": f,
-                            "path": f"crops/{f}",
-                            "icon": "🖼️" if not f.endswith('.pdf') else "📄"
-                        })
-                if crop_files:
-                    # Добавляем папку crops как навигационный элемент
-                    result["r2_files"].append({
-                        "name": "crops/",
-                        "path": "crops",
-                        "icon": "📁",
-                        "is_dir": True,
-                        "children": sorted(crop_files, key=lambda x: x["name"])
-                    })
-        else:
-            result["r2_base_url"] = None
-            result["r2_files"] = []
+        # Список файлов из БД
+        result["r2_files"] = [
+            {"name": f.file_name, "path": f.r2_key.replace(f"{job.r2_prefix}/", ""), "icon": _get_file_icon(f.file_type)}
+            for f in job.files
+        ]
     else:
         result["r2_base_url"] = None
         result["r2_files"] = []
@@ -410,12 +360,24 @@ def get_job_details_endpoint(
     return result
 
 
+def _get_file_icon(file_type: str) -> str:
+    icons = {
+        "pdf": "📄",
+        "blocks": "📋",
+        "annotation": "📋",
+        "result_md": "📝",
+        "result_zip": "📦",
+        "crop": "🖼️"
+    }
+    return icons.get(file_type, "📄")
+
+
 @app.get("/jobs/{job_id}/result")
 def download_result(
     job_id: str,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-) -> FileResponse:
-    """Скачать результат задачи (устарело, используйте R2)"""
+) -> dict:
+    """Получить ссылку на результат (скачивание через R2)"""
     _check_api_key(x_api_key)
     
     job = get_job(job_id)
@@ -425,21 +387,17 @@ def download_result(
     if job.status != "done":
         raise HTTPException(status_code=400, detail=f"Job not ready, status: {job.status}")
     
-    # Файлы удалены после загрузки в R2
-    if not job.result_path or not os.path.exists(job.result_path):
-        if job.r2_prefix:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Result files moved to R2 storage. Download from R2 using prefix: {job.r2_prefix}"
-            )
-        else:
-            raise HTTPException(status_code=404, detail="Result file not found")
+    result_file = get_job_file_by_type(job_id, "result_zip")
+    if not result_file:
+        raise HTTPException(status_code=404, detail="Result file not found")
     
-    return FileResponse(
-        job.result_path,
-        media_type="application/zip",
-        filename=f"result_{job_id}.zip"
-    )
+    # Генерируем presigned URL
+    try:
+        r2 = _get_r2_storage()
+        url = r2.generate_presigned_url(result_file.r2_key, expiration=3600)
+        return {"download_url": url, "file_name": result_file.file_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate download URL: {e}")
 
 
 @app.post("/jobs/{job_id}/restart")
@@ -447,32 +405,28 @@ def restart_job_endpoint(
     job_id: str,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
-    """Перезапустить задачу (удаляет результаты, сбрасывает статус в queued)"""
+    """Перезапустить задачу"""
     _check_api_key(x_api_key)
     
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    # Удаляем результаты из job_dir (annotation.json, result.md, crops/)
-    import shutil
-    for fname in ["annotation.json", "result.md", "result.zip"]:
-        fpath = os.path.join(job.job_dir, fname)
-        if os.path.exists(fpath):
-            try:
-                os.remove(fpath)
-            except Exception:
-                pass
+    # Удаляем результаты из R2
+    result_files = get_job_files(job_id)
+    result_types = ["result_md", "result_zip", "crop"]
     
-    crops_dir = os.path.join(job.job_dir, "crops")
-    if os.path.exists(crops_dir):
-        try:
-            shutil.rmtree(crops_dir)
-            os.makedirs(crops_dir)
-        except Exception:
-            pass
+    try:
+        r2 = _get_r2_storage()
+        for f in result_files:
+            if f.file_type in result_types:
+                r2.delete_object(f.r2_key)
+        
+        # Удаляем записи из БД
+        delete_job_files(job_id, result_types)
+    except Exception as e:
+        _logger.warning(f"Failed to delete result files from R2: {e}")
     
-    # Сбрасываем статус задачи
     if not reset_job_for_restart(job_id):
         raise HTTPException(status_code=500, detail="Failed to reset job")
     
@@ -498,17 +452,10 @@ def start_job_endpoint(
     if job.status != "draft":
         raise HTTPException(status_code=400, detail=f"Job is not a draft, status: {job.status}")
     
-    # Обновляем job_settings.json
-    settings_path = os.path.join(job.job_dir, "job_settings.json")
-    with open(settings_path, "w", encoding="utf-8") as f:
-        json.dump({
-            "text_model": text_model,
-            "table_model": table_model,
-            "image_model": image_model,
-        }, f, ensure_ascii=False, indent=2)
+    # Сохраняем настройки в Supabase
+    save_job_settings(job_id, text_model, table_model, image_model)
     
-    # Обновляем engine в БД и меняем статус на queued
-    from .storage import update_job_engine
+    # Обновляем engine и статус
     update_job_engine(job_id, engine)
     
     return {"ok": True, "job_id": job_id, "status": "queued"}
@@ -564,19 +511,19 @@ def delete_job_endpoint(
     """Удалить задачу и её файлы"""
     _check_api_key(x_api_key)
     
-    job = get_job(job_id)
+    job = get_job(job_id, with_files=True)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    # Удаляем файлы из job_dir
-    import shutil
-    if os.path.exists(job.job_dir):
-        try:
-            shutil.rmtree(job.job_dir)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to delete job files: {e}")
+    # Удаляем файлы из R2
+    try:
+        r2 = _get_r2_storage()
+        for f in job.files:
+            r2.delete_object(f.r2_key)
+    except Exception as e:
+        _logger.warning(f"Failed to delete files from R2: {e}")
     
-    # Удаляем из БД
+    # Удаляем из БД (каскадно удалит files и settings)
     if not delete_job(job_id):
         raise HTTPException(status_code=500, detail="Failed to delete job from database")
     

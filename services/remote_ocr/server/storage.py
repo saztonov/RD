@@ -1,15 +1,33 @@
-"""Supabase-хранилище для задач OCR"""
+"""Supabase-хранилище для задач OCR (все данные в Supabase + R2)"""
 from __future__ import annotations
 
-import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 
 from supabase import create_client, Client
 
 from .settings import settings
+
+
+@dataclass
+class JobFile:
+    id: str
+    job_id: str
+    file_type: str  # pdf|blocks|annotation|result_md|result_zip|crop
+    r2_key: str
+    file_name: str
+    file_size: int
+    created_at: str
+
+
+@dataclass
+class JobSettings:
+    job_id: str
+    text_model: str = ""
+    table_model: str = ""
+    image_model: str = ""
 
 
 @dataclass
@@ -24,10 +42,11 @@ class Job:
     created_at: str
     updated_at: str
     error_message: Optional[str]
-    job_dir: str
-    result_path: Optional[str]
-    engine: str = ""
-    r2_prefix: Optional[str] = None
+    engine: str
+    r2_prefix: str
+    # Вложенные данные (опционально загружаются)
+    files: List[JobFile] = field(default_factory=list)
+    settings: Optional[JobSettings] = None
 
 
 _supabase: Optional[Client] = None
@@ -50,7 +69,6 @@ def init_db() -> None:
     
     try:
         client = _get_client()
-        # Проверяем соединение простым запросом
         client.table("jobs").select("id").limit(1).execute()
         logger.info("✅ Supabase: подключение установлено")
     except Exception as e:
@@ -58,13 +76,15 @@ def init_db() -> None:
         raise
 
 
+# === JOBS ===
+
 def create_job(
     client_id: str,
     document_id: str,
     document_name: str,
     task_name: str,
     engine: str,
-    job_dir: str,
+    r2_prefix: str,
     status: str = "queued"
 ) -> Job:
     """Создать новую задачу"""
@@ -82,10 +102,8 @@ def create_job(
         created_at=now,
         updated_at=now,
         error_message=None,
-        job_dir=job_dir,
-        result_path=None,
         engine=engine,
-        r2_prefix=None
+        r2_prefix=r2_prefix
     )
     
     client = _get_client()
@@ -100,8 +118,6 @@ def create_job(
         "created_at": job.created_at,
         "updated_at": job.updated_at,
         "error_message": job.error_message,
-        "job_dir": job.job_dir,
-        "result_path": job.result_path,
         "engine": job.engine,
         "r2_prefix": job.r2_prefix
     }).execute()
@@ -109,18 +125,26 @@ def create_job(
     return job
 
 
-def get_job(job_id: str) -> Optional[Job]:
+def get_job(job_id: str, with_files: bool = False, with_settings: bool = False) -> Optional[Job]:
     """Получить задачу по ID"""
     client = _get_client()
     result = client.table("jobs").select("*").eq("id", job_id).execute()
     
     if not result.data:
         return None
-    return _row_to_job(result.data[0])
+    
+    job = _row_to_job(result.data[0])
+    
+    if with_files:
+        job.files = get_job_files(job_id)
+    if with_settings:
+        job.settings = get_job_settings(job_id)
+    
+    return job
 
 
 def list_jobs(client_id: Optional[str] = None, document_id: Optional[str] = None) -> List[Job]:
-    """Получить список задач. Если client_id не указан - возвращает все задачи."""
+    """Получить список задач"""
     client = _get_client()
     query = client.table("jobs").select("*")
     
@@ -140,7 +164,6 @@ def update_job_status(
     status: str,
     progress: Optional[float] = None,
     error_message: Optional[str] = None,
-    result_path: Optional[str] = None,
     r2_prefix: Optional[str] = None
 ) -> None:
     """Обновить статус задачи"""
@@ -155,13 +178,22 @@ def update_job_status(
         updates["progress"] = progress
     if error_message is not None:
         updates["error_message"] = error_message
-    if result_path is not None:
-        updates["result_path"] = result_path
     if r2_prefix is not None:
         updates["r2_prefix"] = r2_prefix
     
     client = _get_client()
     client.table("jobs").update(updates).eq("id", job_id).execute()
+
+
+def update_job_engine(job_id: str, engine: str) -> None:
+    """Обновить engine задачи и перевести в queued"""
+    now = datetime.utcnow().isoformat()
+    client = _get_client()
+    client.table("jobs").update({
+        "engine": engine,
+        "status": "queued",
+        "updated_at": now
+    }).eq("id", job_id).execute()
 
 
 def count_processing_jobs() -> int:
@@ -172,19 +204,13 @@ def count_processing_jobs() -> int:
 
 
 def claim_next_job(max_concurrent: int = 2) -> Optional[Job]:
-    """Взять следующую задачу в очереди (атомарно переключить в processing)
-    
-    Args:
-        max_concurrent: максимум параллельных задач (по умолчанию 2)
-    """
+    """Взять следующую задачу в очереди (атомарно переключить в processing)"""
     client = _get_client()
     
-    # Проверяем лимит параллельных задач
     processing_count = count_processing_jobs()
     if processing_count >= max_concurrent:
         return None
     
-    # Находим первую queued задачу
     result = client.table("jobs").select("*").eq("status", "queued").order("created_at").limit(1).execute()
     
     if not result.data:
@@ -193,41 +219,23 @@ def claim_next_job(max_concurrent: int = 2) -> Optional[Job]:
     job_id = result.data[0]["id"]
     now = datetime.utcnow().isoformat()
     
-    # Атомарно помечаем как processing (с условием что status = queued)
     update_result = client.table("jobs").update({
         "status": "processing",
         "updated_at": now
     }).eq("id", job_id).eq("status", "queued").execute()
     
-    # Перечитываем
     if update_result.data:
-        return _row_to_job(update_result.data[0])
+        job = _row_to_job(update_result.data[0])
+        # Загружаем файлы и настройки для обработки
+        job.files = get_job_files(job_id)
+        job.settings = get_job_settings(job_id)
+        return job
     
-    # Если update не прошёл (status уже изменился), возвращаем None
     return None
 
 
-def _row_to_job(row: dict) -> Job:
-    return Job(
-        id=row["id"],
-        client_id=row["client_id"],
-        document_id=row["document_id"],
-        document_name=row["document_name"],
-        task_name=row.get("task_name", ""),
-        status=row["status"],
-        progress=row["progress"],
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-        error_message=row.get("error_message"),
-        job_dir=row["job_dir"],
-        result_path=row.get("result_path"),
-        engine=row.get("engine", ""),
-        r2_prefix=row.get("r2_prefix")
-    )
-
-
 def delete_job(job_id: str) -> bool:
-    """Удалить задачу из БД"""
+    """Удалить задачу из БД (каскадно удалит files и settings)"""
     client = _get_client()
     result = client.table("jobs").delete().eq("id", job_id).execute()
     return len(result.data) > 0
@@ -241,34 +249,24 @@ def reset_job_for_restart(job_id: str) -> bool:
         "status": "queued",
         "progress": 0,
         "error_message": None,
-        "result_path": None,
-        "r2_prefix": None,
         "updated_at": now
     }).eq("id", job_id).execute()
     return len(result.data) > 0
 
 
 def recover_stuck_jobs() -> int:
-    """
-    При старте воркера: ставим ВСЕ активные задачи (queued + processing) на паузу.
-    Это предотвращает одновременный запуск всех задач после рестарта.
-    
-    Returns:
-        Количество задач поставленных на паузу
-    """
+    """При старте воркера: ставим ВСЕ активные задачи на паузу"""
     import logging
     logger = logging.getLogger(__name__)
     
     now = datetime.utcnow().isoformat()
     client = _get_client()
     
-    # Ставим на паузу queued
     result1 = client.table("jobs").update({
         "status": "paused",
         "updated_at": now
     }).eq("status", "queued").execute()
     
-    # Ставим на паузу processing
     result2 = client.table("jobs").update({
         "status": "paused",
         "updated_at": now
@@ -276,16 +274,15 @@ def recover_stuck_jobs() -> int:
     
     count = len(result1.data) + len(result2.data)
     if count > 0:
-        logger.warning(f"⏸️ При старте: {count} задач поставлено на паузу (queued/processing -> paused)")
+        logger.warning(f"⏸️ При старте: {count} задач поставлено на паузу")
     return count
 
 
 def pause_job(job_id: str) -> bool:
-    """Поставить задачу на паузу (queued/processing -> paused)"""
+    """Поставить задачу на паузу"""
     now = datetime.utcnow().isoformat()
     client = _get_client()
     
-    # Сначала пробуем с queued
     result = client.table("jobs").update({
         "status": "paused",
         "updated_at": now
@@ -294,7 +291,6 @@ def pause_job(job_id: str) -> bool:
     if result.data:
         return True
     
-    # Потом с processing
     result = client.table("jobs").update({
         "status": "paused",
         "updated_at": now
@@ -304,7 +300,7 @@ def pause_job(job_id: str) -> bool:
 
 
 def resume_job(job_id: str) -> bool:
-    """Возобновить задачу (paused -> queued)"""
+    """Возобновить задачу"""
     now = datetime.utcnow().isoformat()
     client = _get_client()
     result = client.table("jobs").update({
@@ -320,6 +316,23 @@ def is_job_paused(job_id: str) -> bool:
     return job.status == "paused" if job else False
 
 
+def _row_to_job(row: dict) -> Job:
+    return Job(
+        id=row["id"],
+        client_id=row["client_id"],
+        document_id=row["document_id"],
+        document_name=row["document_name"],
+        task_name=row.get("task_name", ""),
+        status=row["status"],
+        progress=row["progress"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        error_message=row.get("error_message"),
+        engine=row.get("engine", ""),
+        r2_prefix=row.get("r2_prefix", "")
+    )
+
+
 def job_to_dict(job: Job) -> dict:
     """Конвертировать Job в dict для JSON ответа"""
     return {
@@ -333,21 +346,129 @@ def job_to_dict(job: Job) -> dict:
         "created_at": job.created_at,
         "updated_at": job.updated_at,
         "error_message": job.error_message,
-        "job_dir": job.job_dir,
-        "result_path": job.result_path,
         "engine": job.engine,
         "r2_prefix": job.r2_prefix
     }
 
 
-# --- Вспомогательные функции для main.py ---
+# === JOB FILES ===
 
-def update_job_engine(job_id: str, engine: str) -> None:
-    """Обновить engine задачи"""
+def add_job_file(
+    job_id: str,
+    file_type: str,
+    r2_key: str,
+    file_name: str,
+    file_size: int = 0
+) -> JobFile:
+    """Добавить запись о файле задачи"""
+    file_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    
+    client = _get_client()
+    client.table("job_files").insert({
+        "id": file_id,
+        "job_id": job_id,
+        "file_type": file_type,
+        "r2_key": r2_key,
+        "file_name": file_name,
+        "file_size": file_size,
+        "created_at": now
+    }).execute()
+    
+    return JobFile(
+        id=file_id,
+        job_id=job_id,
+        file_type=file_type,
+        r2_key=r2_key,
+        file_name=file_name,
+        file_size=file_size,
+        created_at=now
+    )
+
+
+def get_job_files(job_id: str, file_type: Optional[str] = None) -> List[JobFile]:
+    """Получить файлы задачи"""
+    client = _get_client()
+    query = client.table("job_files").select("*").eq("job_id", job_id)
+    
+    if file_type:
+        query = query.eq("file_type", file_type)
+    
+    result = query.execute()
+    return [_row_to_job_file(row) for row in result.data]
+
+
+def get_job_file_by_type(job_id: str, file_type: str) -> Optional[JobFile]:
+    """Получить конкретный файл задачи по типу"""
+    files = get_job_files(job_id, file_type)
+    return files[0] if files else None
+
+
+def delete_job_files(job_id: str, file_types: Optional[List[str]] = None) -> int:
+    """Удалить файлы задачи (из БД, не из R2)"""
+    client = _get_client()
+    query = client.table("job_files").delete().eq("job_id", job_id)
+    
+    if file_types:
+        query = query.in_("file_type", file_types)
+    
+    result = query.execute()
+    return len(result.data)
+
+
+def _row_to_job_file(row: dict) -> JobFile:
+    return JobFile(
+        id=row["id"],
+        job_id=row["job_id"],
+        file_type=row["file_type"],
+        r2_key=row["r2_key"],
+        file_name=row["file_name"],
+        file_size=row.get("file_size", 0),
+        created_at=row["created_at"]
+    )
+
+
+# === JOB SETTINGS ===
+
+def save_job_settings(
+    job_id: str,
+    text_model: str = "",
+    table_model: str = "",
+    image_model: str = ""
+) -> JobSettings:
+    """Сохранить/обновить настройки задачи"""
     now = datetime.utcnow().isoformat()
     client = _get_client()
-    client.table("jobs").update({
-        "engine": engine,
-        "status": "queued",
+    
+    # Upsert: вставить или обновить
+    client.table("job_settings").upsert({
+        "job_id": job_id,
+        "text_model": text_model,
+        "table_model": table_model,
+        "image_model": image_model,
         "updated_at": now
-    }).eq("id", job_id).execute()
+    }, on_conflict="job_id").execute()
+    
+    return JobSettings(
+        job_id=job_id,
+        text_model=text_model,
+        table_model=table_model,
+        image_model=image_model
+    )
+
+
+def get_job_settings(job_id: str) -> Optional[JobSettings]:
+    """Получить настройки задачи"""
+    client = _get_client()
+    result = client.table("job_settings").select("*").eq("job_id", job_id).execute()
+    
+    if not result.data:
+        return None
+    
+    row = result.data[0]
+    return JobSettings(
+        job_id=row["job_id"],
+        text_model=row.get("text_model", ""),
+        table_model=row.get("table_model", ""),
+        image_model=row.get("image_model", "")
+    )

@@ -1,9 +1,11 @@
-"""Фоновый воркер для обработки OCR задач"""
+"""Фоновый воркер для обработки OCR задач (файлы из R2)"""
 from __future__ import annotations
 
 import json
 import logging
+import shutil
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -12,7 +14,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional, Dict
 
-from .storage import Job, claim_next_job, update_job_status, recover_stuck_jobs, is_job_paused
+from .storage import (
+    Job,
+    add_job_file,
+    claim_next_job,
+    get_job_file_by_type,
+    is_job_paused,
+    recover_stuck_jobs,
+    update_job_status,
+)
 from .settings import settings
 from .rate_limiter import get_datalab_limiter
 from .worker_prompts import (
@@ -23,7 +33,6 @@ from .worker_prompts import (
 )
 from .worker_pdf import extract_pdfplumber_text_for_block
 
-# Настройка логирования для воркера
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -34,6 +43,12 @@ logger.setLevel(logging.INFO)
 
 _worker_thread: Optional[threading.Thread] = None
 _stop_event = threading.Event()
+
+
+def _get_r2_storage():
+    """Получить R2 Storage клиент"""
+    from rd_core.r2_storage import R2Storage
+    return R2Storage()
 
 
 def start_worker() -> None:
@@ -65,12 +80,11 @@ def stop_worker() -> None:
 
 
 def _worker_loop() -> None:
-    """Главный цикл воркера с параллельной обработкой задач"""
+    """Главный цикл воркера"""
     max_jobs = settings.max_concurrent_jobs
     job_executor = ThreadPoolExecutor(max_workers=max_jobs, thread_name_prefix="job-worker")
     active_futures = set()
     
-    # Exponential backoff при пустой очереди
     base_interval = settings.poll_interval
     max_interval = settings.poll_max_interval
     current_interval = base_interval
@@ -79,23 +93,21 @@ def _worker_loop() -> None:
     
     while not _stop_event.is_set():
         try:
-            # Убираем завершённые задачи
             done_futures = {f for f in active_futures if f.done()}
             for f in done_futures:
                 try:
-                    f.result()  # Получаем исключения если были
+                    f.result()
                 except Exception as e:
                     logger.error(f"Ошибка в задаче: {e}")
             active_futures -= done_futures
             
-            # Берём новую задачу если есть слоты
             if len(active_futures) < max_jobs:
                 job = claim_next_job(max_concurrent=max_jobs)
                 if job:
                     logger.info(f"Взята задача {job.id} (активных: {len(active_futures) + 1}/{max_jobs})")
                     future = job_executor.submit(_process_job, job)
                     active_futures.add(future)
-                    current_interval = base_interval  # Сброс при наличии задач
+                    current_interval = base_interval
                 else:
                     time.sleep(current_interval)
                     current_interval = min(current_interval * 1.5, max_interval)
@@ -105,38 +117,102 @@ def _worker_loop() -> None:
             logger.error(f"Ошибка в worker loop: {e}")
             time.sleep(base_interval)
     
-    # Ожидаем завершения активных задач
     job_executor.shutdown(wait=True)
 
 
 def _check_paused(job_id: str) -> bool:
     """Проверить, не поставлена ли задача на паузу"""
     if is_job_paused(job_id):
-        logger.info(f"Задача {job_id} поставлена на паузу, прерываем обработку")
+        logger.info(f"Задача {job_id} поставлена на паузу")
         return True
     return False
 
 
+def _download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:
+    """Скачать файлы задачи из R2 во временную директорию"""
+    r2 = _get_r2_storage()
+    
+    # PDF
+    pdf_file = get_job_file_by_type(job.id, "pdf")
+    if not pdf_file:
+        raise RuntimeError(f"PDF file not found for job {job.id}")
+    
+    pdf_path = work_dir / "document.pdf"
+    if not r2.download_file(pdf_file.r2_key, str(pdf_path)):
+        raise RuntimeError(f"Failed to download PDF from R2: {pdf_file.r2_key}")
+    
+    # Blocks
+    blocks_file = get_job_file_by_type(job.id, "blocks")
+    if not blocks_file:
+        raise RuntimeError(f"Blocks file not found for job {job.id}")
+    
+    blocks_path = work_dir / "blocks.json"
+    if not r2.download_file(blocks_file.r2_key, str(blocks_path)):
+        raise RuntimeError(f"Failed to download blocks from R2: {blocks_file.r2_key}")
+    
+    return pdf_path, blocks_path
+
+
+def _upload_results_to_r2(job: Job, work_dir: Path) -> str:
+    """Загрузить результаты в R2 и записать в БД"""
+    r2 = _get_r2_storage()
+    r2_prefix = job.r2_prefix
+    
+    # result.md
+    result_md_path = work_dir / "result.md"
+    if result_md_path.exists():
+        r2_key = f"{r2_prefix}/result.md"
+        r2.upload_file(str(result_md_path), r2_key)
+        add_job_file(job.id, "result_md", r2_key, "result.md", result_md_path.stat().st_size)
+    
+    # annotation.json
+    annotation_path = work_dir / "annotation.json"
+    if annotation_path.exists():
+        r2_key = f"{r2_prefix}/annotation.json"
+        r2.upload_file(str(annotation_path), r2_key)
+        add_job_file(job.id, "annotation", r2_key, "annotation.json", annotation_path.stat().st_size)
+    
+    # result.zip
+    result_zip_path = work_dir / "result.zip"
+    if result_zip_path.exists():
+        r2_key = f"{r2_prefix}/result.zip"
+        r2.upload_file(str(result_zip_path), r2_key)
+        add_job_file(job.id, "result_zip", r2_key, "result.zip", result_zip_path.stat().st_size)
+    
+    # crops/
+    crops_dir = work_dir / "crops"
+    if crops_dir.exists():
+        for crop_file in crops_dir.iterdir():
+            if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
+                r2_key = f"{r2_prefix}/crops/{crop_file.name}"
+                r2.upload_file(str(crop_file), r2_key)
+                add_job_file(job.id, "crop", r2_key, crop_file.name, crop_file.stat().st_size)
+    
+    return r2_prefix
+
+
 def _process_job(job: Job) -> None:
     """Обработать одну задачу OCR"""
+    work_dir = None
     try:
-        # Проверяем паузу в начале
         if _check_paused(job.id):
             return
         
-        job_dir = Path(job.job_dir)
-        pdf_path = job_dir / "document.pdf"
-        blocks_path = job_dir / "blocks.json"
-        job_settings_path = job_dir / "job_settings.json"
-        crops_dir = job_dir / "crops"
+        # Создаём временную директорию
+        work_dir = Path(tempfile.mkdtemp(prefix=f"ocr_job_{job.id}_"))
+        crops_dir = work_dir / "crops"
         crops_dir.mkdir(exist_ok=True)
+        
+        logger.info(f"Задача {job.id}: скачивание файлов из R2...")
+        pdf_path, blocks_path = _download_job_files(job, work_dir)
         
         with open(blocks_path, "r", encoding="utf-8") as f:
             blocks_data = json.load(f)
         
         if not blocks_data:
-            update_job_status(job.id, "done", progress=1.0, result_path=str(job_dir / "result.zip"))
-            _create_empty_result(job_dir)
+            update_job_status(job.id, "done", progress=1.0)
+            _create_empty_result(job, work_dir, pdf_path)
+            _upload_results_to_r2(job, work_dir)
             return
         
         from rd_core.models import Block
@@ -148,7 +224,6 @@ def _process_job(job: Job) -> None:
         
         logger.info(f"Задача {job.id}: {total_blocks} блоков")
         
-        # Проверяем паузу перед тяжёлой обработкой
         if _check_paused(job.id):
             return
         
@@ -159,19 +234,12 @@ def _process_job(job: Job) -> None:
         
         logger.info(f"Создано {len(strips)} полос TEXT/TABLE, {len(image_blocks)} IMAGE блоков")
         
-        # Загружаем настройки задачи
-        job_settings = {}
-        if job_settings_path.exists():
-            try:
-                with open(job_settings_path, "r", encoding="utf-8") as f:
-                    job_settings = json.load(f) or {}
-            except Exception:
-                job_settings = {}
-
-        text_model = (job_settings.get("text_model") or "").strip()
-        table_model = (job_settings.get("table_model") or "").strip()
-        image_model = (job_settings.get("image_model") or "").strip()
-
+        # Настройки из Supabase
+        job_settings = job.settings
+        text_model = (job_settings.text_model if job_settings else "") or ""
+        table_model = (job_settings.table_model if job_settings else "") or ""
+        image_model = (job_settings.image_model if job_settings else "") or ""
+        
         engine = job.engine or "openrouter"
         datalab_limiter = get_datalab_limiter() if engine == "datalab" else None
         
@@ -182,10 +250,10 @@ def _process_job(job: Job) -> None:
             strip_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key, model_name=strip_model)
         else:
             strip_backend = create_ocr_engine("dummy")
-
+        
         if settings.openrouter_api_key:
             img_model = image_model or text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
-            logger.info(f"IMAGE модель: {img_model} (из job_settings.image_model={image_model!r})")
+            logger.info(f"IMAGE модель: {img_model}")
             image_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key, model_name=img_model)
         else:
             image_backend = create_ocr_engine("dummy")
@@ -200,12 +268,10 @@ def _process_job(job: Job) -> None:
                 processed += 1
                 if total_requests > 0:
                     progress = 0.1 + 0.8 * (processed / total_requests)
-                    # Не обновляем статус если задача на паузе
                     if not is_job_paused(job.id):
                         update_job_status(job.id, "processing", progress=progress)
         
         def _process_strip(strip_idx: int, strip):
-            """Обработать одну полосу TEXT/TABLE блоков"""
             try:
                 logger.info(f"Обработка полосы {strip_idx + 1}/{len(strips)}: {len(strip.blocks)} блоков")
                 merged_image = strip_images.get(strip.strip_id)
@@ -228,7 +294,6 @@ def _process_job(job: Job) -> None:
                 return {}, []
         
         def _process_image_block(img_idx: int, block, crop, part_idx: int, total_parts: int):
-            """Обработать один IMAGE блок"""
             try:
                 part_info = f" (часть {part_idx + 1}/{total_parts})" if total_parts > 1 else ""
                 logger.info(f"Обработка IMAGE блока {img_idx + 1}/{len(image_blocks)}: {block.id}{part_info}")
@@ -248,7 +313,6 @@ def _process_job(job: Job) -> None:
                 text = image_backend.recognize(crop, prompt=prompt_data)
                 text = inject_pdfplumber_to_ocr_text(text, pdfplumber_text)
                 
-                # Сохраняем pdfplumber_text в блоке для последующей генерации markdown
                 block.pdfplumber_text = pdfplumber_text
                 
                 return block.id, text, part_idx, total_parts
@@ -297,7 +361,6 @@ def _process_job(job: Job) -> None:
                 finally:
                     _update_progress()
         
-        # Объединяем результаты частей TEXT/TABLE
         for block_id, parts_dict in text_block_parts.items():
             block = text_block_objects[block_id]
             total_parts = text_block_total_parts[block_id]
@@ -308,7 +371,6 @@ def _process_job(job: Job) -> None:
                 combined_parts = [parts_dict.get(i, "") for i in range(total_parts)]
                 block.ocr_text = "\n\n".join(combined_parts)
         
-        # IMAGE блоки
         block_parts_results: Dict[str, Dict[int, str]] = {}
         block_total_parts: Dict[str, int] = {}
         block_objects: Dict[str, object] = {}
@@ -336,7 +398,6 @@ def _process_job(job: Job) -> None:
                 finally:
                     _update_progress()
         
-        # Объединяем результаты IMAGE
         for block_id, parts_dict in block_parts_results.items():
             block = block_objects[block_id]
             total_parts = block_total_parts[block_id]
@@ -353,11 +414,11 @@ def _process_job(job: Job) -> None:
         from rd_core.models import Page, Document
         from rd_core.pdf_utils import PDFDocument
         from rd_core.ocr import generate_structured_markdown
-
+        
         blocks_by_page: dict[int, list] = {}
         for b in blocks:
             blocks_by_page.setdefault(b.page_index, []).append(b)
-
+        
         pages = []
         with PDFDocument(str(pdf_path)) as pdf:
             for page_idx in sorted(blocks_by_page.keys()):
@@ -365,16 +426,16 @@ def _process_job(job: Job) -> None:
                 width, height = dims if dims else (0, 0)
                 page_blocks = sorted(blocks_by_page[page_idx], key=lambda bl: bl.coords_px[1])
                 pages.append(Page(page_number=page_idx, width=width, height=height, blocks=page_blocks))
-
-        result_md_path = job_dir / "result.md"
+        
+        result_md_path = work_dir / "result.md"
         generate_structured_markdown(pages, str(result_md_path), project_name=job.id, doc_name=pdf_path.name)
         
-        annotation_path = job_dir / "annotation.json"
+        annotation_path = work_dir / "annotation.json"
         doc = Document(pdf_path=pdf_path.name, pages=pages)
         with open(annotation_path, "w", encoding="utf-8") as f:
             json.dump(doc.to_dict(), f, ensure_ascii=False, indent=2)
         
-        result_zip_path = job_dir / "result.zip"
+        result_zip_path = work_dir / "result.zip"
         with zipfile.ZipFile(result_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.write(result_md_path, "result.md")
             if annotation_path.exists():
@@ -386,49 +447,33 @@ def _process_job(job: Job) -> None:
                     if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
                         zf.write(crop_file, f"crops/{crop_file.name}")
         
-        # Загрузка в R2
-        r2_prefix = None
-        try:
-            from rd_core.r2_storage import R2Storage
-            r2 = R2Storage()
-            r2_prefix = f"ocr_results/{job.id}"
-            success, errors = r2.upload_directory(str(job_dir), r2_prefix, recursive=True)
-            
-            if errors == 0:
-                logger.info(f"✅ Результаты загружены в R2: {r2_prefix}")
-            else:
-                logger.warning(f"⚠️ Загрузка в R2: {success} успешно, {errors} ошибок")
-        except Exception as e:
-            logger.error(f"❌ Ошибка загрузки в R2: {e}")
+        # Загрузка результатов в R2
+        logger.info(f"Загрузка результатов в R2...")
+        _upload_results_to_r2(job, work_dir)
         
-        update_job_status(job.id, "done", progress=1.0, result_path=str(result_zip_path), r2_prefix=r2_prefix)
+        update_job_status(job.id, "done", progress=1.0)
         logger.info(f"Задача {job.id} завершена успешно")
-        
-        # Очистка файлов
-        if r2_prefix:
-            try:
-                import shutil
-                for file_path in [pdf_path, blocks_path, result_md_path, annotation_path, result_zip_path]:
-                    if file_path.exists():
-                        file_path.unlink()
-                if crops_dir.exists():
-                    shutil.rmtree(crops_dir)
-                logger.info(f"✅ Файлы задачи {job.id} очищены")
-            except Exception as e:
-                logger.warning(f"⚠️ Ошибка очистки файлов: {e}")
         
     except Exception as e:
         error_msg = f"{e}\n{traceback.format_exc()}"
         logger.error(f"Ошибка обработки задачи {job.id}: {error_msg}")
         update_job_status(job.id, "error", error_message=str(e))
+    
+    finally:
+        # Очистка временной директории
+        if work_dir and work_dir.exists():
+            try:
+                shutil.rmtree(work_dir)
+                logger.info(f"✅ Временная директория очищена: {work_dir}")
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка очистки временной директории: {e}")
 
 
-def _create_empty_result(job_dir: Path) -> None:
+def _create_empty_result(job: Job, work_dir: Path, pdf_path: Path) -> None:
     """Создать пустой результат"""
-    result_md_path = job_dir / "result.md"
-    annotation_path = job_dir / "annotation.json"
-    result_zip_path = job_dir / "result.zip"
-    pdf_path = job_dir / "document.pdf"
+    result_md_path = work_dir / "result.md"
+    annotation_path = work_dir / "annotation.json"
+    result_zip_path = work_dir / "result.zip"
     
     with open(result_md_path, "w", encoding="utf-8") as f:
         f.write("# OCR Results\n\nNo blocks to process.\n")
