@@ -825,16 +825,15 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
     def _rerun_job_bg(self, job_id: str):
         """Фоновая повторная отправка на распознавание"""
         try:
+            from app.remote_ocr_client import AuthenticationError, ServerError
+            
             client = self._get_client()
             if client is None:
                 self._signals.rerun_error.emit(job_id, "Клиент не инициализирован")
                 return
             
-            # Получаем детали задачи
-            job_details = client.get_job_details(job_id)
-            r2_prefix = job_details.get("r2_prefix")
-            
-            # Удаляем локальные файлы результатов (но сохраняем PDF)
+            # Удаляем только ЛОКАЛЬНЫЕ файлы результатов (PDF оставляем)
+            # R2 файлы удаляет сервер в restart_job_endpoint
             if job_id in self._job_output_dirs:
                 local_dir = Path(self._job_output_dirs[job_id])
                 if local_dir.exists():
@@ -853,30 +852,7 @@ class RemoteOCRPanel(DownloadMixin, QDockWidget):
                         except Exception:
                             pass
             
-            # Удаляем файлы из R2
-            if r2_prefix:
-                try:
-                    from rd_core.r2_storage import R2Storage
-                    r2 = R2Storage()
-                    r2_prefix_normalized = r2_prefix if r2_prefix.endswith('/') else f"{r2_prefix}/"
-                    files_to_delete = []
-                    paginator = r2.s3_client.get_paginator('list_objects_v2')
-                    for page in paginator.paginate(Bucket=r2.bucket_name, Prefix=r2_prefix_normalized):
-                        if 'Contents' in page:
-                            for obj in page['Contents']:
-                                key = obj['Key']
-                                if key.startswith(r2_prefix_normalized):
-                                    files_to_delete.append({'Key': key})
-                    if files_to_delete:
-                        for i in range(0, len(files_to_delete), 1000):
-                            batch = files_to_delete[i:i+1000]
-                            r2.s3_client.delete_objects(Bucket=r2.bucket_name, Delete={'Objects': batch})
-                except Exception:
-                    pass
-            
-            # Перезапускаем задачу на сервере (статус -> queued)
-            from app.remote_ocr_client import AuthenticationError, ServerError
-            
+            # Перезапускаем задачу на сервере (сервер удалит R2 файлы и переведёт в queued)
             if not client.restart_job(job_id):
                 self._signals.rerun_error.emit(job_id, "Не удалось перезапустить задачу")
                 return

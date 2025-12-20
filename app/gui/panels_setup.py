@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from app.gui.page_viewer import PageViewer
 from app.gui.project_sidebar import ProjectSidebar
+from app.gui.project_tree_widget import ProjectTreeWidget
+from app.gui.tree_settings_widget import TreeSettingsWidget
 
 
 class PanelsSetupMixin:
@@ -55,19 +57,51 @@ class PanelsSetupMixin:
         main_layout.addWidget(self.main_splitter)
     
     def _create_left_sidebar(self) -> QWidget:
-        """Создать боковую панель проектов"""
+        """Создать боковую панель проектов с вкладками"""
         left_sidebar = QWidget()
         left_sidebar_layout = QVBoxLayout(left_sidebar)
-        left_sidebar_layout.setContentsMargins(5, 5, 5, 5)
-        left_sidebar_layout.setSpacing(5)
+        left_sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        left_sidebar_layout.setSpacing(0)
         
+        # Создаём TabWidget для переключения между режимами
+        self.sidebar_tabs = QTabWidget()
+        self.sidebar_tabs.setDocumentMode(True)
+        self.sidebar_tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: none;
+                background-color: #1e1e1e;
+            }
+            QTabBar::tab {
+                background-color: #2d2d2d;
+                color: #bbbbbb;
+                padding: 8px 16px;
+                border: none;
+                border-bottom: 2px solid transparent;
+            }
+            QTabBar::tab:selected {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border-bottom: 2px solid #0e639c;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #3e3e42;
+            }
+        """)
+        
+        # Вкладка 1: Дерево проектов (Supabase)
+        self.project_tree_widget = ProjectTreeWidget()
+        self.sidebar_tabs.addTab(self.project_tree_widget, "🌳 Дерево")
+        
+        # Вкладка 2: Задания (локальные)
         self.project_sidebar = ProjectSidebar(self.project_manager)
         self.project_sidebar.project_switched.connect(self._on_project_switched)
         self.project_sidebar.file_switched.connect(self._on_file_switched)
         self.project_manager.file_removed.connect(self._on_file_removed)
         self.project_manager.project_removed.connect(self._on_project_removed)
         self.project_manager.project_renamed.connect(self._on_project_renamed)
-        left_sidebar_layout.addWidget(self.project_sidebar, stretch=1)
+        self.sidebar_tabs.addTab(self.project_sidebar, "📋 Задания")
+        
+        left_sidebar_layout.addWidget(self.sidebar_tabs)
         
         left_sidebar.setMinimumWidth(200)
         return left_sidebar
@@ -92,9 +126,39 @@ class PanelsSetupMixin:
         return panel
     
     def _create_right_panel(self) -> QWidget:
-        """Создать правую панель с инструментами"""
+        """Создать правую панель с вкладками"""
         panel = QWidget()
         layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Вкладки: Инструменты / Настройки
+        self.right_tabs = QTabWidget()
+        self.right_tabs.setDocumentMode(True)
+        self.right_tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: none;
+            }
+            QTabBar::tab {
+                padding: 6px 12px;
+            }
+        """)
+        
+        # Вкладка 1: Инструменты
+        tools_widget = self._create_tools_tab()
+        self.right_tabs.addTab(tools_widget, "🛠️ Инструменты")
+        
+        # Вкладка 2: Настройки
+        settings_widget = self._create_settings_tab()
+        self.right_tabs.addTab(settings_widget, "⚙️ Настройки")
+        
+        layout.addWidget(self.right_tabs)
+        
+        return panel
+    
+    def _create_tools_tab(self) -> QWidget:
+        """Создать вкладку инструментов"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
         
         # Группа: список блоков
         blocks_group = self._create_blocks_group()
@@ -108,7 +172,29 @@ class PanelsSetupMixin:
         actions_group = self._create_actions_group()
         layout.addWidget(actions_group)
         
-        return panel
+        return widget
+    
+    def _create_settings_tab(self) -> QWidget:
+        """Создать вкладку настроек"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Настройка папок
+        folders_group = QGroupBox("Папки")
+        folders_layout = QVBoxLayout(folders_group)
+        folders_btn = QPushButton("📁 Настройка папок")
+        folders_btn.clicked.connect(self._show_folder_settings)
+        folders_layout.addWidget(folders_btn)
+        layout.addWidget(folders_group)
+        
+        # Настройка дерева
+        tree_group = QGroupBox("Дерево проектов")
+        tree_layout = QVBoxLayout(tree_group)
+        self.tree_settings_widget = TreeSettingsWidget()
+        tree_layout.addWidget(self.tree_settings_widget)
+        layout.addWidget(tree_group, stretch=1)
+        
+        return widget
     
     def _create_blocks_group(self) -> QGroupBox:
         """Создать группу списка блоков"""

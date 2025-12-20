@@ -1,0 +1,9 @@
+{
+  "public.update_updated_at_column()": {
+    "schema": "public",
+    "name": "update_updated_at_column",
+    "arguments": "",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.update_updated_at_column()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    NEW.updated_at = NOW();\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
+  }
+}
