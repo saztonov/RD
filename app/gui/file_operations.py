@@ -37,6 +37,7 @@ class FileOperationsMixin:
     _current_node_id: str = ""  # ID узла документа в дереве
     _auto_save_timer: QTimer = None
     _pending_save: bool = False
+    _annotation_synced: bool = False  # Флаг: аннотация уже синхронизирована с R2
     
     def _register_node_file(
         self, node_id: str, file_type: str, r2_key: str, 
@@ -77,20 +78,28 @@ class FileOperationsMixin:
         return mime_map.get(ext, "application/octet-stream")
     
     def _auto_save_annotation(self):
-        """Авто-сохранение разметки при изменении блоков (раз в минуту)"""
+        """Авто-сохранение разметки при изменении блоков"""
         if not self.annotation_document or not self._current_pdf_path:
             return
         
         self._pending_save = True
         
-        # Таймер на 60 секунд — собираем изменения
         if self._auto_save_timer is None:
             self._auto_save_timer = QTimer(self)
             self._auto_save_timer.setSingleShot(True)
             self._auto_save_timer.timeout.connect(self._do_auto_save)
         
-        if not self._auto_save_timer.isActive():
-            self._auto_save_timer.start(60000)  # 60 секунд
+        # Если аннотация ещё не синхронизирована - сохранить сразу (через 100мс для debounce)
+        # Иначе - через 5 секунд для накопления изменений
+        if not self._annotation_synced:
+            delay = 100  # Первое сохранение - почти сразу
+        else:
+            delay = 5000  # Последующие - через 5 секунд
+        
+        # Перезапускаем таймер (debounce)
+        if self._auto_save_timer.isActive():
+            self._auto_save_timer.stop()
+        self._auto_save_timer.start(delay)
     
     def _do_auto_save(self):
         """Выполнить отложенное сохранение в фоновом потоке"""
@@ -131,12 +140,28 @@ class FileOperationsMixin:
             r2.upload_file(ann_path, ann_r2_key)
             logger.debug(f"Annotation synced to R2: {ann_r2_key}")
             
-            # Записываем файл в БД node_files
+            # Помечаем что аннотация синхронизирована
+            self._annotation_synced = True
+            
+            # Записываем файл в БД node_files и обновляем флаг has_annotation
             if node_id:
                 self._register_node_file(
                     node_id, "annotation", ann_r2_key, 
                     Path(ann_path).name, Path(ann_path).stat().st_size
                 )
+                # Обновляем флаг has_annotation в узле
+                try:
+                    from app.tree_client import TreeClient
+                    client = TreeClient()
+                    node = client.get_node(node_id)
+                    if node and not node.attributes.get("has_annotation"):
+                        attrs = node.attributes.copy()
+                        attrs["has_annotation"] = True
+                        client.update_node(node_id, attributes=attrs)
+                        # Обновляем UI в главном потоке (lambda с default для захвата значения)
+                        QTimer.singleShot(0, lambda nid=node_id: self._update_tree_annotation_icon(nid))
+                except Exception as e2:
+                    logger.debug(f"Update has_annotation in background failed: {e2}")
         except Exception as e:
             logger.error(f"Sync annotation to R2 failed: {e}")
     
@@ -197,6 +222,29 @@ class FileOperationsMixin:
         except Exception as e:
             logger.debug(f"Update has_annotation failed: {e}")
     
+    def _update_tree_annotation_icon(self, node_id: str):
+        """Обновить иконку аннотации в дереве (вызывается из главного потока)"""
+        if not hasattr(self, 'project_tree') or not self.project_tree:
+            return
+        
+        try:
+            from app.gui.tree_node_operations import NODE_ICONS
+            from app.tree_client import TreeClient
+            from PySide6.QtCore import Qt
+            
+            item = self.project_tree._node_map.get(node_id)
+            if item:
+                node = item.data(0, Qt.UserRole)
+                if node and hasattr(node, 'attributes'):
+                    node.attributes["has_annotation"] = True
+                    item.setData(0, Qt.UserRole, node)
+                    icon = NODE_ICONS.get(node.node_type, "📄")
+                    version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                    display_name = f"{icon} {version_tag} {node.name} 📋"
+                    item.setText(0, display_name)
+        except Exception as e:
+            logger.debug(f"Update tree annotation icon failed: {e}")
+    
     def _load_annotation_if_exists(self, pdf_path: str, r2_key: str = ""):
         """Загрузить annotation.json если существует (локально или в R2)"""
         ann_path = get_annotation_path(pdf_path)
@@ -217,6 +265,10 @@ class FileOperationsMixin:
             if loaded:
                 self.annotation_document = loaded
                 logger.info(f"Annotation loaded: {ann_path}")
+                # Аннотация уже есть - значит синхронизирована
+                self._annotation_synced = True
+                # Обновляем флаг has_annotation в дереве
+                self._update_has_annotation_flag(True)
                 return True
         return False
     
@@ -255,6 +307,9 @@ class FileOperationsMixin:
         self.page_images.clear()
         self.undo_stack.clear()
         self.redo_stack.clear()
+        
+        # Сброс флага синхронизации для нового файла
+        self._annotation_synced = False
         
         self.pdf_document = PDFDocument(pdf_path)
         if not self.pdf_document.open() or self.pdf_document.page_count == 0:

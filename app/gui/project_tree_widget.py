@@ -544,6 +544,7 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                 item = self._node_map.get(node.id)
                 if item:
                     node.attributes = attrs
+                    item.setData(0, Qt.UserRole, node)  # Обновляем данные узла
                     icon = NODE_ICONS.get(node.node_type, "📄")
                     version_tag = f"[v{node.version}]" if node.version else "[v1]"
                     display_name = f"{icon} {version_tag} {node.name} 📋".strip()

@@ -238,7 +238,9 @@ class TreeNodeOperationsMixin:
                     icon = NODE_ICONS.get(node.node_type, "📄")
                     if node.node_type == NodeType.DOCUMENT:
                         version_tag = f"[v{node.version}]" if node.version else "[v1]"
-                        display_name = f"{icon} {version_tag} {new_name_clean}"
+                        has_annotation = node.attributes.get("has_annotation", False)
+                        ann_icon = " 📋" if has_annotation else ""
+                        display_name = f"{icon} {version_tag} {new_name_clean}{ann_icon}"
                     elif node.code:
                         display_name = f"{icon} [{node.code}] {new_name_clean}"
                     else:
@@ -269,7 +271,9 @@ class TreeNodeOperationsMixin:
             item = self._node_map.get(node.id)
             if item:
                 icon = NODE_ICONS.get(node.node_type, "📄")
-                display_name = f"{icon} [v{version}] {node.name}"
+                has_annotation = node.attributes.get("has_annotation", False)
+                ann_icon = " 📋" if has_annotation else ""
+                display_name = f"{icon} [v{version}] {node.name}{ann_icon}"
                 item.setText(0, display_name)
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))

@@ -368,23 +368,31 @@ class R2Storage:
             logger.error(f"Ошибка генерации presigned URL: {e}")
             return None
 
-    def upload_text(self, content: str, remote_key: str) -> bool:
+    def upload_text(self, content: str, remote_key: str, content_type: str = None) -> bool:
         """
         Загрузить текстовый контент в R2
 
         Args:
             content: Текстовое содержимое
             remote_key: Ключ объекта в R2
+            content_type: MIME тип (auto для JSON по расширению)
 
         Returns:
             True если успешно
         """
         try:
+            # Автоопределение content-type для JSON
+            if content_type is None:
+                if remote_key.endswith(".json"):
+                    content_type = "application/json; charset=utf-8"
+                else:
+                    content_type = "text/plain; charset=utf-8"
+            
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=remote_key,
                 Body=content.encode("utf-8"),
-                ContentType="text/plain; charset=utf-8",
+                ContentType=content_type,
             )
             logger.info(f"✅ Текст загружен в R2: {remote_key}")
             return True
