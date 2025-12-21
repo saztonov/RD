@@ -149,20 +149,56 @@ class TreeNodeOperationsMixin:
                 QMessageBox.critical(self, "Ошибка", f"Файл загружен в R2, но не добавлен в дерево:\n{e}")
     
     def _rename_node(self, node: TreeNode):
-        """Переименовать узел (только метаданные, R2 ключ не меняется)"""
+        """Переименовать узел (для документов также переименовывает в R2)"""
         new_name, ok = QInputDialog.getText(
             self, "Переименовать", "Новое название:", text=node.name
         )
         if ok and new_name.strip() and new_name.strip() != node.name:
             try:
-                self.client.update_node(node.id, name=new_name.strip())
+                new_name_clean = new_name.strip()
                 
+                # Для документов переименовываем файл в R2
+                if node.node_type == NodeType.DOCUMENT:
+                    old_r2_key = node.attributes.get("r2_key", "")
+                    if old_r2_key:
+                        from rd_core.r2_storage import R2Storage
+                        
+                        # Формируем новый ключ (меняем только имя файла)
+                        old_path = Path(old_r2_key)
+                        new_r2_key = str(old_path.parent / new_name_clean)
+                        
+                        try:
+                            r2 = R2Storage()
+                            if r2.rename_object(old_r2_key, new_r2_key):
+                                # Обновляем r2_key в attributes
+                                node.attributes["r2_key"] = new_r2_key
+                                node.attributes["original_name"] = new_name_clean
+                                self.client.update_node(node.id, name=new_name_clean, attributes=node.attributes)
+                            else:
+                                QMessageBox.warning(self, "Внимание", "Не удалось переименовать файл в R2")
+                                return
+                        except Exception as e:
+                            logger.error(f"R2 rename error: {e}")
+                            QMessageBox.warning(self, "Ошибка R2", f"Ошибка R2: {e}")
+                            return
+                    else:
+                        self.client.update_node(node.id, name=new_name_clean)
+                else:
+                    self.client.update_node(node.id, name=new_name_clean)
+                
+                # Обновляем UI
                 item = self._node_map.get(node.id)
                 if item:
                     icon = NODE_ICONS.get(node.node_type, "📄")
-                    code_part = f"[{node.code}] " if node.code else ""
-                    item.setText(0, f"{icon} {code_part}{new_name.strip()}")
-                    node.name = new_name.strip()
+                    if node.node_type == NodeType.DOCUMENT:
+                        version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                        display_name = f"{icon} {version_tag} {new_name_clean}"
+                    elif node.code:
+                        display_name = f"{icon} [{node.code}] {new_name_clean}"
+                    else:
+                        display_name = f"{icon} {new_name_clean}"
+                    item.setText(0, display_name)
+                    node.name = new_name_clean
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
     
@@ -193,7 +229,7 @@ class TreeNodeOperationsMixin:
             QMessageBox.critical(self, "Ошибка", str(e))
     
     def _delete_node(self, node: TreeNode):
-        """Удалить узел"""
+        """Удалить узел (для документов также удаляет из R2 и кэша)"""
         reply = QMessageBox.question(
             self, "Подтверждение",
             f"Удалить '{node.name}' и все вложенные элементы?",
@@ -201,6 +237,10 @@ class TreeNodeOperationsMixin:
         )
         if reply == QMessageBox.Yes:
             try:
+                # Для документов удаляем файл из R2 и кэша
+                if node.node_type == NodeType.DOCUMENT:
+                    self._delete_document_files(node)
+                
                 if self.client.delete_node(node.id):
                     item = self._node_map.get(node.id)
                     if item:
@@ -213,6 +253,35 @@ class TreeNodeOperationsMixin:
                         del self._node_map[node.id]
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
+    
+    def _delete_document_files(self, node: TreeNode):
+        """Удалить файлы документа из R2 и локального кэша"""
+        from rd_core.r2_storage import R2Storage
+        from app.gui.folder_settings_dialog import get_projects_dir
+        
+        r2_key = node.attributes.get("r2_key", "")
+        
+        # Удаляем из R2
+        if r2_key:
+            try:
+                r2 = R2Storage()
+                r2.delete_object(r2_key)
+                logger.info(f"Deleted from R2: {r2_key}")
+            except Exception as e:
+                logger.error(f"Failed to delete from R2: {e}")
+        
+        # Удаляем из локального кэша
+        projects_dir = get_projects_dir()
+        if projects_dir and r2_key:
+            cache_dir = Path(projects_dir) / "cache"
+            filename = Path(r2_key).name
+            cache_file = cache_dir / filename
+            if cache_file.exists():
+                try:
+                    cache_file.unlink()
+                    logger.info(f"Deleted from cache: {cache_file}")
+                except Exception as e:
+                    logger.error(f"Failed to delete from cache: {e}")
     
     def _remove_stamps_from_document(self, node: TreeNode):
         """Удалить рамки и QR-коды из PDF документа (скачать из R2, обработать, загрузить обратно)"""

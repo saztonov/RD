@@ -316,6 +316,37 @@ class R2Storage:
             logger.error(f"❌ Ошибка удаления объекта: {e}")
             return False
 
+    def rename_object(self, old_key: str, new_key: str) -> bool:
+        """
+        Переименовать объект в R2 (копирование + удаление)
+
+        Args:
+            old_key: Старый ключ объекта
+            new_key: Новый ключ объекта
+
+        Returns:
+            True если успешно
+        """
+        try:
+            # Копируем объект с новым ключом
+            copy_source = {"Bucket": self.bucket_name, "Key": old_key}
+            self.s3_client.copy_object(
+                Bucket=self.bucket_name,
+                CopySource=copy_source,
+                Key=new_key
+            )
+            logger.info(f"✅ Объект скопирован: {old_key} → {new_key}")
+            
+            # Удаляем старый объект
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=old_key)
+            logger.info(f"✅ Старый объект удален: {old_key}")
+            
+            return True
+
+        except ClientError as e:
+            logger.error(f"❌ Ошибка переименования объекта: {e}")
+            return False
+
     def generate_presigned_url(self, remote_key: str, expiration: int = 3600) -> Optional[str]:
         """
         Создать временную ссылку на объект
