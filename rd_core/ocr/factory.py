@@ -30,3 +30,4 @@ def create_ocr_engine(backend: str = "dummy", **kwargs) -> OCRBackend:
         from rd_core.ocr.dummy import DummyOCRBackend
         return DummyOCRBackend()
 
+

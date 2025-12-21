@@ -74,3 +74,4 @@ class ContextMenuMixin:
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
 
+

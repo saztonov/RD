@@ -362,8 +362,8 @@ def job_to_dict(job: Job) -> dict:
     if job.node_id:
         pdf_r2_key = get_node_pdf_r2_key(job.node_id)
         if pdf_r2_key:
-            from pathlib import Path
-            result_prefix = str(Path(pdf_r2_key).parent)
+            from pathlib import PurePosixPath
+            result_prefix = str(PurePosixPath(pdf_r2_key).parent)
         else:
             result_prefix = f"tree_docs/{job.node_id}"
     
@@ -577,7 +577,7 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
     Файлы загружены в папку исходного PDF (parent dir от pdf_r2_key)
     """
     import logging
-    from pathlib import Path
+    from pathlib import Path, PurePosixPath
     logger = logging.getLogger(__name__)
     
     if not node_id:
@@ -588,7 +588,7 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
     # Получаем r2_key исходного PDF и используем его родительскую папку
     pdf_r2_key = get_node_pdf_r2_key(node_id)
     if pdf_r2_key:
-        tree_prefix = str(Path(pdf_r2_key).parent)
+        tree_prefix = str(PurePosixPath(pdf_r2_key).parent)
     else:
         tree_prefix = f"tree_docs/{node_id}"
     

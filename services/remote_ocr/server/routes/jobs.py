@@ -14,6 +14,7 @@ from services.remote_ocr.server.storage import (
     get_job,
     get_job_file_by_type,
     get_job_files,
+    get_node_pdf_r2_key,
     job_to_dict,
     list_jobs,
     pause_job,
@@ -65,9 +66,16 @@ async def create_job_endpoint(
     
     job_id = str(uuid.uuid4())
     
-    # Для node_id файлы уже в tree_docs, для остальных - в ocr_jobs
+    # Определяем r2_prefix - папку для файлов задачи
+    # Для node_id берём папку где лежит PDF (из node_files/attributes)
+    # Для остальных - ocr_jobs/{job_id}
     if node_id:
-        r2_prefix = f"tree_docs/{node_id}"
+        pdf_r2_key = get_node_pdf_r2_key(node_id)
+        if pdf_r2_key:
+            from pathlib import PurePosixPath
+            r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
+        else:
+            r2_prefix = f"tree_docs/{node_id}"
     else:
         r2_prefix = f"ocr_jobs/{job_id}"
     
@@ -96,18 +104,21 @@ async def create_job_endpoint(
         s3_client, bucket_name = get_r2_sync_client()
         
         if node_id:
-            # Файлы уже в tree_docs/{node_id}/, только обновляем annotation.json (blocks)
+            # Файлы уже в r2_prefix (папка где лежит PDF)
+            # Формируем annotation.json с именем документа: {doc_stem}_annotation.json
+            from pathlib import PurePosixPath
+            doc_stem = PurePosixPath(document_name).stem
             blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
-            blocks_key = f"{r2_prefix}/annotation.json"
+            blocks_key = f"{r2_prefix}/{doc_stem}_annotation.json"
             s3_client.put_object(
                 Bucket=bucket_name,
                 Key=blocks_key,
                 Body=blocks_bytes,
                 ContentType="application/json"
             )
-            add_job_file(job.id, "blocks", blocks_key, "annotation.json", len(blocks_bytes))
-            # PDF уже есть в tree_docs, регистрируем ссылку
-            pdf_key = f"{r2_prefix}/{document_name}"
+            add_job_file(job.id, "blocks", blocks_key, f"{doc_stem}_annotation.json", len(blocks_bytes))
+            # PDF уже есть, регистрируем правильный ключ
+            pdf_key = get_node_pdf_r2_key(node_id) or f"{r2_prefix}/{document_name}"
             add_job_file(job.id, "pdf", pdf_key, document_name, 0)
         else:
             # Загружаем файлы в ocr_jobs (обратная совместимость)
@@ -168,7 +179,8 @@ def list_jobs_endpoint(
             "document_id": j.document_id,
             "created_at": j.created_at,
             "updated_at": j.updated_at,
-            "error_message": j.error_message
+            "error_message": j.error_message,
+            "node_id": j.node_id
         }
         for j in jobs
     ]
@@ -330,14 +342,27 @@ async def restart_job_endpoint(
             blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
             
             s3_client, bucket_name = get_r2_sync_client()
-            blocks_key = f"{job.r2_prefix}/annotation.json"
+            
+            # Определяем правильный r2_prefix для node_id
+            if job.node_id:
+                pdf_r2_key = get_node_pdf_r2_key(job.node_id)
+                if pdf_r2_key:
+                    from pathlib import PurePosixPath
+                    r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
+                    doc_stem = PurePosixPath(job.document_name).stem
+                    blocks_key = f"{r2_prefix}/{doc_stem}_annotation.json"
+                else:
+                    blocks_key = f"{job.r2_prefix}/annotation.json"
+            else:
+                blocks_key = f"{job.r2_prefix}/annotation.json"
+            
             s3_client.put_object(
                 Bucket=bucket_name,
                 Key=blocks_key,
                 Body=blocks_bytes,
                 ContentType="application/json"
             )
-            _logger.info(f"Updated blocks for job {job_id}")
+            _logger.info(f"Updated blocks for job {job_id}: {blocks_key}")
         except Exception as e:
             _logger.error(f"Failed to update blocks: {e}")
             raise HTTPException(status_code=400, detail=f"Invalid blocks: {e}")

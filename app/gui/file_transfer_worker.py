@@ -86,3 +86,4 @@ class FileTransferWorker(QThread):
         """Остановить обработку"""
         self._running = False
 
+

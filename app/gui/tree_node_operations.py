@@ -197,8 +197,8 @@ class TreeNodeOperationsMixin:
                 parent_item.setExpanded(True)
             
             logger.info(f"Document added: {doc_node.id} with r2_key={task.r2_key}")
-            # Сигнал с r2_key для открытия
-            self.file_uploaded_r2.emit(task.r2_key)
+            # Сигнал с node_id и r2_key для открытия
+            self.file_uploaded_r2.emit(doc_node.id, task.r2_key)
             
         except Exception as e:
             logger.exception(f"Failed to add document: {e}")

@@ -442,3 +442,4 @@ class MarkdownEditorDialog(QDialog):
         else:
             event.accept()
 
+

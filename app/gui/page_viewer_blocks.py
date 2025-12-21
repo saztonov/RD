@@ -143,3 +143,4 @@ class BlockRenderingMixin:
                 selected.append(self.current_blocks[self.selected_block_idx])
         return selected
 
+

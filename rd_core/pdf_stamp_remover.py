@@ -177,3 +177,4 @@ def remove_stamps_from_pdf(input_path: str, output_path: Optional[str] = None) -
         return True, output_path
     return False, "Ошибка обработки PDF"
 
+

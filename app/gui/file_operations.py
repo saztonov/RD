@@ -334,9 +334,9 @@ class FileOperationsMixin:
         # Обновляем заголовок
         self.setWindowTitle(f"PDF Annotation Tool - {Path(pdf_path).name}")
     
-    def _on_tree_file_uploaded_r2(self, r2_key: str):
+    def _on_tree_file_uploaded_r2(self, node_id: str, r2_key: str):
         """Открыть загруженный файл из R2 в редакторе"""
-        self._on_tree_document_selected("", r2_key)
+        self._on_tree_document_selected(node_id, r2_key)
     
     def _on_tree_document_selected(self, node_id: str, r2_key: str):
         """Открыть документ из дерева (асинхронное скачивание из R2)"""

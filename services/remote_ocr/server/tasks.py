@@ -7,7 +7,6 @@ import logging
 import shutil
 import tempfile
 import traceback
-import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict
@@ -69,14 +68,16 @@ def _download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:
         if not r2.download_file(pdf_r2_key, str(pdf_path)):
             raise RuntimeError(f"Failed to download PDF from R2: {pdf_r2_key}")
         
-        # annotation.json берём из job_files (обновлённый при создании задачи)
+        # annotation.json берём из job_files (записан при создании задачи)
         blocks_file = get_job_file_by_type(job.id, "blocks")
         if blocks_file:
             blocks_r2_key = blocks_file.r2_key
         else:
-            # Fallback: tree_docs/{node_id}/annotation.json
-            tree_prefix = f"tree_docs/{job.node_id}"
-            blocks_r2_key = f"{tree_prefix}/annotation.json"
+            # Fallback: {pdf_parent}/{doc_stem}_annotation.json
+            from pathlib import PurePosixPath
+            pdf_parent = str(PurePosixPath(pdf_r2_key).parent)
+            doc_stem = PurePosixPath(job.document_name).stem
+            blocks_r2_key = f"{pdf_parent}/{doc_stem}_annotation.json"
         
         blocks_path = work_dir / "blocks.json"
         if not r2.download_file(blocks_r2_key, str(blocks_path)):
@@ -115,7 +116,8 @@ def _upload_results_to_r2(job: Job, work_dir: Path) -> str:
         # Получаем r2_key исходного PDF и используем его родительскую папку
         pdf_r2_key = get_node_pdf_r2_key(job.node_id)
         if pdf_r2_key:
-            r2_prefix = str(Path(pdf_r2_key).parent)
+            from pathlib import PurePosixPath
+            r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
         else:
             r2_prefix = f"tree_docs/{job.node_id}"
     else:
@@ -139,14 +141,6 @@ def _upload_results_to_r2(job: Job, work_dir: Path) -> str:
         r2.upload_file(str(annotation_path), r2_key)
         add_job_file(job.id, "annotation", r2_key, annotation_filename, annotation_path.stat().st_size)
     
-    # result.zip - НЕ создаём для node_id (только для обратной совместимости)
-    if not job.node_id:
-        result_zip_path = work_dir / "result.zip"
-        if result_zip_path.exists():
-            r2_key = f"{job.r2_prefix}/result.zip"
-            r2.upload_file(str(result_zip_path), r2_key)
-            add_job_file(job.id, "result_zip", r2_key, "result.zip", result_zip_path.stat().st_size)
-    
     # crops/
     crops_dir = work_dir / "crops"
     if crops_dir.exists():
@@ -163,7 +157,6 @@ def _create_empty_result(job: Job, work_dir: Path, pdf_path: Path) -> None:
     """Создать пустой результат"""
     result_md_path = work_dir / "result.md"
     annotation_path = work_dir / "annotation.json"
-    result_zip_path = work_dir / "result.zip"
     
     with open(result_md_path, "w", encoding="utf-8") as f:
         f.write("# OCR Results\n\nNo blocks to process.\n")
@@ -171,12 +164,6 @@ def _create_empty_result(job: Job, work_dir: Path, pdf_path: Path) -> None:
     with open(annotation_path, "w", encoding="utf-8") as f:
         from rd_core.models import Document
         json.dump(Document(pdf_path=pdf_path.name, pages=[]).to_dict(), f, ensure_ascii=False, indent=2)
-    
-    with zipfile.ZipFile(result_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(result_md_path, "result.md")
-        zf.write(annotation_path, "annotation.json")
-        if pdf_path.exists():
-            zf.write(pdf_path, "document.pdf")
 
 
 @celery_app.task(bind=True, name="run_ocr_task", max_retries=3, rate_limit="4/m")
@@ -478,18 +465,6 @@ def run_ocr_task(self, job_id: str) -> dict:
         doc = Document(pdf_path=pdf_path.name, pages=pages)
         with open(annotation_path, "w", encoding="utf-8") as f:
             json.dump(doc.to_dict(), f, ensure_ascii=False, indent=2)
-        
-        result_zip_path = work_dir / "result.zip"
-        with zipfile.ZipFile(result_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.write(result_md_path, "result.md")
-            if annotation_path.exists():
-                zf.write(annotation_path, "annotation.json")
-            if pdf_path.exists():
-                zf.write(pdf_path, "document.pdf")
-            if crops_dir.exists():
-                for crop_file in crops_dir.iterdir():
-                    if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
-                        zf.write(crop_file, f"crops/{crop_file.name}")
         
         # Загрузка результатов в R2
         logger.info(f"Загрузка результатов в R2...")

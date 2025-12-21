@@ -86,3 +86,4 @@ def log_pil_images_summary(images: dict, label: str = "") -> None:
     count = len(images)
     logger.info(f"[MEMORY] {label}: {count} images, ~{total_mb:.1f} MB")
 
+

@@ -86,7 +86,7 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
     """Виджет дерева проектов"""
     
     document_selected = Signal(str, str)  # node_id, r2_key
-    file_uploaded_r2 = Signal(str)  # r2_key
+    file_uploaded_r2 = Signal(str, str)  # node_id, r2_key
     
     def __init__(self, parent=None):
         super().__init__(parent)
