@@ -1,0 +1,3578 @@
+{
+  "auth.audit_log_entries": {
+    "schema": "auth",
+    "name": "audit_log_entries",
+    "comment": "Auth: Audit trail for user actions.",
+    "columns": [
+      {
+        "name": "instance_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "payload",
+        "comment": null,
+        "default": null,
+        "data_type": "json",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "ip_address",
+        "comment": null,
+        "default": "''::character varying",
+        "data_type": "character varying(64)",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "audit_log_entries_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "auth.flow_state": {
+    "schema": "auth",
+    "name": "flow_state",
+    "comment": "stores metadata for pkce logins",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "user_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "auth_code",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "code_challenge_method",
+        "comment": null,
+        "default": null,
+        "data_type": "auth.code_challenge_method",
+        "is_nullable": false
+      },
+      {
+        "name": "code_challenge",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "provider_type",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "provider_access_token",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "provider_refresh_token",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "authentication_method",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "auth_code_issued_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "flow_state_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "auth.identities": {
+    "schema": "auth",
+    "name": "identities",
+    "comment": "Auth: Stores identities associated to a user.",
+    "columns": [
+      {
+        "name": "provider_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "user_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "identity_data",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": false
+      },
+      {
+        "name": "provider",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "last_sign_in_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "email",
+        "comment": "Auth: Email is a generated column that references the optional email property in the identity_data",
+        "default": "lower((identity_data ->> 'email'::text))",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "identities_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "identities_provider_id_provider_unique",
+        "type": "UNIQUE",
+        "column": "provider",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "identities_provider_id_provider_unique",
+        "type": "UNIQUE",
+        "column": "provider_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "identities_user_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "user_id",
+        "foreign_table": "users",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.instances": {
+    "schema": "auth",
+    "name": "instances",
+    "comment": "Auth: Manages users across multiple sites.",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "uuid",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "raw_base_config",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "instances_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "auth.mfa_amr_claims": {
+    "schema": "auth",
+    "name": "mfa_amr_claims",
+    "comment": "auth: stores authenticator method reference claims for multi factor authentication",
+    "columns": [
+      {
+        "name": "session_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "authentication_method",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "amr_id_pk",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "mfa_amr_claims_session_id_authentication_method_pkey",
+        "type": "UNIQUE",
+        "column": "authentication_method",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "mfa_amr_claims_session_id_authentication_method_pkey",
+        "type": "UNIQUE",
+        "column": "session_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "mfa_amr_claims_session_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "session_id",
+        "foreign_table": "sessions",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.mfa_challenges": {
+    "schema": "auth",
+    "name": "mfa_challenges",
+    "comment": "auth: stores metadata about challenge requests made",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "factor_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "verified_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "ip_address",
+        "comment": null,
+        "default": null,
+        "data_type": "inet",
+        "is_nullable": false
+      },
+      {
+        "name": "otp_code",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "web_authn_session_data",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "mfa_challenges_auth_factor_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "factor_id",
+        "foreign_table": "mfa_factors",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      },
+      {
+        "name": "mfa_challenges_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "auth.mfa_factors": {
+    "schema": "auth",
+    "name": "mfa_factors",
+    "comment": "auth: stores metadata about factors",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "user_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "friendly_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "factor_type",
+        "comment": null,
+        "default": null,
+        "data_type": "auth.factor_type",
+        "is_nullable": false
+      },
+      {
+        "name": "status",
+        "comment": null,
+        "default": null,
+        "data_type": "auth.factor_status",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "secret",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "phone",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "last_challenged_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "web_authn_credential",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "web_authn_aaguid",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "last_webauthn_challenge_data",
+        "comment": "Stores the latest WebAuthn challenge data including attestation/assertion for customer verification",
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "mfa_factors_last_challenged_at_key",
+        "type": "UNIQUE",
+        "column": "last_challenged_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "mfa_factors_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "mfa_factors_user_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "user_id",
+        "foreign_table": "users",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.oauth_authorizations": {
+    "schema": "auth",
+    "name": "oauth_authorizations",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "authorization_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "user_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "redirect_uri",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "scope",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "state",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "resource",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "code_challenge",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "code_challenge_method",
+        "comment": null,
+        "default": null,
+        "data_type": "auth.code_challenge_method",
+        "is_nullable": true
+      },
+      {
+        "name": "response_type",
+        "comment": null,
+        "default": "'code'::auth.oauth_response_type",
+        "data_type": "auth.oauth_response_type",
+        "is_nullable": false
+      },
+      {
+        "name": "status",
+        "comment": null,
+        "default": "'pending'::auth.oauth_authorization_status",
+        "data_type": "auth.oauth_authorization_status",
+        "is_nullable": false
+      },
+      {
+        "name": "authorization_code",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "expires_at",
+        "comment": null,
+        "default": "(now() + '00:03:00'::interval)",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "approved_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "nonce",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "oauth_authorizations_authorization_code_key",
+        "type": "UNIQUE",
+        "column": "authorization_code",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_authorization_code_length",
+        "type": "CHECK",
+        "column": "authorization_code",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_authorization_id_key",
+        "type": "UNIQUE",
+        "column": "authorization_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_client_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "client_id",
+        "foreign_table": "oauth_clients",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      },
+      {
+        "name": "oauth_authorizations_code_challenge_length",
+        "type": "CHECK",
+        "column": "code_challenge",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_expires_at_future",
+        "type": "CHECK",
+        "column": "created_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_expires_at_future",
+        "type": "CHECK",
+        "column": "expires_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_nonce_length",
+        "type": "CHECK",
+        "column": "nonce",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_redirect_uri_length",
+        "type": "CHECK",
+        "column": "redirect_uri",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_resource_length",
+        "type": "CHECK",
+        "column": "resource",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_scope_length",
+        "type": "CHECK",
+        "column": "scope",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_state_length",
+        "type": "CHECK",
+        "column": "state",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_authorizations_user_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "user_id",
+        "foreign_table": "users",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.oauth_client_states": {
+    "schema": "auth",
+    "name": "oauth_client_states",
+    "comment": "Stores OAuth states for third-party provider authentication flows where Supabase acts as the OAuth client.",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "provider_type",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "code_verifier",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "oauth_client_states_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "auth.oauth_clients": {
+    "schema": "auth",
+    "name": "oauth_clients",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_secret_hash",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "registration_type",
+        "comment": null,
+        "default": null,
+        "data_type": "auth.oauth_registration_type",
+        "is_nullable": false
+      },
+      {
+        "name": "redirect_uris",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "grant_types",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "client_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "client_uri",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "logo_uri",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "deleted_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "client_type",
+        "comment": null,
+        "default": "'confidential'::auth.oauth_client_type",
+        "data_type": "auth.oauth_client_type",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "oauth_clients_client_name_length",
+        "type": "CHECK",
+        "column": "client_name",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_clients_client_uri_length",
+        "type": "CHECK",
+        "column": "client_uri",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_clients_logo_uri_length",
+        "type": "CHECK",
+        "column": "logo_uri",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_clients_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "auth.oauth_consents": {
+    "schema": "auth",
+    "name": "oauth_consents",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "user_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "scopes",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "granted_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "revoked_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "oauth_consents_client_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "client_id",
+        "foreign_table": "oauth_clients",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      },
+      {
+        "name": "oauth_consents_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_consents_revoked_after_granted",
+        "type": "CHECK",
+        "column": "granted_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_consents_revoked_after_granted",
+        "type": "CHECK",
+        "column": "revoked_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_consents_scopes_length",
+        "type": "CHECK",
+        "column": "scopes",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_consents_scopes_not_empty",
+        "type": "CHECK",
+        "column": "scopes",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_consents_user_client_unique",
+        "type": "UNIQUE",
+        "column": "client_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_consents_user_client_unique",
+        "type": "UNIQUE",
+        "column": "user_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_consents_user_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "user_id",
+        "foreign_table": "users",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.one_time_tokens": {
+    "schema": "auth",
+    "name": "one_time_tokens",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "user_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "token_type",
+        "comment": null,
+        "default": null,
+        "data_type": "auth.one_time_token_type",
+        "is_nullable": false
+      },
+      {
+        "name": "token_hash",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "relates_to",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "one_time_tokens_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "one_time_tokens_token_hash_check",
+        "type": "CHECK",
+        "column": "token_hash",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "one_time_tokens_user_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "user_id",
+        "foreign_table": "users",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.refresh_tokens": {
+    "schema": "auth",
+    "name": "refresh_tokens",
+    "comment": "Auth: Store of tokens used to refresh JWT tokens once they expire.",
+    "columns": [
+      {
+        "name": "instance_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "nextval('auth.refresh_tokens_id_seq'::regclass)",
+        "data_type": "bigint",
+        "is_nullable": false
+      },
+      {
+        "name": "token",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "user_id",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "revoked",
+        "comment": null,
+        "default": null,
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "parent",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "session_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "refresh_tokens_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "refresh_tokens_session_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "session_id",
+        "foreign_table": "sessions",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      },
+      {
+        "name": "refresh_tokens_token_unique",
+        "type": "UNIQUE",
+        "column": "token",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "auth.saml_providers": {
+    "schema": "auth",
+    "name": "saml_providers",
+    "comment": "Auth: Manages SAML Identity Provider connections.",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "sso_provider_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "entity_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "metadata_xml",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "metadata_url",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "attribute_mapping",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "name_id_format",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "entity_id not empty",
+        "type": "CHECK",
+        "column": "entity_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "metadata_url not empty",
+        "type": "CHECK",
+        "column": "metadata_url",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "metadata_xml not empty",
+        "type": "CHECK",
+        "column": "metadata_xml",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "saml_providers_entity_id_key",
+        "type": "UNIQUE",
+        "column": "entity_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "saml_providers_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "saml_providers_sso_provider_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "sso_provider_id",
+        "foreign_table": "sso_providers",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.saml_relay_states": {
+    "schema": "auth",
+    "name": "saml_relay_states",
+    "comment": "Auth: Contains SAML Relay State information for each Service Provider initiated login.",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "sso_provider_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "request_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "for_email",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "redirect_to",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "flow_state_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "request_id not empty",
+        "type": "CHECK",
+        "column": "request_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "saml_relay_states_flow_state_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "flow_state_id",
+        "foreign_table": "flow_state",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      },
+      {
+        "name": "saml_relay_states_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "saml_relay_states_sso_provider_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "sso_provider_id",
+        "foreign_table": "sso_providers",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.schema_migrations": {
+    "schema": "auth",
+    "name": "schema_migrations",
+    "comment": "Auth: Manages updates to the auth system.",
+    "columns": [
+      {
+        "name": "version",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "schema_migrations_pkey",
+        "type": "PRIMARY KEY",
+        "column": "version",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "auth.sessions": {
+    "schema": "auth",
+    "name": "sessions",
+    "comment": "Auth: Stores session data associated to a user.",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "user_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "factor_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "aal",
+        "comment": null,
+        "default": null,
+        "data_type": "auth.aal_level",
+        "is_nullable": true
+      },
+      {
+        "name": "not_after",
+        "comment": "Auth: Not after is a nullable column that contains a timestamp after which the session should be regarded as expired.",
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "refreshed_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp without time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "user_agent",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "ip",
+        "comment": null,
+        "default": null,
+        "data_type": "inet",
+        "is_nullable": true
+      },
+      {
+        "name": "tag",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "oauth_client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "refresh_token_hmac_key",
+        "comment": "Holds a HMAC-SHA256 key used to sign refresh tokens for this session.",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "refresh_token_counter",
+        "comment": "Holds the ID (counter) of the last issued refresh token.",
+        "default": null,
+        "data_type": "bigint",
+        "is_nullable": true
+      },
+      {
+        "name": "scopes",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "sessions_oauth_client_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "oauth_client_id",
+        "foreign_table": "oauth_clients",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      },
+      {
+        "name": "sessions_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "sessions_scopes_length",
+        "type": "CHECK",
+        "column": "scopes",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "sessions_user_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "user_id",
+        "foreign_table": "users",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.sso_domains": {
+    "schema": "auth",
+    "name": "sso_domains",
+    "comment": "Auth: Manages SSO email address domain mapping to an SSO Identity Provider.",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "sso_provider_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "domain",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "domain not empty",
+        "type": "CHECK",
+        "column": "domain",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "sso_domains_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "sso_domains_sso_provider_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "sso_provider_id",
+        "foreign_table": "sso_providers",
+        "foreign_column": "id",
+        "foreign_table_schema": "auth"
+      }
+    ]
+  },
+  "auth.sso_providers": {
+    "schema": "auth",
+    "name": "sso_providers",
+    "comment": "Auth: Manages SSO identity provider information; see saml_providers for SAML.",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "resource_id",
+        "comment": "Auth: Uniquely identifies a SSO provider according to a user-chosen resource ID (case insensitive), useful in infrastructure as code.",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "disabled",
+        "comment": null,
+        "default": null,
+        "data_type": "boolean",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "resource_id not empty",
+        "type": "CHECK",
+        "column": "resource_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "sso_providers_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "auth.users": {
+    "schema": "auth",
+    "name": "users",
+    "comment": "Auth: Stores user login data within a secure schema.",
+    "columns": [
+      {
+        "name": "instance_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "aud",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "role",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "email",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "encrypted_password",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "email_confirmed_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "invited_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "confirmation_token",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "confirmation_sent_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "recovery_token",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "recovery_sent_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "email_change_token_new",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "email_change",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "email_change_sent_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "last_sign_in_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "raw_app_meta_data",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "raw_user_meta_data",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "is_super_admin",
+        "comment": null,
+        "default": null,
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "phone",
+        "comment": null,
+        "default": "NULL::character varying",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "phone_confirmed_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "phone_change",
+        "comment": null,
+        "default": "''::character varying",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "phone_change_token",
+        "comment": null,
+        "default": "''::character varying",
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "phone_change_sent_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "confirmed_at",
+        "comment": null,
+        "default": "LEAST(email_confirmed_at, phone_confirmed_at)",
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "email_change_token_current",
+        "comment": null,
+        "default": "''::character varying",
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "email_change_confirm_status",
+        "comment": null,
+        "default": "0",
+        "data_type": "smallint",
+        "is_nullable": true
+      },
+      {
+        "name": "banned_until",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "reauthentication_token",
+        "comment": null,
+        "default": "''::character varying",
+        "data_type": "character varying(255)",
+        "is_nullable": true
+      },
+      {
+        "name": "reauthentication_sent_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "is_sso_user",
+        "comment": "Auth: Set this column to true when the account comes from SSO. These accounts can have duplicate emails.",
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": false
+      },
+      {
+        "name": "deleted_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "is_anonymous",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "users_email_change_confirm_status_check",
+        "type": "CHECK",
+        "column": "email_change_confirm_status",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "users_phone_key",
+        "type": "UNIQUE",
+        "column": "phone",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "users_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.job_files": {
+    "schema": "public",
+    "name": "job_files",
+    "comment": "Файлы связанные с OCR задачами",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "job_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "file_type",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "r2_key",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "file_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "file_size",
+        "comment": null,
+        "default": "0",
+        "data_type": "bigint",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "job_files_job_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "job_id",
+        "foreign_table": "jobs",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "job_files_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.job_settings": {
+    "schema": "public",
+    "name": "job_settings",
+    "comment": "Настройки моделей для OCR задач",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "job_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "text_model",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "table_model",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "image_model",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "job_settings_job_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "job_id",
+        "foreign_table": "jobs",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "job_settings_job_id_key",
+        "type": "UNIQUE",
+        "column": "job_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "job_settings_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.jobs": {
+    "schema": "public",
+    "name": "jobs",
+    "comment": "OCR задачи обработки документов",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "document_id",
+        "comment": "Хеш PDF файла для идентификации",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "document_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "task_name",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "status",
+        "comment": null,
+        "default": "'queued'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "progress",
+        "comment": null,
+        "default": "0",
+        "data_type": "real",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "error_message",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "engine",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "r2_prefix",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "node_id",
+        "comment": "ID узла дерева документа (для связи OCR результатов с деревом проектов)",
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "jobs_node_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "node_id",
+        "foreign_table": "tree_nodes",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "jobs_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.node_files": {
+    "schema": "public",
+    "name": "node_files",
+    "comment": "Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "node_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "file_type",
+        "comment": "Тип файла: pdf, annotation, result_md, result_zip, crop, image",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "r2_key",
+        "comment": "Ключ объекта в R2 storage",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "file_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "file_size",
+        "comment": null,
+        "default": "0",
+        "data_type": "bigint",
+        "is_nullable": true
+      },
+      {
+        "name": "mime_type",
+        "comment": null,
+        "default": "'application/octet-stream'::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "metadata",
+        "comment": "Метаданные: version, page_index для кропов и т.д.",
+        "default": "'{}'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "node_files_file_type_check",
+        "type": "CHECK",
+        "column": "file_type",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "node_files_node_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "node_id",
+        "foreign_table": "tree_nodes",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "node_files_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.section_types": {
+    "schema": "public",
+    "name": "section_types",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "nextval('section_types_id_seq'::regclass)",
+        "data_type": "integer",
+        "is_nullable": false
+      },
+      {
+        "name": "code",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "sort_order",
+        "comment": null,
+        "default": "0",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "section_types_code_key",
+        "type": "UNIQUE",
+        "column": "code",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "section_types_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.stage_types": {
+    "schema": "public",
+    "name": "stage_types",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "nextval('stage_types_id_seq'::regclass)",
+        "data_type": "integer",
+        "is_nullable": false
+      },
+      {
+        "name": "code",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "sort_order",
+        "comment": null,
+        "default": "0",
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "stage_types_code_key",
+        "type": "UNIQUE",
+        "column": "code",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "stage_types_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.tree_nodes": {
+    "schema": "public",
+    "name": "tree_nodes",
+    "comment": "Дерево проектов - иерархическая структура узлов",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "parent_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "node_type",
+        "comment": "Тип узла: client, project, section, stage, task, document",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "code",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "version",
+        "comment": null,
+        "default": "1",
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "status",
+        "comment": null,
+        "default": "'active'::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "attributes",
+        "comment": "Дополнительные атрибуты узла (JSON)",
+        "default": "'{}'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "sort_order",
+        "comment": null,
+        "default": "0",
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "tree_nodes_parent_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "parent_id",
+        "foreign_table": "tree_nodes",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "tree_nodes_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.schema_migrations": {
+    "schema": "realtime",
+    "name": "schema_migrations",
+    "comment": null,
+    "columns": [
+      {
+        "name": "version",
+        "comment": null,
+        "default": null,
+        "data_type": "bigint",
+        "is_nullable": false
+      },
+      {
+        "name": "inserted_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp(0) without time zone",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "schema_migrations_pkey",
+        "type": "PRIMARY KEY",
+        "column": "version",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.subscription": {
+    "schema": "realtime",
+    "name": "subscription",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "bigint",
+        "is_nullable": false
+      },
+      {
+        "name": "subscription_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "entity",
+        "comment": null,
+        "default": null,
+        "data_type": "regclass",
+        "is_nullable": false
+      },
+      {
+        "name": "filters",
+        "comment": null,
+        "default": "'{}'::realtime.user_defined_filter[]",
+        "data_type": "realtime.user_defined_filter[]",
+        "is_nullable": false
+      },
+      {
+        "name": "claims",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": false
+      },
+      {
+        "name": "claims_role",
+        "comment": null,
+        "default": "realtime.to_regrole((claims ->> 'role'::text))",
+        "data_type": "regrole",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "timezone('utc'::text, now())",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "pk_subscription",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "storage.buckets": {
+    "schema": "storage",
+    "name": "buckets",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "owner",
+        "comment": "Field is deprecated, use owner_id instead",
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "public",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "avif_autodetection",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "file_size_limit",
+        "comment": null,
+        "default": null,
+        "data_type": "bigint",
+        "is_nullable": true
+      },
+      {
+        "name": "allowed_mime_types",
+        "comment": null,
+        "default": null,
+        "data_type": "text[]",
+        "is_nullable": true
+      },
+      {
+        "name": "owner_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "type",
+        "comment": null,
+        "default": "'STANDARD'::storage.buckettype",
+        "data_type": "storage.buckettype",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "buckets_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "storage.buckets_analytics": {
+    "schema": "storage",
+    "name": "buckets_analytics",
+    "comment": null,
+    "columns": [
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "type",
+        "comment": null,
+        "default": "'ANALYTICS'::storage.buckettype",
+        "data_type": "storage.buckettype",
+        "is_nullable": false
+      },
+      {
+        "name": "format",
+        "comment": null,
+        "default": "'ICEBERG'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "deleted_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "buckets_analytics_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "storage.buckets_vectors": {
+    "schema": "storage",
+    "name": "buckets_vectors",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "type",
+        "comment": null,
+        "default": "'VECTOR'::storage.buckettype",
+        "data_type": "storage.buckettype",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "buckets_vectors_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "storage.migrations": {
+    "schema": "storage",
+    "name": "migrations",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "integer",
+        "is_nullable": false
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(100)",
+        "is_nullable": false
+      },
+      {
+        "name": "hash",
+        "comment": null,
+        "default": null,
+        "data_type": "character varying(40)",
+        "is_nullable": false
+      },
+      {
+        "name": "executed_at",
+        "comment": null,
+        "default": "CURRENT_TIMESTAMP",
+        "data_type": "timestamp without time zone",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "migrations_name_key",
+        "type": "UNIQUE",
+        "column": "name",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "migrations_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "storage.objects": {
+    "schema": "storage",
+    "name": "objects",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "bucket_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "owner",
+        "comment": "Field is deprecated, use owner_id instead",
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "last_accessed_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "metadata",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "path_tokens",
+        "comment": null,
+        "default": "string_to_array(name, '/'::text)",
+        "data_type": "text[]",
+        "is_nullable": true
+      },
+      {
+        "name": "version",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "owner_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "user_metadata",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "level",
+        "comment": null,
+        "default": null,
+        "data_type": "integer",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "objects_bucketId_fkey",
+        "type": "FOREIGN KEY",
+        "column": "bucket_id",
+        "foreign_table": "buckets",
+        "foreign_column": "id",
+        "foreign_table_schema": "storage"
+      },
+      {
+        "name": "objects_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "storage.prefixes": {
+    "schema": "storage",
+    "name": "prefixes",
+    "comment": null,
+    "columns": [
+      {
+        "name": "bucket_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "level",
+        "comment": null,
+        "default": "storage.get_level(name)",
+        "data_type": "integer",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "prefixes_bucketId_fkey",
+        "type": "FOREIGN KEY",
+        "column": "bucket_id",
+        "foreign_table": "buckets",
+        "foreign_column": "id",
+        "foreign_table_schema": "storage"
+      },
+      {
+        "name": "prefixes_pkey",
+        "type": "PRIMARY KEY",
+        "column": "bucket_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "prefixes_pkey",
+        "type": "PRIMARY KEY",
+        "column": "level",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "prefixes_pkey",
+        "type": "PRIMARY KEY",
+        "column": "name",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "storage.s3_multipart_uploads": {
+    "schema": "storage",
+    "name": "s3_multipart_uploads",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "in_progress_size",
+        "comment": null,
+        "default": "0",
+        "data_type": "bigint",
+        "is_nullable": false
+      },
+      {
+        "name": "upload_signature",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "bucket_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "key",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "version",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "owner_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "user_metadata",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "s3_multipart_uploads_bucket_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "bucket_id",
+        "foreign_table": "buckets",
+        "foreign_column": "id",
+        "foreign_table_schema": "storage"
+      },
+      {
+        "name": "s3_multipart_uploads_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "storage.s3_multipart_uploads_parts": {
+    "schema": "storage",
+    "name": "s3_multipart_uploads_parts",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "upload_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "size",
+        "comment": null,
+        "default": "0",
+        "data_type": "bigint",
+        "is_nullable": false
+      },
+      {
+        "name": "part_number",
+        "comment": null,
+        "default": null,
+        "data_type": "integer",
+        "is_nullable": false
+      },
+      {
+        "name": "bucket_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "key",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "etag",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "owner_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "version",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "s3_multipart_uploads_parts_bucket_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "bucket_id",
+        "foreign_table": "buckets",
+        "foreign_column": "id",
+        "foreign_table_schema": "storage"
+      },
+      {
+        "name": "s3_multipart_uploads_parts_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "s3_multipart_uploads_parts_upload_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "upload_id",
+        "foreign_table": "s3_multipart_uploads",
+        "foreign_column": "id",
+        "foreign_table_schema": "storage"
+      }
+    ]
+  },
+  "storage.vector_indexes": {
+    "schema": "storage",
+    "name": "vector_indexes",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "bucket_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "data_type",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "dimension",
+        "comment": null,
+        "default": null,
+        "data_type": "integer",
+        "is_nullable": false
+      },
+      {
+        "name": "distance_metric",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "metadata_configuration",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "vector_indexes_bucket_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "bucket_id",
+        "foreign_table": "buckets_vectors",
+        "foreign_column": "id",
+        "foreign_table_schema": "storage"
+      },
+      {
+        "name": "vector_indexes_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "vault.secrets": {
+    "schema": "vault",
+    "name": "secrets",
+    "comment": "Table with encrypted `secret` column for storing sensitive information on disk.",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "description",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "secret",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "key_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "nonce",
+        "comment": null,
+        "default": "vault._crypto_aead_det_noncegen()",
+        "data_type": "bytea",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "CURRENT_TIMESTAMP",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "CURRENT_TIMESTAMP",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "secrets_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  }
+}

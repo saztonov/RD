@@ -20,6 +20,7 @@ from .storage import (
     get_job_file_by_type,
     is_job_paused,
     update_job_status,
+    register_ocr_results_to_node,
 )
 from .rate_limiter import get_datalab_limiter
 from .worker_prompts import (
@@ -399,6 +400,10 @@ def run_ocr_task(self, job_id: str) -> dict:
         # Загрузка результатов в R2
         logger.info(f"Загрузка результатов в R2...")
         _upload_results_to_r2(job, work_dir)
+        
+        # Регистрация OCR результатов в node_files (связь с деревом проектов)
+        if job.node_id:
+            register_ocr_results_to_node(job.node_id, job.r2_prefix, work_dir)
         
         update_job_status(job.id, "done", progress=1.0)
         logger.info(f"Задача {job.id} завершена успешно")

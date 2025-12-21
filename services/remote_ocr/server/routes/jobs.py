@@ -42,6 +42,7 @@ async def create_job_endpoint(
     text_model: str = Form(""),
     table_model: str = Form(""),
     image_model: str = Form(""),
+    node_id: Optional[str] = Form(None),
     blocks_file: UploadFile = File(..., alias="blocks_file"),
     pdf: UploadFile = File(...),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -50,7 +51,7 @@ async def create_job_endpoint(
     check_api_key(x_api_key)
     
     blocks_json = (await blocks_file.read()).decode("utf-8")
-    _logger.info(f"POST /jobs: client_id={client_id}, document_id={document_id[:16]}...")
+    _logger.info(f"POST /jobs: client_id={client_id}, document_id={document_id[:16]}..., node_id={node_id}")
     
     try:
         blocks_data = json.loads(blocks_json)
@@ -68,7 +69,8 @@ async def create_job_endpoint(
         task_name=task_name,
         engine=engine,
         r2_prefix=r2_prefix,
-        status="queued"
+        status="queued",
+        node_id=node_id
     )
     
     save_job_settings(job.id, text_model, table_model, image_model)

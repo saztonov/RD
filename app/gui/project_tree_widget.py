@@ -41,6 +41,7 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         self._stage_types: List[StageType] = []
         self._section_types: List[SectionType] = []
         self._loading = False
+        self._copied_annotation: Dict = {}  # {"json": str, "source_r2_key": str}
         self._setup_ui()
         
         QTimer.singleShot(100, self._initial_load)
@@ -344,6 +345,16 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                     if r2_key and r2_key.lower().endswith(".pdf"):
                         action = menu.addAction("🗑️ Удалить рамки/QR")
                         action.setData(("remove_stamps", node))
+                    
+                    # Копировать/вставить аннотацию
+                    has_annotation = node.attributes.get("has_annotation", False)
+                    if has_annotation and r2_key:
+                        action = menu.addAction("📋 Скопировать аннотацию")
+                        action.setData(("copy_annotation", node))
+                    
+                    if self._copied_annotation and r2_key:
+                        action = menu.addAction("📥 Вставить аннотацию")
+                        action.setData(("paste_annotation", node))
                 
                 menu.addSeparator()
                 menu.addAction("✏️ Переименовать").setData(("rename", node))
@@ -392,6 +403,12 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         elif action == "set_version":
             node, version = data[1], data[2]
             self._set_document_version(node, version)
+        elif action == "copy_annotation":
+            node = data[1]
+            self._copy_annotation(node)
+        elif action == "paste_annotation":
+            node = data[1]
+            self._paste_annotation(node)
     
     def _filter_tree(self, text: str):
         """Фильтровать дерево по тексту"""
@@ -470,3 +487,72 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                         self._delete_node(node)
                         return True
         return super().eventFilter(obj, event)
+    
+    def _copy_annotation(self, node: TreeNode):
+        """Скопировать аннотацию документа в буфер"""
+        from rd_core.r2_storage import R2Storage
+        from app.gui.file_operations import get_annotation_r2_key
+        from PySide6.QtWidgets import QMessageBox
+        
+        r2_key = node.attributes.get("r2_key", "")
+        if not r2_key:
+            return
+        
+        try:
+            r2 = R2Storage()
+            ann_r2_key = get_annotation_r2_key(r2_key)
+            json_content = r2.download_text(ann_r2_key)
+            
+            if json_content:
+                self._copied_annotation = {
+                    "json": json_content,
+                    "source_r2_key": r2_key
+                }
+                self.status_label.setText(f"📋 Аннотация скопирована")
+                logger.info(f"Annotation copied from {ann_r2_key}")
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось загрузить аннотацию")
+        except Exception as e:
+            logger.error(f"Copy annotation failed: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка копирования: {e}")
+    
+    def _paste_annotation(self, node: TreeNode):
+        """Вставить аннотацию из буфера в документ"""
+        from rd_core.r2_storage import R2Storage
+        from app.gui.file_operations import get_annotation_r2_key
+        from PySide6.QtWidgets import QMessageBox
+        
+        if not self._copied_annotation:
+            return
+        
+        r2_key = node.attributes.get("r2_key", "")
+        if not r2_key:
+            return
+        
+        try:
+            r2 = R2Storage()
+            ann_r2_key = get_annotation_r2_key(r2_key)
+            
+            # Загружаем скопированную аннотацию
+            if r2.upload_text(self._copied_annotation["json"], ann_r2_key):
+                # Обновляем флаг has_annotation
+                attrs = node.attributes.copy()
+                attrs["has_annotation"] = True
+                self.client.update_node(node.id, attributes=attrs)
+                
+                # Обновляем отображение
+                item = self._node_map.get(node.id)
+                if item:
+                    node.attributes = attrs
+                    icon = NODE_ICONS.get(node.node_type, "📄")
+                    version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                    display_name = f"{icon} {version_tag} {node.name} 📋".strip()
+                    item.setText(0, display_name)
+                
+                self.status_label.setText(f"📥 Аннотация вставлена")
+                logger.info(f"Annotation pasted to {ann_r2_key}")
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось сохранить аннотацию")
+        except Exception as e:
+            logger.error(f"Paste annotation failed: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка вставки: {e}")

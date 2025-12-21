@@ -203,6 +203,7 @@ class RemoteOCRClient:
         table_model: Optional[str] = None,
         image_model: Optional[str] = None,
         reuse_existing: bool = True,
+        node_id: Optional[str] = None,
     ) -> JobInfo:
         """
         Создать задачу OCR
@@ -213,6 +214,7 @@ class RemoteOCRClient:
             task_name: название задания
             engine: движок OCR
             reuse_existing: переиспользовать существующую задачу если есть
+            node_id: ID узла дерева для связи результатов
         
         Returns:
             JobInfo с информацией о созданной/существующей задаче
@@ -248,6 +250,8 @@ class RemoteOCRClient:
                     form_data["table_model"] = table_model
                 if image_model:
                     form_data["image_model"] = image_model
+                if node_id:
+                    form_data["node_id"] = node_id
 
                 resp = client.post(
                     "/jobs",

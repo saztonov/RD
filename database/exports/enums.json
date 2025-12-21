@@ -1,0 +1,138 @@
+{
+  "auth.aal_level": {
+    "schema": "auth",
+    "name": "aal_level",
+    "values": [
+      "aal1",
+      "aal2",
+      "aal3"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE auth.aal_level AS ENUM ('aal1', 'aal2', 'aal3');"
+  },
+  "auth.code_challenge_method": {
+    "schema": "auth",
+    "name": "code_challenge_method",
+    "values": [
+      "s256",
+      "plain"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE auth.code_challenge_method AS ENUM ('s256', 'plain');"
+  },
+  "auth.factor_status": {
+    "schema": "auth",
+    "name": "factor_status",
+    "values": [
+      "unverified",
+      "verified"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE auth.factor_status AS ENUM ('unverified', 'verified');"
+  },
+  "auth.factor_type": {
+    "schema": "auth",
+    "name": "factor_type",
+    "values": [
+      "totp",
+      "webauthn",
+      "phone"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE auth.factor_type AS ENUM ('totp', 'webauthn', 'phone');"
+  },
+  "auth.oauth_authorization_status": {
+    "schema": "auth",
+    "name": "oauth_authorization_status",
+    "values": [
+      "pending",
+      "approved",
+      "denied",
+      "expired"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE auth.oauth_authorization_status AS ENUM ('pending', 'approved', 'denied', 'expired');"
+  },
+  "auth.oauth_client_type": {
+    "schema": "auth",
+    "name": "oauth_client_type",
+    "values": [
+      "public",
+      "confidential"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE auth.oauth_client_type AS ENUM ('public', 'confidential');"
+  },
+  "auth.oauth_registration_type": {
+    "schema": "auth",
+    "name": "oauth_registration_type",
+    "values": [
+      "dynamic",
+      "manual"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE auth.oauth_registration_type AS ENUM ('dynamic', 'manual');"
+  },
+  "auth.oauth_response_type": {
+    "schema": "auth",
+    "name": "oauth_response_type",
+    "values": [
+      "code"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE auth.oauth_response_type AS ENUM ('code');"
+  },
+  "auth.one_time_token_type": {
+    "schema": "auth",
+    "name": "one_time_token_type",
+    "values": [
+      "confirmation_token",
+      "reauthentication_token",
+      "recovery_token",
+      "email_change_token_new",
+      "email_change_token_current",
+      "phone_change_token"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE auth.one_time_token_type AS ENUM ('confirmation_token', 'reauthentication_token', 'recovery_token', 'email_change_token_new', 'email_change_token_current', 'phone_change_token');"
+  },
+  "realtime.action": {
+    "schema": "realtime",
+    "name": "action",
+    "values": [
+      "INSERT",
+      "UPDATE",
+      "DELETE",
+      "TRUNCATE",
+      "ERROR"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE realtime.action AS ENUM ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'ERROR');"
+  },
+  "realtime.equality_op": {
+    "schema": "realtime",
+    "name": "equality_op",
+    "values": [
+      "eq",
+      "neq",
+      "lt",
+      "lte",
+      "gt",
+      "gte",
+      "in"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE realtime.equality_op AS ENUM ('eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'in');"
+  },
+  "storage.buckettype": {
+    "schema": "storage",
+    "name": "buckettype",
+    "values": [
+      "STANDARD",
+      "ANALYTICS",
+      "VECTOR"
+    ],
+    "comment": null,
+    "sql": "CREATE TYPE storage.buckettype AS ENUM ('STANDARD', 'ANALYTICS', 'VECTOR');"
+  }
+}

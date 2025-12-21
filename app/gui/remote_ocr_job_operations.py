@@ -62,6 +62,9 @@ class JobOperationsMixin:
         
         self._pending_output_dir = dialog.output_dir
         
+        # Получаем node_id для связи результатов OCR с деревом проектов
+        node_id = getattr(self.main_window, '_current_node_id', None) or None
+        
         from app.gui.toast import show_toast
         show_toast(self, "Отправка задачи...", duration=1500)
         
@@ -70,16 +73,20 @@ class JobOperationsMixin:
             getattr(dialog, "text_model", None),
             getattr(dialog, "table_model", None),
             getattr(dialog, "image_model", None),
+            node_id,
         )
-        logger.info(f"OCR задача: image_model={getattr(dialog, 'image_model', None)}")
+        logger.info(f"OCR задача: image_model={getattr(dialog, 'image_model', None)}, node_id={node_id}")
     
-    def _create_job_bg(self, client, pdf_path, blocks, task_name, engine, text_model, table_model, image_model):
+    def _create_job_bg(self, client, pdf_path, blocks, task_name, engine, text_model, table_model, image_model, node_id=None):
         """Фоновое создание задачи"""
         try:
             from app.remote_ocr_client import AuthenticationError, PayloadTooLargeError, ServerError
             
-            job_info = client.create_job(pdf_path, blocks, task_name=task_name, engine=engine,
-                                        text_model=text_model, table_model=table_model, image_model=image_model)
+            job_info = client.create_job(
+                pdf_path, blocks, task_name=task_name, engine=engine,
+                text_model=text_model, table_model=table_model, image_model=image_model,
+                node_id=node_id
+            )
             self._signals.job_created.emit(job_info)
         except AuthenticationError:
             self._signals.job_create_error.emit("auth", "Неверный API ключ.")

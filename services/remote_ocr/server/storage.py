@@ -44,6 +44,7 @@ class Job:
     error_message: Optional[str]
     engine: str
     r2_prefix: str
+    node_id: Optional[str] = None  # ID узла дерева (для связи с деревом проектов)
     # Вложенные данные (опционально загружаются)
     files: List[JobFile] = field(default_factory=list)
     settings: Optional[JobSettings] = None
@@ -85,7 +86,8 @@ def create_job(
     task_name: str,
     engine: str,
     r2_prefix: str,
-    status: str = "queued"
+    status: str = "queued",
+    node_id: Optional[str] = None
 ) -> Job:
     """Создать новую задачу"""
     job_id = str(uuid.uuid4())
@@ -103,11 +105,12 @@ def create_job(
         updated_at=now,
         error_message=None,
         engine=engine,
-        r2_prefix=r2_prefix
+        r2_prefix=r2_prefix,
+        node_id=node_id
     )
     
     client = _get_client()
-    client.table("jobs").insert({
+    insert_data = {
         "id": job.id,
         "client_id": job.client_id,
         "document_id": job.document_id,
@@ -120,7 +123,11 @@ def create_job(
         "error_message": job.error_message,
         "engine": job.engine,
         "r2_prefix": job.r2_prefix
-    }).execute()
+    }
+    if node_id:
+        insert_data["node_id"] = node_id
+    
+    client.table("jobs").insert(insert_data).execute()
     
     return job
 
@@ -340,7 +347,8 @@ def _row_to_job(row: dict) -> Job:
         updated_at=row["updated_at"],
         error_message=row.get("error_message"),
         engine=row.get("engine", ""),
-        r2_prefix=row.get("r2_prefix", "")
+        r2_prefix=row.get("r2_prefix", ""),
+        node_id=row.get("node_id")
     )
 
 
@@ -358,7 +366,8 @@ def job_to_dict(job: Job) -> dict:
         "updated_at": job.updated_at,
         "error_message": job.error_message,
         "engine": job.engine,
-        "r2_prefix": job.r2_prefix
+        "r2_prefix": job.r2_prefix,
+        "node_id": job.node_id
     }
 
 
@@ -483,3 +492,96 @@ def get_job_settings(job_id: str) -> Optional[JobSettings]:
         table_model=row.get("table_model", ""),
         image_model=row.get("image_model", "")
     )
+
+
+# === NODE FILES (связь с деревом проектов) ===
+
+def add_node_file(
+    node_id: str,
+    file_type: str,
+    r2_key: str,
+    file_name: str,
+    file_size: int = 0,
+    mime_type: str = "application/octet-stream",
+    metadata: Optional[Dict] = None
+) -> str:
+    """Добавить файл к узлу дерева (upsert по node_id + r2_key)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    file_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    
+    client = _get_client()
+    try:
+        client.table("node_files").upsert({
+            "id": file_id,
+            "node_id": node_id,
+            "file_type": file_type,
+            "r2_key": r2_key,
+            "file_name": file_name,
+            "file_size": file_size,
+            "mime_type": mime_type,
+            "metadata": metadata or {},
+            "created_at": now,
+            "updated_at": now
+        }, on_conflict="node_id,r2_key").execute()
+        logger.debug(f"Node file registered: {file_type} -> {r2_key}")
+        return file_id
+    except Exception as e:
+        logger.warning(f"Failed to add node file: {e}")
+        return ""
+
+
+def register_ocr_results_to_node(node_id: str, r2_prefix: str, work_dir) -> int:
+    """Зарегистрировать все OCR результаты в node_files"""
+    import logging
+    from pathlib import Path
+    logger = logging.getLogger(__name__)
+    
+    if not node_id:
+        return 0
+    
+    work_path = Path(work_dir)
+    registered = 0
+    
+    # result.md
+    result_md = work_path / "result.md"
+    if result_md.exists():
+        add_node_file(
+            node_id, "result_md", f"{r2_prefix}/result.md",
+            "result.md", result_md.stat().st_size, "text/markdown"
+        )
+        registered += 1
+    
+    # annotation.json
+    annotation = work_path / "annotation.json"
+    if annotation.exists():
+        add_node_file(
+            node_id, "annotation", f"{r2_prefix}/annotation.json",
+            "annotation.json", annotation.stat().st_size, "application/json"
+        )
+        registered += 1
+    
+    # result.zip
+    result_zip = work_path / "result.zip"
+    if result_zip.exists():
+        add_node_file(
+            node_id, "result_zip", f"{r2_prefix}/result.zip",
+            "result.zip", result_zip.stat().st_size, "application/zip"
+        )
+        registered += 1
+    
+    # crops/
+    crops_dir = work_path / "crops"
+    if crops_dir.exists():
+        for crop_file in crops_dir.iterdir():
+            if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
+                add_node_file(
+                    node_id, "crop", f"{r2_prefix}/crops/{crop_file.name}",
+                    crop_file.name, crop_file.stat().st_size, "application/pdf"
+                )
+                registered += 1
+    
+    logger.info(f"Registered {registered} OCR result files for node {node_id}")
+    return registered

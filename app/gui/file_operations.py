@@ -38,6 +38,44 @@ class FileOperationsMixin:
     _auto_save_timer: QTimer = None
     _pending_save: bool = False
     
+    def _register_node_file(
+        self, node_id: str, file_type: str, r2_key: str, 
+        file_name: str, file_size: int = 0, mime_type: str = None
+    ):
+        """Регистрация файла в таблице node_files"""
+        try:
+            from app.tree_client import TreeClient, FileType
+            client = TreeClient()
+            
+            ft = FileType(file_type) if file_type in [e.value for e in FileType] else FileType.PDF
+            mt = mime_type or self._guess_mime_type(file_name)
+            
+            client.upsert_node_file(
+                node_id=node_id,
+                file_type=ft,
+                r2_key=r2_key,
+                file_name=file_name,
+                file_size=file_size,
+                mime_type=mt,
+            )
+            logger.debug(f"Registered node file: {file_type} -> {r2_key}")
+        except Exception as e:
+            logger.error(f"Failed to register node file: {e}")
+    
+    def _guess_mime_type(self, filename: str) -> str:
+        """Определить MIME тип по расширению"""
+        ext = Path(filename).suffix.lower()
+        mime_map = {
+            ".pdf": "application/pdf",
+            ".json": "application/json",
+            ".md": "text/markdown",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".zip": "application/zip",
+        }
+        return mime_map.get(ext, "application/octet-stream")
+    
     def _auto_save_annotation(self):
         """Авто-сохранение разметки при изменении блоков (раз в минуту)"""
         if not self.annotation_document or not self._current_pdf_path:
@@ -87,10 +125,18 @@ class FileOperationsMixin:
         """Фоновая синхронизация с R2"""
         try:
             from rd_core.r2_storage import R2Storage
+            from pathlib import Path
             r2 = R2Storage()
             ann_r2_key = get_annotation_r2_key(r2_key)
             r2.upload_file(ann_path, ann_r2_key)
             logger.debug(f"Annotation synced to R2: {ann_r2_key}")
+            
+            # Записываем файл в БД node_files
+            if node_id:
+                self._register_node_file(
+                    node_id, "annotation", ann_r2_key, 
+                    Path(ann_path).name, Path(ann_path).stat().st_size
+                )
         except Exception as e:
             logger.error(f"Sync annotation to R2 failed: {e}")
     
