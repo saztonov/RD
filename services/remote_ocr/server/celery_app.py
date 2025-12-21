@@ -24,5 +24,7 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     # Результаты храним 1 час
     result_expires=3600,
+    # Регистрация задач
+    imports=["services.remote_ocr.server.tasks"],
 )
 

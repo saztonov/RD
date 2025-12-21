@@ -75,7 +75,8 @@ def generate_structured_markdown(
                 mime_type = "image/png"
                 if block.image_file:
                     crop_filename = Path(block.image_file).name
-                    image_uri = f"{r2_public_url}/ocr_jobs/{project_name}/crops/{crop_filename}"
+                    # project_name - это node_id для tree_docs
+                    image_uri = f"{r2_public_url}/tree_docs/{project_name}/crops/{crop_filename}"
                     ext = Path(block.image_file).suffix.lower()
                     if ext == ".pdf":
                         mime_type = "application/pdf"

@@ -506,6 +506,26 @@ class R2Storage:
             logger.error(f"❌ Ошибка получения списка из R2: {e}")
             return []
 
+    def exists(self, remote_key: str) -> bool:
+        """
+        Проверить существование объекта в R2
+
+        Args:
+            remote_key: Ключ объекта
+
+        Returns:
+            True если объект существует
+        """
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=remote_key)
+            return True
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return False
+            logger.error(f"❌ Ошибка проверки существования объекта: {e}")
+            return False
+
 
 def upload_ocr_to_r2(output_dir: str, project_name: Optional[str] = None) -> bool:
     """

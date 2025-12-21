@@ -224,3 +224,37 @@ class JobOperationsMixin:
             logger.error(f"Ошибка повторного распознавания: {e}")
             self._signals.rerun_error.emit(job_id, str(e))
 
+    def _show_job_details(self, job_id: str):
+        """Показать детальную информацию о задаче"""
+        client = self._get_client()
+        if client is None:
+            return
+        
+        try:
+            job_details = client.get_job_details(job_id)
+            
+            if job_id not in self._job_output_dirs:
+                from app.gui.folder_settings_dialog import get_projects_dir
+                download_dir = get_projects_dir()
+                if download_dir and Path(download_dir).exists():
+                    extract_dir = Path(download_dir) / f"result_{job_id[:8]}"
+                else:
+                    import tempfile
+                    extract_dir = Path(tempfile.gettempdir()) / "rd_ocr_results" / f"result_{job_id[:8]}"
+                
+                self._job_output_dirs[job_id] = str(extract_dir)
+                self._save_job_mappings()
+            
+            extract_dir = Path(self._job_output_dirs[job_id])
+            if job_details.get("status") == "done" and not (extract_dir / "annotation.json").exists():
+                self._auto_download_result(job_id)
+            
+            job_details["client_output_dir"] = self._job_output_dirs[job_id]
+            
+            from app.gui.job_details_dialog import JobDetailsDialog
+            dialog = JobDetailsDialog(job_details, self)
+            dialog.exec()
+        except Exception as e:
+            logger.error(f"Ошибка получения информации о задаче: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось получить информацию:\n{e}")
+

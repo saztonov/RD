@@ -18,6 +18,7 @@ from .storage import (
     add_job_file,
     get_job,
     get_job_file_by_type,
+    get_node_pdf_r2_key,
     is_job_paused,
     update_job_status,
     register_ocr_results_to_node,
@@ -49,55 +50,93 @@ def _check_paused(job_id: str) -> bool:
 
 
 def _download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:
-    """Скачать файлы задачи из R2 во временную директорию"""
+    """Скачать файлы задачи из R2 во временную директорию.
+    
+    Если есть node_id - берём из tree_docs/{node_id}/ (через node_files)
+    Иначе - из ocr_jobs/{job_id}/ (обратная совместимость)
+    """
     r2 = _get_r2_storage()
     
-    # PDF
-    pdf_file = get_job_file_by_type(job.id, "pdf")
-    if not pdf_file:
-        raise RuntimeError(f"PDF file not found for job {job.id}")
-    
-    pdf_path = work_dir / "document.pdf"
-    if not r2.download_file(pdf_file.r2_key, str(pdf_path)):
-        raise RuntimeError(f"Failed to download PDF from R2: {pdf_file.r2_key}")
-    
-    # Blocks
-    blocks_file = get_job_file_by_type(job.id, "blocks")
-    if not blocks_file:
-        raise RuntimeError(f"Blocks file not found for job {job.id}")
-    
-    blocks_path = work_dir / "blocks.json"
-    if not r2.download_file(blocks_file.r2_key, str(blocks_path)):
-        raise RuntimeError(f"Failed to download blocks from R2: {blocks_file.r2_key}")
+    if job.node_id:
+        # Берём PDF из node_files или tree_nodes.attributes
+        pdf_r2_key = get_node_pdf_r2_key(job.node_id)
+        if not pdf_r2_key:
+            raise RuntimeError(f"PDF r2_key not found for node {job.node_id}")
+        
+        pdf_path = work_dir / "document.pdf"
+        if not r2.download_file(pdf_r2_key, str(pdf_path)):
+            raise RuntimeError(f"Failed to download PDF from R2: {pdf_r2_key}")
+        
+        # annotation.json берём из job_files (обновлённый при создании задачи)
+        blocks_file = get_job_file_by_type(job.id, "blocks")
+        if blocks_file:
+            blocks_r2_key = blocks_file.r2_key
+        else:
+            # Fallback: tree_docs/{node_id}/annotation.json
+            tree_prefix = f"tree_docs/{job.node_id}"
+            blocks_r2_key = f"{tree_prefix}/annotation.json"
+        
+        blocks_path = work_dir / "blocks.json"
+        if not r2.download_file(blocks_r2_key, str(blocks_path)):
+            raise RuntimeError(f"Failed to download annotation from R2: {blocks_r2_key}")
+    else:
+        # Обратная совместимость: файлы из ocr_jobs
+        pdf_file = get_job_file_by_type(job.id, "pdf")
+        if not pdf_file:
+            raise RuntimeError(f"PDF file not found for job {job.id}")
+        
+        pdf_path = work_dir / "document.pdf"
+        if not r2.download_file(pdf_file.r2_key, str(pdf_path)):
+            raise RuntimeError(f"Failed to download PDF from R2: {pdf_file.r2_key}")
+        
+        blocks_file = get_job_file_by_type(job.id, "blocks")
+        if not blocks_file:
+            raise RuntimeError(f"Blocks file not found for job {job.id}")
+        
+        blocks_path = work_dir / "blocks.json"
+        if not r2.download_file(blocks_file.r2_key, str(blocks_path)):
+            raise RuntimeError(f"Failed to download blocks from R2: {blocks_file.r2_key}")
     
     return pdf_path, blocks_path
 
 
 def _upload_results_to_r2(job: Job, work_dir: Path) -> str:
-    """Загрузить результаты в R2 и записать в БД"""
-    r2 = _get_r2_storage()
-    r2_prefix = job.r2_prefix
+    """Загрузить результаты в R2 и записать в БД.
     
-    # result.md
+    Если есть node_id - загружаем в tree_docs/{node_id}/
+    Иначе - в ocr_jobs/{job_id}/ (обратная совместимость)
+    """
+    r2 = _get_r2_storage()
+    
+    # Определяем prefix для загрузки
+    if job.node_id:
+        r2_prefix = f"tree_docs/{job.node_id}"
+    else:
+        r2_prefix = job.r2_prefix
+    
+    # result.md (переименовываем по имени документа)
     result_md_path = work_dir / "result.md"
     if result_md_path.exists():
-        r2_key = f"{r2_prefix}/result.md"
+        doc_stem = Path(job.document_name).stem
+        md_filename = f"{doc_stem}.md"
+        r2_key = f"{r2_prefix}/{md_filename}"
         r2.upload_file(str(result_md_path), r2_key)
-        add_job_file(job.id, "result_md", r2_key, "result.md", result_md_path.stat().st_size)
+        add_job_file(job.id, "result_md", r2_key, md_filename, result_md_path.stat().st_size)
     
-    # annotation.json
+    # annotation.json (заменяем существующий)
     annotation_path = work_dir / "annotation.json"
     if annotation_path.exists():
         r2_key = f"{r2_prefix}/annotation.json"
         r2.upload_file(str(annotation_path), r2_key)
         add_job_file(job.id, "annotation", r2_key, "annotation.json", annotation_path.stat().st_size)
     
-    # result.zip
-    result_zip_path = work_dir / "result.zip"
-    if result_zip_path.exists():
-        r2_key = f"{r2_prefix}/result.zip"
-        r2.upload_file(str(result_zip_path), r2_key)
-        add_job_file(job.id, "result_zip", r2_key, "result.zip", result_zip_path.stat().st_size)
+    # result.zip - НЕ создаём для node_id (только для обратной совместимости)
+    if not job.node_id:
+        result_zip_path = work_dir / "result.zip"
+        if result_zip_path.exists():
+            r2_key = f"{job.r2_prefix}/result.zip"
+            r2.upload_file(str(result_zip_path), r2_key)
+            add_job_file(job.id, "result_zip", r2_key, "result.zip", result_zip_path.stat().st_size)
     
     # crops/
     crops_dir = work_dir / "crops"
@@ -378,7 +417,9 @@ def run_ocr_task(self, job_id: str) -> dict:
                 pages.append(Page(page_number=page_idx, width=width, height=height, blocks=page_blocks))
         
         result_md_path = work_dir / "result.md"
-        generate_structured_markdown(pages, str(result_md_path), project_name=job.id, doc_name=pdf_path.name)
+        # project_name = node_id для tree_docs, иначе job.id для обратной совместимости
+        md_project_name = job.node_id if job.node_id else job.id
+        generate_structured_markdown(pages, str(result_md_path), project_name=md_project_name, doc_name=pdf_path.name)
         
         annotation_path = work_dir / "annotation.json"
         doc = Document(pdf_path=pdf_path.name, pages=pages)
@@ -403,7 +444,7 @@ def run_ocr_task(self, job_id: str) -> dict:
         
         # Регистрация OCR результатов в node_files (связь с деревом проектов)
         if job.node_id:
-            register_ocr_results_to_node(job.node_id, job.r2_prefix, work_dir)
+            register_ocr_results_to_node(job.node_id, job.document_name, work_dir)
         
         update_job_status(job.id, "done", progress=1.0)
         logger.info(f"Задача {job.id} завершена успешно")

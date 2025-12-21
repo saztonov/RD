@@ -47,7 +47,10 @@ async def create_job_endpoint(
     pdf: UploadFile = File(...),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
-    """Создать новую задачу OCR"""
+    """Создать новую задачу OCR.
+    
+    Если node_id указан - файлы берутся из tree_docs/{node_id}/, не дублируем.
+    """
     check_api_key(x_api_key)
     
     blocks_json = (await blocks_file.read()).decode("utf-8")
@@ -60,7 +63,12 @@ async def create_job_endpoint(
         raise HTTPException(status_code=400, detail=f"Invalid blocks_json: {e}")
     
     job_id = str(uuid.uuid4())
-    r2_prefix = f"ocr_jobs/{job_id}"
+    
+    # Для node_id файлы уже в tree_docs, для остальных - в ocr_jobs
+    if node_id:
+        r2_prefix = f"tree_docs/{node_id}"
+    else:
+        r2_prefix = f"ocr_jobs/{job_id}"
     
     job = create_job(
         client_id=client_id,
@@ -78,25 +86,41 @@ async def create_job_endpoint(
     try:
         r2 = get_r2_storage()
         
-        pdf_content = await pdf.read()
-        pdf_key = f"{r2_prefix}/document.pdf"
-        r2.s3_client.put_object(
-            Bucket=r2.bucket_name,
-            Key=pdf_key,
-            Body=pdf_content,
-            ContentType="application/pdf"
-        )
-        add_job_file(job.id, "pdf", pdf_key, "document.pdf", len(pdf_content))
-        
-        blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
-        blocks_key = f"{r2_prefix}/blocks.json"
-        r2.s3_client.put_object(
-            Bucket=r2.bucket_name,
-            Key=blocks_key,
-            Body=blocks_bytes,
-            ContentType="application/json"
-        )
-        add_job_file(job.id, "blocks", blocks_key, "blocks.json", len(blocks_bytes))
+        if node_id:
+            # Файлы уже в tree_docs/{node_id}/, только обновляем annotation.json (blocks)
+            blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
+            blocks_key = f"{r2_prefix}/annotation.json"
+            r2.s3_client.put_object(
+                Bucket=r2.bucket_name,
+                Key=blocks_key,
+                Body=blocks_bytes,
+                ContentType="application/json"
+            )
+            add_job_file(job.id, "blocks", blocks_key, "annotation.json", len(blocks_bytes))
+            # PDF уже есть в tree_docs, регистрируем ссылку
+            pdf_key = f"{r2_prefix}/{document_name}"
+            add_job_file(job.id, "pdf", pdf_key, document_name, 0)
+        else:
+            # Загружаем файлы в ocr_jobs (обратная совместимость)
+            pdf_content = await pdf.read()
+            pdf_key = f"{r2_prefix}/document.pdf"
+            r2.s3_client.put_object(
+                Bucket=r2.bucket_name,
+                Key=pdf_key,
+                Body=pdf_content,
+                ContentType="application/pdf"
+            )
+            add_job_file(job.id, "pdf", pdf_key, "document.pdf", len(pdf_content))
+            
+            blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
+            blocks_key = f"{r2_prefix}/blocks.json"
+            r2.s3_client.put_object(
+                Bucket=r2.bucket_name,
+                Key=blocks_key,
+                Body=blocks_bytes,
+                ContentType="application/json"
+            )
+            add_job_file(job.id, "blocks", blocks_key, "blocks.json", len(blocks_bytes))
         
     except Exception as e:
         _logger.error(f"R2 upload failed: {e}")

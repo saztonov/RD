@@ -496,6 +496,30 @@ def get_job_settings(job_id: str) -> Optional[JobSettings]:
 
 # === NODE FILES (связь с деревом проектов) ===
 
+def get_node_file_by_type(node_id: str, file_type: str) -> Optional[Dict]:
+    """Получить файл узла по типу (pdf, annotation и т.д.)"""
+    client = _get_client()
+    result = client.table("node_files").select("*").eq("node_id", node_id).eq("file_type", file_type).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
+def get_node_pdf_r2_key(node_id: str) -> Optional[str]:
+    """Получить r2_key PDF для узла (из node_files или tree_nodes.attributes)"""
+    # Сначала пробуем node_files
+    pdf_file = get_node_file_by_type(node_id, "pdf")
+    if pdf_file:
+        return pdf_file.get("r2_key")
+    
+    # Fallback: tree_nodes.attributes.r2_key
+    client = _get_client()
+    result = client.table("tree_nodes").select("attributes").eq("id", node_id).limit(1).execute()
+    if result.data:
+        attrs = result.data[0].get("attributes") or {}
+        return attrs.get("r2_key")
+    
+    return None
+
+
 def add_node_file(
     node_id: str,
     file_type: str,
@@ -533,8 +557,11 @@ def add_node_file(
         return ""
 
 
-def register_ocr_results_to_node(node_id: str, r2_prefix: str, work_dir) -> int:
-    """Зарегистрировать все OCR результаты в node_files"""
+def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
+    """Зарегистрировать все OCR результаты в node_files.
+    
+    Файлы уже загружены в tree_docs/{node_id}/
+    """
     import logging
     from pathlib import Path
     logger = logging.getLogger(__name__)
@@ -543,14 +570,17 @@ def register_ocr_results_to_node(node_id: str, r2_prefix: str, work_dir) -> int:
         return 0
     
     work_path = Path(work_dir)
+    tree_prefix = f"tree_docs/{node_id}"
     registered = 0
     
-    # result.md
+    # result.md (переименован по имени документа)
     result_md = work_path / "result.md"
     if result_md.exists():
+        doc_stem = Path(doc_name).stem
+        md_filename = f"{doc_stem}.md"
         add_node_file(
-            node_id, "result_md", f"{r2_prefix}/result.md",
-            "result.md", result_md.stat().st_size, "text/markdown"
+            node_id, "result_md", f"{tree_prefix}/{md_filename}",
+            md_filename, result_md.stat().st_size, "text/markdown"
         )
         registered += 1
     
@@ -558,17 +588,8 @@ def register_ocr_results_to_node(node_id: str, r2_prefix: str, work_dir) -> int:
     annotation = work_path / "annotation.json"
     if annotation.exists():
         add_node_file(
-            node_id, "annotation", f"{r2_prefix}/annotation.json",
+            node_id, "annotation", f"{tree_prefix}/annotation.json",
             "annotation.json", annotation.stat().st_size, "application/json"
-        )
-        registered += 1
-    
-    # result.zip
-    result_zip = work_path / "result.zip"
-    if result_zip.exists():
-        add_node_file(
-            node_id, "result_zip", f"{r2_prefix}/result.zip",
-            "result.zip", result_zip.stat().st_size, "application/zip"
         )
         registered += 1
     
@@ -578,7 +599,7 @@ def register_ocr_results_to_node(node_id: str, r2_prefix: str, work_dir) -> int:
         for crop_file in crops_dir.iterdir():
             if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
                 add_node_file(
-                    node_id, "crop", f"{r2_prefix}/crops/{crop_file.name}",
+                    node_id, "crop", f"{tree_prefix}/crops/{crop_file.name}",
                     crop_file.name, crop_file.stat().st_size, "application/pdf"
                 )
                 registered += 1

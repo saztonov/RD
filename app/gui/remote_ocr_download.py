@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class DownloadMixin:
     """Миксин для скачивания результатов"""
     
-    def _auto_download_result(self, job_id: str, open_after: bool = False):
+    def _auto_download_result(self, job_id: str):
         """Запустить скачивание результата из R2 в фоне с прогрессом"""
         client = self._get_client()
         if client is None:
@@ -44,19 +44,19 @@ class DownloadMixin:
             result_exists = extract_dir.exists() and (extract_dir / "annotation.json").exists()
             
             if not result_exists:
-                if open_after:
-                    self._pending_open_in_editor = job_id
                 self._executor.submit(self._download_result_bg, job_id, r2_prefix, str(extract_dir))
             else:
                 logger.debug(f"Результат уже скачан: {extract_dir}")
-                if open_after:
-                    self._open_job_in_editor_internal(job_id)
                 
         except Exception as e:
             logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")
 
     def _download_result_bg(self, job_id: str, r2_prefix: str, extract_dir: str):
-        """Фоновое скачивание результата с прогрессом"""
+        """Фоновое скачивание результата с прогрессом.
+        
+        Скачиваем только: annotation.json, result.md (по имени документа), crops/
+        НЕ скачиваем: document.pdf, result.zip
+        """
         try:
             from rd_core.r2_storage import R2Storage
             r2 = R2Storage()
@@ -64,20 +64,41 @@ class DownloadMixin:
             extract_path = Path(extract_dir)
             extract_path.mkdir(parents=True, exist_ok=True)
             
-            main_files = ["annotation.json", "result.md", "document.pdf"]
-            crops_prefix = f"{r2_prefix}/crops/"
+            # Получаем информацию о задаче для имени документа
+            client = self._get_client()
+            job_details = client.get_job_details(job_id) if client else {}
+            doc_name = job_details.get("document_name", "result.pdf")
+            doc_stem = Path(doc_name).stem
+            node_id = job_details.get("node_id")
+            
+            # Определяем prefix: tree_docs/{node_id} или ocr_jobs/{job_id}
+            if node_id:
+                actual_prefix = f"tree_docs/{node_id}"
+            else:
+                actual_prefix = r2_prefix
+            
+            crops_prefix = f"{actual_prefix}/crops/"
             crop_files = r2.list_by_prefix(crops_prefix)
             
-            total_files = len(main_files) + len(crop_files)
+            # Файлы для скачивания: annotation.json + {doc_stem}.md
+            files_to_download = [
+                ("annotation.json", "annotation.json"),
+                (f"{doc_stem}.md", f"{doc_stem}.md"),
+            ]
+            # Обратная совместимость: если нет {doc_stem}.md, пробуем result.md
+            if not r2.exists(f"{actual_prefix}/{doc_stem}.md"):
+                files_to_download[1] = ("result.md", f"{doc_stem}.md")
+            
+            total_files = len(files_to_download) + len(crop_files)
             self._signals.download_started.emit(job_id, total_files)
             
             current = 0
             
-            for filename in main_files:
+            for remote_name, local_name in files_to_download:
                 current += 1
-                self._signals.download_progress.emit(job_id, current, filename)
-                remote_key = f"{r2_prefix}/{filename}"
-                local_path = extract_path / filename
+                self._signals.download_progress.emit(job_id, current, local_name)
+                remote_key = f"{actual_prefix}/{remote_name}"
+                local_path = extract_path / local_name
                 r2.download_file(remote_key, str(local_path))
             
             if crop_files:

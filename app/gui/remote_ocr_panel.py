@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 from app.gui.remote_ocr_signals import WorkerSignals
 from app.gui.remote_ocr_download import DownloadMixin
 from app.gui.remote_ocr_job_operations import JobOperationsMixin
-from app.gui.remote_ocr_editor import EditorMixin
 
 if TYPE_CHECKING:
     from app.gui.main_window import MainWindow
@@ -25,7 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RemoteOCRPanel(EditorMixin, JobOperationsMixin, DownloadMixin, QDockWidget):
+class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
     """Dock-панель для Remote OCR задач"""
     
     POLL_INTERVAL_PROCESSING = 5000
@@ -61,7 +60,6 @@ class RemoteOCRPanel(EditorMixin, JobOperationsMixin, DownloadMixin, QDockWidget
         self._signals.rerun_error.connect(self._on_rerun_error)
         
         self._download_dialog: Optional[QProgressDialog] = None
-        self._pending_open_in_editor: Optional[str] = None
         
         self._load_job_mappings()
         self._setup_ui()
@@ -248,12 +246,6 @@ class RemoteOCRPanel(EditorMixin, JobOperationsMixin, DownloadMixin, QDockWidget
         actions_layout.setContentsMargins(1, 1, 1, 1)
         actions_layout.setSpacing(2)
         
-        open_btn = QPushButton("✏️")
-        open_btn.setToolTip("Открыть в редакторе")
-        open_btn.setFixedSize(26, 26)
-        open_btn.clicked.connect(lambda checked, jid=job.id: self._open_job_in_editor(jid))
-        actions_layout.addWidget(open_btn)
-        
         rerun_btn = QPushButton("🔁")
         rerun_btn.setToolTip("Повторное распознавание")
         rerun_btn.setFixedSize(26, 26)
@@ -355,10 +347,6 @@ class RemoteOCRPanel(EditorMixin, JobOperationsMixin, DownloadMixin, QDockWidget
         
         from app.gui.toast import show_toast
         show_toast(self.main_window, f"Результат скачан: {job_id[:8]}...")
-        
-        if self._pending_open_in_editor == job_id:
-            self._pending_open_in_editor = None
-            self._open_job_in_editor_internal(job_id)
 
     def _on_download_error(self, job_id: str, error_msg: str):
         """Слот: ошибка скачивания"""
@@ -366,7 +354,6 @@ class RemoteOCRPanel(EditorMixin, JobOperationsMixin, DownloadMixin, QDockWidget
             self._download_dialog.close()
             self._download_dialog = None
         
-        self._pending_open_in_editor = None
         QMessageBox.critical(self, "Ошибка загрузки", f"Не удалось скачать файлы:\n{error_msg}")
     
     def _on_rerun_created(self, old_job_id: str, new_job_info):
