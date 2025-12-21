@@ -11,6 +11,7 @@ from PySide6.QtCore import QTimer
 from rd_core.models import Document, Page
 from rd_core.pdf_utils import PDFDocument
 from rd_core.annotation_io import AnnotationIO
+from app.gui.file_transfer_worker import FileTransferWorker, TransferTask, TransferType
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class FileOperationsMixin:
     _auto_save_timer: QTimer = None
     _pending_save: bool = False
     _annotation_synced: bool = False  # Флаг: аннотация уже синхронизирована с R2
+    _active_downloads: set = None  # Активные загрузки (защита от дублей)
     
     def _register_node_file(
         self, node_id: str, file_type: str, r2_key: str, 
@@ -337,11 +339,19 @@ class FileOperationsMixin:
         self._on_tree_document_selected("", r2_key)
     
     def _on_tree_document_selected(self, node_id: str, r2_key: str):
-        """Открыть документ из дерева (скачать из R2 и открыть)"""
-        from rd_core.r2_storage import R2Storage
+        """Открыть документ из дерева (асинхронное скачивание из R2)"""
         from app.gui.folder_settings_dialog import get_projects_dir
         
         if not r2_key:
+            return
+        
+        # Инициализация set для отслеживания активных загрузок
+        if self._active_downloads is None:
+            self._active_downloads = set()
+        
+        # Защита от дублирующихся загрузок
+        if r2_key in self._active_downloads:
+            logger.debug(f"Download already in progress: {r2_key}")
             return
         
         projects_dir = get_projects_dir()
@@ -349,18 +359,7 @@ class FileOperationsMixin:
             QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
             return
         
-        try:
-            r2 = R2Storage()
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка R2", f"Не удалось подключиться к R2:\n{e}")
-            return
-        
-        # Сохраняем структуру папок из R2 (tree_docs/{folder_id}/{filename})
-        from pathlib import PurePosixPath
-        r2_path = PurePosixPath(r2_key)
-        
-        # Создаём локальный путь: cache/{r2_key без tree_docs/}
-        # Например: cache/{folder_id}/{filename}
+        # Формируем локальный путь
         if r2_key.startswith("tree_docs/"):
             rel_path = r2_key[len("tree_docs/"):]
         else:
@@ -369,20 +368,67 @@ class FileOperationsMixin:
         local_path = Path(projects_dir) / "cache" / rel_path
         local_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Пропускаем скачивание если файл уже есть
-        if not local_path.exists():
-            logger.info(f"Downloading from R2: {r2_key} -> {local_path}")
-            if not r2.download_file(r2_key, str(local_path)):
-                QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
-                return
+        # Если файл уже есть - открываем сразу
+        if local_path.exists():
+            self._current_r2_key = r2_key
+            self._current_node_id = node_id
+            self._open_pdf_file(str(local_path), r2_key=r2_key)
+            if node_id and hasattr(self, 'project_tree_widget'):
+                self.project_tree_widget.highlight_document(node_id)
+            return
         
-        self._current_r2_key = r2_key
-        self._current_node_id = node_id
-        self._open_pdf_file(str(local_path), r2_key=r2_key)
+        # Помечаем загрузку как активную
+        self._active_downloads.add(r2_key)
+        
+        # Иначе - асинхронное скачивание
+        self._download_worker = FileTransferWorker(self)
+        self._pending_download_node_id = node_id
+        self._pending_download_r2_key = r2_key
+        self._pending_download_local_path = str(local_path)
+        
+        task = TransferTask(
+            transfer_type=TransferType.DOWNLOAD,
+            local_path=str(local_path),
+            r2_key=r2_key,
+            node_id=node_id,
+        )
+        self._download_worker.add_task(task)
+        
+        # Подключаем сигналы
+        self._download_worker.progress.connect(
+            lambda msg, cur, tot: self.show_transfer_progress(msg, cur, tot)
+        )
+        self._download_worker.finished_task.connect(self._on_download_task_finished)
+        self._download_worker.all_finished.connect(self._on_download_finished)
+        
+        # Запускаем
+        logger.info(f"Starting async download: {r2_key} -> {local_path}")
+        self._download_worker.start()
+    
+    def _on_download_task_finished(self, task: TransferTask, success: bool, error: str):
+        """Обработка завершения скачивания"""
+        # Убираем из активных загрузок
+        if self._active_downloads and task.r2_key in self._active_downloads:
+            self._active_downloads.discard(task.r2_key)
+        
+        if not success:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{task.r2_key}\n{error}")
+            return
+        
+        logger.info(f"File downloaded from R2: {task.r2_key}")
+        
+        self._current_r2_key = task.r2_key
+        self._current_node_id = task.node_id
+        self._open_pdf_file(task.local_path, r2_key=task.r2_key)
         
         # Подсветить текущий документ в дереве
-        if node_id and hasattr(self, 'project_tree_widget'):
-            self.project_tree_widget.highlight_document(node_id)
+        if task.node_id and hasattr(self, 'project_tree_widget'):
+            self.project_tree_widget.highlight_document(task.node_id)
+    
+    def _on_download_finished(self):
+        """Скачивание завершено"""
+        self.hide_transfer_progress()
+        self._download_worker = None
     
     def _save_annotation(self):
         """Сохранить разметку в JSON"""

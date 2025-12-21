@@ -5,7 +5,8 @@
 
 import copy
 from typing import Optional
-from PySide6.QtWidgets import QMainWindow
+from PySide6.QtWidgets import QMainWindow, QStatusBar, QLabel, QProgressBar
+from PySide6.QtCore import Qt
 from rd_core.models import Document, BlockType
 from rd_core.pdf_utils import PDFDocument
 from app.gui.blocks_tree_manager import BlocksTreeManager
@@ -63,6 +64,9 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         
         self.setWindowTitle("PDF Annotation Tool")
         self.resize(1200, 800)
+        
+        # Статус-бар для отображения прогресса загрузки
+        self._setup_status_bar()
         
         # Восстановить настройки окна
         self._restore_settings()
@@ -336,3 +340,35 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         if self.remote_ocr_panel:
             self.remote_ocr_panel.show()
             self.remote_ocr_panel._create_job()
+    
+    # === Status Bar ===
+    def _setup_status_bar(self):
+        """Создать статус-бар с прогрессом"""
+        self._status_bar = QStatusBar()
+        self.setStatusBar(self._status_bar)
+        
+        # Виджеты для отображения прогресса
+        self._status_label = QLabel("")
+        self._status_progress = QProgressBar()
+        self._status_progress.setMaximumWidth(200)
+        self._status_progress.setMaximumHeight(16)
+        self._status_progress.setTextVisible(True)
+        self._status_progress.hide()
+        
+        self._status_bar.addPermanentWidget(self._status_label)
+        self._status_bar.addPermanentWidget(self._status_progress)
+    
+    def show_transfer_progress(self, message: str, current: int = 0, total: int = 0):
+        """Показать прогресс загрузки/скачивания"""
+        self._status_label.setText(message)
+        if total > 0:
+            self._status_progress.setMaximum(total)
+            self._status_progress.setValue(current)
+            self._status_progress.show()
+        else:
+            self._status_progress.hide()
+    
+    def hide_transfer_progress(self):
+        """Скрыть прогресс"""
+        self._status_label.setText("")
+        self._status_progress.hide()

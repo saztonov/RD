@@ -1,6 +1,7 @@
 """Celery задачи для OCR обработки"""
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import shutil
@@ -30,7 +31,8 @@ from .worker_prompts import (
     build_strip_prompt,
     parse_batch_response_by_index,
 )
-from .worker_pdf import extract_pdfplumber_text_for_block
+from .worker_pdf import extract_pdfplumber_text_for_block, clear_page_size_cache
+from .memory_utils import log_memory, log_memory_delta, force_gc, log_pil_images_summary
 
 logger = logging.getLogger(__name__)
 
@@ -103,32 +105,39 @@ def _download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:
 def _upload_results_to_r2(job: Job, work_dir: Path) -> str:
     """Загрузить результаты в R2 и записать в БД.
     
-    Если есть node_id - загружаем в tree_docs/{node_id}/
+    Если есть node_id - загружаем в папку где лежит PDF (parent dir от pdf_r2_key)
     Иначе - в ocr_jobs/{job_id}/ (обратная совместимость)
     """
     r2 = _get_r2_storage()
     
     # Определяем prefix для загрузки
     if job.node_id:
-        r2_prefix = f"tree_docs/{job.node_id}"
+        # Получаем r2_key исходного PDF и используем его родительскую папку
+        pdf_r2_key = get_node_pdf_r2_key(job.node_id)
+        if pdf_r2_key:
+            r2_prefix = str(Path(pdf_r2_key).parent)
+        else:
+            r2_prefix = f"tree_docs/{job.node_id}"
     else:
         r2_prefix = job.r2_prefix
+    
+    doc_stem = Path(job.document_name).stem
     
     # result.md (переименовываем по имени документа)
     result_md_path = work_dir / "result.md"
     if result_md_path.exists():
-        doc_stem = Path(job.document_name).stem
         md_filename = f"{doc_stem}.md"
         r2_key = f"{r2_prefix}/{md_filename}"
         r2.upload_file(str(result_md_path), r2_key)
         add_job_file(job.id, "result_md", r2_key, md_filename, result_md_path.stat().st_size)
     
-    # annotation.json (заменяем существующий)
+    # annotation.json -> {doc_stem}_annotation.json (перезаписываем существующий)
     annotation_path = work_dir / "annotation.json"
     if annotation_path.exists():
-        r2_key = f"{r2_prefix}/annotation.json"
+        annotation_filename = f"{doc_stem}_annotation.json"
+        r2_key = f"{r2_prefix}/{annotation_filename}"
         r2.upload_file(str(annotation_path), r2_key)
-        add_job_file(job.id, "annotation", r2_key, "annotation.json", annotation_path.stat().st_size)
+        add_job_file(job.id, "annotation", r2_key, annotation_filename, annotation_path.stat().st_size)
     
     # result.zip - НЕ создаём для node_id (только для обратной совместимости)
     if not job.node_id:
@@ -173,7 +182,7 @@ def _create_empty_result(job: Job, work_dir: Path, pdf_path: Path) -> None:
 @celery_app.task(bind=True, name="run_ocr_task", max_retries=3, rate_limit="4/m")
 def run_ocr_task(self, job_id: str) -> dict:
     """Celery задача для обработки OCR"""
-    logger.info(f"[CELERY] Начало обработки задачи {job_id}")
+    start_mem = log_memory(f"[START] Задача {job_id}")
     
     work_dir = None
     try:
@@ -196,6 +205,7 @@ def run_ocr_task(self, job_id: str) -> dict:
         
         logger.info(f"Задача {job.id}: скачивание файлов из R2...")
         pdf_path, blocks_path = _download_job_files(job, work_dir)
+        log_memory_delta("После скачивания файлов", start_mem)
         
         with open(blocks_path, "r", encoding="utf-8") as f:
             blocks_data = json.load(f)
@@ -225,6 +235,8 @@ def run_ocr_task(self, job_id: str) -> dict:
         )
         
         logger.info(f"Создано {len(strips)} полос TEXT/TABLE, {len(image_blocks)} IMAGE блоков")
+        log_memory_delta("После crop_and_merge", start_mem)
+        log_pil_images_summary(strip_images, "strip_images")
         
         # Настройки из Supabase
         job_settings = job.settings
@@ -412,6 +424,31 @@ def run_ocr_task(self, job_id: str) -> dict:
                 block.ocr_text = "\n\n".join(combined_parts)
         
         logger.info(f"OCR завершён: {processed} запросов обработано")
+        log_memory_delta("После OCR обработки", start_mem)
+        
+        # Освобождаем память от изображений полос
+        for strip in strips:
+            for crop in strip.crops:
+                try:
+                    crop.close()
+                except:
+                    pass
+            strip.crops.clear()
+        for strip_id, strip_img in list(strip_images.items()):
+            try:
+                strip_img.close()
+            except:
+                pass
+        strip_images.clear()
+        
+        # Освобождаем кропы IMAGE блоков
+        for block, crop, part_idx, total_parts in image_blocks:
+            try:
+                crop.close()
+            except:
+                pass
+        
+        force_gc("после освобождения кропов")
         
         # Генерация результатов
         from rd_core.models import Page, Document
@@ -481,4 +518,11 @@ def run_ocr_task(self, job_id: str) -> dict:
                 logger.info(f"✅ Временная директория очищена: {work_dir}")
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка очистки временной директории: {e}")
+        
+        # Очищаем кэш размеров страниц
+        clear_page_size_cache()
+        
+        # Финальная сборка мусора
+        final_mem = force_gc("финальная")
+        log_memory_delta(f"[END] Задача {job_id}", start_mem)
 

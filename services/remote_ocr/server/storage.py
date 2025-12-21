@@ -357,6 +357,16 @@ def _row_to_job(row: dict) -> Job:
 
 def job_to_dict(job: Job) -> dict:
     """Конвертировать Job в dict для JSON ответа"""
+    # Вычисляем result_prefix - папка где лежат результаты OCR
+    result_prefix = job.r2_prefix
+    if job.node_id:
+        pdf_r2_key = get_node_pdf_r2_key(job.node_id)
+        if pdf_r2_key:
+            from pathlib import Path
+            result_prefix = str(Path(pdf_r2_key).parent)
+        else:
+            result_prefix = f"tree_docs/{job.node_id}"
+    
     return {
         "id": job.id,
         "client_id": job.client_id,
@@ -370,7 +380,8 @@ def job_to_dict(job: Job) -> dict:
         "error_message": job.error_message,
         "engine": job.engine,
         "r2_prefix": job.r2_prefix,
-        "node_id": job.node_id
+        "node_id": job.node_id,
+        "result_prefix": result_prefix
     }
 
 
@@ -563,7 +574,7 @@ def add_node_file(
 def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
     """Зарегистрировать все OCR результаты в node_files.
     
-    Файлы уже загружены в tree_docs/{node_id}/
+    Файлы загружены в папку исходного PDF (parent dir от pdf_r2_key)
     """
     import logging
     from pathlib import Path
@@ -573,13 +584,21 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
         return 0
     
     work_path = Path(work_dir)
-    tree_prefix = f"tree_docs/{node_id}"
+    
+    # Получаем r2_key исходного PDF и используем его родительскую папку
+    pdf_r2_key = get_node_pdf_r2_key(node_id)
+    if pdf_r2_key:
+        tree_prefix = str(Path(pdf_r2_key).parent)
+    else:
+        tree_prefix = f"tree_docs/{node_id}"
+    
     registered = 0
+    
+    doc_stem = Path(doc_name).stem
     
     # result.md (переименован по имени документа)
     result_md = work_path / "result.md"
     if result_md.exists():
-        doc_stem = Path(doc_name).stem
         md_filename = f"{doc_stem}.md"
         add_node_file(
             node_id, "result_md", f"{tree_prefix}/{md_filename}",
@@ -587,12 +606,13 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
         )
         registered += 1
     
-    # annotation.json
+    # annotation.json -> {doc_stem}_annotation.json
     annotation = work_path / "annotation.json"
     if annotation.exists():
+        annotation_filename = f"{doc_stem}_annotation.json"
         add_node_file(
-            node_id, "annotation", f"{tree_prefix}/annotation.json",
-            "annotation.json", annotation.stat().st_size, "application/json"
+            node_id, "annotation", f"{tree_prefix}/{annotation_filename}",
+            annotation_filename, annotation.stat().st_size, "application/json"
         )
         registered += 1
     

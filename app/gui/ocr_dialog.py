@@ -19,7 +19,7 @@ load_dotenv()
 class OCRDialog(QDialog):
     """Диалог выбора режима OCR и папки для результатов"""
     
-    def __init__(self, parent=None, task_name: str = ""):
+    def __init__(self, parent=None, task_name: str = "", pdf_path: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Настройка OCR")
         self.setMinimumWidth(550)
@@ -27,6 +27,7 @@ class OCRDialog(QDialog):
         self.output_dir = None
         self.base_dir = None
         self.task_name = task_name
+        self.pdf_path = pdf_path  # Путь к PDF для сохранения результатов рядом
         self.ocr_backend = "openrouter"  # "openrouter" или "datalab"
         
         # Модели для разных типов блоков
@@ -197,24 +198,19 @@ class OCRDialog(QDialog):
     def _accept(self):
         """Проверка и принятие"""
         from PySide6.QtWidgets import QMessageBox
-        from datetime import datetime
-        
-        if not self.base_dir:
-            QMessageBox.warning(self, "Ошибка", "Настройте папки через меню Инструменты → Настройки папок")
-            return
         
         if not self.task_name:
             QMessageBox.warning(self, "Ошибка", "Сначала создайте задание в боковом меню")
             return
         
-        from app.gui.utils import transliterate_to_latin
-        
-        # Добавляем timestamp для уникальности пути
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Транслитерируем название задания для безопасных URL/путей
-        safe_task_name = transliterate_to_latin(self.task_name)
-        unique_name = f"{safe_task_name}_{timestamp}"
-        self.output_dir = str(Path(self.base_dir) / unique_name)
+        # Результаты сохраняются в папку где лежит PDF
+        if self.pdf_path:
+            self.output_dir = str(Path(self.pdf_path).parent)
+        elif self.base_dir:
+            self.output_dir = self.base_dir
+        else:
+            QMessageBox.warning(self, "Ошибка", "Не удалось определить папку для результатов")
+            return
         
         # Определяем backend
         if self.datalab_radio.isChecked():

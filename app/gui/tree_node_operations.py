@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtWidgets import QInputDialog, QMessageBox, QFileDialog, QDialog, QTreeWidgetItem
 from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt
 
 from app.tree_client import TreeNode, NodeType, NodeStatus
+from app.gui.file_transfer_worker import FileTransferWorker, TransferTask, TransferType
 
 if TYPE_CHECKING:
     pass
@@ -127,63 +129,86 @@ class TreeNodeOperationsMixin:
             logger.error(f"Error checking open file: {e}")
     
     def _upload_file(self, node: TreeNode):
-        """Добавить файл в папку заданий (загрузка в R2)"""
+        """Добавить файл в папку заданий (асинхронная загрузка в R2)"""
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Выберите файлы", "", "PDF Files (*.pdf);;All Files (*)"
         )
         if not paths:
             return
         
-        from rd_core.r2_storage import R2Storage
-        
-        try:
-            r2 = R2Storage()
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка R2", f"Не удалось подключиться к R2:\n{e}")
-            return
-        
-        parent_item = self._node_map.get(node.id)
+        # Создаём worker для асинхронной загрузки
+        self._upload_worker = FileTransferWorker(self)
+        self._upload_target_node = node
         
         for path in paths:
             file_path = Path(path)
             filename = file_path.name
             file_size = file_path.stat().st_size
-            
-            # Формируем r2_key: tree_docs/{task_folder_id}/{filename}
             r2_key = f"tree_docs/{node.id}/{filename}"
             
-            # Загружаем в R2
-            if not r2.upload_file(str(file_path), r2_key):
-                QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить файл в R2:\n{filename}")
-                continue
+            task = TransferTask(
+                transfer_type=TransferType.UPLOAD,
+                local_path=str(file_path),
+                r2_key=r2_key,
+                node_id="",  # Будет заполнен после создания узла
+                file_size=file_size,
+                filename=filename,
+                parent_node_id=node.id,
+            )
+            self._upload_worker.add_task(task)
+        
+        # Подключаем сигналы
+        main_window = self.window()
+        self._upload_worker.progress.connect(
+            lambda msg, cur, tot: main_window.show_transfer_progress(msg, cur, tot)
+        )
+        self._upload_worker.finished_task.connect(self._on_upload_task_finished)
+        self._upload_worker.all_finished.connect(self._on_all_uploads_finished)
+        
+        # Запускаем
+        self._upload_worker.start()
+    
+    def _on_upload_task_finished(self, task: TransferTask, success: bool, error: str):
+        """Обработка завершения загрузки одного файла"""
+        if not success:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить файл в R2:\n{task.filename}\n{error}")
+            return
+        
+        logger.info(f"File uploaded to R2: {task.r2_key}")
+        
+        parent_item = self._node_map.get(task.parent_node_id)
+        
+        try:
+            doc_node = self.client.add_document(
+                parent_id=task.parent_node_id,
+                name=task.filename,
+                r2_key=task.r2_key,
+                file_size=task.file_size,
+            )
             
-            logger.info(f"File uploaded to R2: {r2_key}")
+            if parent_item:
+                if parent_item.childCount() == 1:
+                    child = parent_item.child(0)
+                    if child.data(0, self._get_user_role()) == "placeholder":
+                        parent_item.removeChild(child)
+                
+                child_item = self._create_tree_item(doc_node)
+                parent_item.addChild(child_item)
+                parent_item.setExpanded(True)
             
-            try:
-                doc_node = self.client.add_document(
-                    parent_id=node.id,
-                    name=filename,
-                    r2_key=r2_key,
-                    file_size=file_size,
-                )
-                
-                if parent_item:
-                    if parent_item.childCount() == 1:
-                        child = parent_item.child(0)
-                        if child.data(0, self._get_user_role()) == "placeholder":
-                            parent_item.removeChild(child)
-                    
-                    child_item = self._create_tree_item(doc_node)
-                    parent_item.addChild(child_item)
-                    parent_item.setExpanded(True)
-                
-                logger.info(f"Document added: {doc_node.id} with r2_key={r2_key}")
-                # Сигнал с r2_key для открытия
-                self.file_uploaded_r2.emit(r2_key)
-                
-            except Exception as e:
-                logger.exception(f"Failed to add document: {e}")
-                QMessageBox.critical(self, "Ошибка", f"Файл загружен в R2, но не добавлен в дерево:\n{e}")
+            logger.info(f"Document added: {doc_node.id} with r2_key={task.r2_key}")
+            # Сигнал с r2_key для открытия
+            self.file_uploaded_r2.emit(task.r2_key)
+            
+        except Exception as e:
+            logger.exception(f"Failed to add document: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Файл загружен в R2, но не добавлен в дерево:\n{e}")
+    
+    def _on_all_uploads_finished(self):
+        """Все загрузки завершены"""
+        main_window = self.window()
+        main_window.hide_transfer_progress()
+        self._upload_worker = None
     
     def _rename_node(self, node: TreeNode):
         """Переименовать узел (для документов также переименовывает в R2)"""
@@ -263,6 +288,7 @@ class TreeNodeOperationsMixin:
     
     def _set_document_version(self, node: TreeNode, version: int):
         """Установить версию документа"""
+        from PySide6.QtCore import Qt
         try:
             self.client.update_node(node.id, version=version)
             node.version = version
@@ -273,8 +299,9 @@ class TreeNodeOperationsMixin:
                 icon = NODE_ICONS.get(node.node_type, "📄")
                 has_annotation = node.attributes.get("has_annotation", False)
                 ann_icon = " 📋" if has_annotation else ""
-                display_name = f"{icon} [v{version}] {node.name}{ann_icon}"
+                display_name = f"{icon} {node.name}{ann_icon}"
                 item.setText(0, display_name)
+                item.setData(0, Qt.UserRole + 1, f"[v{version}]")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
     

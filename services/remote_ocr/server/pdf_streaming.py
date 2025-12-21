@@ -14,6 +14,8 @@ from typing import Dict, Generator, Iterator, List, Optional, Tuple
 import fitz
 from PIL import Image, ImageDraw
 
+from .memory_utils import log_memory, get_pil_image_size_mb
+
 logger = logging.getLogger(__name__)
 
 # Константы
@@ -123,10 +125,13 @@ class StreamingPDFProcessor:
             )
             self._current_page_idx = page_idx
             
+            # Логируем размер страницы
+            page_mb = get_pil_image_size_mb(self._current_page_image)
+            logger.info(f"Page {page_idx} rendered: {pix.width}x{pix.height} (~{page_mb:.1f} MB, zoom={effective_zoom:.2f})")
+            
             # Освобождаем pixmap
             pix = None
             
-            logger.debug(f"Page {page_idx} rendered: {self._current_page_image.size}")
             return self._current_page_image
             
         except Exception as e:
@@ -300,6 +305,10 @@ def streaming_crop_and_merge(
     
     os.makedirs(output_dir, exist_ok=True)
     
+    # Логируем размер PDF
+    pdf_size_mb = os.path.getsize(pdf_path) / (1024 * 1024)
+    start_mem = log_memory(f"streaming_crop_and_merge start (PDF: {pdf_size_mb:.1f} MB)")
+    
     # Группируем по страницам
     blocks_by_page: Dict[int, List] = {}
     for block in blocks:
@@ -307,17 +316,22 @@ def streaming_crop_and_merge(
     
     block_crops: Dict[str, Image.Image] = {}
     image_pdf_paths: Dict[str, str] = {}
+    total_crops_mb = 0.0
     
     with StreamingPDFProcessor(pdf_path) as processor:
+        logger.info(f"PDF pages: {processor.page_count}, blocks pages: {len(blocks_by_page)}")
+        
         # Обрабатываем страницы последовательно
         for page_idx in sorted(blocks_by_page.keys()):
             page_blocks = blocks_by_page[page_idx]
+            page_crops_mb = 0.0
             
             for block in page_blocks:
                 try:
                     crop = processor.crop_block_image(block, padding)
                     if crop:
                         block_crops[block.id] = crop
+                        page_crops_mb += get_pil_image_size_mb(crop)
                     
                     if save_image_crops_as_pdf and block.block_type == BlockType.IMAGE:
                         pdf_crop_path = os.path.join(output_dir, f"image_{block.id}.pdf")
@@ -329,11 +343,13 @@ def streaming_crop_and_merge(
                 except Exception as e:
                     logger.error(f"Error processing block {block.id}: {e}")
             
-            # Страница обработана - освободим кэш (следующая страница перезапишет)
-            logger.debug(f"Page {page_idx} processed, {len(page_blocks)} blocks")
+            total_crops_mb += page_crops_mb
+            logger.debug(f"Page {page_idx}: {len(page_blocks)} blocks, crops: {page_crops_mb:.1f} MB")
         
         # Группируем в полосы
         strips, image_blocks = _group_blocks_streaming(blocks, block_crops)
+    
+    log_memory(f"После обработки страниц (block_crops: ~{total_crops_mb:.1f} MB)")
     
     # Создаём merged images для полос
     strip_paths: Dict[str, str] = {}
@@ -343,14 +359,27 @@ def streaming_crop_and_merge(
         if strip.crops:
             try:
                 strip_images[strip.strip_id] = merge_crops_vertically(strip.crops)
-                # Освобождаем исходные кропы полосы
+                # Освобождаем исходные кропы полосы (они скопированы в merged)
                 for crop in strip.crops:
-                    if crop not in [bp.crop for bp in strip.block_parts]:
+                    try:
                         crop.close()
+                    except:
+                        pass
             except Exception as e:
                 logger.error(f"Error creating strip {strip.strip_id}: {e}")
+        strip.crops.clear()  # Очищаем список
+    
+    # Очищаем block_crops - они больше не нужны (скопированы в strips/image_blocks)
+    for block_id, crop in list(block_crops.items()):
+        # Не закрываем - они уже закрыты или используются в image_blocks
+        pass
+    block_crops.clear()
     
     gc.collect()
+    
+    strips_mb = sum(get_pil_image_size_mb(img) for img in strip_images.values())
+    images_mb = sum(get_pil_image_size_mb(crop) for _, crop, _, _ in image_blocks)
+    log_memory(f"После merge (strips: ~{strips_mb:.1f} MB, images: ~{images_mb:.1f} MB)")
     
     logger.info(f"Streaming done: {len(strip_images)} strips, {len(image_blocks)} images, {len(image_pdf_paths)} PDF crops")
     return strip_paths, strip_images, strips, image_blocks, image_pdf_paths

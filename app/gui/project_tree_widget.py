@@ -6,10 +6,64 @@ from typing import Dict, List
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem,
-    QMenu, QLabel, QAbstractItemView, QFrame, QLineEdit
+    QMenu, QLabel, QAbstractItemView, QFrame, QLineEdit, QStyledItemDelegate, QStyleOptionViewItem, QStyle
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QEvent
-from PySide6.QtGui import QColor, QKeyEvent
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QRect
+from PySide6.QtGui import QColor, QKeyEvent, QPainter, QFont
+
+
+class VersionHighlightDelegate(QStyledItemDelegate):
+    """Делегат для отображения версии красным цветом"""
+    
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index):
+        version = index.data(Qt.UserRole + 1)
+        if not version:
+            super().paint(painter, option, index)
+            return
+        
+        # Рисуем фон выделения
+        self.initStyleOption(option, index)
+        painter.save()
+        
+        if option.state & QStyle.StateFlag.State_Selected:
+            painter.fillRect(option.rect, option.palette.highlight())
+        elif option.state & QStyle.StateFlag.State_MouseOver:
+            painter.fillRect(option.rect, QColor("#2a2d2e"))
+        
+        text = index.data(Qt.DisplayRole)
+        icon_end = 2  # Позиция после иконки (эмодзи + пробел)
+        
+        # Разбиваем текст: иконка + остальное
+        parts = text.split(" ", 1)
+        icon_part = parts[0] + " " if parts else ""
+        rest = parts[1] if len(parts) > 1 else ""
+        
+        x = option.rect.x() + 4
+        y = option.rect.y()
+        h = option.rect.height()
+        
+        fm = painter.fontMetrics()
+        
+        # Иконка
+        painter.setPen(option.palette.text().color())
+        painter.drawText(x, y, fm.horizontalAdvance(icon_part), h, Qt.AlignVCenter, icon_part)
+        x += fm.horizontalAdvance(icon_part)
+        
+        # Версия красным
+        painter.setPen(QColor("#ff4444"))
+        font = painter.font()
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(x, y, fm.horizontalAdvance(version + " "), h, Qt.AlignVCenter, version + " ")
+        x += fm.horizontalAdvance(version + " ")
+        
+        # Остальной текст
+        font.setBold(False)
+        painter.setFont(font)
+        painter.setPen(option.palette.text().color())
+        painter.drawText(x, y, option.rect.width() - x, h, Qt.AlignVCenter, rest)
+        
+        painter.restore()
 
 from app.tree_client import TreeClient, TreeNode, NodeType, NodeStatus, StageType, SectionType, FileType
 from app.gui.tree_node_operations import TreeNodeOperationsMixin, NODE_ICONS, STATUS_COLORS
@@ -198,6 +252,9 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             }
         """)
         
+        # Делегат для красной версии
+        self.tree.setItemDelegate(VersionHighlightDelegate(self.tree))
+        
         layout.addWidget(self.tree)
         
         self.status_label = QLabel("")
@@ -259,14 +316,19 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             version_tag = f"[v{node.version}]" if node.version else "[v1]"
             has_annotation = node.attributes.get("has_annotation", False)
             ann_icon = "📋" if has_annotation else ""
-            display_name = f"{icon} {version_tag} {node.name} {ann_icon}".strip()
+            display_name = f"{icon} {node.name} {ann_icon}".strip()
+            # Сохраняем версию отдельно для отображения красным
+            version_display = version_tag
         elif node.code:
             display_name = f"{icon} [{node.code}] {node.name}"
+            version_display = None
         else:
             display_name = f"{icon} {node.name}"
+            version_display = None
         
         item = QTreeWidgetItem([display_name])
         item.setData(0, Qt.UserRole, node)
+        item.setData(0, Qt.UserRole + 1, version_display)  # Версия для делегата
         item.setForeground(0, QColor(STATUS_COLORS.get(node.status, "#e0e0e0")))
         
         self._node_map[node.id] = item
@@ -649,8 +711,9 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                     item.setData(0, Qt.UserRole, node)  # Обновляем данные узла
                     icon = NODE_ICONS.get(node.node_type, "📄")
                     version_tag = f"[v{node.version}]" if node.version else "[v1]"
-                    display_name = f"{icon} {version_tag} {node.name} 📋".strip()
+                    display_name = f"{icon} {node.name} 📋".strip()
                     item.setText(0, display_name)
+                    item.setData(0, Qt.UserRole + 1, version_tag)
                 
                 self.status_label.setText(f"📥 Аннотация вставлена")
                 logger.info(f"Annotation pasted to {ann_r2_key}")

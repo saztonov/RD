@@ -9,6 +9,15 @@ logger = logging.getLogger(__name__)
 _page_size_cache: Dict[str, Dict[int, tuple]] = {}
 
 
+def clear_page_size_cache(pdf_path: str = None):
+    """Очистить кэш размеров страниц"""
+    global _page_size_cache
+    if pdf_path:
+        _page_size_cache.pop(pdf_path, None)
+    else:
+        _page_size_cache.clear()
+
+
 def get_pdf_page_size(pdf_path: str, page_index: int) -> tuple:
     """Получить размер страницы PDF (с кэшированием)"""
     global _page_size_cache

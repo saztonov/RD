@@ -32,12 +32,30 @@ class JobOperationsMixin:
             QMessageBox.warning(self, "Ошибка", "PDF файл не найден")
             return
         
+        # Проверяем что PDF загружен в R2 (для node_id режима)
+        node_id = getattr(self.main_window, '_current_node_id', None) or None
+        r2_key = getattr(self.main_window, '_current_r2_key', None) or None
+        
+        if node_id and r2_key:
+            try:
+                from rd_core.r2_storage import R2Storage
+                r2 = R2Storage()
+                if not r2.exists(r2_key):
+                    QMessageBox.warning(
+                        self, "Ошибка", 
+                        "PDF не загружен в облако.\n"
+                        "Синхронизируйте документ или перезагрузите его в дерево проектов."
+                    )
+                    return
+            except Exception as e:
+                logger.warning(f"Не удалось проверить R2: {e}")
+        
         from PySide6.QtWidgets import QDialog
         from app.gui.ocr_dialog import OCRDialog
         
         task_name = Path(pdf_path).stem if pdf_path else ""
         
-        dialog = OCRDialog(self.main_window, task_name=task_name)
+        dialog = OCRDialog(self.main_window, task_name=task_name, pdf_path=pdf_path)
         if dialog.exec() != QDialog.Accepted:
             return
         
@@ -61,9 +79,6 @@ class JobOperationsMixin:
             engine = "openrouter"
         
         self._pending_output_dir = dialog.output_dir
-        
-        # Получаем node_id для связи результатов OCR с деревом проектов
-        node_id = getattr(self.main_window, '_current_node_id', None) or None
         
         from app.gui.toast import show_toast
         show_toast(self, "Отправка задачи...", duration=1500)

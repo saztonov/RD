@@ -81,7 +81,6 @@ class DownloadMixin:
             job_details = client.get_job_details(job_id) if client else {}
             doc_name = job_details.get("document_name", "result.pdf")
             doc_stem = Path(doc_name).stem
-            node_id = job_details.get("node_id")
             
             # Получаем имя PDF из main_window для правильного именования файлов
             pdf_path = getattr(self.main_window, '_current_pdf_path', None)
@@ -90,21 +89,20 @@ class DownloadMixin:
             else:
                 pdf_stem = doc_stem
             
-            # Определяем prefix: tree_docs/{node_id} или ocr_jobs/{job_id}
-            if node_id:
-                actual_prefix = f"tree_docs/{node_id}"
-            else:
-                actual_prefix = r2_prefix
+            # Используем result_prefix из API (папка где лежит PDF)
+            actual_prefix = job_details.get("result_prefix") or r2_prefix
             
             crops_prefix = f"{actual_prefix}/crops/"
             crop_files = r2.list_by_prefix(crops_prefix)
             
-            # Файлы для скачивания: annotation.json -> {pdf_stem}_annotation.json, {doc_stem}.md -> {pdf_stem}.md
+            # Файлы для скачивания: {doc_stem}_annotation.json, {doc_stem}.md
             files_to_download = [
-                ("annotation.json", f"{pdf_stem}_annotation.json"),
+                (f"{doc_stem}_annotation.json", f"{pdf_stem}_annotation.json"),
                 (f"{doc_stem}.md", f"{pdf_stem}.md"),
             ]
-            # Обратная совместимость: если нет {doc_stem}.md, пробуем result.md
+            # Обратная совместимость: старые форматы файлов
+            if not r2.exists(f"{actual_prefix}/{doc_stem}_annotation.json"):
+                files_to_download[0] = ("annotation.json", f"{pdf_stem}_annotation.json")
             if not r2.exists(f"{actual_prefix}/{doc_stem}.md"):
                 files_to_download[1] = ("result.md", f"{pdf_stem}.md")
             
