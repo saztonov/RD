@@ -90,19 +90,19 @@ class TreeNodeOperationsMixin:
         return Qt.UserRole
     
     def _upload_file(self, node: TreeNode):
-        """Добавить файл в папку заданий"""
+        """Добавить файл в папку заданий (загрузка в R2)"""
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Выберите файлы", "", "PDF Files (*.pdf);;All Files (*)"
         )
         if not paths:
             return
         
-        import shutil
-        from app.gui.folder_settings_dialog import get_projects_dir
+        from rd_core.r2_storage import R2Storage
         
-        projects_dir = get_projects_dir()
-        if not projects_dir or not Path(projects_dir).exists():
-            QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
+        try:
+            r2 = R2Storage()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка R2", f"Не удалось подключиться к R2:\n{e}")
             return
         
         parent_item = self._node_map.get(node.id)
@@ -112,24 +112,22 @@ class TreeNodeOperationsMixin:
             filename = file_path.name
             file_size = file_path.stat().st_size
             
-            doc_folder = Path(projects_dir) / node.name
-            doc_folder.mkdir(parents=True, exist_ok=True)
+            # Формируем r2_key: tree_docs/{task_folder_id}/{filename}
+            r2_key = f"tree_docs/{node.id}/{filename}"
             
-            local_path = doc_folder / filename
-            try:
-                shutil.copy2(file_path, local_path)
-                logger.info(f"File copied to: {local_path}")
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", f"Не удалось скопировать файл:\n{e}")
+            # Загружаем в R2
+            if not r2.upload_file(str(file_path), r2_key):
+                QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить файл в R2:\n{filename}")
                 continue
+            
+            logger.info(f"File uploaded to R2: {r2_key}")
             
             try:
                 doc_node = self.client.add_document(
                     parent_id=node.id,
                     name=filename,
-                    r2_key="",
+                    r2_key=r2_key,
                     file_size=file_size,
-                    local_path=str(local_path)
                 )
                 
                 if parent_item:
@@ -142,50 +140,22 @@ class TreeNodeOperationsMixin:
                     parent_item.addChild(child_item)
                     parent_item.setExpanded(True)
                 
-                logger.info(f"Document added: {doc_node.id}")
-                self.file_uploaded.emit(str(local_path))
+                logger.info(f"Document added: {doc_node.id} with r2_key={r2_key}")
+                # Сигнал с r2_key для открытия
+                self.file_uploaded_r2.emit(r2_key)
                 
             except Exception as e:
                 logger.exception(f"Failed to add document: {e}")
-                QMessageBox.critical(self, "Ошибка", f"Файл скопирован, но не добавлен в дерево:\n{e}")
+                QMessageBox.critical(self, "Ошибка", f"Файл загружен в R2, но не добавлен в дерево:\n{e}")
     
     def _rename_node(self, node: TreeNode):
-        """Переименовать узел"""
+        """Переименовать узел (только метаданные, R2 ключ не меняется)"""
         new_name, ok = QInputDialog.getText(
             self, "Переименовать", "Новое название:", text=node.name
         )
         if ok and new_name.strip() and new_name.strip() != node.name:
             try:
-                # Если это документ с локальным путём - переименовать файл на диске
-                if node.node_type == NodeType.DOCUMENT:
-                    local_path = node.attributes.get("local_path", "")
-                    if local_path:
-                        old_file = Path(local_path)
-                        if old_file.exists():
-                            # Закрыть файл если он открыт в главном окне
-                            main_window = self.window()
-                            file_was_open = False
-                            if hasattr(main_window, '_current_pdf_path') and main_window._current_pdf_path:
-                                if str(Path(main_window._current_pdf_path).resolve()) == str(old_file.resolve()):
-                                    if hasattr(main_window, '_clear_interface'):
-                                        main_window._clear_interface()
-                                        file_was_open = True
-                            
-                            new_file = old_file.parent / new_name.strip()
-                            old_file.rename(new_file)
-                            node.attributes["local_path"] = str(new_file)
-                            self.client.update_node(node.id, name=new_name.strip(), attributes=node.attributes)
-                            logger.info(f"File renamed: {old_file} -> {new_file}")
-                            
-                            # Открыть переименованный файл если он был открыт
-                            if file_was_open and hasattr(main_window, '_open_pdf_file'):
-                                main_window._open_pdf_file(str(new_file))
-                        else:
-                            self.client.update_node(node.id, name=new_name.strip())
-                    else:
-                        self.client.update_node(node.id, name=new_name.strip())
-                else:
-                    self.client.update_node(node.id, name=new_name.strip())
+                self.client.update_node(node.id, name=new_name.strip())
                 
                 item = self._node_map.get(node.id)
                 if item:
@@ -204,6 +174,21 @@ class TreeNodeOperationsMixin:
             if item:
                 item.setForeground(0, QColor(STATUS_COLORS.get(status, "#e0e0e0")))
                 node.status = status
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
+    
+    def _set_document_version(self, node: TreeNode, version: int):
+        """Установить версию документа"""
+        try:
+            self.client.update_node(node.id, version=version)
+            node.version = version
+            
+            # Обновляем отображение в дереве
+            item = self._node_map.get(node.id)
+            if item:
+                icon = NODE_ICONS.get(node.node_type, "📄")
+                display_name = f"{icon} [v{version}] {node.name}"
+                item.setText(0, display_name)
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
     
@@ -230,52 +215,73 @@ class TreeNodeOperationsMixin:
                 QMessageBox.critical(self, "Ошибка", str(e))
     
     def _remove_stamps_from_document(self, node: TreeNode):
-        """Удалить рамки и QR-коды из PDF документа"""
-        local_path = node.attributes.get("local_path", "")
-        if not local_path:
-            QMessageBox.warning(self, "Ошибка", "Локальный путь к файлу не найден")
-            return
-        
-        file_path = Path(local_path)
-        if not file_path.exists():
-            QMessageBox.warning(self, "Ошибка", f"Файл не найден:\n{local_path}")
-            return
-        
+        """Удалить рамки и QR-коды из PDF документа (скачать из R2, обработать, загрузить обратно)"""
+        from rd_core.r2_storage import R2Storage
         from rd_core.pdf_stamp_remover import remove_stamps_from_pdf
+        from app.gui.folder_settings_dialog import get_projects_dir
         
-        output_path = file_path.parent / f"{file_path.stem}_clean{file_path.suffix}"
+        r2_key = node.attributes.get("r2_key", "")
+        if not r2_key:
+            QMessageBox.warning(self, "Ошибка", "R2 ключ файла не найден")
+            return
         
-        success, result = remove_stamps_from_pdf(str(file_path), str(output_path))
+        try:
+            r2 = R2Storage()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка R2", f"Не удалось подключиться к R2:\n{e}")
+            return
         
-        if success:
-            try:
-                parent_item = self._node_map.get(node.id)
-                if parent_item:
-                    parent = parent_item.parent()
-                    if parent:
-                        parent_node = parent.data(0, self._get_user_role())
-                        if isinstance(parent_node, TreeNode):
-                            doc_node = self.client.add_document(
-                                parent_id=parent_node.id,
-                                name=output_path.name,
-                                r2_key="",
-                                file_size=output_path.stat().st_size,
-                                local_path=str(output_path)
-                            )
-                            child_item = self._create_tree_item(doc_node)
-                            parent.addChild(child_item)
-                            logger.info(f"Clean document added: {doc_node.id}")
-                
-                QMessageBox.information(
-                    self, "Готово",
-                    f"Рамки удалены.\nФайл: {output_path.name}"
-                )
-            except Exception as e:
-                logger.exception(f"Error adding clean document: {e}")
-                QMessageBox.information(
-                    self, "Готово",
-                    f"Рамки удалены.\nФайл: {output_path.name}\n\n(Не добавлен в дерево: {e})"
-                )
-        else:
+        # Скачиваем в папку проектов
+        projects_dir = get_projects_dir()
+        if not projects_dir:
+            QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
+            return
+        
+        download_dir = Path(projects_dir) / "cache"
+        download_dir.mkdir(parents=True, exist_ok=True)
+        
+        filename = Path(r2_key).name
+        local_path = download_dir / filename
+        
+        if not r2.download_file(r2_key, str(local_path)):
+            QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
+            return
+        
+        output_path = download_dir / f"{local_path.stem}_clean{local_path.suffix}"
+        success, result = remove_stamps_from_pdf(str(local_path), str(output_path))
+        
+        if not success:
             QMessageBox.critical(self, "Ошибка", f"Не удалось обработать файл:\n{result}")
+            return
+        
+        # Загружаем обработанный файл в R2
+        parent_item = self._node_map.get(node.id)
+        parent = parent_item.parent() if parent_item else None
+        parent_node = parent.data(0, self._get_user_role()) if parent else None
+        
+        if not isinstance(parent_node, TreeNode):
+            QMessageBox.warning(self, "Ошибка", "Не найден родительский узел")
+            return
+        
+        new_r2_key = f"tree_docs/{parent_node.id}/{output_path.name}"
+        
+        if not r2.upload_file(str(output_path), new_r2_key):
+            QMessageBox.critical(self, "Ошибка", "Не удалось загрузить обработанный файл в R2")
+            return
+        
+        try:
+            doc_node = self.client.add_document(
+                parent_id=parent_node.id,
+                name=output_path.name,
+                r2_key=new_r2_key,
+                file_size=output_path.stat().st_size,
+            )
+            child_item = self._create_tree_item(doc_node)
+            parent.addChild(child_item)
+            logger.info(f"Clean document added: {doc_node.id} with r2_key={new_r2_key}")
+            
+            QMessageBox.information(self, "Готово", f"Рамки удалены.\nФайл: {output_path.name}")
+        except Exception as e:
+            logger.exception(f"Error adding clean document: {e}")
+            QMessageBox.warning(self, "Внимание", f"Файл загружен в R2, но не добавлен в дерево:\n{e}")
 

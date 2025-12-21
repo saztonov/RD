@@ -326,6 +326,12 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         layout.addWidget(TreeSettingsWidget(dialog))
         dialog.exec()
     
+    def _show_version_settings(self):
+        """Показать диалог настройки версионности"""
+        from app.gui.folder_settings_dialog import VersionSettingsDialog
+        dialog = VersionSettingsDialog(self)
+        dialog.exec()
+    
     def _send_to_remote_ocr(self):
         """Отправить выделенные блоки на Remote OCR"""
         if self.remote_ocr_panel:

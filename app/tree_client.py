@@ -233,6 +233,8 @@ class TreeClient:
             update_data["sort_order"] = fields["sort_order"]
         if "parent_id" in fields:
             update_data["parent_id"] = fields["parent_id"]
+        if "version" in fields:
+            update_data["version"] = fields["version"]
         
         if not update_data:
             return self.get_node(node_id)
@@ -271,48 +273,31 @@ class TreeClient:
         self,
         parent_id: str,
         name: str,
-        r2_key: str = "",
+        r2_key: str,
         file_size: int = 0,
         mime_type: str = "application/pdf",
-        local_path: str = "",
+        version: int = 1,
     ) -> TreeNode:
-        """Добавить документ в папку заданий"""
-        # Проверяем версионность - ищем существующий документ с таким именем
-        existing = self._find_document_by_name(parent_id, name)
-        if existing:
-            # Создаём новую версию
-            new_version = existing.version + 1
-            new_name = f"v{new_version}_{name}"
-        else:
-            new_version = 1
-            new_name = name
-        
-        # Создаём узел документа
-        attrs = {"original_name": name, "r2_key": r2_key, "file_size": file_size, "mime_type": mime_type}
-        if local_path:
-            attrs["local_path"] = local_path
+        """Добавить документ в папку заданий (файл хранится в R2)"""
+        # Создаём узел документа (r2_key обязателен)
+        attrs = {
+            "original_name": name,
+            "r2_key": r2_key,
+            "file_size": file_size,
+            "mime_type": mime_type,
+        }
         node = self.create_node(
             node_type=NodeType.DOCUMENT,
-            name=new_name,
+            name=name,
             parent_id=parent_id,
             attributes=attrs
         )
         
-        # Обновляем версию
-        self.update_node(node.id, version=new_version)
-        node.version = new_version
+        # Устанавливаем версию
+        self.update_node(node.id, version=version)
+        node.version = version
         
         return node
-    
-    def _find_document_by_name(self, parent_id: str, name: str) -> Optional[TreeNode]:
-        """Найти документ по имени в папке"""
-        children = self.get_children(parent_id)
-        for child in children:
-            if child.node_type == NodeType.DOCUMENT:
-                original = child.attributes.get("original_name", child.name)
-                if original == name:
-                    return child
-        return None
     
     def get_full_tree(self, max_depth: int = 2) -> List[TreeNode]:
         """Получить дерево с вложенностью до max_depth"""

@@ -5,7 +5,7 @@
 import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QLineEdit, QFileDialog,
-                               QGroupBox, QDialogButtonBox)
+                               QGroupBox, QDialogButtonBox, QSpinBox)
 from PySide6.QtCore import QSettings
 
 
@@ -13,6 +13,12 @@ def get_projects_dir() -> str:
     """Получить папку для проектов"""
     settings = QSettings("RDApp", "FolderSettings")
     return settings.value("projects_dir", "")
+
+
+def get_max_versions() -> int:
+    """Получить максимальное количество версий"""
+    settings = QSettings("RDApp", "VersionSettings")
+    return int(settings.value("max_versions", 10))
 
 
 # Для обратной совместимости
@@ -87,4 +93,45 @@ class FolderSettingsDialog(QDialog):
         settings = QSettings("RDApp", "FolderSettings")
         settings.setValue("projects_dir", projects_dir)
         
+        self.accept()
+
+
+class VersionSettingsDialog(QDialog):
+    """Диалог настройки версионности"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Настройки версионности")
+        self.setMinimumWidth(300)
+        self._setup_ui()
+        self._load_settings()
+    
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        group = QGroupBox("Версионность документов")
+        group_layout = QVBoxLayout(group)
+        
+        group_layout.addWidget(QLabel("Количество версий в выпадающем списке:"))
+        
+        self.versions_spin = QSpinBox()
+        self.versions_spin.setMinimum(1)
+        self.versions_spin.setMaximum(100)
+        self.versions_spin.setValue(10)
+        group_layout.addWidget(self.versions_spin)
+        
+        layout.addWidget(group)
+        layout.addStretch()
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+    
+    def _load_settings(self):
+        self.versions_spin.setValue(get_max_versions())
+    
+    def _accept(self):
+        settings = QSettings("RDApp", "VersionSettings")
+        settings.setValue("max_versions", self.versions_spin.value())
         self.accept()

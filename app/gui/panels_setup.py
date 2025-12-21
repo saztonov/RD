@@ -53,7 +53,7 @@ class PanelsSetupMixin:
         self.project_dock = QDockWidget("Дерево проектов", self)
         self.project_dock.setObjectName("ProjectTreeDock")
         self.project_tree_widget = ProjectTreeWidget()
-        self.project_tree_widget.file_uploaded.connect(self._on_tree_file_uploaded)
+        self.project_tree_widget.file_uploaded_r2.connect(self._on_tree_file_uploaded_r2)
         self.project_tree_widget.document_selected.connect(self._on_tree_document_selected)
         self.project_dock.setWidget(self.project_tree_widget)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.project_dock)

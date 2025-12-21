@@ -3,7 +3,6 @@
 """
 
 import logging
-import tempfile
 from pathlib import Path
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 from rd_core.models import Document, Page
@@ -67,9 +66,9 @@ class FileOperationsMixin:
         # Обновляем заголовок
         self.setWindowTitle(f"PDF Annotation Tool - {Path(pdf_path).name}")
     
-    def _on_tree_file_uploaded(self, local_path: str):
-        """Открыть загруженный из дерева файл в редакторе"""
-        self._open_pdf_file(local_path)
+    def _on_tree_file_uploaded_r2(self, r2_key: str):
+        """Открыть загруженный файл из R2 в редакторе"""
+        self._on_tree_document_selected("", r2_key)
     
     def _on_tree_document_selected(self, node_id: str, r2_key: str):
         """Открыть документ из дерева (скачать из R2 и открыть)"""
@@ -79,28 +78,29 @@ class FileOperationsMixin:
         if not r2_key:
             return
         
+        projects_dir = get_projects_dir()
+        if not projects_dir:
+            QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
+            return
+        
         try:
             r2 = R2Storage()
         except Exception as e:
             QMessageBox.critical(self, "Ошибка R2", f"Не удалось подключиться к R2:\n{e}")
             return
         
-        projects_dir = get_projects_dir()
-        if projects_dir and Path(projects_dir).exists():
-            download_dir = Path(projects_dir) / "temp"
-        else:
-            download_dir = Path(tempfile.gettempdir()) / "rd_tree_docs"
-        
+        download_dir = Path(projects_dir) / "cache"
         download_dir.mkdir(parents=True, exist_ok=True)
         
         filename = Path(r2_key).name
         local_path = download_dir / filename
         
-        logger.info(f"Downloading from R2: {r2_key} -> {local_path}")
-        
-        if not r2.download_file(r2_key, str(local_path)):
-            QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
-            return
+        # Пропускаем скачивание если файл уже есть
+        if not local_path.exists():
+            logger.info(f"Downloading from R2: {r2_key} -> {local_path}")
+            if not r2.download_file(r2_key, str(local_path)):
+                QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
+                return
         
         self._open_pdf_file(str(local_path))
     

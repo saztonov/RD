@@ -28,8 +28,9 @@ NODE_TYPE_NAMES = {
 class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
     """Виджет дерева проектов"""
     
-    document_selected = Signal(str, str)
-    file_uploaded = Signal(str)
+    document_selected = Signal(str, str)  # node_id, r2_key
+    file_uploaded = Signal(str)  # deprecated: local_path
+    file_uploaded_r2 = Signal(str)  # r2_key
     refresh_requested = Signal()
     
     def __init__(self, parent=None):
@@ -249,9 +250,15 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
     def _create_tree_item(self, node: TreeNode) -> QTreeWidgetItem:
         """Создать элемент дерева"""
         icon = NODE_ICONS.get(node.node_type, "📄")
-        display_name = f"{icon} {node.name}"
-        if node.code:
+        
+        # Для документов показываем версию
+        if node.node_type == NodeType.DOCUMENT:
+            version_tag = f"[v{node.version}]" if node.version else "[v1]"
+            display_name = f"{icon} {version_tag} {node.name}"
+        elif node.code:
             display_name = f"{icon} [{node.code}] {node.name}"
+        else:
+            display_name = f"{icon} {node.name}"
         
         item = QTreeWidgetItem([display_name])
         item.setData(0, Qt.UserRole, node)
@@ -290,15 +297,9 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             logger.error(f"Failed to load children: {e}")
     
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
-        """Двойной клик - открыть документ"""
+        """Двойной клик - открыть документ (скачать из R2)"""
         node = item.data(0, Qt.UserRole)
         if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
-            local_path = node.attributes.get("local_path", "")
-            if local_path:
-                from pathlib import Path
-                if Path(local_path).exists():
-                    self.file_uploaded.emit(local_path)
-                    return
             r2_key = node.attributes.get("r2_key", "")
             if r2_key:
                 self.document_selected.emit(node.id, r2_key)
@@ -325,8 +326,19 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                     action.setData(("upload", node))
                 
                 if node.node_type == NodeType.DOCUMENT:
-                    local_path = node.attributes.get("local_path", "")
-                    if local_path and local_path.lower().endswith(".pdf"):
+                    # Подменю выбора версии
+                    from app.gui.folder_settings_dialog import get_max_versions
+                    max_versions = get_max_versions()
+                    version_menu = menu.addMenu(f"📌 Версия [v{node.version or 1}]")
+                    for v in range(1, max_versions + 1):
+                        v_action = version_menu.addAction(f"v{v}")
+                        v_action.setData(("set_version", node, v))
+                        if v == (node.version or 1):
+                            v_action.setCheckable(True)
+                            v_action.setChecked(True)
+                    
+                    r2_key = node.attributes.get("r2_key", "")
+                    if r2_key and r2_key.lower().endswith(".pdf"):
                         action = menu.addAction("🗑️ Удалить рамки/QR")
                         action.setData(("remove_stamps", node))
                 
@@ -374,6 +386,9 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         elif action == "remove_stamps":
             node = data[1]
             self._remove_stamps_from_document(node)
+        elif action == "set_version":
+            node, version = data[1], data[2]
+            self._set_document_version(node, version)
     
     def _filter_tree(self, text: str):
         """Фильтровать дерево по тексту"""

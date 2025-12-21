@@ -83,6 +83,10 @@ class MenuSetupMixin:
         tree_settings_action = QAction("🌳 Настройка дерева проектов", self)
         tree_settings_action.triggered.connect(self._show_tree_settings)
         settings_menu.addAction(tree_settings_action)
+        
+        version_settings_action = QAction("📌 Версионность", self)
+        version_settings_action.triggered.connect(self._show_version_settings)
+        settings_menu.addAction(version_settings_action)
     
     def _edit_prompt_by_key(self, prompt_key: str):
         """Редактировать промт по ключу"""
