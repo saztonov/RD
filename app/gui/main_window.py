@@ -314,6 +314,18 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         dialog = FolderSettingsDialog(self)
         dialog.exec()
     
+    def _show_tree_settings(self):
+        """Показать диалог настройки дерева проектов"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout
+        from app.gui.tree_settings_widget import TreeSettingsWidget
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Настройка дерева проектов")
+        dialog.resize(600, 500)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(TreeSettingsWidget(dialog))
+        dialog.exec()
+    
     def _send_to_remote_ocr(self):
         """Отправить выделенные блоки на Remote OCR"""
         if self.remote_ocr_panel:

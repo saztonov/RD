@@ -17,8 +17,19 @@ class MouseEventsMixin:
         """Обработка колеса мыши для масштабирования"""
         delta = event.angleDelta().y()
         factor = 1.15 if delta > 0 else 1 / 1.15
+        
+        # При рисовании полигона центрируем на последней точке
+        if self.drawing_polygon and self.polygon_points:
+            center_point = self.polygon_points[-1]
+        else:
+            center_point = self.mapToScene(event.position().toPoint())
+        
         self.zoom_factor *= factor
         self.scale(factor, factor)
+        
+        # Центрируем вид на нужной точке
+        self.centerOn(center_point)
+        
         if self.current_blocks:
             self._redraw_blocks()
     

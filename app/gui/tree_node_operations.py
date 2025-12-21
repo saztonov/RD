@@ -156,7 +156,37 @@ class TreeNodeOperationsMixin:
         )
         if ok and new_name.strip() and new_name.strip() != node.name:
             try:
-                self.client.update_node(node.id, name=new_name.strip())
+                # Если это документ с локальным путём - переименовать файл на диске
+                if node.node_type == NodeType.DOCUMENT:
+                    local_path = node.attributes.get("local_path", "")
+                    if local_path:
+                        old_file = Path(local_path)
+                        if old_file.exists():
+                            # Закрыть файл если он открыт в главном окне
+                            main_window = self.window()
+                            file_was_open = False
+                            if hasattr(main_window, '_current_pdf_path') and main_window._current_pdf_path:
+                                if str(Path(main_window._current_pdf_path).resolve()) == str(old_file.resolve()):
+                                    if hasattr(main_window, '_clear_interface'):
+                                        main_window._clear_interface()
+                                        file_was_open = True
+                            
+                            new_file = old_file.parent / new_name.strip()
+                            old_file.rename(new_file)
+                            node.attributes["local_path"] = str(new_file)
+                            self.client.update_node(node.id, name=new_name.strip(), attributes=node.attributes)
+                            logger.info(f"File renamed: {old_file} -> {new_file}")
+                            
+                            # Открыть переименованный файл если он был открыт
+                            if file_was_open and hasattr(main_window, '_open_pdf_file'):
+                                main_window._open_pdf_file(str(new_file))
+                        else:
+                            self.client.update_node(node.id, name=new_name.strip())
+                    else:
+                        self.client.update_node(node.id, name=new_name.strip())
+                else:
+                    self.client.update_node(node.id, name=new_name.strip())
+                
                 item = self._node_map.get(node.id)
                 if item:
                     icon = NODE_ICONS.get(node.node_type, "📄")

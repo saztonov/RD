@@ -18,55 +18,10 @@ class MenuSetupMixin:
         # Меню "Файл"
         file_menu = menubar.addMenu("&Файл")
         
-        open_action = QAction("&Открыть PDF", self)
-        open_action.setShortcut(QKeySequence.Open)
-        open_action.triggered.connect(self._open_pdf)
-        file_menu.addAction(open_action)
-        
-        file_menu.addSeparator()
-        
-        save_action = QAction("&Сохранить разметку", self)
-        save_action.setShortcut(QKeySequence.Save)
-        save_action.triggered.connect(self._save_annotation)
-        file_menu.addAction(save_action)
-        
-        load_action = QAction("&Загрузить разметку", self)
-        load_action.setShortcut(QKeySequence("Ctrl+L"))
-        load_action.triggered.connect(self._load_annotation)
-        file_menu.addAction(load_action)
-        
-        file_menu.addSeparator()
-        
         exit_action = QAction("&Выход", self)
         exit_action.setShortcut(QKeySequence.Quit)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
-        
-        # Меню "Инструменты"
-        tools_menu = menubar.addMenu("&Инструменты")
-        
-        sync_r2_action = QAction("🔄 Синхронизация из R2", self)
-        sync_r2_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
-        sync_r2_action.triggered.connect(self._sync_from_r2)
-        tools_menu.addAction(sync_r2_action)
-        
-        tools_menu.addSeparator()
-        
-        # Remote OCR
-        remote_ocr_action = QAction("☁️ Remote OCR (выделенные блоки)", self)
-        remote_ocr_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
-        remote_ocr_action.triggered.connect(self._send_to_remote_ocr)
-        tools_menu.addAction(remote_ocr_action)
-        
-        toggle_remote_panel_action = QAction("📋 Показать панель Remote OCR", self)
-        toggle_remote_panel_action.triggered.connect(self._toggle_remote_ocr_panel)
-        tools_menu.addAction(toggle_remote_panel_action)
-        
-        tools_menu.addSeparator()
-        
-        folder_settings_action = QAction("📁 Настройки папок", self)
-        folder_settings_action.triggered.connect(self._show_folder_settings)
-        tools_menu.addAction(folder_settings_action)
         
         # Меню "Вид"
         view_menu = menubar.addMenu("&Вид")
@@ -117,6 +72,17 @@ class MenuSetupMixin:
         image_prompt_action = QAction("🖼️ Картинка", self)
         image_prompt_action.triggered.connect(lambda: self._edit_prompt_by_key("image"))
         prompts_menu.addAction(image_prompt_action)
+        
+        # Меню "Настройки"
+        settings_menu = menubar.addMenu("&Настройки")
+        
+        folder_settings_action = QAction("📁 Настройка папок", self)
+        folder_settings_action.triggered.connect(self._show_folder_settings)
+        settings_menu.addAction(folder_settings_action)
+        
+        tree_settings_action = QAction("🌳 Настройка дерева проектов", self)
+        tree_settings_action.triggered.connect(self._show_tree_settings)
+        settings_menu.addAction(tree_settings_action)
     
     def _edit_prompt_by_key(self, prompt_key: str):
         """Редактировать промт по ключу"""

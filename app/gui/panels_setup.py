@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from app.gui.page_viewer import PageViewer
 from app.gui.project_tree_widget import ProjectTreeWidget
-from app.gui.tree_settings_widget import TreeSettingsWidget
 
 
 class PanelsSetupMixin:
@@ -157,23 +156,6 @@ class PanelsSetupMixin:
         
         tools_layout.addStretch()
         self.right_tabs.addTab(tools_tab, "🛠️ Инструменты")
-        
-        # Вкладка: Настройки
-        settings_tab = QWidget()
-        settings_layout = QVBoxLayout(settings_tab)
-        settings_layout.setContentsMargins(4, 4, 4, 4)
-        
-        folders_btn = QPushButton("📁 Настройка папок")
-        folders_btn.clicked.connect(self._show_folder_settings)
-        settings_layout.addWidget(folders_btn)
-        
-        tree_group = QGroupBox("Дерево проектов")
-        tree_layout = QVBoxLayout(tree_group)
-        self.tree_settings_widget = TreeSettingsWidget()
-        tree_layout.addWidget(self.tree_settings_widget)
-        settings_layout.addWidget(tree_group, stretch=1)
-        
-        self.right_tabs.addTab(settings_tab, "⚙️ Настройки")
         
         layout.addWidget(self.right_tabs)
         return widget

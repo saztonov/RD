@@ -8,8 +8,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem,
     QMenu, QLabel, QAbstractItemView, QFrame, QLineEdit
 )
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent
+from PySide6.QtGui import QColor, QKeyEvent
 
 from app.tree_client import TreeClient, TreeNode, NodeType, NodeStatus, StageType, SectionType
 from app.gui.tree_node_operations import TreeNodeOperationsMixin, NODE_ICONS, STATUS_COLORS
@@ -174,6 +174,7 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.tree.itemExpanded.connect(self._on_item_expanded)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.tree.installEventFilter(self)
         self.tree.setStyleSheet("""
             QTreeWidget {
                 background-color: #1e1e1e;
@@ -439,3 +440,15 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             if child.data(0, Qt.UserRole) == "placeholder":
                 item.removeChild(child)
                 self._load_children(item, node)
+    
+    def eventFilter(self, obj, event):
+        """Обработка событий для дерева"""
+        if obj == self.tree and event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Delete:
+                item = self.tree.currentItem()
+                if item:
+                    node = item.data(0, Qt.UserRole)
+                    if isinstance(node, TreeNode):
+                        self._delete_node(node)
+                        return True
+        return super().eventFilter(obj, event)

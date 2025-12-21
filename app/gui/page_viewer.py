@@ -159,3 +159,17 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
         if self.page_image:
             self.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
             self.zoom_factor = self.transform().m11()
+    
+    def keyPressEvent(self, event):
+        """Обработка нажатий клавиш"""
+        if event.key() == Qt.Key_Left:
+            main_window = self.window()
+            if hasattr(main_window, 'navigation_manager'):
+                main_window.navigation_manager.prev_page()
+                return
+        elif event.key() == Qt.Key_Right:
+            main_window = self.window()
+            if hasattr(main_window, 'navigation_manager'):
+                main_window.navigation_manager.next_page()
+                return
+        super().keyPressEvent(event)
