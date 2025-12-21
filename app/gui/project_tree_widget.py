@@ -251,10 +251,12 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         """Создать элемент дерева"""
         icon = NODE_ICONS.get(node.node_type, "📄")
         
-        # Для документов показываем версию
+        # Для документов показываем версию и иконку аннотации
         if node.node_type == NodeType.DOCUMENT:
             version_tag = f"[v{node.version}]" if node.version else "[v1]"
-            display_name = f"{icon} {version_tag} {node.name}"
+            has_annotation = node.attributes.get("has_annotation", False)
+            ann_icon = "📋" if has_annotation else ""
+            display_name = f"{icon} {version_tag} {node.name} {ann_icon}".strip()
         elif node.code:
             display_name = f"{icon} [{node.code}] {node.name}"
         else:

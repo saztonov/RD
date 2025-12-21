@@ -74,6 +74,9 @@ class BlockHandlersMixin:
         self.page_viewer._redraw_blocks()
         
         self.blocks_tree_manager.update_blocks_tree()
+        
+        # Авто-сохранение разметки
+        self._auto_save_annotation()
     
     def _on_polygon_drawn(self, points: list):
         """Обработка завершения рисования полигона"""
@@ -116,6 +119,9 @@ class BlockHandlersMixin:
         self.page_viewer._redraw_blocks()
         
         self.blocks_tree_manager.update_blocks_tree()
+        
+        # Авто-сохранение разметки
+        self._auto_save_annotation()
     
     def _on_block_selected(self, block_idx: int):
         """Обработка выбора блока"""
@@ -194,6 +200,9 @@ class BlockHandlersMixin:
             
             self.page_viewer.set_blocks(current_page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()
+            
+            # Авто-сохранение разметки
+            self._auto_save_annotation()
     
     def _on_blocks_deleted(self, block_indices: list):
         """Обработка удаления множественных блоков"""
@@ -219,6 +228,9 @@ class BlockHandlersMixin:
         
         self.page_viewer.set_blocks(current_page_data.blocks)
         self.blocks_tree_manager.update_blocks_tree()
+        
+        # Авто-сохранение разметки
+        self._auto_save_annotation()
     
     def _on_block_moved(self, block_idx: int, x1: int, y1: int, x2: int, y2: int):
         """Обработка перемещения/изменения размера блока"""
@@ -234,6 +246,9 @@ class BlockHandlersMixin:
             block.update_coords_px((x1, y1, x2, y2),
                                    current_page_data.width,
                                    current_page_data.height)
+            
+            # Авто-сохранение разметки
+            self._auto_save_annotation()
     
     def _on_tree_block_clicked(self, item: QTreeWidgetItem, column: int):
         """Клик по блоку в дереве"""
@@ -347,6 +362,7 @@ class BlockHandlersMixin:
             current_page_data.blocks.clear()
             self.page_viewer.set_blocks([])
             self.blocks_tree_manager.update_blocks_tree()
+            self._auto_save_annotation()
             from app.gui.toast import show_toast
             show_toast(self, "Разметка страницы очищена")
     
@@ -389,6 +405,8 @@ class BlockHandlersMixin:
         self.blocks_tree_manager.select_block_in_tree(block_idx - 1)
         self.page_viewer.selected_block_idx = block_idx - 1
         self.page_viewer._redraw_blocks()
+        
+        self._auto_save_annotation()
     
     def _move_block_down(self):
         """Переместить выбранный блок вниз"""
@@ -429,6 +447,8 @@ class BlockHandlersMixin:
         self.blocks_tree_manager.select_block_in_tree(block_idx + 1)
         self.page_viewer.selected_block_idx = block_idx + 1
         self.page_viewer._redraw_blocks()
+        
+        self._auto_save_annotation()
     
     def keyPressEvent(self, event):
         """Обработка нажатия клавиш"""

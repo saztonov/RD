@@ -12,8 +12,113 @@ from rd_core.annotation_io import AnnotationIO
 logger = logging.getLogger(__name__)
 
 
+def get_annotation_path(pdf_path: str) -> Path:
+    """Путь к annotation.json для PDF файла"""
+    p = Path(pdf_path)
+    return p.parent / f"{p.stem}_annotation.json"
+
+
+def get_annotation_r2_key(pdf_r2_key: str) -> str:
+    """R2 ключ для annotation.json"""
+    from pathlib import PurePosixPath
+    p = PurePosixPath(pdf_r2_key)
+    return str(p.parent / f"{p.stem}_annotation.json")
+
+
 class FileOperationsMixin:
     """Миксин для операций с файлами"""
+    
+    _current_r2_key: str = ""  # R2 ключ текущего PDF
+    _current_node_id: str = ""  # ID узла документа в дереве
+    
+    def _auto_save_annotation(self):
+        """Авто-сохранение разметки при изменении блоков"""
+        if not self.annotation_document or not self._current_pdf_path:
+            return
+        
+        ann_path = get_annotation_path(self._current_pdf_path)
+        try:
+            AnnotationIO.save_annotation(self.annotation_document, str(ann_path))
+            logger.debug(f"Annotation auto-saved: {ann_path}")
+            
+            # Синхронизация с R2 (в фоне)
+            if hasattr(self, '_current_r2_key') and self._current_r2_key:
+                self._sync_annotation_to_r2()
+        except Exception as e:
+            logger.error(f"Auto-save annotation failed: {e}")
+    
+    def _sync_annotation_to_r2(self):
+        """Синхронизировать annotation.json с R2"""
+        if not self._current_r2_key or not self._current_pdf_path:
+            return
+        
+        ann_path = get_annotation_path(self._current_pdf_path)
+        if not ann_path.exists():
+            return
+        
+        try:
+            from rd_core.r2_storage import R2Storage
+            r2 = R2Storage()
+            ann_r2_key = get_annotation_r2_key(self._current_r2_key)
+            r2.upload_file(str(ann_path), ann_r2_key)
+            logger.debug(f"Annotation synced to R2: {ann_r2_key}")
+            
+            # Обновить атрибут has_annotation в дереве
+            self._update_has_annotation_flag(True)
+        except Exception as e:
+            logger.error(f"Sync annotation to R2 failed: {e}")
+    
+    def _update_has_annotation_flag(self, has_annotation: bool):
+        """Обновить флаг has_annotation в узле дерева"""
+        if not hasattr(self, '_current_node_id') or not self._current_node_id:
+            return
+        
+        try:
+            from app.tree_client import TreeClient
+            client = TreeClient()
+            node = client.get_node(self._current_node_id)
+            if node:
+                attrs = node.attributes.copy()
+                attrs["has_annotation"] = has_annotation
+                client.update_node(self._current_node_id, attributes=attrs)
+                
+                # Обновить отображение в дереве
+                if hasattr(self, 'project_tree') and self.project_tree:
+                    item = self.project_tree._node_map.get(self._current_node_id)
+                    if item:
+                        node.attributes = attrs
+                        from app.gui.tree_node_operations import NODE_ICONS
+                        from app.tree_client import NodeType
+                        icon = NODE_ICONS.get(node.node_type, "📄")
+                        version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                        ann_icon = "📋" if has_annotation else ""
+                        display_name = f"{icon} {version_tag} {node.name} {ann_icon}".strip()
+                        item.setText(0, display_name)
+        except Exception as e:
+            logger.debug(f"Update has_annotation failed: {e}")
+    
+    def _load_annotation_if_exists(self, pdf_path: str, r2_key: str = ""):
+        """Загрузить annotation.json если существует (локально или в R2)"""
+        ann_path = get_annotation_path(pdf_path)
+        
+        # Попробовать скачать из R2 если нет локально
+        if not ann_path.exists() and r2_key:
+            try:
+                from rd_core.r2_storage import R2Storage
+                r2 = R2Storage()
+                ann_r2_key = get_annotation_r2_key(r2_key)
+                r2.download_file(ann_r2_key, str(ann_path))
+            except Exception as e:
+                logger.debug(f"No annotation in R2 or error: {e}")
+        
+        # Загрузить локальный файл
+        if ann_path.exists():
+            loaded = AnnotationIO.load_annotation(str(ann_path))
+            if loaded:
+                self.annotation_document = loaded
+                logger.info(f"Annotation loaded: {ann_path}")
+                return True
+        return False
     
     def _create_empty_annotation(self, pdf_path: str) -> Document:
         """Создать пустой документ аннотации со страницами"""
@@ -39,7 +144,7 @@ class FileOperationsMixin:
         if file_path:
             self._open_pdf_file(file_path)
     
-    def _open_pdf_file(self, pdf_path: str):
+    def _open_pdf_file(self, pdf_path: str, r2_key: str = ""):
         """Открыть PDF файл напрямую"""
         if self.pdf_document:
             self.pdf_document.close()
@@ -55,9 +160,12 @@ class FileOperationsMixin:
         
         self.current_page = 0
         self._current_pdf_path = pdf_path
+        self._current_r2_key = r2_key
         
-        # Создаём пустой документ аннотации
-        self.annotation_document = self._create_empty_annotation(pdf_path)
+        # Пробуем загрузить существующую разметку
+        if not self._load_annotation_if_exists(pdf_path, r2_key):
+            # Создаём пустой документ аннотации
+            self.annotation_document = self._create_empty_annotation(pdf_path)
         
         # Рендерим первую страницу
         self._render_current_page()
@@ -110,7 +218,9 @@ class FileOperationsMixin:
                 QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
                 return
         
-        self._open_pdf_file(str(local_path))
+        self._current_r2_key = r2_key
+        self._current_node_id = node_id
+        self._open_pdf_file(str(local_path), r2_key=r2_key)
     
     def _save_annotation(self):
         """Сохранить разметку в JSON"""
