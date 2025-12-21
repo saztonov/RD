@@ -297,11 +297,12 @@ def update_job_endpoint(
 
 
 @router.post("/{job_id}/restart")
-def restart_job_endpoint(
+async def restart_job_endpoint(
     job_id: str,
+    blocks_file: Optional[UploadFile] = File(None),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
-    """Перезапустить задачу"""
+    """Перезапустить задачу. Опционально обновить блоки."""
     check_api_key(x_api_key)
     
     job = get_job(job_id)
@@ -320,6 +321,26 @@ def restart_job_endpoint(
         delete_job_files(job_id, result_types)
     except Exception as e:
         _logger.warning(f"Failed to delete result files from R2: {e}")
+    
+    # Обновить блоки если переданы
+    if blocks_file:
+        try:
+            blocks_json = (await blocks_file.read()).decode("utf-8")
+            blocks_data = json.loads(blocks_json)
+            blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
+            
+            s3_client, bucket_name = get_r2_sync_client()
+            blocks_key = f"{job.r2_prefix}/annotation.json"
+            s3_client.put_object(
+                Bucket=bucket_name,
+                Key=blocks_key,
+                Body=blocks_bytes,
+                ContentType="application/json"
+            )
+            _logger.info(f"Updated blocks for job {job_id}")
+        except Exception as e:
+            _logger.error(f"Failed to update blocks: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid blocks: {e}")
     
     if not reset_job_for_restart(job_id):
         raise HTTPException(status_code=500, detail="Failed to reset job")

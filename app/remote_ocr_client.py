@@ -286,10 +286,10 @@ class RemoteOCRClient:
                 }
             )
         logger.info(f"POST /jobs response: {resp.status_code}")
-            if resp.status_code >= 400:
-                logger.error(f"POST /jobs error response: {resp.text[:1000]}")
-            self._handle_response_error(resp)
-            data = resp.json()
+        if resp.status_code >= 400:
+            logger.error(f"POST /jobs error response: {resp.text[:1000]}")
+        self._handle_response_error(resp)
+        data = resp.json()
         
         return JobInfo(
             id=data["id"],
@@ -389,18 +389,68 @@ class RemoteOCRClient:
         resp = self._request_with_retry("delete", f"/jobs/{job_id}")
         return resp.json().get("ok", False)
     
-    def restart_job(self, job_id: str) -> bool:
+    def restart_job(self, job_id: str, updated_blocks: Optional[List[Block]] = None) -> bool:
         """
         Перезапустить задачу (сбросить результаты и поставить в очередь)
         
         Args:
             job_id: ID задачи
+            updated_blocks: опционально обновлённые блоки
         
         Returns:
             True если успешно
         """
+        if updated_blocks:
+            blocks_data = [block.to_dict() for block in updated_blocks]
+            blocks_json = json.dumps(blocks_data, ensure_ascii=False)
+            blocks_bytes = blocks_json.encode("utf-8")
+            
+            client = _get_remote_ocr_client(self.base_url, self.timeout)
+            resp = client.post(
+                f"/jobs/{job_id}/restart",
+                headers=self._headers(),
+                timeout=self.timeout,
+                files={"blocks_file": ("blocks.json", blocks_bytes, "application/json")}
+            )
+            self._handle_response_error(resp)
+            return resp.json().get("ok", False)
+        
         resp = self._request_with_retry("post", f"/jobs/{job_id}/restart")
         return resp.json().get("ok", False)
+    
+    def get_job_blocks(self, job_id: str) -> Optional[List[dict]]:
+        """
+        Получить блоки задачи с сервера
+        
+        Args:
+            job_id: ID задачи
+        
+        Returns:
+            Список блоков или None
+        """
+        try:
+            details = self.get_job_details(job_id)
+            r2_base_url = details.get("r2_base_url")
+            
+            if not r2_base_url:
+                return None
+            
+            # Получаем блоки из R2
+            blocks_url = f"{r2_base_url}/annotation.json"
+            resp = httpx.get(blocks_url, timeout=30.0)
+            if resp.status_code == 200:
+                return resp.json()
+            
+            # Fallback на blocks.json
+            blocks_url = f"{r2_base_url}/blocks.json"
+            resp = httpx.get(blocks_url, timeout=30.0)
+            if resp.status_code == 200:
+                return resp.json()
+            
+        except Exception as e:
+            logger.warning(f"Ошибка получения блоков: {e}")
+        
+        return None
     
     def pause_job(self, job_id: str) -> bool:
         """Поставить задачу на паузу"""

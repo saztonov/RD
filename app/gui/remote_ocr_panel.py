@@ -1,7 +1,6 @@
 """Панель для управления Remote OCR задачами"""
 from __future__ import annotations
 
-import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -39,8 +38,6 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self._current_document_id = None
         self._last_output_dir = None
         self._last_engine = None
-        self._job_output_dirs = {}
-        self._config_file = Path.home() / ".rd" / "remote_ocr_jobs.json"
         self._has_active_jobs = False
         self._consecutive_errors = 0
         self._is_fetching = False
@@ -58,10 +55,10 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self._signals.download_error.connect(self._on_download_error)
         self._signals.rerun_created.connect(self._on_rerun_created)
         self._signals.rerun_error.connect(self._on_rerun_error)
+        self._signals.rerun_no_changes.connect(self._on_rerun_no_changes)
         
         self._download_dialog: Optional[QProgressDialog] = None
         
-        self._load_job_mappings()
         self._setup_ui()
         self._setup_timer()
     
@@ -111,25 +108,6 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         """Настроить таймер для автообновления"""
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self._refresh_jobs)
-    
-    def _load_job_mappings(self):
-        """Загрузить сохранённые маппинги job_id -> output_dir"""
-        try:
-            if self._config_file.exists():
-                with open(self._config_file, 'r', encoding='utf-8') as f:
-                    self._job_output_dirs = json.load(f)
-        except Exception as e:
-            logger.warning(f"Ошибка загрузки маппингов задач: {e}")
-            self._job_output_dirs = {}
-    
-    def _save_job_mappings(self):
-        """Сохранить маппинги job_id -> output_dir"""
-        try:
-            self._config_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._config_file, 'w', encoding='utf-8') as f:
-                json.dump(self._job_output_dirs, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.warning(f"Ошибка сохранения маппингов задач: {e}")
     
     def _get_client(self):
         """Получить или создать клиент"""
@@ -193,11 +171,13 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self.jobs_table.setSortingEnabled(False)
         self.jobs_table.setRowCount(0)
         
-        for job in jobs:
-            if job.status == "done" and job.id in self._job_output_dirs:
-                extract_dir = Path(self._job_output_dirs[job.id])
-                if not (extract_dir / "annotation.json").exists():
+        # Авто-скачивание результата для текущего документа
+        current_node_id = getattr(self.main_window, '_current_node_id', None)
+        if current_node_id:
+            for job in jobs:
+                if job.status == "done" and getattr(job, 'node_id', None) == current_node_id:
                     self._auto_download_result(job.id)
+                    break  # Только последняя done задача для текущего документа
         
         for idx, job in enumerate(jobs, start=1):
             row = self.jobs_table.rowCount()
@@ -246,10 +226,10 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         actions_layout.setContentsMargins(1, 1, 1, 1)
         actions_layout.setSpacing(2)
         
-        rerun_btn = QPushButton("🔁")
+        rerun_btn = QPushButton("🔄")
         rerun_btn.setToolTip("Повторное распознавание")
         rerun_btn.setFixedSize(26, 26)
-        rerun_btn.setStyleSheet("QPushButton { background-color: #e67e22; border: 1px solid #d35400; border-radius: 4px; } QPushButton:hover { background-color: #d35400; }")
+        rerun_btn.setStyleSheet("QPushButton { background-color: #27ae60; border: 1px solid #1e8449; border-radius: 4px; } QPushButton:hover { background-color: #1e8449; }")
         rerun_btn.clicked.connect(lambda checked, jid=job.id: self._rerun_job(jid))
         actions_layout.addWidget(rerun_btn)
         
@@ -284,9 +264,6 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
 
     def _on_job_created(self, job_info):
         """Слот: задача создана"""
-        self._job_output_dirs[job_info.id] = self._pending_output_dir
-        self._save_job_mappings()
-        
         from app.gui.toast import show_toast
         show_toast(self, f"Задача создана: {job_info.id[:8]}...", duration=2500)
         self._refresh_jobs(manual=True)
@@ -340,13 +317,42 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
             self._download_dialog.setLabelText(f"Скачивание: {filename}")
 
     def _on_download_finished(self, job_id: str, extract_dir: str):
-        """Слот: скачивание завершено"""
+        """Слот: скачивание завершено - перезагрузить аннотацию в GUI"""
         if self._download_dialog:
             self._download_dialog.close()
             self._download_dialog = None
         
+        # Перезагружаем аннотацию из скачанного файла
+        self._reload_annotation_from_result(extract_dir)
+        
         from app.gui.toast import show_toast
-        show_toast(self.main_window, f"Результат скачан: {job_id[:8]}...")
+        show_toast(self.main_window, f"OCR завершён, аннотация обновлена")
+    
+    def _reload_annotation_from_result(self, extract_dir: str):
+        """Перезагрузить аннотацию из скачанного результата OCR"""
+        try:
+            pdf_path = getattr(self.main_window, '_current_pdf_path', None)
+            if not pdf_path:
+                return
+            
+            pdf_stem = Path(pdf_path).stem
+            ann_path = Path(extract_dir) / f"{pdf_stem}_annotation.json"
+            
+            if not ann_path.exists():
+                logger.warning(f"Файл аннотации не найден: {ann_path}")
+                return
+            
+            from rd_core.annotation_io import AnnotationIO
+            loaded_doc = AnnotationIO.load_annotation(str(ann_path))
+            
+            if loaded_doc:
+                self.main_window.annotation_document = loaded_doc
+                self.main_window._render_current_page()
+                if hasattr(self.main_window, 'blocks_tree_manager') and self.main_window.blocks_tree_manager:
+                    self.main_window.blocks_tree_manager.update_blocks_tree()
+                logger.info(f"Аннотация перезагружена из: {ann_path}")
+        except Exception as e:
+            logger.error(f"Ошибка перезагрузки аннотации: {e}")
 
     def _on_download_error(self, job_id: str, error_msg: str):
         """Слот: ошибка скачивания"""
@@ -368,6 +374,10 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
     def _on_rerun_error(self, job_id: str, error_msg: str):
         """Слот: ошибка повторного распознавания"""
         QMessageBox.critical(self, "Ошибка", f"Не удалось повторить распознавание:\n{error_msg}")
+    
+    def _on_rerun_no_changes(self, job_id: str):
+        """Слот: блоки не изменились"""
+        QMessageBox.information(self, "Без изменений", "Блоки не изменились.\nФайл уже был распознан с текущей аннотацией.")
     
     def showEvent(self, event):
         """При показе панели обновляем список"""

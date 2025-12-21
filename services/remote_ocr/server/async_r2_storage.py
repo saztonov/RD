@@ -69,13 +69,10 @@ class AsyncR2Storage:
                 response = await client.get_object(Bucket=self.bucket_name, Key=remote_key)
                 
                 # Streaming download
-                async with response["Body"] as stream:
-                    with open(local_file, "wb") as f:
-                        while True:
-                            chunk = await stream.read(1024 * 1024)  # 1MB chunks
-                            if not chunk:
-                                break
-                            f.write(chunk)
+                body = response["Body"]
+                data = await body.read()
+                with open(local_file, "wb") as f:
+                    f.write(data)
             
             logger.debug(f"✅ Async download: {remote_key}")
             return True

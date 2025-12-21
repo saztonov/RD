@@ -100,7 +100,7 @@ class JobOperationsMixin:
     def _delete_job(self, job_id: str):
         """Удалить задачу и все связанные файлы"""
         reply = QMessageBox.question(self, "Подтверждение удаления",
-            f"Удалить задачу {job_id[:8]}...?\n\nБудут удалены:\n• Запись на сервере\n• Файлы в R2\n• Локальная папка",
+            f"Удалить задачу {job_id[:8]}...?\n\nБудут удалены:\n• Запись на сервере\n• Файлы в R2",
             QMessageBox.Yes | QMessageBox.No)
         
         if reply != QMessageBox.Yes:
@@ -112,18 +112,6 @@ class JobOperationsMixin:
         
         try:
             client.delete_job(job_id)
-            
-            if job_id in self._job_output_dirs:
-                local_dir = Path(self._job_output_dirs[job_id])
-                if local_dir.exists():
-                    import shutil
-                    try:
-                        shutil.rmtree(local_dir)
-                    except Exception as e:
-                        logger.warning(f"Ошибка удаления локальной папки: {e}")
-                
-                del self._job_output_dirs[job_id]
-                self._save_job_mappings()
             
             from app.gui.toast import show_toast
             show_toast(self, "Задача удалена")
@@ -168,23 +156,17 @@ class JobOperationsMixin:
             QMessageBox.critical(self, "Ошибка", f"Не удалось возобновить:\n{e}")
     
     def _rerun_job(self, job_id: str):
-        """Повторное распознавание с сохранёнными настройками"""
-        reply = QMessageBox.question(
-            self, "Повторное распознавание",
-            f"Повторить распознавание задачи {job_id[:8]}?\n\nВсе результаты будут удалены и созданы заново.",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if reply != QMessageBox.Yes:
-            return
-        
+        """Повторное распознавание с сохранёнными настройками и проверкой изменений"""
         from app.gui.toast import show_toast
-        show_toast(self, "Подготовка повторного распознавания...", duration=1500)
+        show_toast(self, "Проверка изменений...", duration=1500)
         
         self._executor.submit(self._rerun_job_bg, job_id)
     
     def _rerun_job_bg(self, job_id: str):
-        """Фоновая повторная отправка на распознавание"""
+        """Фоновая повторная отправка на распознавание с проверкой изменений"""
         try:
+            import hashlib
+            import json
             from app.remote_ocr_client import AuthenticationError, ServerError
             
             client = self._get_client()
@@ -192,25 +174,39 @@ class JobOperationsMixin:
                 self._signals.rerun_error.emit(job_id, "Клиент не инициализирован")
                 return
             
-            if job_id in self._job_output_dirs:
-                local_dir = Path(self._job_output_dirs[job_id])
-                if local_dir.exists():
-                    import shutil
-                    for fname in ["annotation.json", "result.md"]:
-                        fpath = local_dir / fname
-                        if fpath.exists():
-                            try:
-                                fpath.unlink()
-                            except Exception:
-                                pass
-                    crops_dir = local_dir / "crops"
-                    if crops_dir.exists():
-                        try:
-                            shutil.rmtree(crops_dir)
-                        except Exception:
-                            pass
+            # Получаем текущие блоки из приложения
+            current_blocks = self._get_selected_blocks()
+            if not current_blocks:
+                self._signals.rerun_error.emit(job_id, "Нет блоков для распознавания")
+                return
             
-            if not client.restart_job(job_id):
+            current_blocks_data = [block.to_dict() for block in current_blocks]
+            current_hash = hashlib.sha256(
+                json.dumps(current_blocks_data, sort_keys=True, ensure_ascii=False).encode()
+            ).hexdigest()
+            
+            # Получаем блоки с сервера
+            server_blocks = client.get_job_blocks(job_id)
+            updated_blocks = None
+            
+            if server_blocks:
+                server_hash = hashlib.sha256(
+                    json.dumps(server_blocks, sort_keys=True, ensure_ascii=False).encode()
+                ).hexdigest()
+                
+                if current_hash == server_hash:
+                    # Блоки не изменились
+                    self._signals.rerun_no_changes.emit(job_id)
+                    return
+                else:
+                    # Блоки изменились - передаём обновлённые
+                    updated_blocks = current_blocks
+                    logger.info(f"Блоки изменились, обновляем на сервере")
+            else:
+                # Не удалось получить блоки - передаём текущие
+                updated_blocks = current_blocks
+            
+            if not client.restart_job(job_id, updated_blocks):
                 self._signals.rerun_error.emit(job_id, "Не удалось перезапустить задачу")
                 return
             
@@ -233,23 +229,10 @@ class JobOperationsMixin:
         try:
             job_details = client.get_job_details(job_id)
             
-            if job_id not in self._job_output_dirs:
-                from app.gui.folder_settings_dialog import get_projects_dir
-                download_dir = get_projects_dir()
-                if download_dir and Path(download_dir).exists():
-                    extract_dir = Path(download_dir) / f"result_{job_id[:8]}"
-                else:
-                    import tempfile
-                    extract_dir = Path(tempfile.gettempdir()) / "rd_ocr_results" / f"result_{job_id[:8]}"
-                
-                self._job_output_dirs[job_id] = str(extract_dir)
-                self._save_job_mappings()
-            
-            extract_dir = Path(self._job_output_dirs[job_id])
-            if job_details.get("status") == "done" and not (extract_dir / "annotation.json").exists():
-                self._auto_download_result(job_id)
-            
-            job_details["client_output_dir"] = self._job_output_dirs[job_id]
+            # Показываем путь к текущему документу
+            pdf_path = getattr(self.main_window, '_current_pdf_path', None)
+            if pdf_path:
+                job_details["client_output_dir"] = str(Path(pdf_path).parent)
             
             from app.gui.job_details_dialog import JobDetailsDialog
             dialog = JobDetailsDialog(job_details, self)

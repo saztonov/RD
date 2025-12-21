@@ -11,7 +11,7 @@ class DownloadMixin:
     """Миксин для скачивания результатов"""
     
     def _auto_download_result(self, job_id: str):
-        """Запустить скачивание результата из R2 в фоне с прогрессом"""
+        """Запустить скачивание результата из R2 в папку текущего документа"""
         client = self._get_client()
         if client is None:
             return
@@ -24,24 +24,37 @@ class DownloadMixin:
                 logger.warning(f"Задача {job_id} не имеет r2_prefix")
                 return
             
-            if job_id in self._job_output_dirs:
-                extract_dir = Path(self._job_output_dirs[job_id])
-            else:
-                from app.gui.folder_settings_dialog import get_projects_dir
-                download_dir = get_projects_dir()
-                if download_dir and Path(download_dir).exists():
-                    extract_dir = Path(download_dir) / f"result_{job_id[:8]}"
-                else:
-                    import tempfile
-                    tmp_base = Path(tempfile.gettempdir()) / "rd_ocr_results"
-                    tmp_base.mkdir(exist_ok=True)
-                    extract_dir = tmp_base / f"result_{job_id[:8]}"
+            # Получаем путь к текущему PDF из main_window
+            pdf_path = getattr(self.main_window, '_current_pdf_path', None)
+            if not pdf_path:
+                logger.warning(f"Нет открытого документа для сохранения результатов job {job_id}")
+                return
             
-            if job_id not in self._job_output_dirs:
-                self._job_output_dirs[job_id] = str(extract_dir)
-                self._save_job_mappings()
+            pdf_path = Path(pdf_path)
+            extract_dir = pdf_path.parent
             
-            result_exists = extract_dir.exists() and (extract_dir / "annotation.json").exists()
+            # Проверяем, есть ли уже результат (annotation с OCR текстом)
+            ann_path = extract_dir / f"{pdf_path.stem}_annotation.json"
+            result_exists = ann_path.exists()
+            
+            # Проверяем содержит ли annotation ocr_text (признак OCR)
+            if result_exists:
+                try:
+                    import json
+                    with open(ann_path, 'r', encoding='utf-8') as f:
+                        ann_data = json.load(f)
+                    # Проверяем наличие ocr_text в блоках
+                    has_ocr = False
+                    for page in ann_data.get('pages', []):
+                        for block in page.get('blocks', []):
+                            if block.get('ocr_text'):
+                                has_ocr = True
+                                break
+                        if has_ocr:
+                            break
+                    result_exists = has_ocr
+                except Exception:
+                    result_exists = False
             
             if not result_exists:
                 self._executor.submit(self._download_result_bg, job_id, r2_prefix, str(extract_dir))
@@ -52,10 +65,9 @@ class DownloadMixin:
             logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")
 
     def _download_result_bg(self, job_id: str, r2_prefix: str, extract_dir: str):
-        """Фоновое скачивание результата с прогрессом.
+        """Фоновое скачивание результата в папку текущего документа.
         
-        Скачиваем только: annotation.json, result.md (по имени документа), crops/
-        НЕ скачиваем: document.pdf, result.zip
+        Сохраняем: {pdf_stem}_annotation.json, {pdf_stem}.md, crops/
         """
         try:
             from rd_core.r2_storage import R2Storage
@@ -71,6 +83,13 @@ class DownloadMixin:
             doc_stem = Path(doc_name).stem
             node_id = job_details.get("node_id")
             
+            # Получаем имя PDF из main_window для правильного именования файлов
+            pdf_path = getattr(self.main_window, '_current_pdf_path', None)
+            if pdf_path:
+                pdf_stem = Path(pdf_path).stem
+            else:
+                pdf_stem = doc_stem
+            
             # Определяем prefix: tree_docs/{node_id} или ocr_jobs/{job_id}
             if node_id:
                 actual_prefix = f"tree_docs/{node_id}"
@@ -80,14 +99,14 @@ class DownloadMixin:
             crops_prefix = f"{actual_prefix}/crops/"
             crop_files = r2.list_by_prefix(crops_prefix)
             
-            # Файлы для скачивания: annotation.json + {doc_stem}.md
+            # Файлы для скачивания: annotation.json -> {pdf_stem}_annotation.json, {doc_stem}.md -> {pdf_stem}.md
             files_to_download = [
-                ("annotation.json", "annotation.json"),
-                (f"{doc_stem}.md", f"{doc_stem}.md"),
+                ("annotation.json", f"{pdf_stem}_annotation.json"),
+                (f"{doc_stem}.md", f"{pdf_stem}.md"),
             ]
             # Обратная совместимость: если нет {doc_stem}.md, пробуем result.md
             if not r2.exists(f"{actual_prefix}/{doc_stem}.md"):
-                files_to_download[1] = ("result.md", f"{doc_stem}.md")
+                files_to_download[1] = ("result.md", f"{pdf_stem}.md")
             
             total_files = len(files_to_download) + len(crop_files)
             self._signals.download_started.emit(job_id, total_files)
@@ -113,7 +132,7 @@ class DownloadMixin:
                         local_path = crops_dir / filename
                         r2.download_file(remote_key, str(local_path))
             
-            logger.info(f"✅ Результат скачан из R2: {extract_dir}")
+            logger.info(f"✅ Результат скачан в папку документа: {extract_dir}")
             self._signals.download_finished.emit(job_id, extract_dir)
             
         except Exception as e:

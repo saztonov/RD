@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent
 from PySide6.QtGui import QColor, QKeyEvent
 
-from app.tree_client import TreeClient, TreeNode, NodeType, NodeStatus, StageType, SectionType
+from app.tree_client import TreeClient, TreeNode, NodeType, NodeStatus, StageType, SectionType, FileType
 from app.gui.tree_node_operations import TreeNodeOperationsMixin, NODE_ICONS, STATUS_COLORS
 
 logger = logging.getLogger(__name__)
@@ -275,7 +275,12 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
     def _add_placeholder(self, item: QTreeWidgetItem, node: TreeNode):
         """Добавить placeholder для lazy loading"""
         allowed = node.get_allowed_child_types()
-        if allowed:
+        # Для документов всегда добавляем placeholder (markdown может быть)
+        if node.node_type == NodeType.DOCUMENT:
+            placeholder = QTreeWidgetItem(["..."])
+            placeholder.setData(0, Qt.UserRole, "placeholder")
+            item.addChild(placeholder)
+        elif allowed:
             placeholder = QTreeWidgetItem(["..."])
             placeholder.setData(0, Qt.UserRole, "placeholder")
             item.addChild(placeholder)
@@ -293,6 +298,11 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
     def _load_children(self, parent_item: QTreeWidgetItem, parent_node: TreeNode):
         """Загрузить дочерние узлы"""
         try:
+            # Для документов загружаем markdown файлы
+            if parent_node.node_type == NodeType.DOCUMENT:
+                self._load_document_files(parent_item, parent_node)
+                return
+            
             children = self.client.get_children(parent_node.id)
             for child in children:
                 child_item = self._create_tree_item(child)
@@ -301,14 +311,86 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         except Exception as e:
             logger.error(f"Failed to load children: {e}")
     
+    def _load_document_files(self, parent_item: QTreeWidgetItem, doc_node: TreeNode):
+        """Загрузить файлы документа (markdown)"""
+        try:
+            files = self.client.get_node_files(doc_node.id, FileType.RESULT_MD)
+            logger.debug(f"Document {doc_node.id}: found {len(files)} md files")
+            
+            if not files:
+                # Fallback: проверяем R2 напрямую
+                from rd_core.r2_storage import R2Storage
+                from pathlib import Path
+                r2 = R2Storage()
+                doc_stem = Path(doc_node.name).stem
+                md_key = f"tree_docs/{doc_node.id}/{doc_stem}.md"
+                if r2.exists(md_key):
+                    # Создаём виртуальный NodeFile
+                    from app.tree_client import NodeFile
+                    virtual_file = NodeFile(
+                        id="virtual",
+                        node_id=doc_node.id,
+                        file_type=FileType.RESULT_MD,
+                        r2_key=md_key,
+                        file_name=f"{doc_stem}.md"
+                    )
+                    files = [virtual_file]
+                    logger.info(f"Found markdown in R2: {md_key}")
+            
+            for f in files:
+                md_item = QTreeWidgetItem([f"📄 {f.file_name}"])
+                md_item.setData(0, Qt.UserRole, ("markdown", doc_node, f))
+                md_item.setForeground(0, QColor("#9cdcfe"))
+                parent_item.addChild(md_item)
+        except Exception as e:
+            logger.error(f"Failed to load document files: {e}")
+    
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
-        """Двойной клик - открыть документ (скачать из R2)"""
-        node = item.data(0, Qt.UserRole)
-        if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
-            r2_key = node.attributes.get("r2_key", "")
+        """Двойной клик - открыть документ (скачать из R2) или markdown"""
+        data = item.data(0, Qt.UserRole)
+        logger.debug(f"Double click on item, data type: {type(data)}, data: {data}")
+        
+        # Markdown файл
+        if isinstance(data, tuple) and len(data) >= 1 and data[0] == "markdown":
+            _, doc_node, node_file = data
+            logger.info(f"Opening markdown: {node_file.file_name}")
+            self._open_markdown_editor(doc_node, node_file)
+            return
+        
+        # Документ PDF
+        if isinstance(data, TreeNode) and data.node_type == NodeType.DOCUMENT:
+            r2_key = data.attributes.get("r2_key", "")
             if r2_key:
-                self.highlight_document(node.id)
-                self.document_selected.emit(node.id, r2_key)
+                self.highlight_document(data.id)
+                self.document_selected.emit(data.id, r2_key)
+    
+    def _open_markdown_editor(self, doc_node: TreeNode, node_file):
+        """Открыть редактор markdown"""
+        from rd_core.r2_storage import R2Storage
+        from app.gui.markdown_editor_dialog import MarkdownEditorDialog
+        
+        try:
+            r2 = R2Storage()
+            md_text = r2.download_text(node_file.r2_key) or ""
+            
+            def save_callback(new_text: str) -> bool:
+                try:
+                    return r2.upload_text(new_text, node_file.r2_key)
+                except Exception as e:
+                    logger.error(f"Failed to save markdown: {e}")
+                    return False
+            
+            dialog = MarkdownEditorDialog(
+                title=f"{doc_node.name} — {node_file.file_name}",
+                markdown_text=md_text,
+                save_callback=save_callback,
+                parent=self.window()
+            )
+            dialog.show()
+        except Exception as e:
+            logger.error(f"Failed to open markdown editor: {e}")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть markdown: {e}")
     
     def highlight_document(self, node_id: str):
         """Подсветить текущий открытый документ"""

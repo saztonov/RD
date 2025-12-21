@@ -18,4 +18,5 @@ class WorkerSignals(QObject):
     rerun_started = Signal(str)  # old_job_id
     rerun_created = Signal(str, object)  # old_job_id, new_job_info
     rerun_error = Signal(str, str)  # old_job_id, error_message
+    rerun_no_changes = Signal(str)  # job_id - блоки не изменились
 
