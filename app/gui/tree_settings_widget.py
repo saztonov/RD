@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from app.tree_client import TreeClient, StageType, SectionType
+from app.tree_client import TreeClient, StageType, SectionType, _get_tree_client
 
 logger = logging.getLogger(__name__)
 
@@ -272,7 +272,6 @@ class TreeSettingsWidget(QWidget):
     
     def _execute_sql(self, table: str, data: dict):
         """Вставить запись"""
-        import httpx
         url = f"{self.client.supabase_url}/rest/v1/{table}"
         headers = {
             "apikey": self.client.supabase_key,
@@ -280,32 +279,30 @@ class TreeSettingsWidget(QWidget):
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         }
-        with httpx.Client(timeout=30) as client:
-            resp = client.post(url, headers=headers, json=data)
-            resp.raise_for_status()
+        client = _get_tree_client()
+        resp = client.post(url, headers=headers, json=data, timeout=30.0)
+        resp.raise_for_status()
     
     def _update_sql(self, table: str, record_id: int, data: dict):
         """Обновить запись"""
-        import httpx
         url = f"{self.client.supabase_url}/rest/v1/{table}?id=eq.{record_id}"
         headers = {
             "apikey": self.client.supabase_key,
             "Authorization": f"Bearer {self.client.supabase_key}",
             "Content-Type": "application/json",
         }
-        with httpx.Client(timeout=30) as client:
-            resp = client.patch(url, headers=headers, json=data)
-            resp.raise_for_status()
+        client = _get_tree_client()
+        resp = client.patch(url, headers=headers, json=data, timeout=30.0)
+        resp.raise_for_status()
     
     def _delete_sql(self, table: str, record_id: int):
         """Удалить запись"""
-        import httpx
         url = f"{self.client.supabase_url}/rest/v1/{table}?id=eq.{record_id}"
         headers = {
             "apikey": self.client.supabase_key,
             "Authorization": f"Bearer {self.client.supabase_key}",
         }
-        with httpx.Client(timeout=30) as client:
-            resp = client.delete(url, headers=headers)
-            resp.raise_for_status()
+        client = _get_tree_client()
+        resp = client.delete(url, headers=headers, timeout=30.0)
+        resp.raise_for_status()
 

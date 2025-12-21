@@ -22,8 +22,13 @@ celery_app.conf.update(
     # Таймауты
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    # Soft/hard time limits для задач (предотвращение зависания)
+    task_soft_time_limit=1800,  # 30 min soft limit
+    task_time_limit=2100,       # 35 min hard limit
     # Результаты храним 1 час
     result_expires=3600,
+    # Ограничение памяти: перезапуск worker после N задач
+    worker_max_tasks_per_child=50,
     # Регистрация задач
     imports=["services.remote_ocr.server.tasks"],
 )

@@ -22,7 +22,15 @@ class OpenRouterBackend:
         self._provider_order: Optional[List[str]] = None
         try:
             import requests
-            self.requests = requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            
+            self.session = requests.Session()
+            retry = Retry(total=3, backoff_factor=0.5, status_forcelist=[502, 503, 504])
+            adapter = HTTPAdapter(pool_connections=5, pool_maxsize=10, max_retries=retry)
+            self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
+            self.requests = requests  # для exceptions
         except ImportError:
             raise ImportError("Требуется установить requests: pip install requests")
         logger.info(f"OpenRouter инициализирован (модель: {self.model_name})")
@@ -33,7 +41,7 @@ class OpenRouterBackend:
             return OpenRouterBackend._providers_cache[self.model_name]
         
         try:
-            response = self.requests.get(
+            response = self.session.get(
                 "https://openrouter.ai/api/v1/models",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 timeout=30
@@ -141,7 +149,7 @@ class OpenRouterBackend:
             if self._provider_order:
                 payload["provider"] = {"order": self._provider_order}
             
-            response = self.requests.post(
+            response = self.session.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
                 json=payload,

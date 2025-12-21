@@ -24,11 +24,17 @@ class Settings:
     datalab_max_concurrent: int = int(os.getenv("DATALAB_MAX_CONCURRENT", "5"))  # параллельных
     
     # Лимит параллельных задач (job-ов) - остальные ждут в очереди
-    max_concurrent_jobs: int = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
+    max_concurrent_jobs: int = int(os.getenv("MAX_CONCURRENT_JOBS", "4"))
+    
+    # Глобальный лимит параллельных OCR запросов (все задачи суммарно)
+    max_global_ocr_requests: int = int(os.getenv("MAX_GLOBAL_OCR_REQUESTS", "8"))
     
     # Интервал polling очереди (сек)
     poll_interval: float = float(os.getenv("POLL_INTERVAL", "10"))
     poll_max_interval: float = float(os.getenv("POLL_MAX_INTERVAL", "60"))
+    
+    # Backpressure: максимальный размер очереди Redis
+    max_queue_size: int = int(os.getenv("MAX_QUEUE_SIZE", "100"))
 
 
 settings = Settings()

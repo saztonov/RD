@@ -41,7 +41,14 @@ RULES:
         self.rate_limiter = rate_limiter
         try:
             import requests
-            self.requests = requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            
+            self.session = requests.Session()
+            retry = Retry(total=3, backoff_factor=0.5, status_forcelist=[502, 503, 504])
+            adapter = HTTPAdapter(pool_connections=5, pool_maxsize=10, max_retries=retry)
+            self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
         except ImportError:
             raise ImportError("Требуется установить requests: pip install requests")
         logger.info("Datalab OCR инициализирован")
@@ -83,7 +90,7 @@ RULES:
                             'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT
                         }
                         
-                        response = self.requests.post(
+                        response = self.session.post(
                             self.API_URL,
                             headers=self.headers,
                             files=files,
@@ -122,7 +129,7 @@ RULES:
                     time.sleep(self.POLL_INTERVAL)
                     
                     logger.debug(f"Datalab: попытка поллинга {attempt + 1}/{self.MAX_POLL_ATTEMPTS}")
-                    poll_response = self.requests.get(check_url, headers=self.headers, timeout=30)
+                    poll_response = self.session.get(check_url, headers=self.headers, timeout=30)
                     
                     if poll_response.status_code == 429:
                         logger.warning("Datalab: 429 при поллинге, ждём 30с")

@@ -13,10 +13,32 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
+from httpx import Limits
 
 from rd_core.models import Block
 
 logger = logging.getLogger(__name__)
+
+# Глобальный пул соединений для Remote OCR
+_remote_ocr_http_client: httpx.Client | None = None
+_remote_ocr_base_url: str | None = None
+
+def _get_remote_ocr_client(base_url: str, timeout: float = 120.0) -> httpx.Client:
+    """Получить или создать HTTP клиент с connection pooling"""
+    global _remote_ocr_http_client, _remote_ocr_base_url
+    if _remote_ocr_http_client is None or _remote_ocr_base_url != base_url:
+        if _remote_ocr_http_client is not None:
+            try:
+                _remote_ocr_http_client.close()
+            except Exception:
+                pass
+        _remote_ocr_http_client = httpx.Client(
+            base_url=base_url,
+            limits=Limits(max_connections=10, max_keepalive_connections=5),
+            timeout=timeout,
+        )
+        _remote_ocr_base_url = base_url
+    return _remote_ocr_http_client
 
 
 class RemoteOCRError(Exception):
@@ -131,20 +153,20 @@ class RemoteOCRClient:
         retries = retries if retries is not None else self.max_retries
         
         last_error = None
+        client = _get_remote_ocr_client(self.base_url, timeout)
         for attempt in range(retries):
             try:
-                with httpx.Client(base_url=self.base_url, timeout=timeout) as client:
-                    resp = getattr(client, method)(path, headers=self._headers(), **kwargs)
-                    
-                    # Для 5xx - ретраим
-                    if resp.status_code >= 500 and attempt < retries - 1:
-                        delay = 2 ** attempt  # 1, 2, 4 сек
-                        logger.warning(f"Сервер вернул {resp.status_code}, ретрай через {delay}с...")
-                        time.sleep(delay)
-                        continue
-                    
-                    self._handle_response_error(resp)
-                    return resp
+                resp = getattr(client, method)(path, headers=self._headers(), timeout=timeout, **kwargs)
+                
+                # Для 5xx - ретраим
+                if resp.status_code >= 500 and attempt < retries - 1:
+                    delay = 2 ** attempt  # 1, 2, 4 сек
+                    logger.warning(f"Сервер вернул {resp.status_code}, ретрай через {delay}с...")
+                    time.sleep(delay)
+                    continue
+                
+                self._handle_response_error(resp)
+                return resp
                     
             except (httpx.ConnectError, httpx.TimeoutException) as e:
                 last_error = e
@@ -170,9 +192,9 @@ class RemoteOCRClient:
     def health(self) -> bool:
         """Проверить доступность сервера"""
         try:
-            with httpx.Client(base_url=self.base_url, timeout=2.0) as client:
-                resp = client.get("/health", headers=self._headers())
-                return resp.status_code == 200 and resp.json().get("ok", False)
+            client = _get_remote_ocr_client(self.base_url, self.timeout)
+            resp = client.get("/health", headers=self._headers(), timeout=2.0)
+            return resp.status_code == 200 and resp.json().get("ok", False)
         except Exception:
             return False
     
@@ -235,34 +257,35 @@ class RemoteOCRClient:
         blocks_bytes = blocks_json.encode("utf-8")
         
         # Используем увеличенный таймаут для загрузки
-        with httpx.Client(base_url=self.base_url, timeout=self.upload_timeout) as client:
-            with open(pdf_path, "rb") as pdf_file:
-                form_data = {
-                    "client_id": self.client_id,
-                    "document_id": document_id,
-                    "document_name": document_name,
-                    "task_name": task_name,
-                    "engine": engine,
-                }
-                if text_model:
-                    form_data["text_model"] = text_model
-                if table_model:
-                    form_data["table_model"] = table_model
-                if image_model:
-                    form_data["image_model"] = image_model
-                if node_id:
-                    form_data["node_id"] = node_id
+        client = _get_remote_ocr_client(self.base_url, self.upload_timeout)
+        with open(pdf_path, "rb") as pdf_file:
+            form_data = {
+                "client_id": self.client_id,
+                "document_id": document_id,
+                "document_name": document_name,
+                "task_name": task_name,
+                "engine": engine,
+            }
+            if text_model:
+                form_data["text_model"] = text_model
+            if table_model:
+                form_data["table_model"] = table_model
+            if image_model:
+                form_data["image_model"] = image_model
+            if node_id:
+                form_data["node_id"] = node_id
 
-                resp = client.post(
-                    "/jobs",
-                    headers=self._headers(),
-                    data=form_data,
-                    files={
-                        "pdf": (document_name, pdf_file, "application/pdf"),
-                        "blocks_file": ("blocks.json", blocks_bytes, "application/json"),
-                    }
-                )
-            logger.info(f"POST /jobs response: {resp.status_code}")
+            resp = client.post(
+                "/jobs",
+                headers=self._headers(),
+                data=form_data,
+                timeout=self.upload_timeout,
+                files={
+                    "pdf": (document_name, pdf_file, "application/pdf"),
+                    "blocks_file": ("blocks.json", blocks_bytes, "application/json"),
+                }
+            )
+        logger.info(f"POST /jobs response: {resp.status_code}")
             if resp.status_code >= 400:
                 logger.error(f"POST /jobs error response: {resp.text[:1000]}")
             self._handle_response_error(resp)

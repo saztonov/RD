@@ -1,6 +1,7 @@
 """Supabase-хранилище для задач OCR (все данные в Supabase + R2)"""
 from __future__ import annotations
 
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -50,17 +51,19 @@ class Job:
     settings: Optional[JobSettings] = None
 
 
-_supabase: Optional[Client] = None
+# Thread-local storage для Supabase клиентов
+_thread_local = threading.local()
 
 
 def _get_client() -> Client:
-    """Получить Supabase клиент (singleton)"""
-    global _supabase
-    if _supabase is None:
+    """Получить Supabase клиент (thread-local для thread-safety)"""
+    client = getattr(_thread_local, 'supabase', None)
+    if client is None:
         if not settings.supabase_url or not settings.supabase_key:
             raise RuntimeError("SUPABASE_URL и SUPABASE_KEY должны быть заданы")
-        _supabase = create_client(settings.supabase_url, settings.supabase_key)
-    return _supabase
+        client = create_client(settings.supabase_url, settings.supabase_key)
+        _thread_local.supabase = client
+    return client
 
 
 def init_db() -> None:

@@ -10,8 +10,22 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import httpx
+from httpx import Limits
 
 logger = logging.getLogger(__name__)
+
+# Глобальный пул соединений для Supabase
+_tree_http_client: httpx.Client | None = None
+
+def _get_tree_client() -> httpx.Client:
+    """Получить или создать HTTP клиент с connection pooling"""
+    global _tree_http_client
+    if _tree_http_client is None:
+        _tree_http_client = httpx.Client(
+            limits=Limits(max_connections=10, max_keepalive_connections=5),
+            timeout=30.0,
+        )
+    return _tree_http_client
 
 
 class NodeType(str, Enum):
@@ -172,10 +186,10 @@ class TreeClient:
     
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         url = f"{self.supabase_url}/rest/v1{path}"
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = getattr(client, method)(url, headers=self._headers(), **kwargs)
-            resp.raise_for_status()
-            return resp
+        client = _get_tree_client()
+        resp = getattr(client, method)(url, headers=self._headers(), timeout=self.timeout, **kwargs)
+        resp.raise_for_status()
+        return resp
     
     def is_available(self) -> bool:
         """Проверить доступность Supabase"""

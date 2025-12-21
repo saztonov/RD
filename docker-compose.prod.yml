@@ -37,20 +37,22 @@ services:
     build:
       context: .
       dockerfile: services/remote_ocr/Dockerfile
-    command: celery -A services.remote_ocr.server.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A services.remote_ocr.server.celery_app worker --loglevel=info --concurrency=4
     env_file:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+      - MAX_CONCURRENT_JOBS=4
+      - MAX_GLOBAL_OCR_REQUESTS=8
     depends_on:
       - redis
     restart: always
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 2G
+          cpus: '2.0'
+          memory: 4G
     logging:
       driver: "json-file"
       options:

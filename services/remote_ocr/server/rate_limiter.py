@@ -1,4 +1,4 @@
-"""Глобальный rate limiter для Datalab API"""
+"""Глобальный rate limiter для Datalab API и OpenRouter"""
 from __future__ import annotations
 
 import threading
@@ -6,6 +6,21 @@ import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Глобальный семафор для ограничения ВСЕХ параллельных OCR запросов
+_global_ocr_semaphore: threading.Semaphore | None = None
+_global_ocr_lock = threading.Lock()
+
+
+def get_global_ocr_semaphore(max_concurrent: int = 8) -> threading.Semaphore:
+    """Глобальный семафор для всех OCR запросов (OpenRouter + Datalab)"""
+    global _global_ocr_semaphore
+    if _global_ocr_semaphore is None:
+        with _global_ocr_lock:
+            if _global_ocr_semaphore is None:
+                _global_ocr_semaphore = threading.Semaphore(max_concurrent)
+                logger.info(f"Global OCR semaphore: {max_concurrent} concurrent requests")
+    return _global_ocr_semaphore
 
 
 class DatalabRateLimiter:

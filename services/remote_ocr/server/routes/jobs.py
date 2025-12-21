@@ -24,7 +24,8 @@ from services.remote_ocr.server.storage import (
     update_job_task_name,
 )
 from services.remote_ocr.server.tasks import run_ocr_task
-from services.remote_ocr.server.routes.common import check_api_key, get_r2_storage, get_file_icon
+from services.remote_ocr.server.routes.common import check_api_key, get_r2_storage, get_r2_sync_client, get_file_icon
+from services.remote_ocr.server.queue_checker import check_queue_capacity
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -83,15 +84,23 @@ async def create_job_endpoint(
     
     save_job_settings(job.id, text_model, table_model, image_model)
     
+    # Backpressure: проверяем размер очереди
+    can_accept, queue_size, max_size = check_queue_capacity()
+    if not can_accept:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Queue is full ({queue_size}/{max_size}). Try again later."
+        )
+    
     try:
-        r2 = get_r2_storage()
+        s3_client, bucket_name = get_r2_sync_client()
         
         if node_id:
             # Файлы уже в tree_docs/{node_id}/, только обновляем annotation.json (blocks)
             blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
             blocks_key = f"{r2_prefix}/annotation.json"
-            r2.s3_client.put_object(
-                Bucket=r2.bucket_name,
+            s3_client.put_object(
+                Bucket=bucket_name,
                 Key=blocks_key,
                 Body=blocks_bytes,
                 ContentType="application/json"
@@ -104,8 +113,8 @@ async def create_job_endpoint(
             # Загружаем файлы в ocr_jobs (обратная совместимость)
             pdf_content = await pdf.read()
             pdf_key = f"{r2_prefix}/document.pdf"
-            r2.s3_client.put_object(
-                Bucket=r2.bucket_name,
+            s3_client.put_object(
+                Bucket=bucket_name,
                 Key=pdf_key,
                 Body=pdf_content,
                 ContentType="application/pdf"
@@ -114,8 +123,8 @@ async def create_job_endpoint(
             
             blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
             blocks_key = f"{r2_prefix}/blocks.json"
-            r2.s3_client.put_object(
-                Bucket=r2.bucket_name,
+            s3_client.put_object(
+                Bucket=bucket_name,
                 Key=blocks_key,
                 Body=blocks_bytes,
                 ContentType="application/json"
@@ -303,10 +312,10 @@ def restart_job_endpoint(
     result_types = ["result_md", "result_zip", "crop"]
     
     try:
-        r2 = get_r2_storage()
+        s3_client, bucket_name = get_r2_sync_client()
         for f in result_files:
             if f.file_type in result_types:
-                r2.delete_object(f.r2_key)
+                s3_client.delete_object(Bucket=bucket_name, Key=f.r2_key)
         
         delete_job_files(job_id, result_types)
     except Exception as e:
@@ -314,6 +323,11 @@ def restart_job_endpoint(
     
     if not reset_job_for_restart(job_id):
         raise HTTPException(status_code=500, detail="Failed to reset job")
+    
+    # Backpressure
+    can_accept, queue_size, max_size = check_queue_capacity()
+    if not can_accept:
+        raise HTTPException(status_code=503, detail=f"Queue full ({queue_size}/{max_size})")
     
     run_ocr_task.delay(job_id)
     
@@ -341,6 +355,11 @@ def start_job_endpoint(
     
     save_job_settings(job_id, text_model, table_model, image_model)
     update_job_engine(job_id, engine)
+    
+    # Backpressure
+    can_accept, queue_size, max_size = check_queue_capacity()
+    if not can_accept:
+        raise HTTPException(status_code=503, detail=f"Queue full ({queue_size}/{max_size})")
     
     run_ocr_task.delay(job_id)
     
@@ -386,6 +405,11 @@ def resume_job_endpoint(
     if not resume_job(job_id):
         raise HTTPException(status_code=500, detail="Failed to resume job")
     
+    # Backpressure
+    can_accept, queue_size, max_size = check_queue_capacity()
+    if not can_accept:
+        raise HTTPException(status_code=503, detail=f"Queue full ({queue_size}/{max_size})")
+    
     run_ocr_task.delay(job_id)
     
     return {"ok": True, "job_id": job_id, "status": "queued"}
@@ -405,12 +429,12 @@ def delete_job_endpoint(
     
     if job.r2_prefix:
         try:
-            r2 = get_r2_storage()
+            s3_client, bucket_name = get_r2_sync_client()
             r2_prefix = job.r2_prefix if job.r2_prefix.endswith('/') else f"{job.r2_prefix}/"
             
             files_to_delete = []
-            paginator = r2.s3_client.get_paginator('list_objects_v2')
-            for page in paginator.paginate(Bucket=r2.bucket_name, Prefix=r2_prefix):
+            paginator = s3_client.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=bucket_name, Prefix=r2_prefix):
                 if 'Contents' in page:
                     for obj in page['Contents']:
                         files_to_delete.append({'Key': obj['Key']})
@@ -418,7 +442,7 @@ def delete_job_endpoint(
             if files_to_delete:
                 for i in range(0, len(files_to_delete), 1000):
                     batch = files_to_delete[i:i+1000]
-                    r2.s3_client.delete_objects(Bucket=r2.bucket_name, Delete={'Objects': batch})
+                    s3_client.delete_objects(Bucket=bucket_name, Delete={'Objects': batch})
                 _logger.info(f"Deleted {len(files_to_delete)} files from R2 for job {job_id}")
         except Exception as e:
             _logger.warning(f"Failed to delete files from R2: {e}")

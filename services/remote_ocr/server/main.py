@@ -56,6 +56,14 @@ def health() -> dict:
     return {"ok": True}
 
 
+@app.get("/queue")
+def queue_status() -> dict:
+    """Queue status для мониторинга backpressure"""
+    from .queue_checker import check_queue_capacity
+    can_accept, current, max_size = check_queue_capacity()
+    return {"can_accept": can_accept, "size": current, "max": max_size}
+
+
 # Подключаем роутеры
 app.include_router(jobs_router)
 

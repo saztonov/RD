@@ -23,7 +23,7 @@ from .storage import (
     update_job_status,
     register_ocr_results_to_node,
 )
-from .rate_limiter import get_datalab_limiter
+from .rate_limiter import get_datalab_limiter, get_global_ocr_semaphore
 from .worker_prompts import (
     fill_image_prompt_variables,
     inject_pdfplumber_to_ocr_text,
@@ -36,9 +36,9 @@ logger = logging.getLogger(__name__)
 
 
 def _get_r2_storage():
-    """Получить R2 Storage клиент"""
-    from rd_core.r2_storage import R2Storage
-    return R2Storage()
+    """Получить R2 Storage клиент (async-обёртка)"""
+    from .async_r2_storage import AsyncR2StorageSync
+    return AsyncR2StorageSync()
 
 
 def _check_paused(job_id: str) -> bool:
@@ -170,7 +170,7 @@ def _create_empty_result(job: Job, work_dir: Path, pdf_path: Path) -> None:
             zf.write(pdf_path, "document.pdf")
 
 
-@celery_app.task(bind=True, name="run_ocr_task", max_retries=3)
+@celery_app.task(bind=True, name="run_ocr_task", max_retries=3, rate_limit="4/m")
 def run_ocr_task(self, job_id: str) -> dict:
     """Celery задача для обработки OCR"""
     logger.info(f"[CELERY] Начало обработки задачи {job_id}")
@@ -207,8 +207,8 @@ def run_ocr_task(self, job_id: str) -> dict:
             return {"status": "done", "job_id": job_id}
         
         from rd_core.models import Block
-        from rd_core.cropping import crop_and_merge_blocks_from_pdf
         from rd_core.ocr import create_ocr_engine
+        from .pdf_streaming import streaming_crop_and_merge
         
         blocks = [Block.from_dict(b) for b in blocks_data]
         total_blocks = len(blocks)
@@ -219,7 +219,8 @@ def run_ocr_task(self, job_id: str) -> dict:
             return {"status": "paused"}
         
         update_job_status(job.id, "processing", progress=0.1)
-        strip_paths, strip_images, strips, image_blocks, image_pdf_paths = crop_and_merge_blocks_from_pdf(
+        # Streaming обработка PDF - оптимизация памяти
+        strip_paths, strip_images, strips, image_blocks, image_pdf_paths = streaming_crop_and_merge(
             str(pdf_path), blocks, str(crops_dir), save_image_crops_as_pdf=True
         )
         
@@ -260,6 +261,8 @@ def run_ocr_task(self, job_id: str) -> dict:
                 if not is_job_paused(job.id):
                     update_job_status(job.id, "processing", progress=progress)
         
+        global_sem = get_global_ocr_semaphore(settings.max_global_ocr_requests)
+        
         def _process_strip(strip_idx: int, strip):
             try:
                 logger.info(f"Обработка полосы {strip_idx + 1}/{len(strips)}: {len(strip.blocks)} блоков")
@@ -270,7 +273,12 @@ def run_ocr_task(self, job_id: str) -> dict:
                 prompt_data = build_strip_prompt(strip.blocks)
                 
                 try:
-                    response_text = strip_backend.recognize(merged_image, prompt=prompt_data)
+                    # Глобальный семафор ограничивает параллельные запросы
+                    global_sem.acquire()
+                    try:
+                        response_text = strip_backend.recognize(merged_image, prompt=prompt_data)
+                    finally:
+                        global_sem.release()
                 except Exception as ocr_err:
                     logger.error(f"Ошибка OCR для полосы {strip_idx + 1}: {ocr_err}")
                     response_text = None
@@ -299,7 +307,12 @@ def run_ocr_task(self, job_id: str) -> dict:
                     pdfplumber_text=pdfplumber_text
                 )
                 
-                text = image_backend.recognize(crop, prompt=prompt_data)
+                # Глобальный семафор ограничивает параллельные запросы
+                global_sem.acquire()
+                try:
+                    text = image_backend.recognize(crop, prompt=prompt_data)
+                finally:
+                    global_sem.release()
                 text = inject_pdfplumber_to_ocr_text(text, pdfplumber_text)
                 
                 block.pdfplumber_text = pdfplumber_text
@@ -310,7 +323,8 @@ def run_ocr_task(self, job_id: str) -> dict:
                 logger.error(f"Ошибка OCR для IMAGE блока {block.id}: {e}")
                 return block.id, f"[Ошибка: {e}]", part_idx, total_parts
         
-        max_workers = settings.datalab_max_concurrent if engine == "datalab" else 5
+        # Ограничиваем потоки на задачу (при 4 задачах = 8 параллельных потоков)
+        max_workers = min(2, settings.datalab_max_concurrent) if engine == "datalab" else 2
         
         text_block_parts: Dict[str, Dict[int, str]] = {}
         text_block_total_parts: Dict[str, int] = {}
@@ -401,20 +415,22 @@ def run_ocr_task(self, job_id: str) -> dict:
         
         # Генерация результатов
         from rd_core.models import Page, Document
-        from rd_core.pdf_utils import PDFDocument
         from rd_core.ocr import generate_structured_markdown
+        from .pdf_streaming import get_page_dimensions_streaming
         
         blocks_by_page: dict[int, list] = {}
         for b in blocks:
             blocks_by_page.setdefault(b.page_index, []).append(b)
         
+        # Streaming получение размеров страниц
+        page_dims = get_page_dimensions_streaming(str(pdf_path))
+        
         pages = []
-        with PDFDocument(str(pdf_path)) as pdf:
-            for page_idx in sorted(blocks_by_page.keys()):
-                dims = pdf.get_page_dimensions(page_idx)
-                width, height = dims if dims else (0, 0)
-                page_blocks = sorted(blocks_by_page[page_idx], key=lambda bl: bl.coords_px[1])
-                pages.append(Page(page_number=page_idx, width=width, height=height, blocks=page_blocks))
+        for page_idx in sorted(blocks_by_page.keys()):
+            dims = page_dims.get(page_idx)
+            width, height = dims if dims else (0, 0)
+            page_blocks = sorted(blocks_by_page[page_idx], key=lambda bl: bl.coords_px[1])
+            pages.append(Page(page_number=page_idx, width=width, height=height, blocks=page_blocks))
         
         result_md_path = work_dir / "result.md"
         # project_name = node_id для tree_docs, иначе job.id для обратной совместимости

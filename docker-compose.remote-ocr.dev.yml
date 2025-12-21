@@ -31,7 +31,7 @@ services:
     build:
       context: .
       dockerfile: services/remote_ocr/Dockerfile
-    command: celery -A services.remote_ocr.server.celery_app worker --loglevel=info --concurrency=1
+    command: celery -A services.remote_ocr.server.celery_app worker --loglevel=info --concurrency=4
     volumes:
       - .:/app
       - ./services/remote_ocr/data:/data
