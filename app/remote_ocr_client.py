@@ -428,58 +428,6 @@ class RemoteOCRClient:
         }
         resp = self._request_with_retry("post", f"/jobs/{job_id}/start", data=data)
         return resp.json().get("ok", False)
-    
-    def create_draft(
-        self,
-        pdf_path: str,
-        annotation_document: Any,
-        task_name: str = "",
-    ) -> JobInfo:
-        """
-        Создать черновик задачи (сохранить PDF + разметку без запуска OCR)
-        
-        Args:
-            pdf_path: путь к PDF файлу
-            annotation_document: Document с разметкой
-            task_name: название задания
-        
-        Returns:
-            JobInfo с информацией о созданном черновике
-        """
-        document_id = self.hash_pdf(pdf_path)
-        document_name = Path(pdf_path).name
-        
-        # Сериализуем Document
-        annotation_json = json.dumps(annotation_document.to_dict(), ensure_ascii=False)
-        
-        # Используем увеличенный таймаут для загрузки
-        with httpx.Client(base_url=self.base_url, timeout=self.upload_timeout) as client:
-            with open(pdf_path, "rb") as pdf_file:
-                form_data = {
-                    "client_id": self.client_id,
-                    "document_id": document_id,
-                    "document_name": document_name,
-                    "task_name": task_name,
-                    "annotation_json": annotation_json,
-                }
-
-                resp = client.post(
-                    "/jobs/draft",
-                    headers=self._headers(),
-                    data=form_data,
-                    files={"pdf": (document_name, pdf_file, "application/pdf")}
-                )
-            self._handle_response_error(resp)
-            data = resp.json()
-        
-        return JobInfo(
-            id=data["id"],
-            status=data["status"],
-            progress=data["progress"],
-            document_id=data["document_id"],
-            document_name=data["document_name"],
-            task_name=data.get("task_name", "")
-        )
 
 
 # Для обратной совместимости

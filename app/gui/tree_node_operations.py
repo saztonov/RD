@@ -426,9 +426,14 @@ class TreeNodeOperationsMixin:
         local_path = Path(projects_dir) / "cache" / rel_path
         local_path.parent.mkdir(parents=True, exist_ok=True)
         
-        if not r2.download_file(r2_key, str(local_path)):
-            QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
-            return
+        # Закрываем файл если открыт в редакторе
+        self._close_if_open(r2_key)
+        
+        # Если файл уже есть локально - используем его, иначе скачиваем
+        if not local_path.exists():
+            if not r2.download_file(r2_key, str(local_path)):
+                QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
+                return
         
         output_path = local_path.parent / f"{local_path.stem}_clean{local_path.suffix}"
         success, result = remove_stamps_from_pdf(str(local_path), str(output_path))

@@ -4,7 +4,7 @@
 
 import logging
 from PySide6.QtWidgets import QTreeWidgetItem, QMessageBox
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import Qt, QEvent, QTimer
 from PySide6.QtGui import QKeyEvent
 from rd_core.models import Block, BlockType, BlockSource, ShapeType, Page
 
@@ -72,9 +72,8 @@ class BlockHandlersMixin:
         self.page_viewer.selected_block_idx = new_block_idx
         self.page_viewer.set_blocks(current_page_data.blocks)
         
-        self.blocks_tree_manager.update_blocks_tree()
-        
-        # Авто-сохранение разметки
+        # Отложенное обновление дерева (не блокирует UI)
+        QTimer.singleShot(0, self.blocks_tree_manager.update_blocks_tree)
         self._auto_save_annotation()
     
     def _on_polygon_drawn(self, points: list):
@@ -116,9 +115,8 @@ class BlockHandlersMixin:
         self.page_viewer.selected_block_idx = new_block_idx
         self.page_viewer.set_blocks(current_page_data.blocks)
         
-        self.blocks_tree_manager.update_blocks_tree()
-        
-        # Авто-сохранение разметки
+        # Отложенное обновление дерева (не блокирует UI)
+        QTimer.singleShot(0, self.blocks_tree_manager.update_blocks_tree)
         self._auto_save_annotation()
     
     def _on_block_selected(self, block_idx: int):

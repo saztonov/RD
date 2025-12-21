@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 from app.gui.remote_ocr_signals import WorkerSignals
 from app.gui.remote_ocr_download import DownloadMixin
 from app.gui.remote_ocr_job_operations import JobOperationsMixin
-from app.gui.remote_ocr_draft import DraftMixin
 from app.gui.remote_ocr_editor import EditorMixin
 
 if TYPE_CHECKING:
@@ -26,7 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RemoteOCRPanel(EditorMixin, DraftMixin, JobOperationsMixin, DownloadMixin, QDockWidget):
+class RemoteOCRPanel(EditorMixin, JobOperationsMixin, DownloadMixin, QDockWidget):
     """Dock-панель для Remote OCR задач"""
     
     POLL_INTERVAL_PROCESSING = 5000
@@ -58,8 +57,6 @@ class RemoteOCRPanel(EditorMixin, DraftMixin, JobOperationsMixin, DownloadMixin,
         self._signals.download_progress.connect(self._on_download_progress)
         self._signals.download_finished.connect(self._on_download_finished)
         self._signals.download_error.connect(self._on_download_error)
-        self._signals.draft_created.connect(self._on_draft_created)
-        self._signals.draft_create_error.connect(self._on_draft_create_error)
         self._signals.rerun_created.connect(self._on_rerun_created)
         self._signals.rerun_error.connect(self._on_rerun_error)
         

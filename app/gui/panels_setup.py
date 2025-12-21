@@ -58,28 +58,44 @@ class PanelsSetupMixin:
         self.addDockWidget(Qt.LeftDockWidgetArea, self.project_dock)
         self.resizeDocks([self.project_dock], [280], Qt.Horizontal)
         
-        # Блоки (справа сверху)
+        # Блоки (справа)
         self.blocks_dock = QDockWidget("Блоки", self)
         self.blocks_dock.setObjectName("BlocksDock")
         blocks_widget = self._create_blocks_widget()
         self.blocks_dock.setWidget(blocks_widget)
         self.addDockWidget(Qt.RightDockWidgetArea, self.blocks_dock)
         
-        # Инструменты/Настройки (справа снизу)
-        self.tools_dock = QDockWidget("Инструменты", self)
-        self.tools_dock.setObjectName("ToolsDock")
-        tools_widget = self._create_tools_settings_widget()
-        self.tools_dock.setWidget(tools_widget)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.tools_dock)
-        
-        # Устанавливаем размеры правых доков
-        self.resizeDocks([self.blocks_dock, self.tools_dock], [320, 320], Qt.Horizontal)
+        # Устанавливаем размер правого дока
+        self.resizeDocks([self.blocks_dock], [320], Qt.Horizontal)
     
     def _create_blocks_widget(self) -> QWidget:
         """Создать виджет блоков"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(4, 4, 4, 4)
+        
+        # Кнопка Remote OCR — крупная и заметная
+        self.remote_ocr_btn = QPushButton("🚀 Запустить Remote OCR")
+        self.remote_ocr_btn.setMinimumHeight(48)
+        self.remote_ocr_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2563eb;
+                color: white;
+                font-size: 15px;
+                font-weight: bold;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 16px;
+            }
+            QPushButton:hover {
+                background-color: #1d4ed8;
+            }
+            QPushButton:pressed {
+                background-color: #1e40af;
+            }
+        """)
+        self.remote_ocr_btn.clicked.connect(self._send_to_remote_ocr)
+        layout.addWidget(self.remote_ocr_btn)
         
         # Кнопки перемещения блоков
         move_buttons_layout = QHBoxLayout()
@@ -124,38 +140,6 @@ class PanelsSetupMixin:
         self._selected_image_block = None
         layout.addWidget(self.hint_group)
         
-        return widget
-    
-    def _create_tools_settings_widget(self) -> QWidget:
-        """Создать виджет с вкладками Инструменты/Настройки"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.right_tabs = QTabWidget()
-        self.right_tabs.setDocumentMode(True)
-        
-        # Вкладка: Инструменты
-        tools_tab = QWidget()
-        tools_layout = QVBoxLayout(tools_tab)
-        tools_layout.setContentsMargins(4, 4, 4, 4)
-        
-        self.clear_page_btn = QPushButton("Очистить разметку")
-        self.clear_page_btn.clicked.connect(self._clear_current_page)
-        tools_layout.addWidget(self.clear_page_btn)
-        
-        self.save_draft_btn = QPushButton("💾 Сохранить черновик на сервере")
-        self.save_draft_btn.clicked.connect(self._save_draft_to_server)
-        tools_layout.addWidget(self.save_draft_btn)
-        
-        self.remote_ocr_btn = QPushButton("Запустить Remote OCR")
-        self.remote_ocr_btn.clicked.connect(self._send_to_remote_ocr)
-        tools_layout.addWidget(self.remote_ocr_btn)
-        
-        tools_layout.addStretch()
-        self.right_tabs.addTab(tools_tab, "🛠️ Инструменты")
-        
-        layout.addWidget(self.right_tabs)
         return widget
     
     def _on_hint_changed(self):

@@ -267,6 +267,7 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
     
     def closeEvent(self, event):
         """Обработка закрытия окна"""
+        self._flush_pending_save()
         self._save_settings()
         event.accept()
     
@@ -282,7 +283,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
                         # Добавляем toggle-действия для каждой док-панели
                         panels_menu.addAction(self.project_dock.toggleViewAction())
                         panels_menu.addAction(self.blocks_dock.toggleViewAction())
-                        panels_menu.addAction(self.tools_dock.toggleViewAction())
                         panels_menu.addAction(self.remote_ocr_panel.toggleViewAction())
                         break
                 break
@@ -333,9 +333,3 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         if self.remote_ocr_panel:
             self.remote_ocr_panel.show()
             self.remote_ocr_panel._create_job()
-    
-    def _save_draft_to_server(self):
-        """Сохранить черновик (PDF + разметка) на сервере"""
-        if self.remote_ocr_panel:
-            self.remote_ocr_panel.show()
-            self.remote_ocr_panel._save_draft()

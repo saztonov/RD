@@ -3,13 +3,18 @@
 """
 
 import logging
+import copy
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtCore import QTimer
 from rd_core.models import Document, Page
 from rd_core.pdf_utils import PDFDocument
 from rd_core.annotation_io import AnnotationIO
 
 logger = logging.getLogger(__name__)
+
+_executor = ThreadPoolExecutor(max_workers=1)
 
 
 def get_annotation_path(pdf_path: str) -> Path:
@@ -30,22 +35,71 @@ class FileOperationsMixin:
     
     _current_r2_key: str = ""  # R2 ключ текущего PDF
     _current_node_id: str = ""  # ID узла документа в дереве
+    _auto_save_timer: QTimer = None
+    _pending_save: bool = False
     
     def _auto_save_annotation(self):
-        """Авто-сохранение разметки при изменении блоков"""
+        """Авто-сохранение разметки при изменении блоков (раз в минуту)"""
         if not self.annotation_document or not self._current_pdf_path:
             return
         
-        ann_path = get_annotation_path(self._current_pdf_path)
+        self._pending_save = True
+        
+        # Таймер на 60 секунд — собираем изменения
+        if self._auto_save_timer is None:
+            self._auto_save_timer = QTimer(self)
+            self._auto_save_timer.setSingleShot(True)
+            self._auto_save_timer.timeout.connect(self._do_auto_save)
+        
+        if not self._auto_save_timer.isActive():
+            self._auto_save_timer.start(60000)  # 60 секунд
+    
+    def _do_auto_save(self):
+        """Выполнить отложенное сохранение в фоновом потоке"""
+        if not self._pending_save:
+            return
+        if not self.annotation_document or not self._current_pdf_path:
+            return
+        
+        self._pending_save = False
+        
+        # Копируем данные для фонового потока
+        ann_path = str(get_annotation_path(self._current_pdf_path))
+        doc_copy = copy.deepcopy(self.annotation_document)
+        r2_key = self._current_r2_key if hasattr(self, '_current_r2_key') else ""
+        node_id = self._current_node_id if hasattr(self, '_current_node_id') else ""
+        
+        # Сохраняем в фоновом потоке
+        _executor.submit(self._background_save, ann_path, doc_copy, r2_key, node_id)
+    
+    def _background_save(self, ann_path: str, doc: Document, r2_key: str, node_id: str):
+        """Фоновое сохранение (не блокирует UI)"""
         try:
-            AnnotationIO.save_annotation(self.annotation_document, str(ann_path))
+            AnnotationIO.save_annotation(doc, ann_path)
             logger.debug(f"Annotation auto-saved: {ann_path}")
             
-            # Синхронизация с R2 (в фоне)
-            if hasattr(self, '_current_r2_key') and self._current_r2_key:
-                self._sync_annotation_to_r2()
+            if r2_key:
+                self._background_sync_r2(ann_path, r2_key, node_id)
         except Exception as e:
             logger.error(f"Auto-save annotation failed: {e}")
+    
+    def _background_sync_r2(self, ann_path: str, r2_key: str, node_id: str):
+        """Фоновая синхронизация с R2"""
+        try:
+            from rd_core.r2_storage import R2Storage
+            r2 = R2Storage()
+            ann_r2_key = get_annotation_r2_key(r2_key)
+            r2.upload_file(ann_path, ann_r2_key)
+            logger.debug(f"Annotation synced to R2: {ann_r2_key}")
+        except Exception as e:
+            logger.error(f"Sync annotation to R2 failed: {e}")
+    
+    def _flush_pending_save(self):
+        """Принудительно сохранить несохранённые изменения"""
+        if self._auto_save_timer and self._auto_save_timer.isActive():
+            self._auto_save_timer.stop()
+        if self._pending_save:
+            self._do_auto_save()
     
     def _sync_annotation_to_r2(self):
         """Синхронизировать annotation.json с R2"""
@@ -146,6 +200,9 @@ class FileOperationsMixin:
     
     def _open_pdf_file(self, pdf_path: str, r2_key: str = ""):
         """Открыть PDF файл напрямую"""
+        # Сохранить изменения предыдущего файла
+        self._flush_pending_save()
+        
         if self.pdf_document:
             self.pdf_document.close()
         

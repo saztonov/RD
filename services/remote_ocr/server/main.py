@@ -11,7 +11,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .settings import settings
 from .storage import init_db
 from .routes.jobs import router as jobs_router
-from .routes.drafts import router as drafts_router
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -59,7 +58,6 @@ def health() -> dict:
 
 # Подключаем роутеры
 app.include_router(jobs_router)
-app.include_router(drafts_router)
 
 
 if __name__ == "__main__":
