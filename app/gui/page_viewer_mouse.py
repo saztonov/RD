@@ -348,6 +348,16 @@ class MouseEventsMixin:
             self.selected_block_idx = None
             self.selected_block_indices = []
             self._redraw_blocks()
+        elif event.key() == Qt.Key_Left:
+            main_window = self.window()
+            if hasattr(main_window, 'navigation_manager'):
+                main_window.navigation_manager.prev_page()
+                return
+        elif event.key() == Qt.Key_Right:
+            main_window = self.window()
+            if hasattr(main_window, 'navigation_manager'):
+                main_window.navigation_manager.next_page()
+                return
         else:
             super().keyPressEvent(event)
 

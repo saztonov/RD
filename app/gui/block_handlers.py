@@ -67,11 +67,10 @@ class BlockHandlersMixin:
         
         current_page_data.blocks.append(block)
         new_block_idx = len(current_page_data.blocks) - 1
-        self.page_viewer.set_blocks(current_page_data.blocks)
         
         # Автоматически выбираем созданный блок для возможности изменения размера
         self.page_viewer.selected_block_idx = new_block_idx
-        self.page_viewer._redraw_blocks()
+        self.page_viewer.set_blocks(current_page_data.blocks)
         
         self.blocks_tree_manager.update_blocks_tree()
         
@@ -112,11 +111,10 @@ class BlockHandlersMixin:
         
         current_page_data.blocks.append(block)
         new_block_idx = len(current_page_data.blocks) - 1
-        self.page_viewer.set_blocks(current_page_data.blocks)
         
         # Автоматически выбираем созданный блок
         self.page_viewer.selected_block_idx = new_block_idx
-        self.page_viewer._redraw_blocks()
+        self.page_viewer.set_blocks(current_page_data.blocks)
         
         self.blocks_tree_manager.update_blocks_tree()
         
@@ -330,16 +328,6 @@ class BlockHandlersMixin:
             else:
                 self._hide_hint_panel()
     
-    def _on_tree_block_double_clicked(self, item: QTreeWidgetItem, column: int):
-        """Двойной клик по дереву блоков"""
-        return
-    
-    def _on_page_changed(self, new_page: int):
-        """Обработка запроса смены страницы от viewer"""
-        if self.pdf_document and 0 <= new_page < self.pdf_document.page_count:
-            self.current_page = new_page
-            self._render_current_page()
-            self._update_ui()
     
     def _clear_current_page(self):
         """Очистить все блоки с текущей страницы"""

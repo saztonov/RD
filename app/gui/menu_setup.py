@@ -245,8 +245,7 @@ class MenuSetupMixin:
         # Коннекты для отслеживания изменений
         self.shape_type_group.triggered.connect(self._on_shape_type_changed)
         
-        # Текущий выбранный тип
-        self.selected_block_type = BlockType.TEXT
+        # Текущий выбранный тип формы
         self.selected_shape_type = ShapeType.RECTANGLE
     
     def _on_shape_type_changed(self, action):

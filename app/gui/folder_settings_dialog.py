@@ -21,15 +21,6 @@ def get_max_versions() -> int:
     return int(settings.value("max_versions", 10))
 
 
-# Для обратной совместимости
-def get_new_jobs_dir() -> str:
-    return get_projects_dir()
-
-
-def get_download_jobs_dir() -> str:
-    return get_projects_dir()
-
-
 class FolderSettingsDialog(QDialog):
     """Диалог настройки папок"""
     

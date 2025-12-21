@@ -45,10 +45,10 @@ class DraftMixin:
         
         task_name = Path(pdf_path).stem if pdf_path else ""
         
-        from app.gui.folder_settings_dialog import get_new_jobs_dir
-        from app.gui.ocr_dialog import transliterate_to_latin
+        from app.gui.folder_settings_dialog import get_projects_dir
+        from app.gui.utils import transliterate_to_latin
         
-        base_dir = get_new_jobs_dir()
+        base_dir = get_projects_dir()
         if base_dir:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             safe_task_name = transliterate_to_latin(task_name) if task_name else "draft"

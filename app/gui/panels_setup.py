@@ -41,7 +41,6 @@ class PanelsSetupMixin:
         self.page_viewer.blockDeleted.connect(self._on_block_deleted)
         self.page_viewer.blocks_deleted.connect(self._on_blocks_deleted)
         self.page_viewer.blockMoved.connect(self._on_block_moved)
-        self.page_viewer.page_changed.connect(self._on_page_changed)
         main_layout.addWidget(self.page_viewer)
         
         # Создаём док-панели
@@ -106,7 +105,6 @@ class PanelsSetupMixin:
         self.blocks_tree.customContextMenuRequested.connect(
             lambda pos: self.blocks_tree_manager.on_tree_context_menu(pos))
         self.blocks_tree.itemClicked.connect(self._on_tree_block_clicked)
-        self.blocks_tree.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
         self.blocks_tree.installEventFilter(self)
         self.blocks_tabs.addTab(self.blocks_tree, "Страница")
         
@@ -164,80 +162,4 @@ class PanelsSetupMixin:
         """Автосохранение подсказки при изменении"""
         if self._selected_image_block:
             self._selected_image_block.hint = self.hint_edit.toPlainText() or None
-    
-    def _create_blocks_group(self) -> QGroupBox:
-        """Создать группу списка блоков"""
-        blocks_group = QGroupBox("Все блоки")
-        blocks_layout = QVBoxLayout(blocks_group)
-        
-        # Кнопки перемещения блоков
-        move_buttons_layout = QHBoxLayout()
-        self.move_block_up_btn = QPushButton("↑ Вверх")
-        self.move_block_up_btn.clicked.connect(self._move_block_up)
-        move_buttons_layout.addWidget(self.move_block_up_btn)
-        
-        self.move_block_down_btn = QPushButton("↓ Вниз")
-        self.move_block_down_btn.clicked.connect(self._move_block_down)
-        move_buttons_layout.addWidget(self.move_block_down_btn)
-        
-        blocks_layout.addLayout(move_buttons_layout)
-        
-        self.blocks_tabs = QTabWidget()
-        
-        # Вкладка: Страница → Блок
-        self.blocks_tree = QTreeWidget()
-        self.blocks_tree.setHeaderLabels(["Название", "Тип"])
-        self.blocks_tree.setColumnWidth(0, 150)
-        self.blocks_tree.setSortingEnabled(False)  # Отключаем встроенную сортировку
-        self.blocks_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.blocks_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.blocks_tree.customContextMenuRequested.connect(
-            lambda pos: self.blocks_tree_manager.on_tree_context_menu(pos))
-        self.blocks_tree.itemClicked.connect(self._on_tree_block_clicked)
-        self.blocks_tree.itemDoubleClicked.connect(self._on_tree_block_double_clicked)
-        self.blocks_tree.installEventFilter(self)
-        self.blocks_tabs.addTab(self.blocks_tree, "Страница")
-        
-        blocks_layout.addWidget(self.blocks_tabs)
-        return blocks_group
-    
-    def _create_hint_group(self) -> QGroupBox:
-        """Создать группу подсказки для IMAGE блока"""
-        self.hint_group = QGroupBox("Подсказка (IMAGE)")
-        hint_layout = QVBoxLayout(self.hint_group)
-        
-        self.hint_edit = QPlainTextEdit()
-        self.hint_edit.setPlaceholderText("Введите описание содержимого картинки...")
-        self.hint_edit.setMaximumHeight(100)
-        self.hint_edit.textChanged.connect(self._on_hint_changed)
-        hint_layout.addWidget(self.hint_edit)
-        
-        # Неактивен по умолчанию
-        self.hint_group.setEnabled(False)
-        self._selected_image_block = None
-        
-        return self.hint_group
-    
-    def _on_hint_changed(self):
-        """Автосохранение подсказки при изменении"""
-        if self._selected_image_block:
-            self._selected_image_block.hint = self.hint_edit.toPlainText() or None
-    
-    def _create_actions_group(self) -> QGroupBox:
-        """Создать группу действий"""
-        actions_group = QGroupBox("Действия")
-        actions_layout = QVBoxLayout(actions_group)
-        
-        self.clear_page_btn = QPushButton("Очистить разметку")
-        self.clear_page_btn.clicked.connect(self._clear_current_page)
-        actions_layout.addWidget(self.clear_page_btn)
-        
-        self.save_draft_btn = QPushButton("💾 Сохранить черновик на сервере")
-        self.save_draft_btn.clicked.connect(self._save_draft_to_server)
-        actions_layout.addWidget(self.save_draft_btn)
-        
-        self.remote_ocr_btn = QPushButton("Запустить Remote OCR")
-        self.remote_ocr_btn.clicked.connect(self._send_to_remote_ocr)
-        actions_layout.addWidget(self.remote_ocr_btn)
-        
-        return actions_group
+

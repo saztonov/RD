@@ -16,6 +16,7 @@ from app.gui.tree_node_operations import TreeNodeOperationsMixin, NODE_ICONS, ST
 
 logger = logging.getLogger(__name__)
 
+# Названия типов узлов для UI
 NODE_TYPE_NAMES = {
     NodeType.PROJECT: "Проект",
     NodeType.STAGE: "Стадия",
@@ -24,14 +25,14 @@ NODE_TYPE_NAMES = {
     NodeType.DOCUMENT: "Документ",
 }
 
+__all__ = ['ProjectTreeWidget', 'NODE_TYPE_NAMES']
+
 
 class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
     """Виджет дерева проектов"""
     
     document_selected = Signal(str, str)  # node_id, r2_key
-    file_uploaded = Signal(str)  # deprecated: local_path
     file_uploaded_r2 = Signal(str)  # r2_key
-    refresh_requested = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)

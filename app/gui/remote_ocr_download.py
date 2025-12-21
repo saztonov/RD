@@ -27,8 +27,8 @@ class DownloadMixin:
             if job_id in self._job_output_dirs:
                 extract_dir = Path(self._job_output_dirs[job_id])
             else:
-                from app.gui.folder_settings_dialog import get_download_jobs_dir
-                download_dir = get_download_jobs_dir()
+                from app.gui.folder_settings_dialog import get_projects_dir
+                download_dir = get_projects_dir()
                 if download_dir and Path(download_dir).exists():
                     extract_dir = Path(download_dir) / f"result_{job_id[:8]}"
                 else:

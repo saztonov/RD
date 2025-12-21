@@ -3,6 +3,7 @@
 Интеграция компонентов через миксины
 """
 
+import copy
 from typing import Optional
 from PySide6.QtWidgets import QMainWindow
 from rd_core.models import Document, BlockType
@@ -135,7 +136,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             return
         
         # Делаем глубокую копию блоков
-        import copy
         blocks_copy = copy.deepcopy(current_page_data.blocks)
         
         # Добавляем в стек undo
@@ -159,7 +159,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         # Сохраняем текущее состояние в redo
         current_page_data = self._get_or_create_page(self.current_page)
         if current_page_data:
-            import copy
             blocks_copy = copy.deepcopy(current_page_data.blocks)
             self.redo_stack.append((self.current_page, blocks_copy))
         
@@ -176,7 +175,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         # Восстанавливаем блоки
         page_data = self._get_or_create_page(page_num)
         if page_data:
-            import copy
             page_data.blocks = copy.deepcopy(blocks_copy)
             self.page_viewer.set_blocks(page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()
@@ -193,7 +191,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         # Сохраняем текущее состояние в undo
         current_page_data = self._get_or_create_page(self.current_page)
         if current_page_data:
-            import copy
             blocks_copy = copy.deepcopy(current_page_data.blocks)
             self.undo_stack.append((self.current_page, blocks_copy))
         
@@ -210,7 +207,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         # Восстанавливаем блоки
         page_data = self._get_or_create_page(page_num)
         if page_data:
-            import copy
             page_data.blocks = copy.deepcopy(blocks_copy)
             self.page_viewer.set_blocks(page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()

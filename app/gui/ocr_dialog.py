@@ -4,7 +4,6 @@
 
 import logging
 import os
-import re
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QPushButton, QRadioButton,
                                QGroupBox, QDialogButtonBox, QComboBox, QButtonGroup)
@@ -15,55 +14,6 @@ logger = logging.getLogger(__name__)
 
 # Загрузка .env для проверки R2
 load_dotenv()
-
-
-def transliterate_to_latin(text: str) -> str:
-    """
-    Транслитерация русского текста в латиницу + очистка для URL/путей
-    
-    Args:
-        text: исходный текст (может содержать кириллицу, пробелы, спецсимволы)
-    
-    Returns:
-        Очищенный текст (латиница, подчеркивания, без спецсимволов)
-    """
-    # Словарь транслитерации (ГОСТ 7.79-2000, система Б)
-    cyrillic_to_latin = {
-        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
-        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
-        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
-        'ф': 'f', 'х': 'h', 'ц': 'c', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
-        'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
-        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo',
-        'Ж': 'Zh', 'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M',
-        'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
-        'Ф': 'F', 'Х': 'H', 'Ц': 'C', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch',
-        'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya'
-    }
-    
-    # Транслитерация по символам
-    result = []
-    for char in text:
-        if char in cyrillic_to_latin:
-            result.append(cyrillic_to_latin[char])
-        else:
-            result.append(char)
-    
-    transliterated = ''.join(result)
-    
-    # Заменяем пробелы на подчеркивания
-    transliterated = transliterated.replace(' ', '_')
-    
-    # Удаляем все спецсимволы кроме букв, цифр, подчеркиваний и дефисов
-    transliterated = re.sub(r'[^a-zA-Z0-9_\-]', '', transliterated)
-    
-    # Убираем множественные подчеркивания
-    transliterated = re.sub(r'_{2,}', '_', transliterated)
-    
-    # Убираем подчеркивания в начале и конце
-    transliterated = transliterated.strip('_')
-    
-    return transliterated
 
 
 class OCRDialog(QDialog):
@@ -77,17 +27,12 @@ class OCRDialog(QDialog):
         self.output_dir = None
         self.base_dir = None
         self.task_name = task_name
-        self.mode = "blocks"  # "blocks" или "full_page"
         self.ocr_backend = "openrouter"  # "openrouter" или "datalab"
-        self.openrouter_model = "qwen/qwen3-vl-30b-a3b-instruct"
         
         # Модели для разных типов блоков
         self.text_model = "qwen/qwen3-vl-30b-a3b-instruct"
         self.table_model = "qwen/qwen3-vl-30b-a3b-instruct"
         self.image_model = "google/gemini-3-flash-preview"
-        
-        # Batch оптимизация
-        self.use_batch_ocr = True
         
         # Datalab настройки
         self.use_datalab = False
@@ -238,8 +183,8 @@ class OCRDialog(QDialog):
         layout.addWidget(buttons)
         
         # Загрузка папки из настроек
-        from app.gui.folder_settings_dialog import get_new_jobs_dir
-        self.base_dir = get_new_jobs_dir()
+        from app.gui.folder_settings_dialog import get_projects_dir
+        self.base_dir = get_projects_dir()
     
     def _on_backend_changed(self, checked=None):
         """Показать/скрыть группы моделей в зависимости от выбранного бэкенда"""
@@ -262,16 +207,14 @@ class OCRDialog(QDialog):
             QMessageBox.warning(self, "Ошибка", "Сначала создайте задание в боковом меню")
             return
         
+        from app.gui.utils import transliterate_to_latin
+        
         # Добавляем timestamp для уникальности пути
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         # Транслитерируем название задания для безопасных URL/путей
         safe_task_name = transliterate_to_latin(self.task_name)
         unique_name = f"{safe_task_name}_{timestamp}"
         self.output_dir = str(Path(self.base_dir) / unique_name)
-        
-        # Сохраняем настройки
-        self.mode = "blocks"  # Всегда по блокам
-        self.use_batch_ocr = True  # Всегда с batch-оптимизацией
         
         # Определяем backend
         if self.datalab_radio.isChecked():

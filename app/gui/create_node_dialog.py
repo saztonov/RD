@@ -8,15 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.tree_client import NodeType, StageType, SectionType
-
-
-NODE_TYPE_NAMES = {
-    NodeType.PROJECT: "Проект",
-    NodeType.STAGE: "Стадия",
-    NodeType.SECTION: "Раздел",
-    NodeType.TASK_FOLDER: "Папка заданий",
-    NodeType.DOCUMENT: "Документ",
-}
+from app.gui.project_tree_widget import NODE_TYPE_NAMES
 
 
 class CreateNodeDialog(QDialog):
