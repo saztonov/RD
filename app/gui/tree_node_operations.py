@@ -89,6 +89,43 @@ class TreeNodeOperationsMixin:
         from PySide6.QtCore import Qt
         return Qt.UserRole
     
+    def _close_if_open(self, r2_key: str):
+        """Закрыть файл в редакторе если он открыт (по r2_key)"""
+        if not r2_key:
+            return
+        
+        from app.gui.folder_settings_dialog import get_projects_dir
+        
+        projects_dir = get_projects_dir()
+        if not projects_dir:
+            return
+        
+        # Формируем локальный путь из r2_key
+        if r2_key.startswith("tree_docs/"):
+            rel_path = r2_key[len("tree_docs/"):]
+        else:
+            rel_path = r2_key
+        
+        cache_path = Path(projects_dir) / "cache" / rel_path
+        
+        # Получаем главное окно
+        main_window = self.window()
+        if not hasattr(main_window, '_current_pdf_path') or not main_window._current_pdf_path:
+            return
+        
+        # Сравниваем пути
+        try:
+            current_path = Path(main_window._current_pdf_path).resolve()
+            target_path = cache_path.resolve()
+            
+            if current_path == target_path:
+                # Закрываем файл
+                if hasattr(main_window, '_clear_interface'):
+                    main_window._clear_interface()
+                    logger.info(f"Closed file in editor: {cache_path}")
+        except Exception as e:
+            logger.error(f"Error checking open file: {e}")
+    
     def _upload_file(self, node: TreeNode):
         """Добавить файл в папку заданий (загрузка в R2)"""
         paths, _ = QFileDialog.getOpenFileNames(
@@ -160,11 +197,17 @@ class TreeNodeOperationsMixin:
                 # Для документов переименовываем файл в R2
                 if node.node_type == NodeType.DOCUMENT:
                     old_r2_key = node.attributes.get("r2_key", "")
+                    
+                    # Закрываем файл если он открыт в редакторе
+                    self._close_if_open(old_r2_key)
+                    
                     if old_r2_key:
                         from rd_core.r2_storage import R2Storage
+                        from pathlib import PurePosixPath
                         
                         # Формируем новый ключ (меняем только имя файла)
-                        old_path = Path(old_r2_key)
+                        # Используем PurePosixPath чтобы сохранить / в путях R2
+                        old_path = PurePosixPath(old_r2_key)
                         new_r2_key = str(old_path.parent / new_name_clean)
                         
                         try:
@@ -174,6 +217,9 @@ class TreeNodeOperationsMixin:
                                 node.attributes["r2_key"] = new_r2_key
                                 node.attributes["original_name"] = new_name_clean
                                 self.client.update_node(node.id, name=new_name_clean, attributes=node.attributes)
+                                
+                                # Переименовываем в локальном кэше
+                                self._rename_cache_file(old_r2_key, new_r2_key)
                             else:
                                 QMessageBox.warning(self, "Внимание", "Не удалось переименовать файл в R2")
                                 return
@@ -229,7 +275,7 @@ class TreeNodeOperationsMixin:
             QMessageBox.critical(self, "Ошибка", str(e))
     
     def _delete_node(self, node: TreeNode):
-        """Удалить узел (для документов также удаляет из R2 и кэша)"""
+        """Удалить узел и все вложенные (из R2, кэша и Supabase)"""
         reply = QMessageBox.question(
             self, "Подтверждение",
             f"Удалить '{node.name}' и все вложенные элементы?",
@@ -237,9 +283,8 @@ class TreeNodeOperationsMixin:
         )
         if reply == QMessageBox.Yes:
             try:
-                # Для документов удаляем файл из R2 и кэша
-                if node.node_type == NodeType.DOCUMENT:
-                    self._delete_document_files(node)
+                # Рекурсивно удаляем все документы в ветке из R2 и кэша
+                self._delete_branch_files(node)
                 
                 if self.client.delete_node(node.id):
                     item = self._node_map.get(node.id)
@@ -254,12 +299,44 @@ class TreeNodeOperationsMixin:
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
     
+    def _delete_branch_files(self, node: TreeNode):
+        """Рекурсивно удалить все файлы документов в ветке из R2 и кэша"""
+        from app.gui.folder_settings_dialog import get_projects_dir
+        import shutil
+        
+        # Сначала рекурсивно обрабатываем дочерние узлы (чтобы закрыть файлы)
+        try:
+            children = self.client.get_children(node.id)
+            for child in children:
+                self._delete_branch_files(child)
+        except Exception as e:
+            logger.error(f"Failed to get children for deletion: {e}")
+        
+        # Если это документ - удаляем его файлы
+        if node.node_type == NodeType.DOCUMENT:
+            self._delete_document_files(node)
+        
+        # Если это task_folder - удаляем всю папку из кэша (после закрытия файлов)
+        if node.node_type == NodeType.TASK_FOLDER:
+            projects_dir = get_projects_dir()
+            if projects_dir:
+                cache_folder = Path(projects_dir) / "cache" / node.id
+                if cache_folder.exists():
+                    try:
+                        shutil.rmtree(cache_folder)
+                        logger.info(f"Deleted cache folder: {cache_folder}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete cache folder: {e}")
+    
     def _delete_document_files(self, node: TreeNode):
         """Удалить файлы документа из R2 и локального кэша"""
         from rd_core.r2_storage import R2Storage
         from app.gui.folder_settings_dialog import get_projects_dir
         
         r2_key = node.attributes.get("r2_key", "")
+        
+        # Закрываем файл если он открыт в редакторе
+        self._close_if_open(r2_key)
         
         # Удаляем из R2
         if r2_key:
@@ -270,18 +347,52 @@ class TreeNodeOperationsMixin:
             except Exception as e:
                 logger.error(f"Failed to delete from R2: {e}")
         
-        # Удаляем из локального кэша
+        # Удаляем из локального кэша (с учётом структуры папок)
         projects_dir = get_projects_dir()
         if projects_dir and r2_key:
-            cache_dir = Path(projects_dir) / "cache"
-            filename = Path(r2_key).name
-            cache_file = cache_dir / filename
+            # Сохраняем структуру папок из R2
+            if r2_key.startswith("tree_docs/"):
+                rel_path = r2_key[len("tree_docs/"):]
+            else:
+                rel_path = r2_key
+            
+            cache_file = Path(projects_dir) / "cache" / rel_path
             if cache_file.exists():
                 try:
                     cache_file.unlink()
                     logger.info(f"Deleted from cache: {cache_file}")
+                    # Удаляем пустую родительскую папку
+                    if cache_file.parent.exists() and not any(cache_file.parent.iterdir()):
+                        cache_file.parent.rmdir()
                 except Exception as e:
                     logger.error(f"Failed to delete from cache: {e}")
+    
+    def _rename_cache_file(self, old_r2_key: str, new_r2_key: str):
+        """Переименовать файл в локальном кэше"""
+        from app.gui.folder_settings_dialog import get_projects_dir
+        
+        projects_dir = get_projects_dir()
+        if not projects_dir:
+            return
+        
+        # Формируем пути
+        def get_cache_path(r2_key: str) -> Path:
+            if r2_key.startswith("tree_docs/"):
+                rel_path = r2_key[len("tree_docs/"):]
+            else:
+                rel_path = r2_key
+            return Path(projects_dir) / "cache" / rel_path
+        
+        old_cache = get_cache_path(old_r2_key)
+        new_cache = get_cache_path(new_r2_key)
+        
+        if old_cache.exists():
+            try:
+                new_cache.parent.mkdir(parents=True, exist_ok=True)
+                old_cache.rename(new_cache)
+                logger.info(f"Renamed in cache: {old_cache} -> {new_cache}")
+            except Exception as e:
+                logger.error(f"Failed to rename in cache: {e}")
     
     def _remove_stamps_from_document(self, node: TreeNode):
         """Удалить рамки и QR-коды из PDF документа (скачать из R2, обработать, загрузить обратно)"""
@@ -300,23 +411,26 @@ class TreeNodeOperationsMixin:
             QMessageBox.critical(self, "Ошибка R2", f"Не удалось подключиться к R2:\n{e}")
             return
         
-        # Скачиваем в папку проектов
+        # Скачиваем в папку проектов (с учётом структуры папок)
         projects_dir = get_projects_dir()
         if not projects_dir:
             QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
             return
         
-        download_dir = Path(projects_dir) / "cache"
-        download_dir.mkdir(parents=True, exist_ok=True)
+        # Сохраняем структуру папок из R2
+        if r2_key.startswith("tree_docs/"):
+            rel_path = r2_key[len("tree_docs/"):]
+        else:
+            rel_path = r2_key
         
-        filename = Path(r2_key).name
-        local_path = download_dir / filename
+        local_path = Path(projects_dir) / "cache" / rel_path
+        local_path.parent.mkdir(parents=True, exist_ok=True)
         
         if not r2.download_file(r2_key, str(local_path)):
             QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
             return
         
-        output_path = download_dir / f"{local_path.stem}_clean{local_path.suffix}"
+        output_path = local_path.parent / f"{local_path.stem}_clean{local_path.suffix}"
         success, result = remove_stamps_from_pdf(str(local_path), str(output_path))
         
         if not success:

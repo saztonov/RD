@@ -89,11 +89,19 @@ class FileOperationsMixin:
             QMessageBox.critical(self, "Ошибка R2", f"Не удалось подключиться к R2:\n{e}")
             return
         
-        download_dir = Path(projects_dir) / "cache"
-        download_dir.mkdir(parents=True, exist_ok=True)
+        # Сохраняем структуру папок из R2 (tree_docs/{folder_id}/{filename})
+        from pathlib import PurePosixPath
+        r2_path = PurePosixPath(r2_key)
         
-        filename = Path(r2_key).name
-        local_path = download_dir / filename
+        # Создаём локальный путь: cache/{r2_key без tree_docs/}
+        # Например: cache/{folder_id}/{filename}
+        if r2_key.startswith("tree_docs/"):
+            rel_path = r2_key[len("tree_docs/"):]
+        else:
+            rel_path = r2_key
+        
+        local_path = Path(projects_dir) / "cache" / rel_path
+        local_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Пропускаем скачивание если файл уже есть
         if not local_path.exists():
