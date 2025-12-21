@@ -241,6 +241,9 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.page_viewer.set_blocks([])
         if self.blocks_tree_manager:
             self.blocks_tree_manager.update_blocks_tree()
+        # Сбросить подсветку документа в дереве
+        if hasattr(self, 'project_tree_widget'):
+            self.project_tree_widget.highlight_document("")
         self._update_ui()
     
     def _save_settings(self):

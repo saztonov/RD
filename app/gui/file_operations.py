@@ -379,6 +379,10 @@ class FileOperationsMixin:
         self._current_r2_key = r2_key
         self._current_node_id = node_id
         self._open_pdf_file(str(local_path), r2_key=r2_key)
+        
+        # Подсветить текущий документ в дереве
+        if node_id and hasattr(self, 'project_tree_widget'):
+            self.project_tree_widget.highlight_document(node_id)
     
     def _save_annotation(self):
         """Сохранить разметку в JSON"""

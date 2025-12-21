@@ -42,6 +42,7 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         self._section_types: List[SectionType] = []
         self._loading = False
         self._copied_annotation: Dict = {}  # {"json": str, "source_r2_key": str}
+        self._current_document_id: str = ""  # ID текущего открытого документа
         self._setup_ui()
         
         QTimer.singleShot(100, self._initial_load)
@@ -306,7 +307,26 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
             r2_key = node.attributes.get("r2_key", "")
             if r2_key:
+                self.highlight_document(node.id)
                 self.document_selected.emit(node.id, r2_key)
+    
+    def highlight_document(self, node_id: str):
+        """Подсветить текущий открытый документ"""
+        # Сбросить подсветку предыдущего
+        if self._current_document_id and self._current_document_id in self._node_map:
+            prev_item = self._node_map[self._current_document_id]
+            prev_node = prev_item.data(0, Qt.UserRole)
+            if isinstance(prev_node, TreeNode):
+                prev_item.setBackground(0, QColor("transparent"))
+                prev_item.setForeground(0, QColor(STATUS_COLORS.get(prev_node.status, "#e0e0e0")))
+        
+        # Установить подсветку нового
+        self._current_document_id = node_id
+        if node_id and node_id in self._node_map:
+            item = self._node_map[node_id]
+            item.setBackground(0, QColor("#264f78"))  # Синий фон для активного
+            item.setForeground(0, QColor("#ffffff"))  # Белый текст
+            self.tree.scrollToItem(item)
     
     def _show_context_menu(self, pos):
         """Показать контекстное меню"""

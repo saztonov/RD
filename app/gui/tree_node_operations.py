@@ -333,25 +333,31 @@ class TreeNodeOperationsMixin:
                         logger.error(f"Failed to delete cache folder: {e}")
     
     def _delete_document_files(self, node: TreeNode):
-        """Удалить файлы документа из R2 и локального кэша"""
+        """Удалить файлы документа из R2, локального кэша и БД"""
         from rd_core.r2_storage import R2Storage
         from app.gui.folder_settings_dialog import get_projects_dir
+        from app.gui.file_operations import get_annotation_r2_key
         
         r2_key = node.attributes.get("r2_key", "")
         
         # Закрываем файл если он открыт в редакторе
         self._close_if_open(r2_key)
         
-        # Удаляем из R2
+        # Удаляем из R2 (PDF и аннотацию)
         if r2_key:
             try:
                 r2 = R2Storage()
+                # Удаляем PDF
                 r2.delete_object(r2_key)
                 logger.info(f"Deleted from R2: {r2_key}")
+                # Удаляем аннотацию
+                ann_r2_key = get_annotation_r2_key(r2_key)
+                r2.delete_object(ann_r2_key)
+                logger.info(f"Deleted annotation from R2: {ann_r2_key}")
             except Exception as e:
                 logger.error(f"Failed to delete from R2: {e}")
         
-        # Удаляем из локального кэша (с учётом структуры папок)
+        # Удаляем из локального кэша (PDF и аннотацию)
         projects_dir = get_projects_dir()
         if projects_dir and r2_key:
             # Сохраняем структуру папок из R2
@@ -365,11 +371,34 @@ class TreeNodeOperationsMixin:
                 try:
                     cache_file.unlink()
                     logger.info(f"Deleted from cache: {cache_file}")
-                    # Удаляем пустую родительскую папку
-                    if cache_file.parent.exists() and not any(cache_file.parent.iterdir()):
-                        cache_file.parent.rmdir()
                 except Exception as e:
                     logger.error(f"Failed to delete from cache: {e}")
+            
+            # Удаляем аннотацию из кэша
+            ann_cache_file = cache_file.parent / f"{cache_file.stem}_annotation.json"
+            if ann_cache_file.exists():
+                try:
+                    ann_cache_file.unlink()
+                    logger.info(f"Deleted annotation from cache: {ann_cache_file}")
+                except Exception as e:
+                    logger.error(f"Failed to delete annotation from cache: {e}")
+            
+            # Удаляем пустую родительскую папку
+            if cache_file.parent.exists() and not any(cache_file.parent.iterdir()):
+                try:
+                    cache_file.parent.rmdir()
+                except Exception as e:
+                    logger.error(f"Failed to delete empty cache folder: {e}")
+        
+        # Удаляем записи из БД (node_files)
+        if node.id:
+            try:
+                node_files = self.client.get_node_files(node.id)
+                for nf in node_files:
+                    self.client.delete_node_file(nf.id)
+                    logger.info(f"Deleted node_file from DB: {nf.id}")
+            except Exception as e:
+                logger.error(f"Failed to delete node_files from DB: {e}")
     
     def _rename_cache_file(self, old_r2_key: str, new_r2_key: str):
         """Переименовать файл в локальном кэше"""
