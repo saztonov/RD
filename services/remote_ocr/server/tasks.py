@@ -103,7 +103,7 @@ def _download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:
     return pdf_path, blocks_path
 
 
-def _upload_results_to_r2(job: Job, work_dir: Path) -> str:
+def _upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str:
     """Загрузить результаты в R2 и записать в БД.
     
     Если есть node_id - загружаем в папку где лежит PDF (parent dir от pdf_r2_key)
@@ -111,17 +111,17 @@ def _upload_results_to_r2(job: Job, work_dir: Path) -> str:
     """
     r2 = _get_r2_storage()
     
-    # Определяем prefix для загрузки
-    if job.node_id:
-        # Получаем r2_key исходного PDF и используем его родительскую папку
-        pdf_r2_key = get_node_pdf_r2_key(job.node_id)
-        if pdf_r2_key:
-            from pathlib import PurePosixPath
-            r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
+    # Определяем prefix для загрузки (если не передан)
+    if r2_prefix is None:
+        if job.node_id:
+            pdf_r2_key = get_node_pdf_r2_key(job.node_id)
+            if pdf_r2_key:
+                from pathlib import PurePosixPath
+                r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
+            else:
+                r2_prefix = f"tree_docs/{job.node_id}"
         else:
-            r2_prefix = f"tree_docs/{job.node_id}"
-    else:
-        r2_prefix = job.r2_prefix
+            r2_prefix = job.r2_prefix
     
     doc_stem = Path(job.document_name).stem
     
@@ -454,11 +454,51 @@ def run_ocr_task(self, job_id: str) -> dict:
             dims = page_dims.get(page_idx)
             width, height = dims if dims else (0, 0)
             page_blocks = sorted(blocks_by_page[page_idx], key=lambda bl: bl.coords_px[1])
+            
+            # Пересчитываем coords_px и polygon_points для серверных размеров
+            if width > 0 and height > 0:
+                from rd_core.models import ShapeType
+                for block in page_blocks:
+                    old_x1, old_y1, old_x2, old_y2 = block.coords_px
+                    old_bbox_w = old_x2 - old_x1 if old_x2 != old_x1 else 1
+                    old_bbox_h = old_y2 - old_y1 if old_y2 != old_y1 else 1
+                    
+                    # Пересчитываем coords_px из coords_norm
+                    block.coords_px = Block.norm_to_px(block.coords_norm, width, height)
+                    
+                    # Пересчитываем polygon_points если есть
+                    if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+                        new_x1, new_y1, new_x2, new_y2 = block.coords_px
+                        new_bbox_w = new_x2 - new_x1 if new_x2 != new_x1 else 1
+                        new_bbox_h = new_y2 - new_y1 if new_y2 != new_y1 else 1
+                        block.polygon_points = [
+                            (
+                                int(new_x1 + (px - old_x1) / old_bbox_w * new_bbox_w),
+                                int(new_y1 + (py - old_y1) / old_bbox_h * new_bbox_h)
+                            )
+                            for px, py in block.polygon_points
+                        ]
+            
             pages.append(Page(page_number=page_idx, width=width, height=height, blocks=page_blocks))
         
+        # Вычисляем r2_prefix для корректных ссылок на кропы
+        if job.node_id:
+            pdf_r2_key = get_node_pdf_r2_key(job.node_id)
+            if pdf_r2_key:
+                from pathlib import PurePosixPath
+                r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
+            else:
+                r2_prefix = f"tree_docs/{job.node_id}"
+        else:
+            r2_prefix = job.r2_prefix
+        
+        # Извлекаем путь после tree_docs/ для markdown ссылок
+        if r2_prefix.startswith("tree_docs/"):
+            md_project_name = r2_prefix[len("tree_docs/"):]
+        else:
+            md_project_name = job.node_id if job.node_id else job.id
+        
         result_md_path = work_dir / "result.md"
-        # project_name = node_id для tree_docs, иначе job.id для обратной совместимости
-        md_project_name = job.node_id if job.node_id else job.id
         generate_structured_markdown(pages, str(result_md_path), project_name=md_project_name, doc_name=pdf_path.name)
         
         annotation_path = work_dir / "annotation.json"
@@ -466,9 +506,9 @@ def run_ocr_task(self, job_id: str) -> dict:
         with open(annotation_path, "w", encoding="utf-8") as f:
             json.dump(doc.to_dict(), f, ensure_ascii=False, indent=2)
         
-        # Загрузка результатов в R2
+        # Загрузка результатов в R2 (r2_prefix уже вычислен выше)
         logger.info(f"Загрузка результатов в R2...")
-        _upload_results_to_r2(job, work_dir)
+        _upload_results_to_r2(job, work_dir, r2_prefix)
         
         # Регистрация OCR результатов в node_files (связь с деревом проектов)
         if job.node_id:

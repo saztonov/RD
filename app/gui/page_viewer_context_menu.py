@@ -75,3 +75,4 @@ class ContextMenuMixin:
             main_window.blocks_tree_manager.update_blocks_tree()
 
 
+

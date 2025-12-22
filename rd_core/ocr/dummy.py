@@ -10,3 +10,4 @@ class DummyOCRBackend:
         return "[OCR placeholder - OCR engine not configured]"
 
 
+

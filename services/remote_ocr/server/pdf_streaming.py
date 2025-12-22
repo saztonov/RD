@@ -272,7 +272,7 @@ def merge_crops_vertically(crops: List[Image.Image], gap: int = 20) -> Image.Ima
     if not crops:
         raise ValueError("Empty crops list")
     if len(crops) == 1:
-        return crops[0]
+        return crops[0].copy()  # Копия, чтобы оригинал можно было закрыть
     
     max_width = max(c.width for c in crops)
     total_height = sum(c.height for c in crops) + gap * (len(crops) - 1)
@@ -417,16 +417,22 @@ def _group_blocks_streaming(
         # TEXT/TABLE
         crop_parts = split_large_crop(crop)
         for part_idx, crop_part in enumerate(crop_parts):
-            if current_strip.total_height + crop_part.height > MAX_STRIP_HEIGHT and current_strip.blocks:
+            # gap добавляется только между блоками (не перед первым)
+            gap = 20 if current_strip.blocks else 0
+            new_height = crop_part.height + gap
+            
+            if current_strip.total_height + new_height > MAX_STRIP_HEIGHT and current_strip.blocks:
                 strip_counter += 1
                 current_strip.strip_id = f"strip_{strip_counter:04d}"
                 strips.append(current_strip)
                 current_strip = MergedStrip()
+                gap = 0  # первый блок в новой полосе без gap
+                new_height = crop_part.height
             
             current_strip.blocks.append(block)
             current_strip.crops.append(crop_part)
             current_strip.block_parts.append(BlockPart(block, crop_part, part_idx, len(crop_parts)))
-            current_strip.total_height += crop_part.height + 20
+            current_strip.total_height += new_height
             current_strip.max_width = max(current_strip.max_width, crop_part.width)
     
     if current_strip.blocks:

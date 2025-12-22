@@ -54,8 +54,10 @@ class VersionHighlightDelegate(QStyledItemDelegate):
         font = painter.font()
         font.setBold(True)
         painter.setFont(font)
-        painter.drawText(x, y, fm.horizontalAdvance(version + " "), h, Qt.AlignVCenter, version + " ")
-        x += fm.horizontalAdvance(version + " ")
+        fm_bold = painter.fontMetrics()
+        version_with_space = version + "  "  # Два пробела для чёткого разделения
+        painter.drawText(x, y, fm_bold.horizontalAdvance(version_with_space), h, Qt.AlignVCenter, version_with_space)
+        x += fm_bold.horizontalAdvance(version_with_space)
         
         # Остальной текст
         font.setBold(False)

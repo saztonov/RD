@@ -87,3 +87,4 @@ class FileTransferWorker(QThread):
         self._running = False
 
 
+

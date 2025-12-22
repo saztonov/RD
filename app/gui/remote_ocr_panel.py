@@ -329,7 +329,7 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         show_toast(self.main_window, f"OCR завершён, аннотация обновлена")
     
     def _reload_annotation_from_result(self, extract_dir: str):
-        """Перезагрузить аннотацию из скачанного результата OCR"""
+        """Обновить ocr_text в блоках из результата OCR, сохраняя оригинальную геометрию"""
         try:
             pdf_path = getattr(self.main_window, '_current_pdf_path', None)
             if not pdf_path:
@@ -345,14 +345,39 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
             from rd_core.annotation_io import AnnotationIO
             loaded_doc = AnnotationIO.load_annotation(str(ann_path))
             
-            if loaded_doc:
-                self.main_window.annotation_document = loaded_doc
-                self.main_window._render_current_page()
-                if hasattr(self.main_window, 'blocks_tree_manager') and self.main_window.blocks_tree_manager:
-                    self.main_window.blocks_tree_manager.update_blocks_tree()
-                logger.info(f"Аннотация перезагружена из: {ann_path}")
+            if not loaded_doc:
+                return
+            
+            current_doc = self.main_window.annotation_document
+            if not current_doc:
+                return
+            
+            # Собираем ocr_text по ID блоков из результата OCR
+            ocr_results = {}
+            for page in loaded_doc.pages:
+                for block in page.blocks:
+                    if block.ocr_text:
+                        ocr_results[block.id] = block.ocr_text
+            
+            # Обновляем только ocr_text в существующих блоках
+            updated_count = 0
+            for page in current_doc.pages:
+                for block in page.blocks:
+                    if block.id in ocr_results:
+                        block.ocr_text = ocr_results[block.id]
+                        updated_count += 1
+            
+            self.main_window._render_current_page()
+            if hasattr(self.main_window, 'blocks_tree_manager') and self.main_window.blocks_tree_manager:
+                self.main_window.blocks_tree_manager.update_blocks_tree()
+            
+            # Триггерим авто-сохранение с обновлёнными ocr_text
+            if updated_count > 0:
+                self.main_window._auto_save_annotation()
+            
+            logger.info(f"OCR результаты применены: {updated_count} блоков обновлено")
         except Exception as e:
-            logger.error(f"Ошибка перезагрузки аннотации: {e}")
+            logger.error(f"Ошибка применения OCR результатов: {e}")
 
     def _on_download_error(self, job_id: str, error_msg: str):
         """Слот: ошибка скачивания"""

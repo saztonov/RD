@@ -176,6 +176,9 @@ class TreeNodeOperationsMixin:
         
         logger.info(f"File uploaded to R2: {task.r2_key}")
         
+        # Копируем файл в локальный кэш ДО создания узла (чтобы открытие было мгновенным)
+        self._copy_to_cache(task.local_path, task.r2_key)
+        
         parent_item = self._node_map.get(task.parent_node_id)
         
         try:
@@ -195,6 +198,8 @@ class TreeNodeOperationsMixin:
                 child_item = self._create_tree_item(doc_node)
                 parent_item.addChild(child_item)
                 parent_item.setExpanded(True)
+                self.tree.setCurrentItem(child_item)
+                self.highlight_document(doc_node.id)
             
             logger.info(f"Document added: {doc_node.id} with r2_key={task.r2_key}")
             # Сигнал с node_id и r2_key для открытия
@@ -426,6 +431,29 @@ class TreeNodeOperationsMixin:
                     logger.info(f"Deleted node_file from DB: {nf.id}")
             except Exception as e:
                 logger.error(f"Failed to delete node_files from DB: {e}")
+    
+    def _copy_to_cache(self, src_path: str, r2_key: str):
+        """Скопировать загружаемый файл в локальный кэш"""
+        from app.gui.folder_settings_dialog import get_projects_dir
+        import shutil
+        
+        projects_dir = get_projects_dir()
+        if not projects_dir:
+            return
+        
+        if r2_key.startswith("tree_docs/"):
+            rel_path = r2_key[len("tree_docs/"):]
+        else:
+            rel_path = r2_key
+        
+        cache_path = Path(projects_dir) / "cache" / rel_path
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            shutil.copy2(src_path, cache_path)
+            logger.debug(f"Copied to cache: {cache_path}")
+        except Exception as e:
+            logger.error(f"Failed to copy to cache: {e}")
     
     def _rename_cache_file(self, old_r2_key: str, new_r2_key: str):
         """Переименовать файл в локальном кэше"""

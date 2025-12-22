@@ -54,6 +54,32 @@ class NavigationManager:
         """Вписать страницу в область просмотра"""
         self.parent.page_viewer.fit_to_view()
     
+    def _recalc_blocks_coords(self, page, new_width: int, new_height: int):
+        """Пересчитать coords_px блоков из coords_norm для нового размера страницы"""
+        from rd_core.models import Block, ShapeType
+        
+        for block in page.blocks:
+            # Сохраняем старые coords_px для пересчёта polygon_points
+            old_x1, old_y1, old_x2, old_y2 = block.coords_px
+            old_bbox_w = old_x2 - old_x1 if old_x2 != old_x1 else 1
+            old_bbox_h = old_y2 - old_y1 if old_y2 != old_y1 else 1
+            
+            # Пересчёт coords_px из нормализованных координат
+            block.coords_px = Block.norm_to_px(block.coords_norm, new_width, new_height)
+            
+            # Пересчёт polygon_points если есть (относительно нового bbox)
+            if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+                new_x1, new_y1, new_x2, new_y2 = block.coords_px
+                new_bbox_w = new_x2 - new_x1 if new_x2 != new_x1 else 1
+                new_bbox_h = new_y2 - new_y1 if new_y2 != new_y1 else 1
+                block.polygon_points = [
+                    (
+                        int(new_x1 + (px - old_x1) / old_bbox_w * new_bbox_w),
+                        int(new_y1 + (py - old_y1) / old_bbox_h * new_bbox_h)
+                    )
+                    for px, py in block.polygon_points
+                ]
+    
     def load_page_image(self, page_num: int, reset_zoom: bool = False):
         """Загрузить изображение страницы"""
         if page_num not in self.parent.page_images:
@@ -69,6 +95,7 @@ class NavigationManager:
                 page = self.parent.annotation_document.pages[page_num]
                 if page.width != img.width or page.height != img.height:
                     logger.debug(f"Обновление размеров Page {page_num}: {page.width}x{page.height} -> {img.width}x{img.height}")
+                    self._recalc_blocks_coords(page, img.width, img.height)
                     page.width = img.width
                     page.height = img.height
             

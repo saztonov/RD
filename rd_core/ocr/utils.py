@@ -47,3 +47,4 @@ def image_to_pdf_base64(image: Image.Image) -> str:
     return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 
+
