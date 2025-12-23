@@ -68,29 +68,6 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(5, 5, 5, 5)
         
-        # Кнопка Remote OCR — крупная и заметная
-        self.remote_ocr_btn = QPushButton("🚀 Запустить Remote OCR")
-        self.remote_ocr_btn.setMinimumHeight(48)
-        self.remote_ocr_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2563eb;
-                color: white;
-                font-size: 15px;
-                font-weight: bold;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 16px;
-            }
-            QPushButton:hover {
-                background-color: #1d4ed8;
-            }
-            QPushButton:pressed {
-                background-color: #1e40af;
-            }
-        """)
-        self.remote_ocr_btn.clicked.connect(self._create_job)
-        layout.addWidget(self.remote_ocr_btn)
-        
         header_layout = QHBoxLayout()
         header_layout.addWidget(QLabel("Задачи:"))
         

@@ -14,8 +14,10 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QPlainTextEdit,
     QDockWidget,
+    QToolButton,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon
 from app.gui.page_viewer import PageViewer
 from app.gui.project_tree_widget import ProjectTreeWidget
 
@@ -32,6 +34,12 @@ class PanelsSetupMixin:
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         
+        # Контейнер для page_viewer с кнопкой закрытия
+        viewer_container = QWidget()
+        viewer_layout = QVBoxLayout(viewer_container)
+        viewer_layout.setContentsMargins(0, 0, 0, 0)
+        viewer_layout.setSpacing(0)
+        
         self.page_viewer = PageViewer()
         self.page_viewer.blockDrawn.connect(self._on_block_drawn)
         self.page_viewer.polygonDrawn.connect(self._on_polygon_drawn)
@@ -41,7 +49,30 @@ class PanelsSetupMixin:
         self.page_viewer.blockDeleted.connect(self._on_block_deleted)
         self.page_viewer.blocks_deleted.connect(self._on_blocks_deleted)
         self.page_viewer.blockMoved.connect(self._on_block_moved)
-        main_layout.addWidget(self.page_viewer)
+        
+        # Кнопка закрытия в правом верхнем углу
+        self.close_pdf_btn = QToolButton(self.page_viewer)
+        self.close_pdf_btn.setText("✕")
+        self.close_pdf_btn.setToolTip("Закрыть файл")
+        self.close_pdf_btn.setFixedSize(QSize(28, 28))
+        self.close_pdf_btn.setStyleSheet("""
+            QToolButton {
+                background-color: rgba(60, 60, 60, 180);
+                color: white;
+                border: none;
+                border-radius: 14px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QToolButton:hover {
+                background-color: rgba(200, 60, 60, 220);
+            }
+        """)
+        self.close_pdf_btn.clicked.connect(self._clear_interface)
+        self.close_pdf_btn.hide()
+        
+        viewer_layout.addWidget(self.page_viewer)
+        main_layout.addWidget(viewer_container)
         
         # Создаём док-панели
         self._setup_dock_panels()
@@ -74,28 +105,6 @@ class PanelsSetupMixin:
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(4, 4, 4, 4)
         
-        # Кнопка Remote OCR — крупная и заметная
-        self.remote_ocr_btn = QPushButton("🚀 Запустить Remote OCR")
-        self.remote_ocr_btn.setMinimumHeight(48)
-        self.remote_ocr_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2563eb;
-                color: white;
-                font-size: 15px;
-                font-weight: bold;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 16px;
-            }
-            QPushButton:hover {
-                background-color: #1d4ed8;
-            }
-            QPushButton:pressed {
-                background-color: #1e40af;
-            }
-        """)
-        self.remote_ocr_btn.clicked.connect(self._send_to_remote_ocr)
-        layout.addWidget(self.remote_ocr_btn)
         
         # Кнопки перемещения блоков
         move_buttons_layout = QHBoxLayout()

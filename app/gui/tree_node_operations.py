@@ -500,6 +500,87 @@ class TreeNodeOperationsMixin:
             except Exception as e:
                 logger.error(f"Failed to rename in cache: {e}")
     
+    def _open_document_folder(self, node: TreeNode):
+        """Открыть папку документа в проводнике (скачать с R2 если нет локально)"""
+        import subprocess
+        import sys
+        from app.gui.folder_settings_dialog import get_projects_dir
+        from rd_core.r2_storage import R2Storage
+        from pathlib import PurePosixPath
+        
+        r2_key = node.attributes.get("r2_key", "")
+        if not r2_key:
+            QMessageBox.warning(self, "Ошибка", "R2 ключ файла не найден")
+            return
+        
+        projects_dir = get_projects_dir()
+        if not projects_dir:
+            QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
+            return
+        
+        # Определяем локальную папку (parent от PDF файла)
+        if r2_key.startswith("tree_docs/"):
+            rel_path = r2_key[len("tree_docs/"):]
+        else:
+            rel_path = r2_key
+        
+        local_file = Path(projects_dir) / "cache" / rel_path
+        local_folder = local_file.parent
+        local_folder.mkdir(parents=True, exist_ok=True)
+        
+        # Проверяем есть ли PDF файл локально
+        if not local_file.exists():
+            # Скачиваем все файлы папки с R2
+            self.status_label.setText("Скачивание файлов с R2...")
+            try:
+                r2 = R2Storage()
+                # Префикс папки в R2
+                r2_prefix = str(PurePosixPath(r2_key).parent) + "/"
+                
+                # Получаем список всех файлов по префиксу
+                file_keys = r2.list_by_prefix(r2_prefix)
+                
+                if not file_keys:
+                    QMessageBox.warning(self, "Ошибка", "Файлы не найдены в R2")
+                    return
+                
+                downloaded = 0
+                for fk in file_keys:
+                    # Формируем локальный путь
+                    if fk.startswith("tree_docs/"):
+                        fk_rel = fk[len("tree_docs/"):]
+                    else:
+                        fk_rel = fk
+                    
+                    fk_local = Path(projects_dir) / "cache" / fk_rel
+                    fk_local.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    if not fk_local.exists():
+                        if r2.download_file(fk, str(fk_local)):
+                            downloaded += 1
+                
+                self.status_label.setText(f"Скачано файлов: {downloaded}")
+                logger.info(f"Downloaded {downloaded} files from R2 prefix: {r2_prefix}")
+                
+            except Exception as e:
+                logger.error(f"Failed to download folder from R2: {e}")
+                QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файлы:\n{e}")
+                return
+        
+        # Открываем папку в проводнике
+        try:
+            if sys.platform == "win32":
+                subprocess.run(["explorer", str(local_folder)], check=False)
+            elif sys.platform == "darwin":
+                subprocess.run(["open", str(local_folder)], check=False)
+            else:
+                subprocess.run(["xdg-open", str(local_folder)], check=False)
+            
+            self.status_label.setText(f"📂 {local_folder.name}")
+        except Exception as e:
+            logger.error(f"Failed to open folder: {e}")
+            QMessageBox.warning(self, "Ошибка", f"Не удалось открыть папку:\n{e}")
+    
     def _remove_stamps_from_document(self, node: TreeNode):
         """Удалить рамки и QR-коды из PDF документа (скачать из R2, обработать, загрузить обратно)"""
         from rd_core.r2_storage import R2Storage

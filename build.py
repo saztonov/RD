@@ -75,14 +75,14 @@ spec_file = Path("PDFAnnotationTool.spec")
 with open(spec_file, 'w', encoding='utf-8') as f:
     f.write(spec_content)
 
-print(f"✓ Spec обновлен с {len(env_vars)} переменными")
-print(f"✓ Runtime hook создан: {hook_file}")
-print("\nЗапуск PyInstaller...")
+print(f"[OK] Spec updated with {len(env_vars)} vars")
+print(f"[OK] Runtime hook: {hook_file}")
+print("\nRunning PyInstaller...")
 
 os.system("pyinstaller PDFAnnotationTool.spec")
 
 # Очистка
 if hook_file.exists():
     hook_file.unlink()
-print("\n✓ Сборка завершена: dist\\PDFAnnotationTool.exe")
+print("\n[OK] Build complete: dist\\PDFAnnotationTool.exe")
 

@@ -69,8 +69,18 @@ class VersionHighlightDelegate(QStyledItemDelegate):
 
 from app.tree_client import TreeClient, TreeNode, NodeType, NodeStatus, StageType, SectionType, FileType
 from app.gui.tree_node_operations import TreeNodeOperationsMixin, NODE_ICONS, STATUS_COLORS
+from app.gui.sync_check_worker import SyncCheckWorker, SyncStatus
 
 logger = logging.getLogger(__name__)
+
+# Иконки статуса синхронизации
+SYNC_ICONS = {
+    SyncStatus.SYNCED: "✅",
+    SyncStatus.NOT_SYNCED: "⚠️",
+    SyncStatus.MISSING_LOCAL: "📥",
+    SyncStatus.CHECKING: "🔄",
+    SyncStatus.UNKNOWN: "",
+}
 
 # Названия типов узлов для UI
 NODE_TYPE_NAMES = {
@@ -101,6 +111,8 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         self._current_document_id: str = ""  # ID текущего открытого документа
         self._auto_refresh_timer: QTimer = None
         self._last_node_count: int = 0  # Для отслеживания изменений
+        self._sync_statuses: Dict[str, SyncStatus] = {}  # node_id -> SyncStatus
+        self._sync_worker: SyncCheckWorker = None
         self._setup_ui()
         self._setup_auto_refresh()
         
@@ -238,10 +250,18 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         self.collapse_all_btn.setStyleSheet(icon_btn_style)
         self.collapse_all_btn.clicked.connect(self._collapse_all)
         
+        self.sync_check_btn = QPushButton("🔄")
+        self.sync_check_btn.setCursor(Qt.PointingHandCursor)
+        self.sync_check_btn.setToolTip("Проверить синхронизацию с R2")
+        self.sync_check_btn.setFixedSize(32, 32)
+        self.sync_check_btn.setStyleSheet(icon_btn_style)
+        self.sync_check_btn.clicked.connect(self._start_sync_check)
+        
         btns_layout.addWidget(self.create_btn)
         btns_layout.addWidget(self.refresh_btn)
         btns_layout.addWidget(self.expand_all_btn)
         btns_layout.addWidget(self.collapse_all_btn)
+        btns_layout.addWidget(self.sync_check_btn)
         header_layout.addLayout(btns_layout)
         
         layout.addWidget(header)
@@ -269,8 +289,8 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         self.tree.setFrameShape(QFrame.NoFrame)
         self.tree.setAnimated(True)
         self.tree.setIndentation(20)
-        self.tree.setDragDropMode(QAbstractItemView.InternalMove)
-        self.tree.setDefaultDropAction(Qt.MoveAction)
+        self.tree.setDragEnabled(False)
+        self.tree.setAcceptDrops(False)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
@@ -336,6 +356,7 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         self.status_label.setText("Загрузка...")
         self.tree.clear()
         self._node_map.clear()
+        self._sync_statuses.clear()
         
         try:
             roots = self.client.get_root_nodes()
@@ -346,6 +367,9 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                 self._add_placeholder(item, node)
             
             self.status_label.setText(f"Проектов: {len(roots)}")
+            
+            # Запускаем проверку синхронизации с задержкой
+            QTimer.singleShot(500, self._start_sync_check)
         except Exception as e:
             logger.error(f"Failed to refresh tree: {e}")
             self.status_label.setText(f"Ошибка: {e}")
@@ -361,9 +385,21 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             version_tag = f"[v{node.version}]" if node.version else "[v1]"
             has_annotation = node.attributes.get("has_annotation", False)
             ann_icon = "📋" if has_annotation else ""
-            display_name = f"{icon} {node.name} {ann_icon}".strip()
+            # Иконка синхронизации для документов
+            sync_status = self._sync_statuses.get(node.id, SyncStatus.UNKNOWN)
+            sync_icon = SYNC_ICONS.get(sync_status, "")
+            display_name = f"{icon} {node.name} {ann_icon} {sync_icon}".strip()
             # Сохраняем версию отдельно для отображения красным
             version_display = version_tag
+        elif node.node_type == NodeType.TASK_FOLDER:
+            # Иконка синхронизации для папок заданий
+            sync_status = self._sync_statuses.get(node.id, SyncStatus.UNKNOWN)
+            sync_icon = SYNC_ICONS.get(sync_status, "")
+            if node.code:
+                display_name = f"{icon} [{node.code}] {node.name} {sync_icon}".strip()
+            else:
+                display_name = f"{icon} {node.name} {sync_icon}".strip()
+            version_display = None
         elif node.code:
             display_name = f"{icon} [{node.code}] {node.name}"
             version_display = None
@@ -401,6 +437,8 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                 if isinstance(node, TreeNode):
                     item.removeChild(child)
                     self._load_children(item, node)
+                    # Запускаем проверку синхронизации для загруженных дочерних
+                    QTimer.singleShot(100, self._start_sync_check)
     
     def _load_children(self, parent_item: QTreeWidgetItem, parent_node: TreeNode):
         """Загрузить дочерние узлы"""
@@ -562,6 +600,10 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                     action.setData(("upload", node))
                 
                 if node.node_type == NodeType.DOCUMENT:
+                    # Открыть папку с файлами
+                    action = menu.addAction("📂 Открыть папку")
+                    action.setData(("open_folder", node))
+                    
                     # Подменю выбора версии
                     from app.gui.folder_settings_dialog import get_max_versions
                     max_versions = get_max_versions()
@@ -587,6 +629,11 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                     if self._copied_annotation and r2_key:
                         action = menu.addAction("📥 Вставить аннотацию")
                         action.setData(("paste_annotation", node))
+                    
+                    # Загрузить аннотацию из файла
+                    if r2_key:
+                        action = menu.addAction("📤 Загрузить аннотацию блоков")
+                        action.setData(("upload_annotation", node))
                 
                 menu.addSeparator()
                 menu.addAction("✏️ Переименовать").setData(("rename", node))
@@ -641,6 +688,12 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         elif action == "paste_annotation":
             node = data[1]
             self._paste_annotation(node)
+        elif action == "open_folder":
+            node = data[1]
+            self._open_document_folder(node)
+        elif action == "upload_annotation":
+            node = data[1]
+            self._upload_annotation_dialog(node)
     
     def _filter_tree(self, text: str):
         """Фильтровать дерево по тексту"""
@@ -790,3 +843,191 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         except Exception as e:
             logger.error(f"Paste annotation failed: {e}")
             QMessageBox.critical(self, "Ошибка", f"Ошибка вставки: {e}")
+    
+    def _upload_annotation_dialog(self, node: TreeNode):
+        """Диалог загрузки аннотации блоков из файла"""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from rd_core.r2_storage import R2Storage
+        from app.gui.file_operations import get_annotation_r2_key
+        from app.tree_client import FileType
+        from pathlib import Path
+        
+        r2_key = node.attributes.get("r2_key", "")
+        if not r2_key:
+            QMessageBox.warning(self, "Ошибка", "Документ не имеет привязки к R2")
+            return
+        
+        # Диалог выбора файла
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 
+            "Выберите файл аннотации", 
+            "", 
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # Читаем содержимое файла
+            with open(file_path, 'r', encoding='utf-8') as f:
+                json_content = f.read()
+            
+            # Валидация JSON
+            import json
+            json.loads(json_content)  # Проверяем что это валидный JSON
+            
+            r2 = R2Storage()
+            ann_r2_key = get_annotation_r2_key(r2_key)
+            
+            # Загружаем в R2
+            if not r2.upload_text(json_content, ann_r2_key):
+                QMessageBox.critical(self, "Ошибка", "Не удалось загрузить аннотацию в R2")
+                return
+            
+            logger.info(f"Annotation uploaded to R2: {ann_r2_key}")
+            
+            # Обновляем флаг has_annotation в узле
+            attrs = node.attributes.copy()
+            attrs["has_annotation"] = True
+            self.client.update_node(node.id, attributes=attrs)
+            
+            # Регистрируем файл в node_files
+            file_size = Path(file_path).stat().st_size
+            self.client.upsert_node_file(
+                node_id=node.id,
+                file_type=FileType.ANNOTATION,
+                r2_key=ann_r2_key,
+                file_name=Path(ann_r2_key).name,
+                file_size=file_size,
+                mime_type="application/json",
+            )
+            
+            logger.info(f"Annotation registered in Supabase: node_id={node.id}")
+            
+            # Обновляем отображение в дереве
+            item = self._node_map.get(node.id)
+            if item:
+                node.attributes = attrs
+                item.setData(0, Qt.UserRole, node)
+                icon = NODE_ICONS.get(node.node_type, "📄")
+                version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                sync_status = self._sync_statuses.get(node.id, SyncStatus.UNKNOWN)
+                sync_icon = SYNC_ICONS.get(sync_status, "")
+                display_name = f"{icon} {node.name} 📋 {sync_icon}".strip()
+                item.setText(0, display_name)
+                item.setData(0, Qt.UserRole + 1, version_tag)
+            
+            self.status_label.setText("📤 Аннотация загружена")
+            QMessageBox.information(self, "Успех", "Аннотация блоков успешно загружена")
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in annotation file: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Неверный формат JSON:\n{e}")
+        except Exception as e:
+            logger.error(f"Upload annotation failed: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки аннотации:\n{e}")
+    
+    # === Проверка синхронизации с R2 ===
+    
+    def _start_sync_check(self):
+        """Запустить фоновую проверку синхронизации всех TASK_FOLDER и DOCUMENT"""
+        from app.gui.folder_settings_dialog import get_projects_dir
+        
+        projects_dir = get_projects_dir()
+        if not projects_dir:
+            logger.debug("Projects dir not set, skipping sync check")
+            return
+        
+        # Останавливаем предыдущий воркер если есть
+        if self._sync_worker and self._sync_worker.isRunning():
+            self._sync_worker.stop()
+        
+        self._sync_worker = SyncCheckWorker(self)
+        self._sync_worker.result_ready.connect(self._on_sync_check_result)
+        self._sync_worker.check_finished.connect(self._on_sync_check_finished)
+        
+        # Собираем узлы для проверки (TASK_FOLDER и DOCUMENT)
+        self._collect_nodes_for_sync_check(self._sync_worker, projects_dir)
+        
+        if self._sync_worker._nodes_to_check:
+            logger.debug(f"Starting sync check for {len(self._sync_worker._nodes_to_check)} nodes")
+            self._sync_worker.start()
+    
+    def _collect_nodes_for_sync_check(self, worker: SyncCheckWorker, projects_dir: str):
+        """Рекурсивно собрать все TASK_FOLDER и DOCUMENT для проверки"""
+        from pathlib import Path
+        
+        def collect_from_item(item: QTreeWidgetItem):
+            node = item.data(0, Qt.UserRole)
+            if not isinstance(node, TreeNode):
+                return
+            
+            if node.node_type == NodeType.TASK_FOLDER:
+                # Для TASK_FOLDER проверяем все файлы по префиксу
+                r2_prefix = f"tree_docs/{node.id}/"
+                local_folder = str(Path(projects_dir) / "cache" / node.id)
+                worker.add_check(node.id, r2_prefix, local_folder)
+            
+            elif node.node_type == NodeType.DOCUMENT:
+                # Для DOCUMENT проверяем конкретный файл
+                r2_key = node.attributes.get("r2_key", "")
+                if r2_key:
+                    if r2_key.startswith("tree_docs/"):
+                        rel_path = r2_key[len("tree_docs/"):]
+                    else:
+                        rel_path = r2_key
+                    local_folder = str(Path(projects_dir) / "cache" / Path(rel_path).parent)
+                    worker.add_check(node.id, r2_key, local_folder)
+            
+            # Рекурсивно для дочерних
+            for i in range(item.childCount()):
+                collect_from_item(item.child(i))
+        
+        # Обходим все корневые элементы
+        for i in range(self.tree.topLevelItemCount()):
+            collect_from_item(self.tree.topLevelItem(i))
+    
+    def _on_sync_check_result(self, node_id: str, status_value: str):
+        """Обработать результат проверки синхронизации"""
+        try:
+            status = SyncStatus(status_value)
+        except ValueError:
+            status = SyncStatus.UNKNOWN
+        
+        self._sync_statuses[node_id] = status
+        
+        # Обновляем отображение узла
+        item = self._node_map.get(node_id)
+        if item:
+            node = item.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode):
+                self._update_item_sync_icon(item, node, status)
+    
+    def _update_item_sync_icon(self, item: QTreeWidgetItem, node: TreeNode, status: SyncStatus):
+        """Обновить иконку синхронизации для элемента дерева"""
+        icon = NODE_ICONS.get(node.node_type, "📄")
+        sync_icon = SYNC_ICONS.get(status, "")
+        
+        if node.node_type == NodeType.DOCUMENT:
+            version_tag = f"[v{node.version}]" if node.version else "[v1]"
+            has_annotation = node.attributes.get("has_annotation", False)
+            ann_icon = "📋" if has_annotation else ""
+            display_name = f"{icon} {node.name} {ann_icon} {sync_icon}".strip()
+            item.setText(0, display_name)
+            item.setData(0, Qt.UserRole + 1, version_tag)
+        elif node.node_type == NodeType.TASK_FOLDER:
+            if node.code:
+                display_name = f"{icon} [{node.code}] {node.name} {sync_icon}".strip()
+            else:
+                display_name = f"{icon} {node.name} {sync_icon}".strip()
+            item.setText(0, display_name)
+    
+    def _on_sync_check_finished(self):
+        """Проверка синхронизации завершена"""
+        logger.debug("Sync check finished")
+        self._sync_worker = None
+    
+    def check_sync_status(self):
+        """Публичный метод для запуска проверки синхронизации"""
+        self._start_sync_check()

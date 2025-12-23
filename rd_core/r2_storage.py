@@ -484,13 +484,13 @@ class R2Storage:
 
     def list_objects_with_metadata(self, prefix: str) -> list[dict]:
         """
-        Получить список объектов с метаданными (LastModified, Size)
+        Получить список объектов с метаданными (LastModified, Size, ETag)
 
         Args:
             prefix: Префикс для поиска
 
         Returns:
-            Список dict с ключами: Key, LastModified, Size
+            Список dict с ключами: Key, LastModified, Size, ETag
         """
         try:
             response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix)
@@ -499,12 +499,40 @@ class R2Storage:
                 return []
 
             return [
-                {"Key": obj["Key"], "LastModified": obj.get("LastModified"), "Size": obj.get("Size", 0)}
+                {
+                    "Key": obj["Key"],
+                    "LastModified": obj.get("LastModified"),
+                    "Size": obj.get("Size", 0),
+                    "ETag": obj.get("ETag", "").strip('"'),
+                }
                 for obj in response["Contents"]
             ]
         except ClientError as e:
             logger.error(f"❌ Ошибка получения списка из R2: {e}")
             return []
+
+    def get_object_metadata(self, remote_key: str) -> Optional[dict]:
+        """
+        Получить метаданные объекта (Size, ETag)
+
+        Args:
+            remote_key: Ключ объекта
+
+        Returns:
+            Dict с Size и ETag или None
+        """
+        try:
+            response = self.s3_client.head_object(Bucket=self.bucket_name, Key=remote_key)
+            return {
+                "Size": response.get("ContentLength", 0),
+                "ETag": response.get("ETag", "").strip('"'),
+            }
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                return None
+            logger.error(f"❌ Ошибка получения метаданных объекта: {e}")
+            return None
 
     def exists(self, remote_key: str) -> bool:
         """

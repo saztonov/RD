@@ -383,21 +383,37 @@ class FileOperationsMixin:
         # Собираем список файлов для скачивания
         tasks = self._build_download_tasks(node_id, r2_key, str(local_path), projects_dir)
         
-        # Асинхронное скачивание
-        self._download_worker = FileTransferWorker(self)
+        # Сохраняем данные для открытия после завершения загрузки
         self._pending_download_node_id = node_id
         self._pending_download_r2_key = r2_key
         self._pending_download_local_path = str(local_path)
+        self._download_errors = []
+        
+        # Показываем модальное окно загрузки
+        from PySide6.QtWidgets import QProgressDialog
+        from PySide6.QtCore import Qt
+        self._download_dialog = QProgressDialog(
+            f"Загрузка документа и связанных файлов...",
+            None,  # Без кнопки отмены
+            0, len(tasks),
+            self
+        )
+        self._download_dialog.setWindowTitle("Загрузка")
+        self._download_dialog.setWindowModality(Qt.WindowModal)
+        self._download_dialog.setMinimumDuration(0)
+        self._download_dialog.setValue(0)
+        self._download_dialog.show()
+        
+        # Асинхронное скачивание
+        self._download_worker = FileTransferWorker(self)
         
         for task in tasks:
             self._download_worker.add_task(task)
         
         # Подключаем сигналы
-        self._download_worker.progress.connect(
-            lambda msg, cur, tot: self.show_transfer_progress(msg, cur, tot)
-        )
-        self._download_worker.finished_task.connect(self._on_download_task_finished)
-        self._download_worker.all_finished.connect(self._on_download_finished)
+        self._download_worker.progress.connect(self._on_download_progress)
+        self._download_worker.finished_task.connect(self._on_download_task_result)
+        self._download_worker.all_finished.connect(self._on_all_downloads_finished)
         
         # Запускаем
         logger.info(f"Starting async download: {r2_key} -> {local_path} ({len(tasks)} files)")
@@ -481,29 +497,62 @@ class FileOperationsMixin:
         
         return tasks
     
-    def _on_download_task_finished(self, task: TransferTask, success: bool, error: str):
-        """Обработка завершения скачивания"""
-        # Убираем из активных загрузок
-        if self._active_downloads and task.r2_key in self._active_downloads:
-            self._active_downloads.discard(task.r2_key)
-        
-        if not success:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{task.r2_key}\n{error}")
-            return
-        
-        logger.info(f"File downloaded from R2: {task.r2_key}")
-        
-        self._current_r2_key = task.r2_key
-        self._current_node_id = task.node_id
-        self._open_pdf_file(task.local_path, r2_key=task.r2_key)
-        
-        # Подсветить текущий документ в дереве
-        if task.node_id and hasattr(self, 'project_tree_widget'):
-            self.project_tree_widget.highlight_document(task.node_id)
+    def _on_download_progress(self, message: str, current: int, total: int):
+        """Обновление прогресса загрузки"""
+        if hasattr(self, '_download_dialog') and self._download_dialog:
+            self._download_dialog.setLabelText(message)
+            self._download_dialog.setValue(current)
+        self.show_transfer_progress(message, current, total)
     
-    def _on_download_finished(self):
-        """Скачивание завершено"""
+    def _on_download_task_result(self, task: TransferTask, success: bool, error: str):
+        """Сохранение результата загрузки файла (без открытия)"""
+        if not success:
+            if hasattr(self, '_download_errors'):
+                self._download_errors.append(f"{task.r2_key}: {error}")
+            logger.error(f"Download failed: {task.r2_key} - {error}")
+        else:
+            logger.info(f"File downloaded from R2: {task.r2_key}")
+    
+    def _on_all_downloads_finished(self):
+        """Все загрузки завершены - открываем PDF"""
+        # Закрываем диалог прогресса
+        if hasattr(self, '_download_dialog') and self._download_dialog:
+            self._download_dialog.close()
+            self._download_dialog = None
+        
         self.hide_transfer_progress()
+        
+        # Убираем из активных загрузок
+        if self._active_downloads and hasattr(self, '_pending_download_r2_key'):
+            self._active_downloads.discard(self._pending_download_r2_key)
+        
+        # Проверяем ошибки
+        if hasattr(self, '_download_errors') and self._download_errors:
+            # Показываем ошибки только для основного PDF
+            main_pdf_error = None
+            for err in self._download_errors:
+                if hasattr(self, '_pending_download_r2_key') and self._pending_download_r2_key in err:
+                    main_pdf_error = err
+                    break
+            
+            if main_pdf_error:
+                QMessageBox.critical(self, "Ошибка", f"Не удалось скачать PDF:\n{main_pdf_error}")
+                self._download_worker = None
+                return
+            else:
+                # Ошибки только для доп. файлов - логируем, но продолжаем
+                logger.warning(f"Some files failed to download: {self._download_errors}")
+        
+        # Открываем основной PDF
+        if hasattr(self, '_pending_download_local_path') and Path(self._pending_download_local_path).exists():
+            self._current_r2_key = self._pending_download_r2_key
+            self._current_node_id = self._pending_download_node_id
+            self._open_pdf_file(self._pending_download_local_path, r2_key=self._pending_download_r2_key)
+            
+            # Подсветить документ в дереве
+            if self._pending_download_node_id and hasattr(self, 'project_tree_widget'):
+                self.project_tree_widget.highlight_document(self._pending_download_node_id)
+        
         self._download_worker = None
     
     def _save_annotation(self):

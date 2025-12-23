@@ -247,6 +247,36 @@ class MenuSetupMixin:
         
         # Текущий выбранный тип формы
         self.selected_shape_type = ShapeType.RECTANGLE
+        
+        # Растягивающийся спейсер
+        spacer = QWidget()
+        spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy(), spacer.sizePolicy().verticalPolicy())
+        from PySide6.QtWidgets import QSizePolicy
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        toolbar.addWidget(spacer)
+        
+        # Кнопка запуска распознавания — всегда справа в тулбаре
+        self.remote_ocr_btn = QPushButton("🚀 Запустить распознавание")
+        self.remote_ocr_btn.setMinimumHeight(36)
+        self.remote_ocr_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2563eb;
+                color: white;
+                font-size: 14px;
+                font-weight: bold;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #1d4ed8;
+            }
+            QPushButton:pressed {
+                background-color: #1e40af;
+            }
+        """)
+        self.remote_ocr_btn.clicked.connect(self._send_to_remote_ocr)
+        toolbar.addWidget(self.remote_ocr_btn)
     
     def _on_shape_type_changed(self, action):
         """Обработка изменения типа формы"""

@@ -128,6 +128,7 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
             self.current_page = page_number
             self.selected_block_idx = None
             self.block_items.clear()
+            self._set_close_button_visible(False)
             return
         
         img_bytes = pil_image.tobytes("raw", "RGB")
@@ -147,6 +148,18 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
         
         if reset_zoom:
             self.fit_to_view()
+        
+        self._set_close_button_visible(True)
+    
+    def _set_close_button_visible(self, visible: bool):
+        """Показать/скрыть кнопку закрытия"""
+        main_window = self.window()
+        if hasattr(main_window, 'close_pdf_btn'):
+            if visible:
+                main_window.close_pdf_btn.show()
+                self._update_close_button_position()
+            else:
+                main_window.close_pdf_btn.hide()
     
     def reset_zoom(self):
         """Сбросить масштаб к 100%"""
@@ -158,4 +171,16 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
         if self.page_image:
             self.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
             self.zoom_factor = self.transform().m11()
+    
+    def resizeEvent(self, event):
+        """Позиционирование кнопки закрытия при изменении размера"""
+        super().resizeEvent(event)
+        self._update_close_button_position()
+    
+    def _update_close_button_position(self):
+        """Обновить позицию кнопки закрытия"""
+        main_window = self.window()
+        if hasattr(main_window, 'close_pdf_btn'):
+            btn = main_window.close_pdf_btn
+            btn.move(self.width() - btn.width() - 10, 10)
     
