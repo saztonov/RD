@@ -316,9 +316,35 @@ class Document:
     
     @classmethod
     def from_dict(cls, data: dict) -> 'Document':
-        """Десериализация из словаря"""
-        return cls(
-            pdf_path=data["pdf_path"],
-            pages=[Page.from_dict(p) for p in data.get("pages", [])]
-        )
+        """Десериализация из словаря с поддержкой старого формата"""
+        raw_pages = [Page.from_dict(p) for p in data.get("pages", [])]
+        
+        # Определяем, старый ли это формат (page_number != индекс массива)
+        is_old_format = False
+        if raw_pages:
+            # Проверяем: первая страница начинается не с 0 или есть пропуски
+            for idx, page in enumerate(raw_pages):
+                if page.page_number != idx:
+                    is_old_format = True
+                    break
+        
+        if is_old_format and raw_pages:
+            # Старый формат: создаём разреженный массив по page_number
+            max_page = max(p.page_number for p in raw_pages)
+            # Собираем страницы в dict по page_number
+            pages_by_num = {p.page_number: p for p in raw_pages}
+            
+            # Создаём полный массив страниц
+            pages = []
+            for i in range(max_page + 1):
+                if i in pages_by_num:
+                    pages.append(pages_by_num[i])
+                else:
+                    # Берём размеры от ближайшей страницы
+                    ref = raw_pages[0]
+                    pages.append(Page(page_number=i, width=ref.width, height=ref.height, blocks=[]))
+        else:
+            pages = raw_pages
+        
+        return cls(pdf_path=data["pdf_path"], pages=pages)
 
