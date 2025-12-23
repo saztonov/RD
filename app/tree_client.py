@@ -222,10 +222,10 @@ class TreeClient:
     # === CRUD для узлов ===
     
     def get_root_nodes(self) -> List[TreeNode]:
-        """Получить корневые проекты (без parent_id)"""
+        """Получить корневые проекты (без parent_id) - все пользователи видят все проекты"""
         resp = self._request(
             "get", 
-            f"/tree_nodes?parent_id=is.null&client_id=eq.{self.client_id}&order=sort_order,created_at"
+            "/tree_nodes?parent_id=is.null&order=sort_order,created_at"
         )
         return [TreeNode.from_dict(r) for r in resp.json()]
     

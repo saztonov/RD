@@ -68,6 +68,29 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(5, 5, 5, 5)
         
+        # Кнопка Remote OCR — крупная и заметная
+        self.remote_ocr_btn = QPushButton("🚀 Запустить Remote OCR")
+        self.remote_ocr_btn.setMinimumHeight(48)
+        self.remote_ocr_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2563eb;
+                color: white;
+                font-size: 15px;
+                font-weight: bold;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 16px;
+            }
+            QPushButton:hover {
+                background-color: #1d4ed8;
+            }
+            QPushButton:pressed {
+                background-color: #1e40af;
+            }
+        """)
+        self.remote_ocr_btn.clicked.connect(self._create_job)
+        layout.addWidget(self.remote_ocr_btn)
+        
         header_layout = QHBoxLayout()
         header_layout.addWidget(QLabel("Задачи:"))
         
@@ -325,8 +348,37 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         # Перезагружаем аннотацию из скачанного файла
         self._reload_annotation_from_result(extract_dir)
         
+        # Обновляем дерево проектов для отображения markdown файла
+        self._refresh_document_in_tree()
+        
         from app.gui.toast import show_toast
         show_toast(self.main_window, f"OCR завершён, аннотация обновлена")
+    
+    def _refresh_document_in_tree(self):
+        """Обновить узел документа в дереве проектов (показать markdown)"""
+        node_id = getattr(self.main_window, '_current_node_id', None)
+        if not node_id:
+            return
+        
+        if not hasattr(self.main_window, 'project_tree_widget'):
+            return
+        
+        tree = self.main_window.project_tree_widget
+        item = tree._node_map.get(node_id)
+        if not item:
+            return
+        
+        node = item.data(0, Qt.UserRole)
+        if not node:
+            return
+        
+        # Удаляем placeholder и перезагружаем файлы документа
+        while item.childCount() > 0:
+            item.removeChild(item.child(0))
+        
+        tree._load_document_files(item, node)
+        item.setExpanded(True)
+        logger.info(f"Refreshed document files in tree: {node_id}")
     
     def _reload_annotation_from_result(self, extract_dir: str):
         """Обновить ocr_text в блоках из результата OCR, сохраняя оригинальную геометрию"""

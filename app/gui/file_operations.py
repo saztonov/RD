@@ -380,19 +380,17 @@ class FileOperationsMixin:
         # Помечаем загрузку как активную
         self._active_downloads.add(r2_key)
         
-        # Иначе - асинхронное скачивание
+        # Собираем список файлов для скачивания
+        tasks = self._build_download_tasks(node_id, r2_key, str(local_path), projects_dir)
+        
+        # Асинхронное скачивание
         self._download_worker = FileTransferWorker(self)
         self._pending_download_node_id = node_id
         self._pending_download_r2_key = r2_key
         self._pending_download_local_path = str(local_path)
         
-        task = TransferTask(
-            transfer_type=TransferType.DOWNLOAD,
-            local_path=str(local_path),
-            r2_key=r2_key,
-            node_id=node_id,
-        )
-        self._download_worker.add_task(task)
+        for task in tasks:
+            self._download_worker.add_task(task)
         
         # Подключаем сигналы
         self._download_worker.progress.connect(
@@ -402,8 +400,86 @@ class FileOperationsMixin:
         self._download_worker.all_finished.connect(self._on_download_finished)
         
         # Запускаем
-        logger.info(f"Starting async download: {r2_key} -> {local_path}")
+        logger.info(f"Starting async download: {r2_key} -> {local_path} ({len(tasks)} files)")
         self._download_worker.start()
+    
+    def _build_download_tasks(self, node_id: str, r2_key: str, local_path: str, projects_dir: str) -> list:
+        """Собрать список задач для скачивания (PDF + полный пакет если распознано)"""
+        from app.tree_client import TreeClient, FileType
+        from pathlib import PurePosixPath
+        
+        tasks = []
+        
+        # Основной PDF
+        tasks.append(TransferTask(
+            transfer_type=TransferType.DOWNLOAD,
+            local_path=local_path,
+            r2_key=r2_key,
+            node_id=node_id,
+        ))
+        
+        # Проверяем есть ли дополнительные файлы (аннотации, markdown, кропы)
+        try:
+            client = TreeClient()
+            node_files = client.get_node_files(node_id)
+            
+            for nf in node_files:
+                # Пропускаем сам PDF
+                if nf.file_type == FileType.PDF:
+                    continue
+                
+                # Формируем локальный путь для файла
+                if nf.r2_key.startswith("tree_docs/"):
+                    rel = nf.r2_key[len("tree_docs/"):]
+                else:
+                    rel = nf.r2_key
+                
+                file_local_path = Path(projects_dir) / "cache" / rel
+                file_local_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Не скачиваем если уже есть
+                if file_local_path.exists():
+                    continue
+                
+                tasks.append(TransferTask(
+                    transfer_type=TransferType.DOWNLOAD,
+                    local_path=str(file_local_path),
+                    r2_key=nf.r2_key,
+                    node_id=node_id,
+                ))
+            
+            # Также пробуем скачать кропы из папки crops/
+            pdf_stem = Path(local_path).stem
+            r2_prefix = str(PurePosixPath(r2_key).parent)
+            crops_prefix = f"{r2_prefix}/crops/{pdf_stem}/"
+            
+            from rd_core.r2_storage import R2Storage
+            r2 = R2Storage()
+            crop_keys = r2.list_files(crops_prefix)
+            
+            for crop_key in crop_keys:
+                if crop_key.startswith("tree_docs/"):
+                    rel = crop_key[len("tree_docs/"):]
+                else:
+                    rel = crop_key
+                
+                crop_local = Path(projects_dir) / "cache" / rel
+                crop_local.parent.mkdir(parents=True, exist_ok=True)
+                
+                if crop_local.exists():
+                    continue
+                
+                tasks.append(TransferTask(
+                    transfer_type=TransferType.DOWNLOAD,
+                    local_path=str(crop_local),
+                    r2_key=crop_key,
+                    node_id=node_id,
+                ))
+                
+        except Exception as e:
+            logger.warning(f"Failed to get additional files for download: {e}")
+        
+        return tasks
     
     def _on_download_task_finished(self, task: TransferTask, success: bool, error: str):
         """Обработка завершения скачивания"""

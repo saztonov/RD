@@ -36,6 +36,14 @@ STATUS_COLORS = {
 class TreeNodeOperationsMixin:
     """Миксин для CRUD операций с узлами дерева"""
     
+    def _check_name_unique(self, parent_id: str, name: str, exclude_node_id: str = None) -> bool:
+        """Проверить уникальность имени в папке. True если уникально."""
+        siblings = self.client.get_children(parent_id)
+        for s in siblings:
+            if s.name == name and s.id != exclude_node_id:
+                return False
+        return True
+    
     def _create_project(self):
         """Создать новый проект"""
         name, ok = QInputDialog.getText(self, "Новый проект", "Название проекта:")
@@ -176,6 +184,11 @@ class TreeNodeOperationsMixin:
         
         logger.info(f"File uploaded to R2: {task.r2_key}")
         
+        # Проверка уникальности имени в папке
+        if not self._check_name_unique(task.parent_node_id, task.filename):
+            QMessageBox.warning(self, "Ошибка", f"Файл с именем '{task.filename}' уже существует в этой папке")
+            return
+        
         # Копируем файл в локальный кэш ДО создания узла (чтобы открытие было мгновенным)
         self._copy_to_cache(task.local_path, task.r2_key)
         
@@ -223,6 +236,11 @@ class TreeNodeOperationsMixin:
         if ok and new_name.strip() and new_name.strip() != node.name:
             try:
                 new_name_clean = new_name.strip()
+                
+                # Проверка уникальности имени в папке
+                if node.parent_id and not self._check_name_unique(node.parent_id, new_name_clean, node.id):
+                    QMessageBox.warning(self, "Ошибка", f"Элемент с именем '{new_name_clean}' уже существует в этой папке")
+                    return
                 
                 # Для документов переименовываем файл в R2
                 if node.node_type == NodeType.DOCUMENT:
@@ -540,6 +558,11 @@ class TreeNodeOperationsMixin:
             return
         
         new_r2_key = f"tree_docs/{parent_node.id}/{output_path.name}"
+        
+        # Проверка уникальности имени в папке
+        if not self._check_name_unique(parent_node.id, output_path.name):
+            QMessageBox.warning(self, "Ошибка", f"Файл с именем '{output_path.name}' уже существует в этой папке")
+            return
         
         if not r2.upload_file(str(output_path), new_r2_key):
             QMessageBox.critical(self, "Ошибка", "Не удалось загрузить обработанный файл в R2")

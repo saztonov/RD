@@ -99,9 +99,51 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         self._loading = False
         self._copied_annotation: Dict = {}  # {"json": str, "source_r2_key": str}
         self._current_document_id: str = ""  # ID текущего открытого документа
+        self._auto_refresh_timer: QTimer = None
+        self._last_node_count: int = 0  # Для отслеживания изменений
         self._setup_ui()
+        self._setup_auto_refresh()
         
         QTimer.singleShot(100, self._initial_load)
+    
+    def _setup_auto_refresh(self):
+        """Настроить автообновление дерева"""
+        self._auto_refresh_timer = QTimer(self)
+        self._auto_refresh_timer.timeout.connect(self._auto_refresh_tree)
+        self._auto_refresh_timer.start(10000)  # Каждые 10 секунд
+    
+    def _auto_refresh_tree(self):
+        """Автоматическое обновление дерева (проверка изменений)"""
+        if self._loading:
+            return
+        
+        try:
+            # Быстрая проверка количества корневых узлов
+            roots = self.client.get_root_nodes()
+            current_count = len(roots)
+            
+            # Проверяем изменились ли данные
+            if current_count != self._last_node_count:
+                self._last_node_count = current_count
+                self._refresh_tree()
+                return
+            
+            # Проверяем обновление существующих узлов (по updated_at)
+            for root in roots:
+                if root.id in self._node_map:
+                    item = self._node_map[root.id]
+                    old_node = item.data(0, Qt.UserRole)
+                    if isinstance(old_node, TreeNode):
+                        if old_node.updated_at != root.updated_at:
+                            self._refresh_tree()
+                            return
+                else:
+                    # Новый узел - обновляем
+                    self._refresh_tree()
+                    return
+                    
+        except Exception as e:
+            logger.debug(f"Auto-refresh check failed: {e}")
     
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -297,6 +339,7 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         
         try:
             roots = self.client.get_root_nodes()
+            self._last_node_count = len(roots)
             for node in roots:
                 item = self._create_tree_item(node)
                 self.tree.addTopLevelItem(item)
@@ -382,14 +425,21 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             logger.debug(f"Document {doc_node.id}: found {len(files)} md files")
             
             if not files:
-                # Fallback: проверяем R2 напрямую
+                # Fallback: проверяем R2 напрямую (markdown рядом с PDF)
                 from rd_core.r2_storage import R2Storage
-                from pathlib import Path
+                from pathlib import Path, PurePosixPath
                 r2 = R2Storage()
                 doc_stem = Path(doc_node.name).stem
-                md_key = f"tree_docs/{doc_node.id}/{doc_stem}.md"
+                
+                # Markdown лежит рядом с PDF
+                pdf_r2_key = doc_node.attributes.get("r2_key", "")
+                if pdf_r2_key:
+                    tree_prefix = str(PurePosixPath(pdf_r2_key).parent)
+                else:
+                    tree_prefix = f"tree_docs/{doc_node.id}"
+                
+                md_key = f"{tree_prefix}/{doc_stem}.md"
                 if r2.exists(md_key):
-                    # Создаём виртуальный NodeFile
                     from app.tree_client import NodeFile
                     virtual_file = NodeFile(
                         id="virtual",
@@ -406,36 +456,49 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                 md_item.setData(0, Qt.UserRole, ("markdown", doc_node, f))
                 md_item.setForeground(0, QColor("#9cdcfe"))
                 parent_item.addChild(md_item)
+                logger.info(f"[LOAD_FILES] Added markdown item: {f.file_name}, r2_key={f.r2_key}")
         except Exception as e:
-            logger.error(f"Failed to load document files: {e}")
+            logger.error(f"Failed to load document files: {e}", exc_info=True)
     
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
         """Двойной клик - открыть документ (скачать из R2) или markdown"""
         data = item.data(0, Qt.UserRole)
-        logger.debug(f"Double click on item, data type: {type(data)}, data: {data}")
+        item_text = item.text(0) if item else "None"
+        logger.info(f"[DBL_CLICK] item_text='{item_text}', data_type={type(data).__name__}, data={data}")
         
-        # Markdown файл
-        if isinstance(data, tuple) and len(data) >= 1 and data[0] == "markdown":
-            _, doc_node, node_file = data
-            logger.info(f"Opening markdown: {node_file.file_name}")
-            self._open_markdown_editor(doc_node, node_file)
-            return
+        # Markdown файл (Qt конвертирует tuple в list)
+        if isinstance(data, (tuple, list)):
+            logger.info(f"[DBL_CLICK] sequence detected, len={len(data)}, first={data[0] if data else 'empty'}")
+            if len(data) >= 1 and data[0] == "markdown":
+                _, doc_node, node_file = data
+                logger.info(f"[DBL_CLICK] Opening markdown: {node_file.file_name}, r2_key={node_file.r2_key}")
+                self._open_markdown_editor(doc_node, node_file)
+                return
+            else:
+                logger.warning(f"[DBL_CLICK] tuple but not markdown: {data}")
         
         # Документ PDF
         if isinstance(data, TreeNode) and data.node_type == NodeType.DOCUMENT:
             r2_key = data.attributes.get("r2_key", "")
+            logger.info(f"[DBL_CLICK] PDF document: {data.name}, r2_key={r2_key}")
             if r2_key:
                 self.highlight_document(data.id)
                 self.document_selected.emit(data.id, r2_key)
+        else:
+            logger.info(f"[DBL_CLICK] Not handled: data_type={type(data).__name__}")
     
     def _open_markdown_editor(self, doc_node: TreeNode, node_file):
         """Открыть редактор markdown"""
         from rd_core.r2_storage import R2Storage
         from app.gui.markdown_editor_dialog import MarkdownEditorDialog
         
+        logger.info(f"[MD_EDITOR] Starting, doc={doc_node.name}, file={node_file.file_name}, r2_key={node_file.r2_key}")
+        
         try:
             r2 = R2Storage()
+            logger.info(f"[MD_EDITOR] Downloading from R2: {node_file.r2_key}")
             md_text = r2.download_text(node_file.r2_key) or ""
+            logger.info(f"[MD_EDITOR] Downloaded {len(md_text)} chars")
             
             def save_callback(new_text: str) -> bool:
                 try:
@@ -444,15 +507,18 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                     logger.error(f"Failed to save markdown: {e}")
                     return False
             
+            logger.info(f"[MD_EDITOR] Creating dialog")
             dialog = MarkdownEditorDialog(
                 title=f"{doc_node.name} — {node_file.file_name}",
                 markdown_text=md_text,
                 save_callback=save_callback,
                 parent=self.window()
             )
+            logger.info(f"[MD_EDITOR] Showing dialog")
             dialog.show()
+            logger.info(f"[MD_EDITOR] Dialog shown")
         except Exception as e:
-            logger.error(f"Failed to open markdown editor: {e}")
+            logger.error(f"[MD_EDITOR] Failed to open markdown editor: {e}", exc_info=True)
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Ошибка", f"Не удалось открыть markdown: {e}")
     
