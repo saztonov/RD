@@ -85,6 +85,7 @@ class PanelsSetupMixin:
         self.project_tree_widget = ProjectTreeWidget()
         self.project_tree_widget.file_uploaded_r2.connect(self._on_tree_file_uploaded_r2)
         self.project_tree_widget.document_selected.connect(self._on_tree_document_selected)
+        self.project_tree_widget.annotation_replaced.connect(self._on_annotation_replaced)
         self.project_dock.setWidget(self.project_tree_widget)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.project_dock)
         self.resizeDocks([self.project_dock], [280], Qt.Horizontal)

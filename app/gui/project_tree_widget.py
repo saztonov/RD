@@ -99,6 +99,7 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
     
     document_selected = Signal(str, str)  # node_id, r2_key
     file_uploaded_r2 = Signal(str, str)  # node_id, r2_key
+    annotation_replaced = Signal(str)  # r2_key - для обновления открытого документа
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -842,6 +843,9 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                 
                 self.status_label.setText(f"📥 Аннотация вставлена")
                 logger.info(f"Annotation pasted to {ann_r2_key}")
+                
+                # Сигнал для обновления открытого документа
+                self.annotation_replaced.emit(r2_key)
             else:
                 QMessageBox.warning(self, "Ошибка", "Не удалось сохранить аннотацию")
         except Exception as e:
@@ -923,6 +927,10 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                 item.setData(0, Qt.UserRole + 1, version_tag)
             
             self.status_label.setText("📤 Аннотация загружена")
+            
+            # Сигнал для обновления открытого документа
+            self.annotation_replaced.emit(r2_key)
+            
             QMessageBox.information(self, "Успех", "Аннотация блоков успешно загружена")
             
         except json.JSONDecodeError as e:

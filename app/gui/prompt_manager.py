@@ -20,7 +20,7 @@ class PromptManager:
     PROMPTS_PREFIX = "prompts"
     
     # Базовые типы блоков (промпты для них должны быть в R2)
-    BLOCK_TYPES = ["table", "image"]
+    BLOCK_TYPES = ["image"]
     
     def __init__(self, parent):
         self.parent = parent

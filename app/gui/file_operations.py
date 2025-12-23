@@ -604,3 +604,44 @@ class FileOperationsMixin:
             self.blocks_tree_manager.update_blocks_tree()
             from app.gui.toast import show_toast
             show_toast(self, "Разметка загружена")
+    
+    def _on_annotation_replaced(self, r2_key: str):
+        """Обработчик замены аннотации в дереве проектов"""
+        # Проверяем совпадает ли r2_key с текущим открытым документом
+        if not hasattr(self, '_current_r2_key') or self._current_r2_key != r2_key:
+            return
+        
+        if not self._current_pdf_path:
+            return
+        
+        try:
+            # Скачиваем обновлённую аннотацию из R2
+            from rd_core.r2_storage import R2Storage
+            ann_r2_key = get_annotation_r2_key(r2_key)
+            ann_path = get_annotation_path(self._current_pdf_path)
+            
+            r2 = R2Storage()
+            if not r2.download_file(ann_r2_key, str(ann_path)):
+                logger.warning(f"Не удалось скачать аннотацию из R2: {ann_r2_key}")
+                return
+            
+            # Загружаем аннотацию
+            loaded_doc = AnnotationIO.load_annotation(str(ann_path))
+            if not loaded_doc:
+                return
+            
+            # Заменяем текущую аннотацию
+            self.annotation_document = loaded_doc
+            self._annotation_synced = True
+            
+            # Обновляем отображение
+            self._render_current_page()
+            if hasattr(self, 'blocks_tree_manager') and self.blocks_tree_manager:
+                self.blocks_tree_manager.update_blocks_tree()
+            
+            logger.info(f"Аннотация обновлена из R2: {ann_r2_key}")
+            from app.gui.toast import show_toast
+            show_toast(self, "Аннотация обновлена")
+            
+        except Exception as e:
+            logger.error(f"Ошибка обновления аннотации: {e}")
