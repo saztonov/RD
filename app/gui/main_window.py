@@ -328,6 +328,10 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         layout = QVBoxLayout(dialog)
         layout.addWidget(TreeSettingsWidget(dialog))
         dialog.exec()
+        
+        # Обновляем справочники в дереве проектов после закрытия диалога
+        if hasattr(self, 'project_tree_widget'):
+            self.project_tree_widget.refresh_types()
     
     def _show_version_settings(self):
         """Показать диалог настройки версионности"""

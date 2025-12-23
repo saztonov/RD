@@ -331,13 +331,17 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             self.status_label.setText("⚠ Supabase недоступен")
             return
         
+        self.refresh_types()
+        self._refresh_tree()
+    
+    def refresh_types(self):
+        """Обновить кэшированные типы стадий и разделов"""
         try:
             self._stage_types = self.client.get_stage_types()
             self._section_types = self.client.get_section_types()
+            logger.debug(f"Refreshed types: {len(self._stage_types)} stages, {len(self._section_types)} sections")
         except Exception as e:
             logger.error(f"Failed to load types: {e}")
-        
-        self._refresh_tree()
     
     def _expand_all(self):
         """Развернуть все элементы"""
