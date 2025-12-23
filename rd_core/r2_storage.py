@@ -21,7 +21,15 @@ load_dotenv()
 
 
 class R2Storage:
-    """Клиент для работы с Cloudflare R2 Object Storage"""
+    """Клиент для работы с Cloudflare R2 Object Storage (singleton)"""
+    
+    _instance: 'R2Storage' = None
+    _initialized: bool = False
+    
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(
         self,
@@ -41,6 +49,9 @@ class R2Storage:
             bucket_name: Имя bucket (по умолчанию 'rd1')
             endpoint_url: R2 endpoint URL
         """
+        if R2Storage._initialized:
+            return
+        
         logger.info("=== Инициализация R2Storage ===")
 
         # Загружаем из .env если не указано явно
@@ -99,6 +110,7 @@ class R2Storage:
                 region_name="auto",  # R2 использует 'auto'
                 config=client_config,
             )
+            R2Storage._initialized = True
             logger.info(
                 f"✅ R2Storage инициализирован (bucket: {self.bucket_name}, endpoint: {self.endpoint_url})"
             )
