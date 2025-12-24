@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
-from rd_core.models import BlockType
+from rd_core.models import BlockType, Block, BlockSource
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +40,24 @@ class BlocksTreeManager:
 
             for idx, block in enumerate(page.blocks):
                 block_item = QTreeWidgetItem(page_item)
-                # Добавляем индикатор подсказки для IMAGE блоков
-                hint_indicator = ""
+                # Добавляем индикаторы
+                indicators = ""
+                # Индикатор связи
+                if block.linked_block_id:
+                    indicators += " 🔗"
+                # Индикатор подсказки для IMAGE блоков
                 if block.block_type == BlockType.IMAGE:
-                    hint_indicator = " 💡" if block.hint else " 📝"
-                block_item.setText(0, f"Блок {idx + 1}{hint_indicator}")
+                    indicators += " 💡" if block.hint else " 📝"
+                block_item.setText(0, f"Блок {idx + 1}{indicators}")
                 block_item.setText(1, block.block_type.value)
-                # Tooltip с подсказкой
+                # Tooltip
+                tooltip_parts = []
+                if block.linked_block_id:
+                    tooltip_parts.append("🔗 Связан с другим блоком")
                 if block.hint:
-                    block_item.setToolTip(0, f"Подсказка: {block.hint}")
+                    tooltip_parts.append(f"Подсказка: {block.hint}")
+                if tooltip_parts:
+                    block_item.setToolTip(0, "\n".join(tooltip_parts))
                 block_item.setData(0, Qt.UserRole, {"type": "block", "page": page_num, "idx": idx})
                 block_item.setData(0, Qt.UserRole + 1, idx)
     
@@ -106,6 +115,19 @@ class BlocksTreeManager:
         for block_type in BlockType:
             action = type_menu.addAction(block_type.value)
             action.triggered.connect(lambda checked, bt=block_type: self.apply_type_to_blocks(selected_blocks, bt))
+        
+        # Добавить связанный блок (только для одного блока)
+        if len(selected_blocks) == 1:
+            block = self._get_block(selected_blocks[0])
+            if block:
+                menu.addSeparator()
+                link_menu = menu.addMenu("🔗 Добавить связанный блок")
+                for bt in BlockType:
+                    if bt != block.block_type:
+                        action = link_menu.addAction(f"+ {bt.value}")
+                        action.triggered.connect(
+                            lambda checked, b=block, data=selected_blocks[0], target_type=bt: 
+                            self.create_linked_block(data, target_type))
         
         # Проверяем, есть ли IMAGE блоки среди выбранных
         image_blocks = self._filter_image_blocks(selected_blocks)
@@ -237,3 +259,53 @@ class BlocksTreeManager:
         
         self.parent._render_current_page()
         self.update_blocks_tree()
+    
+    def create_linked_block(self, block_data: dict, target_type: BlockType):
+        """Создать связанный блок другого типа"""
+        if not self.parent.annotation_document:
+            return
+        
+        page_num = block_data["page"]
+        block_idx = block_data["idx"]
+        
+        if page_num >= len(self.parent.annotation_document.pages):
+            return
+        
+        page = self.parent.annotation_document.pages[page_num]
+        if block_idx >= len(page.blocks):
+            return
+        
+        source_block = page.blocks[block_idx]
+        
+        # Сохраняем состояние для undo
+        if hasattr(self.parent, '_save_undo_state'):
+            self.parent._save_undo_state()
+        
+        # Создаём новый блок с теми же координатами
+        new_block = Block.create(
+            page_index=source_block.page_index,
+            coords_px=source_block.coords_px,
+            page_width=page.width,
+            page_height=page.height,
+            block_type=target_type,
+            source=BlockSource.USER,
+            shape_type=source_block.shape_type,
+            polygon_points=source_block.polygon_points,
+            linked_block_id=source_block.id
+        )
+        
+        # Связываем исходный блок с новым
+        source_block.linked_block_id = new_block.id
+        
+        # Добавляем новый блок сразу после исходного
+        page.blocks.insert(block_idx + 1, new_block)
+        
+        # Обновляем UI
+        self.parent._render_current_page()
+        self.update_blocks_tree()
+        if hasattr(self.parent, '_auto_save_annotation'):
+            self.parent._auto_save_annotation()
+        
+        # Уведомление
+        from app.gui.toast import show_toast
+        show_toast(self.parent, f"Создан связанный блок: {target_type.value}")

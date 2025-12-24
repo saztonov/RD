@@ -47,6 +47,7 @@ class Block:
         prompt: промпт для OCR (dict с ключами system/user)
         hint: подсказка пользователя для IMAGE блока (описание содержимого)
         pdfplumber_text: сырой текст извлечённый pdfplumber для блока
+        linked_block_id: ID связанного блока (для IMAGE+TEXT или IMAGE+TABLE)
     """
     id: str
     page_index: int
@@ -61,6 +62,7 @@ class Block:
     prompt: Optional[dict] = None  # {"system": "...", "user": "..."}
     hint: Optional[str] = None  # Подсказка пользователя для IMAGE блока
     pdfplumber_text: Optional[str] = None  # Сырой текст pdfplumber
+    linked_block_id: Optional[str] = None  # ID связанного блока
     
     @staticmethod
     def generate_id() -> str:
@@ -128,7 +130,8 @@ class Block:
                block_id: Optional[str] = None,
                prompt: Optional[dict] = None,
                hint: Optional[str] = None,
-               pdfplumber_text: Optional[str] = None) -> 'Block':
+               pdfplumber_text: Optional[str] = None,
+               linked_block_id: Optional[str] = None) -> 'Block':
         """
         Создать блок с автоматическим вычислением нормализованных координат
         
@@ -147,6 +150,7 @@ class Block:
             prompt: промпт для OCR
             hint: подсказка пользователя для IMAGE блока
             pdfplumber_text: сырой текст pdfplumber
+            linked_block_id: ID связанного блока
         
         Returns:
             Новый экземпляр Block
@@ -166,7 +170,8 @@ class Block:
             ocr_text=ocr_text,
             prompt=prompt,
             hint=hint,
-            pdfplumber_text=pdfplumber_text
+            pdfplumber_text=pdfplumber_text,
+            linked_block_id=linked_block_id
         )
     
     def get_width_height_px(self) -> Tuple[int, int]:
@@ -213,6 +218,8 @@ class Block:
             result["hint"] = self.hint
         if self.pdfplumber_text:
             result["pdfplumber_text"] = self.pdfplumber_text
+        if self.linked_block_id:
+            result["linked_block_id"] = self.linked_block_id
         return result
     
     @classmethod
@@ -248,7 +255,8 @@ class Block:
             ocr_text=data.get("ocr_text"),
             prompt=data.get("prompt"),
             hint=data.get("hint"),
-            pdfplumber_text=data.get("pdfplumber_text")
+            pdfplumber_text=data.get("pdfplumber_text"),
+            linked_block_id=data.get("linked_block_id")
         )
 
 
