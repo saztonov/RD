@@ -29,6 +29,18 @@ class Settings:
     # Глобальный лимит параллельных OCR запросов (все задачи суммарно)
     max_global_ocr_requests: int = int(os.getenv("MAX_GLOBAL_OCR_REQUESTS", "8"))
     
+    # Количество OCR потоков внутри одной задачи
+    ocr_threads_per_job: int = int(os.getenv("OCR_THREADS_PER_JOB", "2"))
+    
+    # Использовать двухпроходный алгоритм (экономия памяти)
+    use_two_pass_ocr: bool = os.getenv("USE_TWO_PASS_OCR", "true").lower() in ("true", "1", "yes")
+    
+    # Качество сохранения PNG кропов (0-9, 0=без сжатия, 9=максимальное)
+    crop_png_compress: int = int(os.getenv("CROP_PNG_COMPRESS", "6"))
+    
+    # Максимальный размер batch для OCR (группировка strips)
+    max_ocr_batch_size: int = int(os.getenv("MAX_OCR_BATCH_SIZE", "5"))
+    
     # Интервал polling очереди (сек)
     poll_interval: float = float(os.getenv("POLL_INTERVAL", "10"))
     poll_max_interval: float = float(os.getenv("POLL_MAX_INTERVAL", "60"))

@@ -32,6 +32,7 @@ from .worker_prompts import (
 )
 from .worker_pdf import extract_pdfplumber_text_for_block, clear_page_size_cache
 from .memory_utils import log_memory, log_memory_delta, force_gc, log_pil_images_summary
+from .pdf_streaming_v2 import pass1_prepare_crops, pass2_ocr_from_manifest, cleanup_manifest_files
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +206,6 @@ def run_ocr_task(self, job_id: str) -> dict:
         
         from rd_core.models import Block
         from rd_core.ocr import create_ocr_engine
-        from .pdf_streaming import streaming_crop_and_merge
         
         blocks = [Block.from_dict(b) for b in blocks_data]
         total_blocks = len(blocks)
@@ -216,14 +216,6 @@ def run_ocr_task(self, job_id: str) -> dict:
             return {"status": "paused"}
         
         update_job_status(job.id, "processing", progress=0.1)
-        # Streaming обработка PDF - оптимизация памяти
-        strip_paths, strip_images, strips, image_blocks, image_pdf_paths = streaming_crop_and_merge(
-            str(pdf_path), blocks, str(crops_dir), save_image_crops_as_pdf=True
-        )
-        
-        logger.info(f"Создано {len(strips)} полос TEXT/TABLE, {len(image_blocks)} IMAGE блоков")
-        log_memory_delta("После crop_and_merge", start_mem)
-        log_pil_images_summary(strip_images, "strip_images")
         
         # Настройки из Supabase
         job_settings = job.settings
@@ -249,193 +241,253 @@ def run_ocr_task(self, job_id: str) -> dict:
         else:
             image_backend = create_ocr_engine("dummy")
         
-        total_requests = len(strips) + len(image_blocks)
-        processed = 0
-        
-        def _update_progress():
-            nonlocal processed
-            processed += 1
-            if total_requests > 0:
-                progress = 0.1 + 0.8 * (processed / total_requests)
-                if not is_job_paused(job.id):
-                    update_job_status(job.id, "processing", progress=progress)
-        
-        global_sem = get_global_ocr_semaphore(settings.max_global_ocr_requests)
-        
-        def _process_strip(strip_idx: int, strip):
+        # Выбор алгоритма обработки
+        if settings.use_two_pass_ocr:
+            # ===== ДВУХПРОХОДНЫЙ АЛГОРИТМ (экономия памяти) =====
+            logger.info(f"Используется двухпроходный алгоритм (OCR потоков: {settings.ocr_threads_per_job})")
+            manifest = None
+            
             try:
-                logger.info(f"Обработка полосы {strip_idx + 1}/{len(strips)}: {len(strip.blocks)} блоков")
-                merged_image = strip_images.get(strip.strip_id)
-                if not merged_image:
-                    return {}, []
+                # PASS 1: Подготовка кропов на диск
+                def on_pass1_progress(current, total):
+                    progress = 0.1 + 0.3 * (current / total)
+                    if not is_job_paused(job.id):
+                        update_job_status(job.id, "processing", progress=progress)
                 
-                prompt_data = build_strip_prompt(strip.blocks)
-                
-                try:
-                    # Глобальный семафор ограничивает параллельные запросы
-                    global_sem.acquire()
-                    try:
-                        response_text = strip_backend.recognize(merged_image, prompt=prompt_data)
-                    finally:
-                        global_sem.release()
-                except Exception as ocr_err:
-                    logger.error(f"Ошибка OCR для полосы {strip_idx + 1}: {ocr_err}")
-                    response_text = None
-                
-                index_results = parse_batch_response_by_index(len(strip.blocks), response_text)
-                return index_results, strip.block_parts
-                
-            except Exception as e:
-                logger.error(f"Ошибка обработки полосы {strip_idx + 1}: {e}", exc_info=True)
-                return {}, []
-        
-        def _process_image_block(img_idx: int, block, crop, part_idx: int, total_parts: int):
-            try:
-                part_info = f" (часть {part_idx + 1}/{total_parts})" if total_parts > 1 else ""
-                logger.info(f"Обработка IMAGE блока {img_idx + 1}/{len(image_blocks)}: {block.id}{part_info}")
-                
-                pdfplumber_text = extract_pdfplumber_text_for_block(str(pdf_path), block.page_index, block.coords_norm)
-                doc_name = pdf_path.name
-                
-                prompt_data = fill_image_prompt_variables(
-                    prompt_data=block.prompt,
-                    doc_name=doc_name,
-                    page_index=block.page_index,
-                    block_id=block.id,
-                    hint=getattr(block, 'hint', None),
-                    pdfplumber_text=pdfplumber_text
+                manifest = pass1_prepare_crops(
+                    str(pdf_path),
+                    blocks,
+                    str(crops_dir),
+                    save_image_crops_as_pdf=True,
+                    on_progress=on_pass1_progress,
                 )
                 
-                # Глобальный семафор ограничивает параллельные запросы
-                global_sem.acquire()
-                try:
-                    text = image_backend.recognize(crop, prompt=prompt_data)
-                finally:
-                    global_sem.release()
-                text = inject_pdfplumber_to_ocr_text(text, pdfplumber_text)
+                log_memory_delta("После PASS1", start_mem)
                 
-                block.pdfplumber_text = pdfplumber_text
+                if _check_paused(job.id):
+                    return {"status": "paused"}
                 
-                return block.id, text, part_idx, total_parts
+                # PASS 2: OCR с загрузкой с диска
+                def on_pass2_progress(current, total):
+                    progress = 0.4 + 0.5 * (current / total)
+                    if not is_job_paused(job.id):
+                        update_job_status(job.id, "processing", progress=progress)
                 
-            except Exception as e:
-                logger.error(f"Ошибка OCR для IMAGE блока {block.id}: {e}")
-                return block.id, f"[Ошибка: {e}]", part_idx, total_parts
-        
-        # Ограничиваем потоки на задачу (при 4 задачах = 8 параллельных потоков)
-        max_workers = min(2, settings.datalab_max_concurrent) if engine == "datalab" else 2
-        
-        text_block_parts: Dict[str, Dict[int, str]] = {}
-        text_block_total_parts: Dict[str, int] = {}
-        text_block_objects: Dict[str, object] = {}
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            strip_futures = {executor.submit(_process_strip, idx, strip): strip for idx, strip in enumerate(strips)}
+                pass2_ocr_from_manifest(
+                    manifest,
+                    blocks,
+                    strip_backend,
+                    image_backend,
+                    str(pdf_path),
+                    on_progress=on_pass2_progress,
+                    check_paused=lambda: is_job_paused(job.id),
+                )
+                
+                log_memory_delta("После PASS2", start_mem)
+                
+            finally:
+                # Очистка временных файлов кропов (гарантированно)
+                if manifest:
+                    cleanup_manifest_files(manifest)
             
-            for future in as_completed(strip_futures):
-                strip = strip_futures[future]
+        else:
+            # ===== СТАРЫЙ АЛГОРИТМ (все в памяти) =====
+            from .pdf_streaming import streaming_crop_and_merge
+            
+            logger.info("Используется старый алгоритм (все в памяти)")
+            
+            strip_paths, strip_images, strips, image_blocks, image_pdf_paths = streaming_crop_and_merge(
+                str(pdf_path), blocks, str(crops_dir), save_image_crops_as_pdf=True
+            )
+            
+            logger.info(f"Создано {len(strips)} полос TEXT/TABLE, {len(image_blocks)} IMAGE блоков")
+            log_memory_delta("После crop_and_merge", start_mem)
+            log_pil_images_summary(strip_images, "strip_images")
+            
+            total_requests = len(strips) + len(image_blocks)
+            processed = 0
+            
+            def _update_progress():
+                nonlocal processed
+                processed += 1
+                if total_requests > 0:
+                    progress = 0.1 + 0.8 * (processed / total_requests)
+                    if not is_job_paused(job.id):
+                        update_job_status(job.id, "processing", progress=progress)
+            
+            global_sem = get_global_ocr_semaphore(settings.max_global_ocr_requests)
+            
+            def _process_strip(strip_idx: int, strip):
                 try:
-                    index_results, block_parts_info = future.result()
+                    logger.info(f"Обработка полосы {strip_idx + 1}/{len(strips)}: {len(strip.blocks)} блоков")
+                    merged_image = strip_images.get(strip.strip_id)
+                    if not merged_image:
+                        return {}, []
                     
-                    if block_parts_info and len(block_parts_info) == len(strip.blocks):
-                        for i, block_part in enumerate(block_parts_info):
-                            text = index_results.get(i, "")
-                            block = block_part.block
-                            block_id = block.id
-                            part_idx = block_part.part_idx
-                            total_parts = block_part.total_parts
-                            
-                            if block_id not in text_block_parts:
-                                text_block_parts[block_id] = {}
-                                text_block_total_parts[block_id] = total_parts
-                                text_block_objects[block_id] = block
-                            
-                            text_block_parts[block_id][part_idx] = text
-                    else:
-                        seen_blocks = set()
-                        for i, block in enumerate(strip.blocks):
-                            if block.id not in seen_blocks:
+                    prompt_data = build_strip_prompt(strip.blocks)
+                    
+                    try:
+                        global_sem.acquire()
+                        try:
+                            response_text = strip_backend.recognize(merged_image, prompt=prompt_data)
+                        finally:
+                            global_sem.release()
+                    except Exception as ocr_err:
+                        logger.error(f"Ошибка OCR для полосы {strip_idx + 1}: {ocr_err}")
+                        response_text = None
+                    
+                    index_results = parse_batch_response_by_index(len(strip.blocks), response_text)
+                    return index_results, strip.block_parts
+                    
+                except Exception as e:
+                    logger.error(f"Ошибка обработки полосы {strip_idx + 1}: {e}", exc_info=True)
+                    return {}, []
+            
+            def _process_image_block(img_idx: int, block, crop, part_idx: int, total_parts: int):
+                try:
+                    part_info = f" (часть {part_idx + 1}/{total_parts})" if total_parts > 1 else ""
+                    logger.info(f"Обработка IMAGE блока {img_idx + 1}/{len(image_blocks)}: {block.id}{part_info}")
+                    
+                    pdfplumber_text = extract_pdfplumber_text_for_block(str(pdf_path), block.page_index, block.coords_norm)
+                    doc_name = pdf_path.name
+                    
+                    prompt_data = fill_image_prompt_variables(
+                        prompt_data=block.prompt,
+                        doc_name=doc_name,
+                        page_index=block.page_index,
+                        block_id=block.id,
+                        hint=getattr(block, 'hint', None),
+                        pdfplumber_text=pdfplumber_text
+                    )
+                    
+                    global_sem.acquire()
+                    try:
+                        text = image_backend.recognize(crop, prompt=prompt_data)
+                    finally:
+                        global_sem.release()
+                    text = inject_pdfplumber_to_ocr_text(text, pdfplumber_text)
+                    
+                    block.pdfplumber_text = pdfplumber_text
+                    
+                    return block.id, text, part_idx, total_parts
+                    
+                except Exception as e:
+                    logger.error(f"Ошибка OCR для IMAGE блока {block.id}: {e}")
+                    return block.id, f"[Ошибка: {e}]", part_idx, total_parts
+            
+            max_workers = settings.ocr_threads_per_job
+            
+            text_block_parts: Dict[str, Dict[int, str]] = {}
+            text_block_total_parts: Dict[str, int] = {}
+            text_block_objects: Dict[str, object] = {}
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                strip_futures = {executor.submit(_process_strip, idx, strip): strip for idx, strip in enumerate(strips)}
+                
+                for future in as_completed(strip_futures):
+                    strip = strip_futures[future]
+                    try:
+                        index_results, block_parts_info = future.result()
+                        
+                        if block_parts_info and len(block_parts_info) == len(strip.blocks):
+                            for i, block_part in enumerate(block_parts_info):
                                 text = index_results.get(i, "")
-                                block.ocr_text = text
-                                seen_blocks.add(block.id)
-                except Exception as e:
-                    logger.error(f"Ошибка получения результата полосы: {e}")
-                finally:
-                    _update_progress()
-        
-        for block_id, parts_dict in text_block_parts.items():
-            block = text_block_objects[block_id]
-            total_parts = text_block_total_parts[block_id]
+                                block = block_part.block
+                                block_id = block.id
+                                part_idx = block_part.part_idx
+                                total_parts = block_part.total_parts
+                                
+                                if block_id not in text_block_parts:
+                                    text_block_parts[block_id] = {}
+                                    text_block_total_parts[block_id] = total_parts
+                                    text_block_objects[block_id] = block
+                                
+                                text_block_parts[block_id][part_idx] = text
+                        else:
+                            seen_blocks = set()
+                            for i, block in enumerate(strip.blocks):
+                                if block.id not in seen_blocks:
+                                    text = index_results.get(i, "")
+                                    block.ocr_text = text
+                                    seen_blocks.add(block.id)
+                    except Exception as e:
+                        logger.error(f"Ошибка получения результата полосы: {e}")
+                    finally:
+                        _update_progress()
             
-            if total_parts == 1:
-                block.ocr_text = parts_dict.get(0, "")
-            else:
-                combined_parts = [parts_dict.get(i, "") for i in range(total_parts)]
-                block.ocr_text = "\n\n".join(combined_parts)
-        
-        block_parts_results: Dict[str, Dict[int, str]] = {}
-        block_total_parts: Dict[str, int] = {}
-        block_objects: Dict[str, object] = {}
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            image_futures = {
-                executor.submit(_process_image_block, idx, block, crop, part_idx, total_parts): (block, part_idx, total_parts)
-                for idx, (block, crop, part_idx, total_parts) in enumerate(image_blocks)
-            }
+            for block_id, parts_dict in text_block_parts.items():
+                block = text_block_objects[block_id]
+                total_parts = text_block_total_parts[block_id]
+                
+                if total_parts == 1:
+                    block.ocr_text = parts_dict.get(0, "")
+                else:
+                    combined_parts = [parts_dict.get(i, "") for i in range(total_parts)]
+                    block.ocr_text = "\n\n".join(combined_parts)
             
-            for future in as_completed(image_futures):
-                block, part_idx, total_parts = image_futures[future]
+            block_parts_results: Dict[str, Dict[int, str]] = {}
+            block_total_parts: Dict[str, int] = {}
+            block_objects: Dict[str, object] = {}
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                image_futures = {
+                    executor.submit(_process_image_block, idx, block, crop, part_idx, total_parts): (block, part_idx, total_parts)
+                    for idx, (block, crop, part_idx, total_parts) in enumerate(image_blocks)
+                }
+                
+                for future in as_completed(image_futures):
+                    block, part_idx, total_parts = image_futures[future]
+                    try:
+                        block_id, text, res_part_idx, res_total_parts = future.result()
+                        
+                        if block_id not in block_parts_results:
+                            block_parts_results[block_id] = {}
+                            block_total_parts[block_id] = res_total_parts
+                            block_objects[block_id] = block
+                        
+                        block_parts_results[block_id][res_part_idx] = text
+                    except Exception as e:
+                        logger.error(f"Ошибка получения результата IMAGE: {e}")
+                        block.ocr_text = f"[Ошибка: {e}]"
+                    finally:
+                        _update_progress()
+            
+            for block_id, parts_dict in block_parts_results.items():
+                block = block_objects[block_id]
+                total_parts = block_total_parts[block_id]
+                
+                if total_parts == 1:
+                    block.ocr_text = parts_dict.get(0, "")
+                else:
+                    combined_parts = [parts_dict.get(i, "") for i in range(total_parts)]
+                    block.ocr_text = "\n\n".join(combined_parts)
+            
+            logger.info(f"OCR завершён: {processed} запросов обработано")
+            log_memory_delta("После OCR обработки", start_mem)
+            
+            # Освобождаем память от изображений полос
+            for strip in strips:
+                for crop in strip.crops:
+                    try:
+                        crop.close()
+                    except:
+                        pass
+                strip.crops.clear()
+            for strip_id, strip_img in list(strip_images.items()):
                 try:
-                    block_id, text, res_part_idx, res_total_parts = future.result()
-                    
-                    if block_id not in block_parts_results:
-                        block_parts_results[block_id] = {}
-                        block_total_parts[block_id] = res_total_parts
-                        block_objects[block_id] = block
-                    
-                    block_parts_results[block_id][res_part_idx] = text
-                except Exception as e:
-                    logger.error(f"Ошибка получения результата IMAGE: {e}")
-                    block.ocr_text = f"[Ошибка: {e}]"
-                finally:
-                    _update_progress()
-        
-        for block_id, parts_dict in block_parts_results.items():
-            block = block_objects[block_id]
-            total_parts = block_total_parts[block_id]
+                    strip_img.close()
+                except:
+                    pass
+            strip_images.clear()
             
-            if total_parts == 1:
-                block.ocr_text = parts_dict.get(0, "")
-            else:
-                combined_parts = [parts_dict.get(i, "") for i in range(total_parts)]
-                block.ocr_text = "\n\n".join(combined_parts)
-        
-        logger.info(f"OCR завершён: {processed} запросов обработано")
-        log_memory_delta("После OCR обработки", start_mem)
-        
-        # Освобождаем память от изображений полос
-        for strip in strips:
-            for crop in strip.crops:
+            # Освобождаем кропы IMAGE блоков
+            for block, crop, part_idx, total_parts in image_blocks:
                 try:
                     crop.close()
                 except:
                     pass
-            strip.crops.clear()
-        for strip_id, strip_img in list(strip_images.items()):
-            try:
-                strip_img.close()
-            except:
-                pass
-        strip_images.clear()
         
-        # Освобождаем кропы IMAGE блоков
-        for block, crop, part_idx, total_parts in image_blocks:
-            try:
-                crop.close()
-            except:
-                pass
-        
-        force_gc("после освобождения кропов")
+        force_gc("после OCR обработки")
         
         # Генерация результатов
         from rd_core.models import Page, Document

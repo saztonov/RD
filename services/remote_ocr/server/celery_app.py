@@ -28,7 +28,10 @@ celery_app.conf.update(
     # Результаты храним 1 час
     result_expires=3600,
     # Ограничение памяти: перезапуск worker после N задач
-    worker_max_tasks_per_child=50,
+    # При двухпроходном алгоритме можно увеличить до 100
+    worker_max_tasks_per_child=100 if settings.use_two_pass_ocr else 50,
+    # Concurrency: количество параллельных задач
+    worker_concurrency=settings.max_concurrent_jobs,
     # Регистрация задач
     imports=["services.remote_ocr.server.tasks"],
 )
