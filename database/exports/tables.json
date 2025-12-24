@@ -2086,6 +2086,58 @@
       }
     ]
   },
+  "public.app_settings": {
+    "schema": "public",
+    "name": "app_settings",
+    "comment": "Глобальные настройки приложения (key-value JSON)",
+    "columns": [
+      {
+        "name": "key",
+        "comment": "Уникальный ключ настройки (например: ocr_server_settings)",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "value",
+        "comment": "Значение настройки в формате JSON",
+        "default": "'{}'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": false
+      },
+      {
+        "name": "description",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "app_settings_pkey",
+        "type": "PRIMARY KEY",
+        "column": "key",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
   "public.job_files": {
     "schema": "public",
     "name": "job_files",
