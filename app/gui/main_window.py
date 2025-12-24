@@ -339,6 +339,12 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         dialog = VersionSettingsDialog(self)
         dialog.exec()
     
+    def _show_ocr_settings(self):
+        """Показать диалог настроек OCR сервера"""
+        from app.gui.ocr_settings_dialog import OCRSettingsDialog
+        dialog = OCRSettingsDialog(self)
+        dialog.exec()
+    
     def _send_to_remote_ocr(self):
         """Отправить выделенные блоки на Remote OCR"""
         if self.remote_ocr_panel:

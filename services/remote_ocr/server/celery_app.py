@@ -17,21 +17,34 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    # Не prefetch задачи — воркер берёт по одной
-    worker_prefetch_multiplier=1,
-    # Таймауты
-    task_acks_late=True,
-    task_reject_on_worker_lost=True,
-    # Soft/hard time limits для задач (предотвращение зависания)
-    task_soft_time_limit=1800,  # 30 min soft limit
-    task_time_limit=2100,       # 35 min hard limit
-    # Результаты храним 1 час
-    result_expires=3600,
-    # Ограничение памяти: перезапуск worker после N задач
-    # При двухпроходном алгоритме можно увеличить до 100
-    worker_max_tasks_per_child=100 if settings.use_two_pass_ocr else 50,
+    
+    # ===== WORKER =====
     # Concurrency: количество параллельных задач
     worker_concurrency=settings.max_concurrent_jobs,
+    # Prefetch: сколько задач брать заранее
+    worker_prefetch_multiplier=settings.worker_prefetch,
+    # Перезапуск воркера после N задач (защита от утечек памяти)
+    worker_max_tasks_per_child=settings.worker_max_tasks,
+    
+    # ===== ЗАДАЧИ =====
+    # Подтверждение после выполнения (не терять при падении)
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    # Soft/hard time limits
+    task_soft_time_limit=settings.task_soft_timeout,
+    task_time_limit=settings.task_hard_timeout,
+    # Retry
+    task_default_retry_delay=settings.task_retry_delay,
+    
+    # ===== РЕЗУЛЬТАТЫ =====
+    # Результаты храним 1 час
+    result_expires=3600,
+    
+    # ===== ОЧЕРЕДЬ =====
+    # Приоритет (требует Redis)
+    task_default_priority=settings.default_task_priority,
+    task_queue_max_priority=10,
+    
     # Регистрация задач
     imports=["services.remote_ocr.server.tasks"],
 )

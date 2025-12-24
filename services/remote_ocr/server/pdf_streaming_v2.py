@@ -19,13 +19,15 @@ from PIL import Image
 
 from .memory_utils import force_gc, get_pil_image_size_mb, log_memory, log_memory_delta
 from .pdf_streaming import (
-    MAX_SINGLE_BLOCK_HEIGHT,
-    MAX_STRIP_HEIGHT,
     StreamingPDFProcessor,
     merge_crops_vertically,
     split_large_crop,
 )
 from .settings import settings
+
+# Константы из настроек
+MAX_STRIP_HEIGHT = settings.max_strip_height
+MAX_SINGLE_BLOCK_HEIGHT = settings.max_strip_height
 
 logger = logging.getLogger(__name__)
 

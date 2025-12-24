@@ -79,6 +79,12 @@ class MenuSetupMixin:
         version_settings_action = QAction("📌 Версионность", self)
         version_settings_action.triggered.connect(self._show_version_settings)
         settings_menu.addAction(version_settings_action)
+        
+        settings_menu.addSeparator()
+        
+        ocr_settings_action = QAction("⚙️ Настройки OCR сервера", self)
+        ocr_settings_action.triggered.connect(self._show_ocr_settings)
+        settings_menu.addAction(ocr_settings_action)
     
     def _edit_prompt_by_key(self, prompt_key: str):
         """Редактировать промт по ключу"""

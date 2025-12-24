@@ -15,14 +15,15 @@ import fitz
 from PIL import Image, ImageDraw
 
 from .memory_utils import log_memory, get_pil_image_size_mb
+from .settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Константы
-PDF_RENDER_DPI = 300
+# Константы из настроек
+PDF_RENDER_DPI = settings.pdf_render_dpi
 PDF_RENDER_ZOOM = PDF_RENDER_DPI / 72.0
-MAX_STRIP_HEIGHT = 9000
-MAX_SINGLE_BLOCK_HEIGHT = 9000
+MAX_STRIP_HEIGHT = settings.max_strip_height
+MAX_SINGLE_BLOCK_HEIGHT = settings.max_strip_height
 MAX_IMAGE_PIXELS = 400_000_000
 
 # Увеличиваем лимит PIL

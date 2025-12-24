@@ -480,6 +480,42 @@ COMMENT ON TABLE public.tree_nodes IS 'Дерево проектов - иера�
 COMMENT ON COLUMN public.tree_nodes.node_type IS 'Тип узла: client, project, section, stage, task, document';
 COMMENT ON COLUMN public.tree_nodes.attributes IS 'Дополнительные атрибуты узла (JSON)';
 
+-- Table: public.app_settings
+-- Description: Глобальные настройки приложения (key-value JSON)
+CREATE TABLE IF NOT EXISTS public.app_settings (
+    key text NOT NULL,
+    value jsonb NOT NULL DEFAULT '{}'::jsonb,
+    description text,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT app_settings_pkey PRIMARY KEY (key)
+);
+COMMENT ON TABLE public.app_settings IS 'Глобальные настройки приложения (key-value JSON)';
+COMMENT ON COLUMN public.app_settings.key IS 'Уникальный ключ настройки (например: ocr_server_settings)';
+COMMENT ON COLUMN public.app_settings.value IS 'Значение настройки в формате JSON';
+
+-- Trigger для обновления updated_at
+CREATE OR REPLACE FUNCTION public.update_app_settings_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER app_settings_updated_at
+    BEFORE UPDATE ON public.app_settings
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_app_settings_timestamp();
+
+-- RLS для app_settings (разрешить чтение/запись всем аутентифицированным)
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow all for authenticated" ON public.app_settings
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
 -- Table: realtime.schema_migrations
 CREATE TABLE IF NOT EXISTS realtime.schema_migrations (
     version bigint NOT NULL,
@@ -1592,11 +1628,16 @@ AS $function$
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
  RETURNS trigger
  LANGUAGE plpgsql
-AS $function$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
+AS $function$
+
+BEGIN
+
+    NEW.updated_at = NOW();
+
+    RETURN NEW;
+
+END;
+
 $function$
 
 
