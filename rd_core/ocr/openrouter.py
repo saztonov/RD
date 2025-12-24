@@ -157,7 +157,24 @@ class OpenRouterBackend:
             )
             
             if response.status_code != 200:
-                logger.error(f"OpenRouter API error: {response.status_code} - {response.text}")
+                error_detail = response.text[:500] if response.text else "No details"
+                logger.error(f"OpenRouter API error: {response.status_code} - {error_detail}")
+                
+                # Детализация ошибок
+                if response.status_code == 403:
+                    try:
+                        err_json = response.json()
+                        err_msg = err_json.get("error", {}).get("message", "Доступ запрещён")
+                    except:
+                        err_msg = "Проверьте API ключ и баланс на openrouter.ai"
+                    return f"[Ошибка OpenRouter 403: {err_msg}]"
+                elif response.status_code == 401:
+                    return "[Ошибка OpenRouter 401: Неверный API ключ]"
+                elif response.status_code == 429:
+                    return "[Ошибка OpenRouter 429: Превышен лимит запросов]"
+                elif response.status_code == 402:
+                    return "[Ошибка OpenRouter 402: Недостаточно кредитов]"
+                
                 return f"[Ошибка OpenRouter API: {response.status_code}]"
             
             result = response.json()

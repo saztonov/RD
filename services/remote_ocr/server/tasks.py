@@ -142,14 +142,16 @@ def _upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> st
         r2.upload_file(str(annotation_path), r2_key)
         add_job_file(job.id, "annotation", r2_key, annotation_filename, annotation_path.stat().st_size)
     
-    # crops/
-    crops_dir = work_dir / "crops"
-    if crops_dir.exists():
-        for crop_file in crops_dir.iterdir():
-            if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
-                r2_key = f"{r2_prefix}/crops/{crop_file.name}"
-                r2.upload_file(str(crop_file), r2_key)
-                add_job_file(job.id, "crop", r2_key, crop_file.name, crop_file.stat().st_size)
+    # crops/ (проверяем оба варианта: crops и crops_final для двухпроходного алгоритма)
+    for crops_subdir in ["crops", "crops_final"]:
+        crops_path = work_dir / crops_subdir
+        if crops_path.exists():
+            for crop_file in crops_path.iterdir():
+                if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
+                    r2_key = f"{r2_prefix}/crops/{crop_file.name}"
+                    r2.upload_file(str(crop_file), r2_key)
+                    add_job_file(job.id, "crop", r2_key, crop_file.name, crop_file.stat().st_size)
+                    logger.info(f"Загружен кроп в R2: {r2_key}")
     
     return r2_prefix
 
@@ -284,6 +286,27 @@ def run_ocr_task(self, job_id: str) -> dict:
                 )
                 
                 log_memory_delta("После PASS2", start_mem)
+                
+                # Переносим PDF кропы в work_dir/crops_final/ перед очисткой
+                # (они нужны для загрузки в R2, cleanup удалит crops_dir)
+                images_subdir = crops_dir / "images"
+                crops_final = work_dir / "crops_final"
+                if images_subdir.exists():
+                    crops_final.mkdir(exist_ok=True)
+                    blocks_by_id = {b.id: b for b in blocks}
+                    
+                    for pdf_file in images_subdir.glob("*.pdf"):
+                        try:
+                            target = crops_final / pdf_file.name
+                            shutil.copy2(pdf_file, target)
+                            
+                            block_id = pdf_file.stem
+                            if block_id in blocks_by_id:
+                                blocks_by_id[block_id].image_file = str(target)
+                            
+                            logger.debug(f"PDF кроп скопирован: {pdf_file.name}")
+                        except Exception as e:
+                            logger.warning(f"Ошибка копирования PDF кропа {pdf_file}: {e}")
                 
             finally:
                 # Очистка временных файлов кропов (гарантированно)
