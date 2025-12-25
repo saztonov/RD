@@ -268,7 +268,7 @@ def split_large_crop(crop: Image.Image, max_height: int = MAX_SINGLE_BLOCK_HEIGH
     return parts
 
 
-BLOCK_SEPARATOR_HEIGHT = 80
+BLOCK_SEPARATOR_HEIGHT = 60
 
 
 def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARATOR_HEIGHT) -> Image.Image:
@@ -282,12 +282,12 @@ def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARA
     text = f"[[[BLOCK_ID: {block_id}]]]"
     
     try:
-        font = ImageFont.truetype("arial.ttf", 48)
+        font = ImageFont.truetype("arial.ttf", 36
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype("DejaVuSansMono.ttf", 48)
+            font = ImageFont.truetype("DejaVuSansMono.ttf", 36)
         except (IOError, OSError):
-            font = ImageFont.load_default(size=48)
+            font = ImageFont.load_default(size=36)
     
     bbox = draw.textbbox((0, 0), text, font=font)
     text_width = bbox[2] - bbox[0]

@@ -14,7 +14,7 @@ from rd_core.pdf_utils import PDFDocument
 logger = logging.getLogger(__name__)
 
 # Высота разделительной полосы с block_id
-BLOCK_SEPARATOR_HEIGHT = 80
+BLOCK_SEPARATOR_HEIGHT = 60
 
 MAX_STRIP_HEIGHT = 9000
 MAX_SINGLE_BLOCK_HEIGHT = 9000
@@ -177,14 +177,14 @@ def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARA
     
     text = f"[[[BLOCK_ID: {block_id}]]]"
     
-    # Пытаемся использовать моноширинный шрифт (размер 48px)
+    # Пытаемся использовать моноширинный шрифт (размер 36px)
     try:
-        font = ImageFont.truetype("arial.ttf", 48)
+        font = ImageFont.truetype("arial.ttf", 36)
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype("DejaVuSansMono.ttf", 48)
+            font = ImageFont.truetype("DejaVuSansMono.ttf", 36)
         except (IOError, OSError):
-            font = ImageFont.load_default(size=48)
+            font = ImageFont.load_default(size=36)
     
     # Получаем размер текста
     bbox = draw.textbbox((0, 0), text, font=font)
