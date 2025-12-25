@@ -29,6 +29,7 @@ from .worker_prompts import (
     inject_pdfplumber_to_ocr_text,
     build_strip_prompt,
     parse_batch_response_by_index,
+    parse_batch_response_by_block_id,
 )
 from .worker_pdf import extract_pdfplumber_text_for_block, clear_page_size_cache
 from .memory_utils import log_memory, log_memory_delta, force_gc, log_pil_images_summary
@@ -359,7 +360,9 @@ def run_ocr_task(self, job_id: str) -> dict:
                         logger.error(f"Ошибка OCR для полосы {strip_idx + 1}: {ocr_err}")
                         response_text = None
                     
-                    index_results = parse_batch_response_by_index(len(strip.blocks), response_text)
+                    # Используем block_ids для парсинга по разделителям [[[BLOCK_ID:]]]
+                    block_ids = [bp.block.id for bp in strip.block_parts]
+                    index_results = parse_batch_response_by_block_id(response_text, block_ids)
                     return index_results, strip.block_parts
                     
                 except Exception as e:
