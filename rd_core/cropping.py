@@ -5,13 +5,16 @@ import os
 import logging
 from typing import List, Optional, Tuple, Dict
 from dataclasses import dataclass, field
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import fitz  # PyMuPDF
 
 from rd_core.models import Block, BlockType, ShapeType
 from rd_core.pdf_utils import PDFDocument
 
 logger = logging.getLogger(__name__)
+
+# Высота разделительной полосы с block_id
+BLOCK_SEPARATOR_HEIGHT = 20
 
 MAX_STRIP_HEIGHT = 9000
 MAX_SINGLE_BLOCK_HEIGHT = 9000
@@ -157,25 +160,110 @@ def split_large_crop(crop: Image.Image, max_height: int = MAX_SINGLE_BLOCK_HEIGH
     return parts
 
 
-def merge_crops_vertically(crops: List[Image.Image], gap: int = 20) -> Image.Image:
-    """Объединить кропы вертикально"""
+def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARATOR_HEIGHT) -> Image.Image:
+    """
+    Создать черную полосу-разделитель с белым текстом block_id.
+    
+    Args:
+        block_id: уникальный ID блока
+        width: ширина полосы (должна соответствовать ширине кропа)
+        height: высота полосы (по умолчанию 20px)
+    
+    Returns:
+        PIL Image с черной полосой и белым текстом [[[BLOCK_ID: uuid]]]
+    """
+    separator = Image.new('RGB', (width, height), (0, 0, 0))  # Черный фон
+    draw = ImageDraw.Draw(separator)
+    
+    text = f"[[[BLOCK_ID: {block_id}]]]"
+    
+    # Пытаемся использовать моноширинный шрифт
+    try:
+        font = ImageFont.truetype("arial.ttf", 12)
+    except (IOError, OSError):
+        try:
+            font = ImageFont.truetype("DejaVuSansMono.ttf", 12)
+        except (IOError, OSError):
+            font = ImageFont.load_default()
+    
+    # Получаем размер текста
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    
+    # Центрируем текст
+    x = (width - text_width) // 2
+    y = (height - text_height) // 2
+    
+    draw.text((x, y), text, fill=(255, 255, 255), font=font)  # Белый текст
+    
+    return separator
+
+
+def merge_crops_vertically(
+    crops: List[Image.Image], 
+    gap: int = 20,
+    block_ids: Optional[List[str]] = None
+) -> Image.Image:
+    """
+    Объединить кропы вертикально с опциональными разделителями block_id.
+    
+    Args:
+        crops: список кропов для объединения
+        gap: отступ между кропами (используется если block_ids не указаны)
+        block_ids: список ID блоков для вставки разделителей (должен соответствовать crops)
+    
+    Returns:
+        Объединённое изображение
+    """
     if not crops:
         raise ValueError("Список кропов пуст")
+    
+    # Если block_ids указаны, используем разделители вместо gap
+    use_separators = block_ids is not None and len(block_ids) == len(crops)
+    
     if len(crops) == 1:
-        return crops[0].copy()  # Копия, чтобы оригинал можно было закрыть
+        if use_separators:
+            # Даже для одного кропа добавляем разделитель
+            max_width = crops[0].width
+            separator = create_block_separator(block_ids[0], max_width)
+            total_height = separator.height + crops[0].height
+            merged = Image.new('RGB', (max_width, total_height), (255, 255, 255))
+            merged.paste(separator, (0, 0))
+            crop = crops[0]
+            if crop.mode in ('RGBA', 'LA'):
+                crop = crop.convert('RGB')
+            merged.paste(crop, (0, separator.height))
+            return merged
+        return crops[0].copy()
     
     max_width = max(c.width for c in crops)
-    total_height = sum(c.height for c in crops) + gap * (len(crops) - 1)
+    
+    if use_separators:
+        # Считаем высоту с разделителями
+        separator_height = BLOCK_SEPARATOR_HEIGHT
+        total_height = sum(c.height for c in crops) + separator_height * len(crops)
+    else:
+        total_height = sum(c.height for c in crops) + gap * (len(crops) - 1)
     
     merged = Image.new('RGB', (max_width, total_height), (255, 255, 255))
     y_offset = 0
     
-    for crop in crops:
+    for i, crop in enumerate(crops):
+        if use_separators:
+            # Вставляем разделитель перед каждым кропом
+            separator = create_block_separator(block_ids[i], max_width)
+            merged.paste(separator, (0, y_offset))
+            y_offset += separator.height
+        elif i > 0:
+            # Без разделителей - только gap между кропами
+            y_offset += gap
+        
         x_offset = (max_width - crop.width) // 2
         if crop.mode in ('RGBA', 'LA'):
             crop = crop.convert('RGB')
         merged.paste(crop, (x_offset, y_offset))
-        y_offset += crop.height + gap
+        y_offset += crop.height
     
     return merged
 
@@ -294,7 +382,9 @@ def crop_and_merge_blocks_from_pdf(
     for strip in strips:
         if strip.crops:
             try:
-                strip_images[strip.strip_id] = merge_crops_vertically(strip.crops)
+                # Извлекаем block_ids из block_parts для разделителей
+                block_ids = [bp.block.id for bp in strip.block_parts]
+                strip_images[strip.strip_id] = merge_crops_vertically(strip.crops, block_ids=block_ids)
             except Exception as e:
                 logger.error(f"Ошибка создания полосы {strip.strip_id}: {e}")
     

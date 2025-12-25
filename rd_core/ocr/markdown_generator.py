@@ -60,6 +60,10 @@ def generate_structured_markdown(
             
             text = re.sub(r'\n{3,}', '\n\n', text)
             
+            # Добавляем уникальный разделитель block_id перед каждым блоком
+            block_separator = f"[[[BLOCK_ID: {block.id}]]]\n\n"
+            markdown_parts.append(block_separator)
+            
             if block.block_type == BlockType.IMAGE:
                 analysis = None
                 try:
