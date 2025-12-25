@@ -282,7 +282,7 @@ def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARA
     text = f"[[[BLOCK_ID: {block_id}]]]"
     
     try:
-        font = ImageFont.truetype("arial.ttf", 36
+        font = ImageFont.truetype("arial.ttf", 36)
     except (IOError, OSError):
         try:
             font = ImageFont.truetype("DejaVuSansMono.ttf", 36)
