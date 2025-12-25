@@ -79,6 +79,7 @@ RULES:
                 response = None
                 for retry in range(self.MAX_RETRIES):
                     with open(tmp_path, 'rb') as f:
+                        import json
                         files = {'file': (os.path.basename(tmp_path), f, 'image/png')}
                         data = {
                             'mode': 'accurate',
@@ -87,7 +88,11 @@ RULES:
                             'use_llm': 'true',
                             'output_format': 'markdown',
                             'disable_image_extraction': 'true',
-                            'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT
+                            'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT,
+                            'additional_config': json.dumps({
+                                'keep_pageheader_in_output': True,
+                                'keep_pagefooter_in_output': True
+                            })
                         }
                         
                         response = self.session.post(
