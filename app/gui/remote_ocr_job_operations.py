@@ -106,6 +106,10 @@ class JobOperationsMixin:
             
             logger.info(f"Cleaned old OCR results for node: {node_id}")
             
+            # Сбрасываем set скачанных задач для повторного скачивания
+            if hasattr(self, '_downloaded_jobs'):
+                self._downloaded_jobs.clear()
+            
         except Exception as e:
             logger.warning(f"Failed to clean old OCR results: {e}")
     

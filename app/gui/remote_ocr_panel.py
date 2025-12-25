@@ -58,6 +58,7 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self._signals.rerun_no_changes.connect(self._on_rerun_no_changes)
         
         self._download_dialog: Optional[QProgressDialog] = None
+        self._downloaded_jobs: set = set()  # Уже скачанные задачи
         
         self._setup_ui()
         self._setup_timer()
@@ -171,12 +172,13 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self.jobs_table.setSortingEnabled(False)
         self.jobs_table.setRowCount(0)
         
-        # Авто-скачивание результата для текущего документа
+        # Авто-скачивание результата для текущего документа (только один раз)
         current_node_id = getattr(self.main_window, '_current_node_id', None)
         if current_node_id:
             for job in jobs:
                 if job.status == "done" and getattr(job, 'node_id', None) == current_node_id:
-                    self._auto_download_result(job.id)
+                    if job.id not in self._downloaded_jobs:
+                        self._auto_download_result(job.id)
                     break  # Только последняя done задача для текущего документа
         
         for idx, job in enumerate(jobs, start=1):
@@ -321,6 +323,9 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         if self._download_dialog:
             self._download_dialog.close()
             self._download_dialog = None
+        
+        # Помечаем задачу как скачанную
+        self._downloaded_jobs.add(job_id)
         
         # Перезагружаем аннотацию из скачанного файла
         self._reload_annotation_from_result(extract_dir)
