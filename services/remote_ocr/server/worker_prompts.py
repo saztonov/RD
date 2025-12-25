@@ -126,8 +126,8 @@ def parse_batch_response_by_block_id(block_ids: List[str], response_text: str) -
             results[bid] = ""
         return results
     
-    # Ищем все разделители [[[BLOCK_ID: uuid]]]
-    pattern = r'\[\[\[BLOCK_ID:\s*([a-f0-9\-]+)\]\]\]'
+    # Ищем все разделители [[[BLOCK_ID: uuid]]] (учитываем экранирование \_)
+    pattern = r'\[\[\[BLOCK\\?_ID:\s*([a-f0-9\-]+)\]\]\]'
     matches = list(re.finditer(pattern, response_text, re.IGNORECASE))
     
     if matches:
@@ -183,8 +183,8 @@ def parse_batch_response_by_index(num_blocks: int, response_text: str, block_ids
         results[0] = response_text.strip()
         return results
     
-    # Сначала пробуем парсить по [[[BLOCK_ID: uuid]]]
-    block_id_pattern = r'\[\[\[BLOCK_ID:\s*([a-f0-9\-]+)\]\]\]'
+    # Сначала пробуем парсить по [[[BLOCK_ID: uuid]]] (учитываем экранирование \_)
+    block_id_pattern = r'\[\[\[BLOCK\\?_ID:\s*([a-f0-9\-]+)\]\]\]'
     block_id_matches = list(re.finditer(block_id_pattern, response_text, re.IGNORECASE))
     
     if block_id_matches and len(block_id_matches) >= num_blocks:

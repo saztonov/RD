@@ -60,9 +60,11 @@ def generate_structured_markdown(
             
             text = re.sub(r'\n{3,}', '\n\n', text)
             
-            # Добавляем уникальный разделитель block_id перед каждым блоком
-            block_separator = f"[[[BLOCK_ID: {block.id}]]]\n\n"
-            markdown_parts.append(block_separator)
+            # Добавляем разделитель только если его ещё нет в ocr_text
+            has_separator = re.search(r'\[\[\[BLOCK\\?_ID:\s*' + re.escape(block.id) + r'\]\]\]', text, re.IGNORECASE)
+            if not has_separator:
+                block_separator = f"[[[BLOCK_ID: {block.id}]]]\n\n"
+                markdown_parts.append(block_separator)
             
             if block.block_type == BlockType.IMAGE:
                 analysis = None
@@ -111,6 +113,10 @@ def generate_structured_markdown(
                 markdown_parts.append(f"{text}\n\n")
         
         full_markdown = "".join(markdown_parts)
+        # Нормализуем экранированные разделители BLOCK\_ID -> BLOCK_ID
+        full_markdown = re.sub(r'BLOCK\\_ID', 'BLOCK_ID', full_markdown)
+        # Исправляем двойные скобки [[BLOCK_ID: uuid]] -> [[[BLOCK_ID: uuid]]]
+        full_markdown = re.sub(r'(?<!\[)\[\[BLOCK_ID:\s*([a-f0-9\-]+)\]\](?!\])', r'[[[BLOCK_ID: \1]]]', full_markdown)
         output_file.write_text(full_markdown, encoding='utf-8')
         
         logger.info(f"Структурированный markdown документ сохранен: {output_file}")
