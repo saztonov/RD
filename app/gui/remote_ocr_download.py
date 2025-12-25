@@ -33,33 +33,8 @@ class DownloadMixin:
             pdf_path = Path(pdf_path)
             extract_dir = pdf_path.parent
             
-            # Проверяем, есть ли уже результат (annotation с OCR текстом)
-            ann_path = extract_dir / f"{pdf_path.stem}_annotation.json"
-            result_exists = ann_path.exists()
-            
-            # Проверяем содержит ли annotation ocr_text (признак OCR)
-            if result_exists:
-                try:
-                    import json
-                    with open(ann_path, 'r', encoding='utf-8') as f:
-                        ann_data = json.load(f)
-                    # Проверяем наличие ocr_text в блоках
-                    has_ocr = False
-                    for page in ann_data.get('pages', []):
-                        for block in page.get('blocks', []):
-                            if block.get('ocr_text'):
-                                has_ocr = True
-                                break
-                        if has_ocr:
-                            break
-                    result_exists = has_ocr
-                except Exception:
-                    result_exists = False
-            
-            if not result_exists:
-                self._executor.submit(self._download_result_bg, job_id, r2_prefix, str(extract_dir))
-            else:
-                logger.debug(f"Результат уже скачан: {extract_dir}")
+            # Всегда скачиваем новые результаты (перезапуск OCR очищает старые)
+            self._executor.submit(self._download_result_bg, job_id, r2_prefix, str(extract_dir))
                 
         except Exception as e:
             logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")
@@ -92,8 +67,19 @@ class DownloadMixin:
             # Используем result_prefix из API (папка где лежит PDF)
             actual_prefix = job_details.get("result_prefix") or r2_prefix
             
-            crops_prefix = f"{actual_prefix}/crops/"
+            # Кропы хранятся в crops/{pdf_stem}/ или crops/{doc_stem}/
+            crops_prefix = f"{actual_prefix}/crops/{pdf_stem}/"
             crop_files = r2.list_by_prefix(crops_prefix)
+            
+            # Fallback: старый формат crops/{doc_stem}/
+            if not crop_files and pdf_stem != doc_stem:
+                crops_prefix = f"{actual_prefix}/crops/{doc_stem}/"
+                crop_files = r2.list_by_prefix(crops_prefix)
+            
+            # Fallback: совсем старый формат crops/
+            if not crop_files:
+                crops_prefix = f"{actual_prefix}/crops/"
+                crop_files = r2.list_by_prefix(crops_prefix)
             
             # Файлы для скачивания: {doc_stem}_annotation.json, {doc_stem}.md
             files_to_download = [
@@ -119,14 +105,14 @@ class DownloadMixin:
                 r2.download_file(remote_key, str(local_path))
             
             if crop_files:
-                crops_dir = extract_path / "crops"
-                crops_dir.mkdir(exist_ok=True)
+                crops_dir = extract_path / "crops" / pdf_stem
+                crops_dir.mkdir(parents=True, exist_ok=True)
                 
                 for remote_key in crop_files:
                     current += 1
                     filename = remote_key.split("/")[-1]
                     if filename:
-                        self._signals.download_progress.emit(job_id, current, f"crops/{filename}")
+                        self._signals.download_progress.emit(job_id, current, f"crops/{pdf_stem}/{filename}")
                         local_path = crops_dir / filename
                         r2.download_file(remote_key, str(local_path))
             

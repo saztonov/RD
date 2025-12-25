@@ -207,11 +207,12 @@ def merge_crops_vertically(
 ) -> Image.Image:
     """
     Объединить кропы вертикально с опциональными разделителями block_id.
+    Разделитель вставляется только при смене block_id (не перед каждой частью блока).
     
     Args:
         crops: список кропов для объединения
-        gap: отступ между кропами (используется если block_ids не указаны)
-        block_ids: список ID блоков для вставки разделителей (должен соответствовать crops)
+        gap: отступ между кропами
+        block_ids: список ID блоков (разделитель вставляется при смене ID)
     
     Returns:
         Объединённое изображение
@@ -219,44 +220,39 @@ def merge_crops_vertically(
     if not crops:
         raise ValueError("Список кропов пуст")
     
-    # Если block_ids указаны, используем разделители вместо gap
     use_separators = block_ids is not None and len(block_ids) == len(crops)
-    
-    if len(crops) == 1:
-        if use_separators:
-            # Даже для одного кропа добавляем разделитель
-            max_width = crops[0].width
-            separator = create_block_separator(block_ids[0], max_width)
-            total_height = separator.height + crops[0].height
-            merged = Image.new('RGB', (max_width, total_height), (255, 255, 255))
-            merged.paste(separator, (0, 0))
-            crop = crops[0]
-            if crop.mode in ('RGBA', 'LA'):
-                crop = crop.convert('RGB')
-            merged.paste(crop, (0, separator.height))
-            return merged
-        return crops[0].copy()
-    
     max_width = max(c.width for c in crops)
     
+    # Считаем количество уникальных переходов между блоками
     if use_separators:
-        # Считаем высоту с разделителями
+        separator_count = 0
+        prev_id = None
+        for bid in block_ids:
+            if bid != prev_id:
+                separator_count += 1
+                prev_id = bid
         separator_height = BLOCK_SEPARATOR_HEIGHT
-        total_height = sum(c.height for c in crops) + separator_height * len(crops)
+        total_height = sum(c.height for c in crops) + separator_height * separator_count + gap * (len(crops) - separator_count)
     else:
         total_height = sum(c.height for c in crops) + gap * (len(crops) - 1)
     
     merged = Image.new('RGB', (max_width, total_height), (255, 255, 255))
     y_offset = 0
+    prev_block_id = None
     
     for i, crop in enumerate(crops):
         if use_separators:
-            # Вставляем разделитель перед каждым кропом
-            separator = create_block_separator(block_ids[i], max_width)
-            merged.paste(separator, (0, y_offset))
-            y_offset += separator.height
+            current_block_id = block_ids[i]
+            if current_block_id != prev_block_id:
+                # Новый блок - вставляем разделитель
+                separator = create_block_separator(current_block_id, max_width)
+                merged.paste(separator, (0, y_offset))
+                y_offset += separator.height
+                prev_block_id = current_block_id
+            elif i > 0:
+                # Часть того же блока - только gap
+                y_offset += gap
         elif i > 0:
-            # Без разделителей - только gap между кропами
             y_offset += gap
         
         x_offset = (max_width - crop.width) // 2

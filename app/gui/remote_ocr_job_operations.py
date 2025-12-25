@@ -16,6 +16,99 @@ logger = logging.getLogger(__name__)
 class JobOperationsMixin:
     """Миксин для операций с задачами: создание, удаление, пауза, возобновление, перезапуск"""
     
+    def _clean_old_ocr_results(self, node_id: str, r2_key: str, r2):
+        """Очистить старые результаты OCR (кропы, md, node_files) перед новым распознаванием"""
+        from pathlib import PurePosixPath
+        from app.gui.folder_settings_dialog import get_projects_dir
+        from app.tree_client import TreeClient, FileType
+        import shutil
+        
+        try:
+            pdf_stem = Path(r2_key).stem
+            r2_prefix = str(PurePosixPath(r2_key).parent)
+            projects_dir = get_projects_dir()
+            
+            # 1. Удаляем кропы из R2 и локального кэша
+            crops_prefix = f"{r2_prefix}/crops/{pdf_stem}/"
+            crop_keys = r2.list_files(crops_prefix)
+            
+            for crop_key in crop_keys:
+                r2.delete_object(crop_key)
+                logger.debug(f"Deleted crop from R2: {crop_key}")
+                
+                if projects_dir:
+                    rel = crop_key[len("tree_docs/"):] if crop_key.startswith("tree_docs/") else crop_key
+                    crop_local = Path(projects_dir) / "cache" / rel
+                    if crop_local.exists():
+                        crop_local.unlink()
+            
+            # Удаляем папку crops из кэша
+            if projects_dir:
+                rel_prefix = r2_prefix[len("tree_docs/"):] if r2_prefix.startswith("tree_docs/") else r2_prefix
+                crops_folder = Path(projects_dir) / "cache" / rel_prefix / "crops" / pdf_stem
+                if crops_folder.exists():
+                    shutil.rmtree(crops_folder, ignore_errors=True)
+            
+            # 2. Удаляем MD файл из R2 и кэша
+            md_key = f"{r2_prefix}/{pdf_stem}.md"
+            if r2.exists(md_key):
+                r2.delete_object(md_key)
+                logger.debug(f"Deleted MD from R2: {md_key}")
+            
+            if projects_dir:
+                rel_md = md_key[len("tree_docs/"):] if md_key.startswith("tree_docs/") else md_key
+                md_local = Path(projects_dir) / "cache" / rel_md
+                if md_local.exists():
+                    md_local.unlink()
+            
+            # 3. Удаляем записи из node_files (RESULT_MD, CROP, RESULT_ZIP)
+            client = TreeClient()
+            node_files = client.get_node_files(node_id)
+            for nf in node_files:
+                if nf.file_type in (FileType.RESULT_MD, FileType.CROP, FileType.RESULT_ZIP):
+                    client.delete_node_file(nf.id)
+            
+            # 4. Очищаем ocr_text в блоках текущего документа и сохраняем на диск
+            if self.main_window.annotation_document:
+                cleared = 0
+                for page in self.main_window.annotation_document.pages:
+                    for block in page.blocks:
+                        if hasattr(block, 'ocr_text') and block.ocr_text:
+                            block.ocr_text = None
+                            cleared += 1
+                
+                # Сохраняем очищенную аннотацию на диск
+                if cleared > 0:
+                    from rd_core.annotation_io import AnnotationIO
+                    from app.gui.file_operations import get_annotation_path, get_annotation_r2_key
+                    
+                    pdf_path = getattr(self.main_window, '_current_pdf_path', None)
+                    if pdf_path:
+                        ann_path = get_annotation_path(pdf_path)
+                        AnnotationIO.save_annotation(self.main_window.annotation_document, str(ann_path))
+                        logger.debug(f"Saved cleared annotation to {ann_path}")
+                        
+                        # Синхронизируем с R2
+                        ann_r2_key = get_annotation_r2_key(r2_key)
+                        r2.upload_file(str(ann_path), ann_r2_key)
+                        logger.debug(f"Synced cleared annotation to R2: {ann_r2_key}")
+            
+            # 5. Обновляем дерево проектов (убираем markdown из дочерних)
+            if hasattr(self.main_window, 'project_tree_widget'):
+                tree = self.main_window.project_tree_widget
+                item = tree._node_map.get(node_id)
+                if item:
+                    while item.childCount() > 0:
+                        item.removeChild(item.child(0))
+                    node = item.data(0, 0x0100)  # Qt.UserRole
+                    if node:
+                        tree._add_placeholder(item, node)
+            
+            logger.info(f"Cleaned old OCR results for node: {node_id}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to clean old OCR results: {e}")
+    
     def _create_job(self):
         """Создать новую задачу OCR"""
         if not self.main_window.pdf_document or not self.main_window.annotation_document:
@@ -47,6 +140,9 @@ class JobOperationsMixin:
                         "Синхронизируйте документ или перезагрузите его в дерево проектов."
                     )
                     return
+                
+                # Очищаем старые результаты OCR перед новым распознаванием
+                self._clean_old_ocr_results(node_id, r2_key, r2)
             except Exception as e:
                 logger.warning(f"Не удалось проверить R2: {e}")
         
