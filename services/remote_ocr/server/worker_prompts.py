@@ -135,7 +135,8 @@ def parse_batch_response_by_block_id(block_ids: List[str], response_text: str) -
         
         for i, match in enumerate(matches):
             block_id = match.group(1)
-            start_pos = match.end()
+            # Включаем сам разделитель в текст блока
+            start_pos = match.start()
             
             # Определяем конец текста блока
             if i + 1 < len(matches):
@@ -178,10 +179,8 @@ def parse_batch_response_by_index(num_blocks: int, response_text: str, block_ids
         return results
     
     if num_blocks == 1:
-        # Для одного блока убираем разделитель если есть
-        text = response_text.strip()
-        text = re.sub(r'\[\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\]\s*', '', text, flags=re.IGNORECASE)
-        results[0] = text.strip()
+        # Для одного блока сохраняем разделитель если есть
+        results[0] = response_text.strip()
         return results
     
     # Сначала пробуем парсить по [[[BLOCK_ID: uuid]]]
@@ -195,7 +194,8 @@ def parse_batch_response_by_index(num_blocks: int, response_text: str, block_ids
             if i >= num_blocks:
                 break
             
-            start_pos = match.end()
+            # Включаем сам разделитель в текст блока
+            start_pos = match.start()
             if i + 1 < len(block_id_matches):
                 end_pos = block_id_matches[i + 1].start()
             else:

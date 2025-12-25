@@ -4,4 +4,6 @@ docker-compose -f docker-compose.remote-ocr.dev.yml down
 docker-compose -f docker-compose.remote-ocr.dev.yml up --build
 
 remote-ocr-update
+remote-ocr-update-nocache
+
 https://chatgpt.com/c/694a222b-feb4-8331-a3c7-24abd8c05288
