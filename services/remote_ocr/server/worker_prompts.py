@@ -92,7 +92,9 @@ def build_strip_prompt(blocks: list) -> dict:
             return block.prompt
         return {
             "system": "You are an expert OCR system. Extract text accurately.",
-            "user": "Распознай текст на изображении. Сохрани форматирование."
+            "user": "Распознай текст на изображении. Сохрани форматирование.\n\n"
+                    "ВАЖНО: Если перед текстом есть черная полоса с идентификатором вида [[[BLOCK_ID: ...]]] — "
+                    "НЕ включай её в ответ. Распознавай только основное содержимое."
         }
     
     system = "You are an expert OCR system. Extract text from each block accurately."
@@ -100,6 +102,8 @@ def build_strip_prompt(blocks: list) -> dict:
     
     batch_instruction = (
         f"\n\nНа изображении {len(blocks)} блоков, расположенных вертикально (сверху вниз).\n"
+        f"Блоки разделены ЧЁРНЫМИ ПОЛОСАМИ с белым текстом [[[BLOCK_ID: ...]]].\n"
+        f"НЕ включай эти разделители в ответ — распознавай только содержимое блоков.\n\n"
         f"Распознай каждый блок ОТДЕЛЬНО.\n"
         f"Формат ответа:\n"
     )
