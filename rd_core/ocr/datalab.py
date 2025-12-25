@@ -90,7 +90,10 @@ RULES:
                             'output_format': 'markdown',
                             'disable_image_extraction': 'true',
                             'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT,
-                            'additional_config': json.dumps({'keep_pageheader_in_output': True})
+                            'additional_config': json.dumps({
+                                'keep_pageheader_in_output': True,
+                                'keep_pagefooter_in_output': True
+                            })
                         }
                         
                         response = self.session.post(
