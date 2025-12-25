@@ -60,17 +60,9 @@ def generate_structured_markdown(
             
             text = re.sub(r'\n{3,}', '\n\n', text)
             
-            # Проверяем, есть ли уже разделитель BLOCK_ID в тексте (из OCR)
-            block_id_pattern = rf'\[\[\[BLOCK_ID:\s*{re.escape(block.id)}\]\]\]'
-            has_separator = bool(re.search(block_id_pattern, text, re.IGNORECASE))
-            
-            # Добавляем разделитель только если его нет в тексте
-            if not has_separator:
-                # Также проверяем экранированный вариант [[[BLOCK\_ID:
-                escaped_pattern = rf'\[\[\[BLOCK\\_ID:\s*{re.escape(block.id)}'
-                if not re.search(escaped_pattern, text, re.IGNORECASE):
-                    block_separator = f"[[[BLOCK_ID: {block.id}]]]\n\n"
-                    markdown_parts.append(block_separator)
+            # Добавляем уникальный разделитель block_id перед каждым блоком
+            block_separator = f"[[[BLOCK_ID: {block.id}]]]\n\n"
+            markdown_parts.append(block_separator)
             
             if block.block_type == BlockType.IMAGE:
                 analysis = None
