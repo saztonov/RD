@@ -9,6 +9,39 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 
+def normalize_block_separators(text: str) -> str:
+    """
+    Нормализует разделители блоков:
+    1. Приводит к единому формату [[[BLOCK_ID: uuid]]]
+    2. Удаляет последовательные дубликаты разделителей
+    """
+    # Нормализуем экранированные варианты: BLOCK\_ID -> BLOCK_ID
+    text = re.sub(r'\[\[\[BLOCK\\_ID:', '[[[BLOCK_ID:', text)
+    
+    # Паттерн для любого разделителя блока
+    separator_pattern = r'\[\[\[BLOCK_ID:\s*([a-f0-9\-]+)\]\]\]'
+    
+    # Удаляем последовательные разделители (оставляем только последний)
+    # Ищем паттерн: разделитель + пробелы/переносы + разделитель
+    def remove_consecutive(match_text):
+        consecutive_pattern = (
+            r'(\[\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\])'  # первый разделитель
+            r'(\s*\n\s*\n?\s*)'  # пробелы и переносы между
+            r'(\[\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\])'  # второй разделитель
+        )
+        
+        prev_text = None
+        while prev_text != match_text:
+            prev_text = match_text
+            match_text = re.sub(consecutive_pattern, r'\3', match_text, flags=re.IGNORECASE)
+        
+        return match_text
+    
+    text = remove_consecutive(text)
+    
+    return text
+
+
 def generate_structured_markdown(
     pages: List, 
     output_path: str, 
@@ -58,17 +91,19 @@ def generate_structured_markdown(
             if not text:
                 continue
             
-            # Удаляем распознанные OCR разделители блоков (они будут добавлены программно)
-            text = re.sub(r'\[\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\]\s*', '', text, flags=re.IGNORECASE)
-            text = re.sub(r'\[\[\[BLOCK\\_ID:\s*[a-f0-9\-]+\]\]\]\s*', '', text, flags=re.IGNORECASE)
-            text = re.sub(r'\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\s*', '', text, flags=re.IGNORECASE)
-            text = re.sub(r'\[\[BLOCK\\_ID:\s*[a-f0-9\-]+\]\]\s*', '', text, flags=re.IGNORECASE)
-            
             text = re.sub(r'\n{3,}', '\n\n', text)
             
-            # Добавляем уникальный разделитель block_id перед каждым блоком
-            block_separator = f"[[[BLOCK_ID: {block.id}]]]\n\n"
-            markdown_parts.append(block_separator)
+            # Проверяем, есть ли уже разделитель BLOCK_ID в тексте (из OCR)
+            block_id_pattern = rf'\[\[\[BLOCK_ID:\s*{re.escape(block.id)}\]\]\]'
+            has_separator = bool(re.search(block_id_pattern, text, re.IGNORECASE))
+            
+            # Добавляем разделитель только если его нет в тексте
+            if not has_separator:
+                # Также проверяем экранированный вариант [[[BLOCK\_ID:
+                escaped_pattern = rf'\[\[\[BLOCK\\_ID:\s*{re.escape(block.id)}'
+                if not re.search(escaped_pattern, text, re.IGNORECASE):
+                    block_separator = f"[[[BLOCK_ID: {block.id}]]]\n\n"
+                    markdown_parts.append(block_separator)
             
             if block.block_type == BlockType.IMAGE:
                 analysis = None
@@ -117,6 +152,10 @@ def generate_structured_markdown(
                 markdown_parts.append(f"{text}\n\n")
         
         full_markdown = "".join(markdown_parts)
+        
+        # Нормализуем разделители и удаляем дубликаты
+        full_markdown = normalize_block_separators(full_markdown)
+        
         output_file.write_text(full_markdown, encoding='utf-8')
         
         logger.info(f"Структурированный markdown документ сохранен: {output_file}")
