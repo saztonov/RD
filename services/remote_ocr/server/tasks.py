@@ -209,7 +209,23 @@ def run_ocr_task(self, job_id: str) -> dict:
         from rd_core.models import Block
         from rd_core.ocr import create_ocr_engine
         
-        blocks = [Block.from_dict(b) for b in blocks_data]
+        # Поддержка разных форматов: список блоков или Document с pages
+        if isinstance(blocks_data, dict) and "pages" in blocks_data:
+            # Формат Document: извлекаем блоки из всех страниц
+            blocks = []
+            for page_data in blocks_data.get("pages", []):
+                for block_dict in page_data.get("blocks", []):
+                    blocks.append(Block.from_dict(block_dict))
+        elif isinstance(blocks_data, list):
+            # Формат: список блоков напрямую
+            if blocks_data and isinstance(blocks_data[0], dict):
+                blocks = [Block.from_dict(b) for b in blocks_data]
+            else:
+                logger.error(f"Неизвестный формат блоков: {type(blocks_data[0]) if blocks_data else 'empty'}")
+                blocks = []
+        else:
+            logger.error(f"Неизвестный формат blocks_data: {type(blocks_data)}")
+            blocks = []
         total_blocks = len(blocks)
         
         logger.info(f"Задача {job.id}: {total_blocks} блоков")
