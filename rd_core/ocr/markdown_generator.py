@@ -58,6 +58,12 @@ def generate_structured_markdown(
             if not text:
                 continue
             
+            # Удаляем распознанные OCR разделители блоков (они будут добавлены программно)
+            text = re.sub(r'\[\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\]\s*', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[\[\[BLOCK\\_ID:\s*[a-f0-9\-]+\]\]\]\s*', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\s*', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\[\[BLOCK\\_ID:\s*[a-f0-9\-]+\]\]\s*', '', text, flags=re.IGNORECASE)
+            
             text = re.sub(r'\n{3,}', '\n\n', text)
             
             # Добавляем уникальный разделитель block_id перед каждым блоком
