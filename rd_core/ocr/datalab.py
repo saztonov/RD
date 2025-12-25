@@ -31,7 +31,8 @@ RULES:
    - 'б' (letter) vs '6' (digit)
    - 'м2' -> 'м²'
 5. **Drawings**: If the image is a drawing (e.g., parking layout), output a bulleted list of text labels and dimensions found (e.g., "- Малое м/м: 2600x5300").
-6. **Output**: Return ONLY the clean Markdown. No conversational filler."""
+6. **Block Separators (CRITICAL)**: If you see black horizontal bars with white text like "[[[BLOCK_ID: uuid]]]", you MUST preserve them EXACTLY in your output. These are block separators that must appear in the final text.
+7. **Output**: Return ONLY the clean Markdown. No conversational filler."""
     
     def __init__(self, api_key: str, rate_limiter=None):
         if not api_key:
