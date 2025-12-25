@@ -114,53 +114,6 @@ def build_strip_prompt(blocks: list) -> dict:
     }
 
 
-def parse_batch_response_by_block_id(response_text: str, block_ids: List[str]) -> Dict[int, str]:
-    """
-    Парсинг ответа по разделителям [[[BLOCK_ID: uuid]]].
-    Returns: Dict[index -> text] (индекс 0-based, соответствует порядку в block_ids)
-    """
-    results: Dict[int, str] = {}
-    num_blocks = len(block_ids)
-    
-    if response_text is None:
-        for i in range(num_blocks):
-            results[i] = "[Ошибка: пустой ответ OCR]"
-        return results
-    
-    # Паттерн для разделителей [[[BLOCK_ID: uuid]]]
-    block_id_pattern = r'\[\[\[BLOCK_ID:\s*([a-f0-9\-]+)\]\]\]'
-    
-    # Разбиваем по разделителям, сохраняя UUID
-    parts = re.split(block_id_pattern, response_text)
-    
-    # parts: [before_first, uuid1, text1, uuid2, text2, ...]
-    block_id_to_text: Dict[str, str] = {}
-    
-    for i in range(1, len(parts) - 1, 2):
-        try:
-            uuid = parts[i].strip()
-            text = parts[i + 1].strip() if i + 1 < len(parts) else ""
-            # Убираем возможные маркеры PageHeader и лишние переносы
-            text = re.sub(r'^#+\s*$', '', text, flags=re.MULTILINE).strip()
-            block_id_to_text[uuid] = text
-        except IndexError:
-            continue
-    
-    if block_id_to_text:
-        # Маппим UUID на индексы
-        for idx, bid in enumerate(block_ids):
-            if bid in block_id_to_text:
-                results[idx] = block_id_to_text[bid]
-            else:
-                results[idx] = ""
-                logger.warning(f"BLOCK_ID {bid} не найден в ответе OCR")
-        return results
-    
-    # Fallback: если разделители не найдены, используем старый метод
-    logger.warning("Разделители [[[BLOCK_ID:]]] не найдены, fallback на parse_batch_response_by_index")
-    return parse_batch_response_by_index(num_blocks, response_text)
-
-
 def parse_batch_response_by_index(num_blocks: int, response_text: str) -> Dict[int, str]:
     """
     Парсинг ответа с маркерами [1], [2], ...
@@ -174,9 +127,7 @@ def parse_batch_response_by_index(num_blocks: int, response_text: str) -> Dict[i
         return results
     
     if num_blocks == 1:
-        # Для одного блока убираем разделитель [[[BLOCK_ID:]]] если есть
-        text = re.sub(r'\[\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\]\s*', '', response_text).strip()
-        results[0] = text
+        results[0] = response_text.strip()
         return results
     
     parts = re.split(r'\n?\[(\d+)\]\s*', response_text)

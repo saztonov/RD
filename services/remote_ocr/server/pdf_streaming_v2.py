@@ -390,7 +390,7 @@ def pass2_ocr_from_manifest(
         build_strip_prompt,
         fill_image_prompt_variables,
         inject_pdfplumber_to_ocr_text,
-        parse_batch_response_by_block_id,
+        parse_batch_response_by_index,
     )
     from .worker_pdf import extract_pdfplumber_text_for_block
     
@@ -443,9 +443,8 @@ def pass2_ocr_from_manifest(
                 finally:
                     global_sem.release()
             
-            # Парсим результат по разделителям [[[BLOCK_ID:]]]
-            block_ids = [bp["block_id"] for bp in strip.block_parts]
-            index_results = parse_batch_response_by_block_id(response_text, block_ids)
+            # Парсим результат
+            index_results = parse_batch_response_by_index(len(strip.block_parts), response_text)
             
             return strip, index_results
             
