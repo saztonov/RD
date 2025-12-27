@@ -114,10 +114,15 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         """Получить или создать клиент"""
         if self._client is None:
             try:
+                import os
                 from app.remote_ocr_client import RemoteOCRClient
+                base_url = os.getenv("REMOTE_OCR_BASE_URL", "http://localhost:8000")
+                api_key = os.getenv("REMOTE_OCR_API_KEY")
+                logger.info(f"Creating RemoteOCRClient: REMOTE_OCR_BASE_URL={base_url}, API_KEY={'set' if api_key else 'NOT SET'}")
                 self._client = RemoteOCRClient()
+                logger.info(f"Client created: base_url={self._client.base_url}")
             except Exception as e:
-                logger.error(f"Ошибка создания клиента: {e}")
+                logger.error(f"Ошибка создания клиента: {e}", exc_info=True)
                 return None
         return self._client
     
@@ -140,10 +145,12 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
             self._signals.jobs_error.emit("Ошибка клиента")
             return
         try:
+            logger.debug(f"Fetching jobs from {client.base_url}")
             jobs = client.list_jobs(document_id=None)
+            logger.debug(f"Fetched {len(jobs)} jobs")
             self._signals.jobs_loaded.emit(jobs)
         except Exception as e:
-            logger.error(f"Ошибка получения списка задач: {e}")
+            logger.error(f"Ошибка получения списка задач от {client.base_url}: {e}", exc_info=True)
             self._signals.jobs_error.emit(str(e))
     
     def _on_jobs_loaded(self, jobs):

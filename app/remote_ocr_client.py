@@ -123,6 +123,10 @@ class RemoteOCRClient:
     upload_timeout: float = 600.0  # Для POST /jobs - большие PDF
     max_retries: int = 3
     
+    def __post_init__(self):
+        """Логирование конфигурации при инициализации"""
+        logger.info(f"RemoteOCRClient initialized: base_url={self.base_url}, api_key={'***' if self.api_key else 'None'}, client_id={self.client_id[:8]}...")
+    
     def _headers(self) -> dict:
         """Получить заголовки для запросов"""
         headers = {}
@@ -192,11 +196,15 @@ class RemoteOCRClient:
     
     def health(self) -> bool:
         """Проверить доступность сервера"""
+        url = f"{self.base_url}/health"
         try:
+            logger.debug(f"Health check: GET {url}")
             client = _get_remote_ocr_client(self.base_url, self.timeout)
             resp = client.get("/health", headers=self._headers(), timeout=2.0)
+            logger.debug(f"Health check response: {resp.status_code}")
             return resp.status_code == 200 and resp.json().get("ok", False)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Health check failed: {url} -> {e}")
             return False
     
     def find_existing_job(self, document_id: str) -> Optional[JobInfo]:
@@ -318,7 +326,9 @@ class RemoteOCRClient:
         if document_id:
             params["document_id"] = document_id
         
+        logger.debug(f"list_jobs: GET {self.base_url}/jobs params={params}")
         resp = self._request_with_retry("get", "/jobs", params=params)
+        logger.debug(f"list_jobs response: {resp.status_code}, len={len(resp.content)}")
         data = resp.json()
         
         return [
