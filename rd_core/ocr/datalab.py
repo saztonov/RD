@@ -124,7 +124,11 @@ RULES:
                 check_url = result.get('request_check_url')
                 if not check_url:
                     if 'json' in result:
-                        return result['json']
+                        json_result = result['json']
+                        if isinstance(json_result, dict):
+                            import json as json_lib
+                            return json_lib.dumps(json_result, ensure_ascii=False)
+                        return json_result
                     return "[Ошибка: нет request_check_url]"
                 
                 logger.info(f"Datalab: начало поллинга результата по URL: {check_url}")
@@ -150,7 +154,13 @@ RULES:
                     
                     if status == 'complete':
                         logger.info("Datalab: задача успешно завершена")
-                        return poll_result.get('json', '')
+                        json_result = poll_result.get('json', '')
+                        logger.debug(f"Datalab: тип результата: {type(json_result)}, ключи ответа: {list(poll_result.keys())}")
+                        # Если результат - dict, преобразуем в строку JSON
+                        if isinstance(json_result, dict):
+                            import json as json_lib
+                            return json_lib.dumps(json_result, ensure_ascii=False)
+                        return json_result if json_result else ''
                     elif status == 'failed':
                         error = poll_result.get('error', 'Unknown error')
                         logger.error(f"Datalab: задача завершилась с ошибкой: {error}")

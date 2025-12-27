@@ -389,6 +389,7 @@ def pass2_ocr_from_manifest(
         else:
             combined = [parts_dict.get(i, "") for i in range(total_parts)]
             block.ocr_text = "\n\n".join(combined)
+        logger.info(f"PASS2 TEXT блок {block_id}: ocr_text длина = {len(block.ocr_text) if block.ocr_text else 0}")
     
     log_memory_delta("PASS2 после strips", start_mem)
     
@@ -466,6 +467,7 @@ def pass2_ocr_from_manifest(
         else:
             combined = [parts_dict.get(i, "") for i in range(total_parts)]
             block.ocr_text = "\n\n".join(combined)
+        logger.info(f"PASS2 IMAGE блок {block_id}: ocr_text длина = {len(block.ocr_text) if block.ocr_text else 0}")
     
     force_gc("PASS2 завершён")
     log_memory_delta("PASS2 end", start_mem)

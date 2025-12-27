@@ -43,12 +43,17 @@ def generate_structured_json(
             for block in page.blocks:
                 all_blocks.append((page.page_number, block))
         
+        logger.info(f"generate_structured_json: всего блоков: {len(all_blocks)}")
+        
         all_blocks.sort(key=lambda x: (x[0], x[1].coords_px[1]))
         
         result_blocks = []
+        skipped_no_ocr = 0
         
         for page_num, block in all_blocks:
             if not block.ocr_text:
+                skipped_no_ocr += 1
+                logger.debug(f"Блок {block.id} пропущен: ocr_text={block.ocr_text!r}")
                 continue
             
             text = block.ocr_text.strip()
@@ -101,6 +106,8 @@ def generate_structured_json(
                     block_data["ocr_result"] = {"raw_text": text}
             
             result_blocks.append(block_data)
+        
+        logger.info(f"generate_structured_json: обработано {len(result_blocks)} блоков, пропущено без OCR: {skipped_no_ocr}")
         
         result = {
             "doc_name": doc_name or "",

@@ -316,6 +316,7 @@ def _run_legacy_ocr(
                         if block.id not in seen_blocks:
                             text = index_results.get(i, "")
                             block.ocr_text = text
+                            logger.debug(f"OCR результат для блока {block.id}: {len(text) if text else 0} символов")
                             seen_blocks.add(block.id)
             except Exception as e:
                 logger.error(f"Ошибка получения результата полосы: {e}")
@@ -332,6 +333,7 @@ def _run_legacy_ocr(
         else:
             combined_parts = [parts_dict.get(i, "") for i in range(total_parts)]
             block.ocr_text = "\n\n".join(combined_parts)
+        logger.info(f"TEXT блок {block_id}: ocr_text длина = {len(block.ocr_text) if block.ocr_text else 0}")
     
     # Обработка IMAGE блоков
     block_parts_results: Dict[str, Dict[int, str]] = {}
@@ -403,6 +405,7 @@ def _run_legacy_ocr(
         else:
             combined_parts = [parts_dict.get(i, "") for i in range(total_parts)]
             block.ocr_text = "\n\n".join(combined_parts)
+        logger.info(f"IMAGE блок {block_id}: ocr_text длина = {len(block.ocr_text) if block.ocr_text else 0}")
     
     logger.info(f"OCR завершён: {processed} запросов обработано")
     log_memory_delta("После OCR обработки", start_mem)
@@ -434,6 +437,12 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
     from rd_core.models import Page, Document, Block, ShapeType
     from rd_core.ocr import generate_structured_markdown
     from .pdf_streaming import get_page_dimensions_streaming
+    
+    # Логирование состояния блоков
+    blocks_with_ocr = sum(1 for b in blocks if b.ocr_text)
+    logger.info(f"_generate_results: всего блоков={len(blocks)}, с ocr_text={blocks_with_ocr}")
+    for b in blocks[:5]:  # Первые 5 для отладки
+        logger.debug(f"  Блок {b.id}: type={b.block_type}, ocr_text={len(b.ocr_text) if b.ocr_text else 'None'}")
     
     blocks_by_page: dict[int, list] = {}
     for b in blocks:
