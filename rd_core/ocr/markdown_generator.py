@@ -9,39 +9,26 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 
-_BLOCK_SEPARATOR_LINE_RE = re.compile(
-    r'^\s*\[{2,3}\s*BLOCK\\?_ID\s*:\s*([a-f0-9\-]{36})\s*\]{2,3}\s*$',
-    re.IGNORECASE,
+_DUP_BLOCK_ID_PAIR_RE = re.compile(
+    r'(?im)^(?P<drop>\s*\[\[\[BLOCK_ID:\s*(?P<id>[a-f0-9\-]{36})\s*\]\]\]\s*)\r?\n'
+    r'(?:[ \t]*\r?\n)*'
+    r'(?P<keep>\s*\[{2,3}\s*BLOCK\\?_ID\s*:\s*(?P=id)\s*\]{2,3}\s*)'
+    r'(?P<nl>\r?\n)?'
 )
 
 
-def _normalize_leading_block_separators(text: str, block_id: str) -> str:
+def _remove_upper_duplicate_block_ids(markdown: str) -> str:
     """
-    OCR иногда дублирует разделитель в начале блока (например, [[[BLOCK_ID...]]] + [[BLOCK\\_ID...]]).
-    Для TEXT/TABLE оставляем ровно один канонический разделитель в начале.
+    Удалить дубликат вида:
+      [[[BLOCK_ID: uuid]]]
+
+      [[BLOCK\\_ID: uuid]]
+    Оставляя нижний (OCR) вариант.
     """
-    lines = text.splitlines()
-    i = 0
-    found_sep = False
-
-    # Пропускаем пустые строки и "похожие на разделитель" строки в начале
-    while i < len(lines):
-        s = lines[i].strip()
-        if not s:
-            i += 1
-            continue
-        if _BLOCK_SEPARATOR_LINE_RE.match(s):
-            found_sep = True
-            i += 1
-            continue
-        break
-
-    if not found_sep:
-        return text
-
-    rest = "\n".join(lines[i:]).lstrip()
-    canonical = f"[[[BLOCK_ID: {block_id}]]]"
-    return canonical if not rest else f"{canonical}\n\n{rest}"
+    return _DUP_BLOCK_ID_PAIR_RE.sub(
+        lambda m: m.group("keep") + (m.group("nl") or ""),
+        markdown,
+    )
 
 
 def generate_structured_markdown(
@@ -94,10 +81,6 @@ def generate_structured_markdown(
                 continue
             
             text = re.sub(r'\n{3,}', '\n\n', text)
-
-            # TEXT/TABLE: OCR уже содержит разделители (на полосе), но иногда дублирует их.
-            if block.block_type in (BlockType.TEXT, BlockType.TABLE):
-                text = _normalize_leading_block_separators(text, block.id)
             
             # IMAGE блоки: добавляем разделитель (они не на полосе, OCR не содержит разделителя)
             # TEXT/TABLE: разделители уже есть в OCR тексте с изображения полосы
@@ -152,6 +135,7 @@ def generate_structured_markdown(
                 markdown_parts.append(f"{text}\n\n")
         
         full_markdown = "".join(markdown_parts)
+        full_markdown = _remove_upper_duplicate_block_ids(full_markdown)
         output_file.write_text(full_markdown, encoding='utf-8')
         
         logger.info(f"Структурированный markdown документ сохранен: {output_file}")
