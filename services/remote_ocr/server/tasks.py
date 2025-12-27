@@ -435,7 +435,7 @@ def _run_legacy_ocr(
 def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> str:
     """Генерация результатов OCR (markdown, annotation)"""
     from rd_core.models import Page, Document, Block, ShapeType
-    from rd_core.ocr import generate_structured_json
+    from rd_core.ocr import generate_structured_json, generate_grouped_result_json
     from .pdf_streaming import get_page_dimensions_streaming
     
     # Логирование состояния блоков
@@ -506,5 +506,16 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
     doc = Document(pdf_path=pdf_path.name, pages=pages)
     with open(annotation_path, "w", encoding="utf-8") as f:
         json.dump(doc.to_dict(), f, ensure_ascii=False, indent=2)
+    
+    # Генерация grouped_result.json с HTML сгруппированным по BLOCK_ID
+    grouped_result_path = work_dir / "grouped_result.json"
+    try:
+        generate_grouped_result_json(
+            str(result_json_path),
+            str(annotation_path),
+            str(grouped_result_path)
+        )
+    except Exception as e:
+        logger.warning(f"Ошибка генерации grouped_result.json: {e}")
     
     return r2_prefix

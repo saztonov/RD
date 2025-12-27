@@ -51,6 +51,14 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         r2.upload_file(str(annotation_path), r2_key)
         add_job_file(job.id, "annotation", r2_key, annotation_filename, annotation_path.stat().st_size)
     
+    # grouped_result.json -> {doc_stem}_result.json
+    grouped_result_path = work_dir / "grouped_result.json"
+    if grouped_result_path.exists():
+        result_filename = f"{doc_stem}_result.json"
+        r2_key = f"{r2_prefix}/{result_filename}"
+        r2.upload_file(str(grouped_result_path), r2_key)
+        add_job_file(job.id, "grouped_result", r2_key, result_filename, grouped_result_path.stat().st_size)
+    
     # crops/ (проверяем оба варианта: crops и crops_final для двухпроходного алгоритма)
     for crops_subdir in ["crops", "crops_final"]:
         crops_path = work_dir / crops_subdir
