@@ -87,7 +87,7 @@ RULES:
                             'force_ocr': 'true',
                             'paginate': 'false',
                             'use_llm': 'true',
-                            'output_format': 'markdown',
+                            'output_format': 'json',
                             'disable_image_extraction': 'true',
                             'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT,
                             'additional_config': json.dumps({'keep_pageheader_in_output': True})
@@ -123,8 +123,8 @@ RULES:
                 
                 check_url = result.get('request_check_url')
                 if not check_url:
-                    if 'markdown' in result:
-                        return result['markdown']
+                    if 'json' in result:
+                        return result['json']
                     return "[Ошибка: нет request_check_url]"
                 
                 logger.info(f"Datalab: начало поллинга результата по URL: {check_url}")
@@ -150,7 +150,7 @@ RULES:
                     
                     if status == 'complete':
                         logger.info("Datalab: задача успешно завершена")
-                        return poll_result.get('markdown', '')
+                        return poll_result.get('json', '')
                     elif status == 'failed':
                         error = poll_result.get('error', 'Unknown error')
                         logger.error(f"Datalab: задача завершилась с ошибкой: {error}")
