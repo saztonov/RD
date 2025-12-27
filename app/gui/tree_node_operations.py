@@ -528,44 +528,34 @@ class TreeNodeOperationsMixin:
         local_folder = local_file.parent
         local_folder.mkdir(parents=True, exist_ok=True)
         
-        # Проверяем есть ли PDF файл локально
-        if not local_file.exists():
-            # Скачиваем все файлы папки с R2
-            self.status_label.setText("Скачивание файлов с R2...")
-            try:
-                r2 = R2Storage()
-                # Префикс папки в R2
-                r2_prefix = str(PurePosixPath(r2_key).parent) + "/"
-                
-                # Получаем список всех файлов по префиксу
-                file_keys = r2.list_by_prefix(r2_prefix)
-                
-                if not file_keys:
-                    QMessageBox.warning(self, "Ошибка", "Файлы не найдены в R2")
-                    return
-                
-                downloaded = 0
-                for fk in file_keys:
-                    # Формируем локальный путь
-                    if fk.startswith("tree_docs/"):
-                        fk_rel = fk[len("tree_docs/"):]
-                    else:
-                        fk_rel = fk
-                    
-                    fk_local = Path(projects_dir) / "cache" / fk_rel
-                    fk_local.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    if not fk_local.exists():
-                        if r2.download_file(fk, str(fk_local)):
+        # Скачиваем только PDF, аннотацию и MD (без кропов)
+        self.status_label.setText("Скачивание файлов с R2...")
+        try:
+            r2 = R2Storage()
+            r2_prefix = str(PurePosixPath(r2_key).parent)
+            pdf_stem = Path(r2_key).stem
+            
+            # Список файлов для скачивания: PDF, annotation, MD
+            files_to_download = [
+                (r2_key, local_file),  # PDF
+                (f"{r2_prefix}/{pdf_stem}_annotation.json", local_folder / f"{pdf_stem}_annotation.json"),
+                (f"{r2_prefix}/{pdf_stem}.md", local_folder / f"{pdf_stem}.md"),
+            ]
+            
+            downloaded = 0
+            for remote_key, local_path in files_to_download:
+                if not local_path.exists():
+                    if r2.exists(remote_key):
+                        if r2.download_file(remote_key, str(local_path)):
                             downloaded += 1
-                
-                self.status_label.setText(f"Скачано файлов: {downloaded}")
-                logger.info(f"Downloaded {downloaded} files from R2 prefix: {r2_prefix}")
-                
-            except Exception as e:
-                logger.error(f"Failed to download folder from R2: {e}")
-                QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файлы:\n{e}")
-                return
+            
+            self.status_label.setText(f"Скачано файлов: {downloaded}")
+            logger.info(f"Downloaded {downloaded} files for document: {r2_key}")
+            
+        except Exception as e:
+            logger.error(f"Failed to download files from R2: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файлы:\n{e}")
+            return
         
         # Открываем папку в проводнике
         try:

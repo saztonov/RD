@@ -283,11 +283,24 @@ class JobOperationsMixin:
             import hashlib
             import json
             from app.remote_ocr_client import AuthenticationError, ServerError
+            from rd_core.r2_storage import R2Storage
             
             client = self._get_client()
             if client is None:
                 self._signals.rerun_error.emit(job_id, "Клиент не инициализирован")
                 return
+            
+            # Получаем node_id и r2_key от текущего документа для очистки
+            node_id = getattr(self.main_window, '_current_node_id', None)
+            r2_key = getattr(self.main_window, '_current_r2_key', None)
+            
+            # Очищаем старые результаты OCR (кропы, md) кроме PDF и аннотации
+            if node_id and r2_key:
+                try:
+                    r2 = R2Storage()
+                    self._clean_old_ocr_results(node_id, r2_key, r2)
+                except Exception as e:
+                    logger.warning(f"Не удалось очистить старые OCR результаты: {e}")
             
             # Получаем текущие блоки из приложения
             current_blocks = self._get_selected_blocks()

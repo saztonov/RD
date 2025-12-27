@@ -67,32 +67,15 @@ class DownloadMixin:
             # Используем result_prefix из API (папка где лежит PDF)
             actual_prefix = job_details.get("result_prefix") or r2_prefix
             
-            # Кропы хранятся в crops/{pdf_stem}/ или crops/{doc_stem}/
-            crops_prefix = f"{actual_prefix}/crops/{pdf_stem}/"
-            crop_files = r2.list_by_prefix(crops_prefix)
-            
-            # Fallback: старый формат crops/{doc_stem}/
-            if not crop_files and pdf_stem != doc_stem:
-                crops_prefix = f"{actual_prefix}/crops/{doc_stem}/"
-                crop_files = r2.list_by_prefix(crops_prefix)
-            
-            # Fallback: совсем старый формат crops/
-            if not crop_files:
-                crops_prefix = f"{actual_prefix}/crops/"
-                crop_files = r2.list_by_prefix(crops_prefix)
-            
-            # Файлы для скачивания: {doc_stem}_annotation.json, {doc_stem}.md
+            # Скачиваем только MD файл (кропы не нужны)
             files_to_download = [
-                (f"{doc_stem}_annotation.json", f"{pdf_stem}_annotation.json"),
                 (f"{doc_stem}.md", f"{pdf_stem}.md"),
             ]
-            # Обратная совместимость: старые форматы файлов
-            if not r2.exists(f"{actual_prefix}/{doc_stem}_annotation.json"):
-                files_to_download[0] = ("annotation.json", f"{pdf_stem}_annotation.json")
+            # Обратная совместимость: старый формат файла
             if not r2.exists(f"{actual_prefix}/{doc_stem}.md"):
-                files_to_download[1] = ("result.md", f"{pdf_stem}.md")
+                files_to_download[0] = ("result.md", f"{pdf_stem}.md")
             
-            total_files = len(files_to_download) + len(crop_files)
+            total_files = len(files_to_download)
             self._signals.download_started.emit(job_id, total_files)
             
             current = 0
@@ -103,18 +86,6 @@ class DownloadMixin:
                 remote_key = f"{actual_prefix}/{remote_name}"
                 local_path = extract_path / local_name
                 r2.download_file(remote_key, str(local_path))
-            
-            if crop_files:
-                crops_dir = extract_path / "crops" / pdf_stem
-                crops_dir.mkdir(parents=True, exist_ok=True)
-                
-                for remote_key in crop_files:
-                    current += 1
-                    filename = remote_key.split("/")[-1]
-                    if filename:
-                        self._signals.download_progress.emit(job_id, current, f"crops/{pdf_stem}/{filename}")
-                        local_path = crops_dir / filename
-                        r2.download_file(remote_key, str(local_path))
             
             logger.info(f"✅ Результат скачан в папку документа: {extract_dir}")
             self._signals.download_finished.emit(job_id, extract_dir)
