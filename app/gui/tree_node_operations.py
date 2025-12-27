@@ -370,8 +370,20 @@ class TreeNodeOperationsMixin:
         if node.node_type == NodeType.DOCUMENT:
             self._delete_document_files(node)
         
-        # Если это task_folder - удаляем всю папку из кэша (после закрытия файлов)
+        # Если это task_folder - удаляем всю папку из R2 и кэша
         if node.node_type == NodeType.TASK_FOLDER:
+            # Удаляем папку из R2
+            try:
+                from rd_core.r2_storage import R2Storage
+                r2 = R2Storage()
+                r2_prefix = f"tree_docs/{node.id}/"
+                deleted = r2.delete_by_prefix(r2_prefix)
+                if deleted:
+                    logger.info(f"Deleted {deleted} files from R2 folder: {r2_prefix}")
+            except Exception as e:
+                logger.error(f"Failed to delete R2 folder: {e}")
+            
+            # Удаляем папку из локального кэша
             projects_dir = get_projects_dir()
             if projects_dir:
                 cache_folder = Path(projects_dir) / "cache" / node.id
@@ -387,36 +399,84 @@ class TreeNodeOperationsMixin:
         from rd_core.r2_storage import R2Storage
         from app.gui.folder_settings_dialog import get_projects_dir
         from app.gui.file_operations import get_annotation_r2_key
+        from pathlib import PurePosixPath
+        import shutil
         
         r2_key = node.attributes.get("r2_key", "")
         
         # Закрываем файл если он открыт в редакторе
         self._close_if_open(r2_key)
         
-        # Удаляем из R2 (PDF и аннотацию)
+        projects_dir = get_projects_dir()
+        
+        # Сначала удаляем все файлы из node_files из R2
+        if node.id:
+            try:
+                r2 = R2Storage()
+                node_files = self.client.get_node_files(node.id)
+                for nf in node_files:
+                    # Удаляем файл из R2
+                    if nf.r2_key:
+                        r2.delete_object(nf.r2_key)
+                        logger.info(f"Deleted node_file from R2: {nf.r2_key}")
+                        
+                        # Удаляем из локального кэша
+                        if projects_dir:
+                            if nf.r2_key.startswith("tree_docs/"):
+                                rel = nf.r2_key[len("tree_docs/"):]
+                            else:
+                                rel = nf.r2_key
+                            cache_path = Path(projects_dir) / "cache" / rel
+                            if cache_path.exists():
+                                cache_path.unlink()
+                                logger.debug(f"Deleted from cache: {cache_path}")
+                    
+                    # Удаляем запись из БД
+                    self.client.delete_node_file(nf.id)
+                    logger.info(f"Deleted node_file from DB: {nf.id}")
+            except Exception as e:
+                logger.error(f"Failed to delete node_files: {e}")
+        
+        # Удаляем из R2: PDF, аннотацию и папку crops
         if r2_key:
             try:
                 r2 = R2Storage()
+                
                 # Удаляем PDF
                 r2.delete_object(r2_key)
                 logger.info(f"Deleted from R2: {r2_key}")
+                
                 # Удаляем аннотацию
                 ann_r2_key = get_annotation_r2_key(r2_key)
                 r2.delete_object(ann_r2_key)
                 logger.info(f"Deleted annotation from R2: {ann_r2_key}")
+                
+                # Удаляем папку crops по префиксу
+                r2_prefix = str(PurePosixPath(r2_key).parent)
+                pdf_stem = Path(r2_key).stem
+                crops_prefix = f"{r2_prefix}/crops/{pdf_stem}/"
+                deleted_crops = r2.delete_by_prefix(crops_prefix)
+                if deleted_crops:
+                    logger.info(f"Deleted {deleted_crops} crops from R2")
+                
+                # Удаляем MD файл
+                md_key = f"{r2_prefix}/{pdf_stem}.md"
+                r2.delete_object(md_key)
+                
             except Exception as e:
                 logger.error(f"Failed to delete from R2: {e}")
         
-        # Удаляем из локального кэша (PDF и аннотацию)
-        projects_dir = get_projects_dir()
+        # Удаляем из локального кэша
         if projects_dir and r2_key:
-            # Сохраняем структуру папок из R2
             if r2_key.startswith("tree_docs/"):
                 rel_path = r2_key[len("tree_docs/"):]
             else:
                 rel_path = r2_key
             
             cache_file = Path(projects_dir) / "cache" / rel_path
+            pdf_stem = cache_file.stem
+            
+            # Удаляем PDF
             if cache_file.exists():
                 try:
                     cache_file.unlink()
@@ -424,8 +484,8 @@ class TreeNodeOperationsMixin:
                 except Exception as e:
                     logger.error(f"Failed to delete from cache: {e}")
             
-            # Удаляем аннотацию из кэша
-            ann_cache_file = cache_file.parent / f"{cache_file.stem}_annotation.json"
+            # Удаляем аннотацию
+            ann_cache_file = cache_file.parent / f"{pdf_stem}_annotation.json"
             if ann_cache_file.exists():
                 try:
                     ann_cache_file.unlink()
@@ -433,22 +493,30 @@ class TreeNodeOperationsMixin:
                 except Exception as e:
                     logger.error(f"Failed to delete annotation from cache: {e}")
             
+            # Удаляем MD файл
+            md_cache_file = cache_file.parent / f"{pdf_stem}.md"
+            if md_cache_file.exists():
+                try:
+                    md_cache_file.unlink()
+                    logger.info(f"Deleted MD from cache: {md_cache_file}")
+                except Exception as e:
+                    logger.error(f"Failed to delete MD from cache: {e}")
+            
+            # Удаляем папку crops
+            crops_folder = cache_file.parent / "crops" / pdf_stem
+            if crops_folder.exists():
+                try:
+                    shutil.rmtree(crops_folder, ignore_errors=True)
+                    logger.info(f"Deleted crops folder from cache: {crops_folder}")
+                except Exception as e:
+                    logger.error(f"Failed to delete crops folder: {e}")
+            
             # Удаляем пустую родительскую папку
             if cache_file.parent.exists() and not any(cache_file.parent.iterdir()):
                 try:
                     cache_file.parent.rmdir()
                 except Exception as e:
                     logger.error(f"Failed to delete empty cache folder: {e}")
-        
-        # Удаляем записи из БД (node_files)
-        if node.id:
-            try:
-                node_files = self.client.get_node_files(node.id)
-                for nf in node_files:
-                    self.client.delete_node_file(nf.id)
-                    logger.info(f"Deleted node_file from DB: {nf.id}")
-            except Exception as e:
-                logger.error(f"Failed to delete node_files from DB: {e}")
     
     def _copy_to_cache(self, src_path: str, r2_key: str):
         """Скопировать загружаемый файл в локальный кэш"""

@@ -494,6 +494,31 @@ class R2Storage:
             logger.error(f"❌ Ошибка получения списка из R2: {e}")
             return []
 
+    # Алиас для совместимости
+    list_files = list_by_prefix
+
+    def delete_by_prefix(self, prefix: str) -> int:
+        """
+        Удалить все объекты с заданным префиксом
+
+        Args:
+            prefix: Префикс для удаления
+
+        Returns:
+            Количество удалённых объектов
+        """
+        keys = self.list_by_prefix(prefix)
+        if not keys:
+            return 0
+
+        deleted = 0
+        for key in keys:
+            if self.delete_object(key):
+                deleted += 1
+        
+        logger.info(f"✅ Удалено {deleted}/{len(keys)} объектов по префиксу: {prefix}")
+        return deleted
+
     def list_objects_with_metadata(self, prefix: str) -> list[dict]:
         """
         Получить список объектов с метаданными (LastModified, Size, ETag)
