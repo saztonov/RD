@@ -130,15 +130,27 @@ def generate_structured_json(
 
 
 def _extract_all_html_from_ocr_result(ocr_result: Any) -> str:
-    """Рекурсивно извлечь все html поля из ocr_result"""
+    """
+    Извлечь HTML из ocr_result, избегая дублирования.
+    
+    Структура ocr_result:
+    - children[0].html содержит объединённый HTML всех дочерних элементов
+    - children[0].children[*].html содержит те же данные по отдельности
+    
+    Берём только html верхнего уровня из каждого children, 
+    НЕ спускаясь в вложенные children.
+    """
     html_parts = []
     
     if isinstance(ocr_result, dict):
+        # Если есть html на этом уровне - берём его
         if "html" in ocr_result and isinstance(ocr_result["html"], str):
             html_parts.append(ocr_result["html"])
-        for key, value in ocr_result.items():
-            if key != "html":
-                html_parts.append(_extract_all_html_from_ocr_result(value))
+            # НЕ спускаемся в children, т.к. html уже содержит их контент
+        elif "children" in ocr_result and isinstance(ocr_result["children"], list):
+            # Если нет html, но есть children - обрабатываем их
+            for child in ocr_result["children"]:
+                html_parts.append(_extract_all_html_from_ocr_result(child))
     elif isinstance(ocr_result, list):
         for item in ocr_result:
             html_parts.append(_extract_all_html_from_ocr_result(item))
