@@ -40,17 +40,19 @@ def generate_structured_json(
         
         all_blocks = []
         for page in pages:
-            for block in page.blocks:
-                all_blocks.append((page.page_number, block))
+            for idx, block in enumerate(page.blocks):
+                # Сохраняем индекс блока для сортировки по номерам (1,2,3...)
+                all_blocks.append((page.page_number, idx, block))
         
         logger.info(f"generate_structured_json: всего блоков: {len(all_blocks)}")
         
-        all_blocks.sort(key=lambda x: (x[0], x[1].coords_px[1]))
+        # Сортировка по странице и индексу блока (номеру в правом верхнем углу)
+        all_blocks.sort(key=lambda x: (x[0], x[1]))
         
         result_blocks = []
         skipped_no_ocr = 0
         
-        for page_num, block in all_blocks:
+        for page_num, block_idx, block in all_blocks:
             if not block.ocr_text:
                 skipped_no_ocr += 1
                 logger.debug(f"Блок {block.id} пропущен: ocr_text={block.ocr_text!r}")
@@ -62,6 +64,7 @@ def generate_structured_json(
             
             block_data = {
                 "block_id": block.id,
+                "block_number": block_idx + 1,  # Номер блока (отображается в правом верхнем углу)
                 "block_type": block.block_type.value,
                 "page": page_num + 1 if page_num is not None else None,
                 "coords_px": list(block.coords_px),
@@ -125,6 +128,3 @@ def generate_structured_json(
         logger.error(f"Ошибка генерации структурированного JSON: {e}", exc_info=True)
         raise
 
-
-# Alias для обратной совместимости
-generate_structured_markdown = generate_structured_json

@@ -435,7 +435,7 @@ def _run_legacy_ocr(
 def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> str:
     """Генерация результатов OCR (markdown, annotation)"""
     from rd_core.models import Page, Document, Block, ShapeType
-    from rd_core.ocr import generate_structured_markdown
+    from rd_core.ocr import generate_structured_json
     from .pdf_streaming import get_page_dimensions_streaming
     
     # Логирование состояния блоков
@@ -444,9 +444,10 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
     for b in blocks[:5]:  # Первые 5 для отладки
         logger.debug(f"  Блок {b.id}: type={b.block_type}, ocr_text={len(b.ocr_text) if b.ocr_text else 'None'}")
     
-    blocks_by_page: dict[int, list] = {}
-    for b in blocks:
-        blocks_by_page.setdefault(b.page_index, []).append(b)
+    # Сохраняем оригинальный порядок блоков (индекс в исходном списке)
+    blocks_by_page: dict[int, list[tuple[int, any]]] = {}
+    for orig_idx, b in enumerate(blocks):
+        blocks_by_page.setdefault(b.page_index, []).append((orig_idx, b))
     
     # Streaming получение размеров страниц
     page_dims = get_page_dimensions_streaming(str(pdf_path))
@@ -455,7 +456,8 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
     for page_idx in sorted(blocks_by_page.keys()):
         dims = page_dims.get(page_idx)
         width, height = dims if dims else (0, 0)
-        page_blocks = sorted(blocks_by_page[page_idx], key=lambda bl: bl.coords_px[1])
+        # Сортируем по оригинальному индексу (порядок 1,2,3... как в GUI)
+        page_blocks = [b for _, b in sorted(blocks_by_page[page_idx], key=lambda x: x[0])]
         
         # Пересчитываем coords_px и polygon_points
         if width > 0 and height > 0:
@@ -498,7 +500,7 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
         md_project_name = job.node_id if job.node_id else job.id
     
     result_json_path = work_dir / "result.json"
-    generate_structured_markdown(pages, str(result_json_path), project_name=md_project_name, doc_name=pdf_path.name)
+    generate_structured_json(pages, str(result_json_path), project_name=md_project_name, doc_name=pdf_path.name)
     
     annotation_path = work_dir / "annotation.json"
     doc = Document(pdf_path=pdf_path.name, pages=pages)
