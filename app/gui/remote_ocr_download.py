@@ -68,13 +68,19 @@ class DownloadMixin:
             actual_prefix = job_details.get("result_prefix") or r2_prefix
             
             # Скачиваем JSON файлы (кропы не нужны)
+            # 1. _preliminary.json - OCR результаты
+            # 2. _result.json - финальный результат с группированным HTML
             files_to_download = [
-                (f"{doc_stem}.json", f"{pdf_stem}.json"),
+                (f"{doc_stem}_preliminary.json", f"{pdf_stem}_preliminary.json"),
                 (f"{doc_stem}_result.json", f"{pdf_stem}_result.json"),
             ]
             # Обратная совместимость: старый формат файла
-            if not r2.exists(f"{actual_prefix}/{doc_stem}.json"):
-                files_to_download[0] = ("result.json", f"{pdf_stem}.json")
+            if not r2.exists(f"{actual_prefix}/{doc_stem}_preliminary.json"):
+                # Пробуем старые форматы
+                if r2.exists(f"{actual_prefix}/{doc_stem}.json"):
+                    files_to_download[0] = (f"{doc_stem}.json", f"{pdf_stem}_preliminary.json")
+                elif r2.exists(f"{actual_prefix}/result.json"):
+                    files_to_download[0] = ("result.json", f"{pdf_stem}_preliminary.json")
             
             total_files = len(files_to_download)
             self._signals.download_started.emit(job_id, total_files)

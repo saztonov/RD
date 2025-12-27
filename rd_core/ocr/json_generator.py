@@ -321,31 +321,59 @@ def generate_grouped_result_json(
         block_html_map = _parse_html_by_block_ids(ocr_data, known_block_ids)
         logger.info(f"generate_grouped_result_json: найдено {len(block_html_map)} блоков с HTML")
         
+        # Создаём маппинг OCR блоков по block_id для IMAGE данных
+        ocr_blocks_map: Dict[str, Dict] = {}
+        for ocr_block in ocr_data.get("blocks", []):
+            ocr_block_id = ocr_block.get("block_id")
+            if ocr_block_id:
+                ocr_blocks_map[ocr_block_id] = ocr_block
+        
         # Формируем результат на основе annotation
         result_blocks = []
         
         for page in annotation_data.get("pages", []):
             for block in page.get("blocks", []):
                 block_id = block.get("id")
+                block_type = block.get("block_type")
                 
                 result_block = {
                     "id": block_id,
                     "page_index": block.get("page_index"),
                     "coords_px": block.get("coords_px"),
                     "coords_norm": block.get("coords_norm"),
-                    "block_type": block.get("block_type"),
+                    "block_type": block_type,
                     "source": block.get("source"),
                     "shape_type": block.get("shape_type"),
                     "html": block_html_map.get(block_id, "")
                 }
                 
-                # Копируем опциональные поля
+                # Копируем опциональные поля из annotation
                 if block.get("polygon_points"):
                     result_block["polygon_points"] = block["polygon_points"]
                 if block.get("prompt"):
                     result_block["prompt"] = block["prompt"]
                 if block.get("hint"):
                     result_block["hint"] = block["hint"]
+                
+                # Для IMAGE блоков добавляем полные данные из OCR JSON
+                if block_type == "image" and block_id in ocr_blocks_map:
+                    ocr_block = ocr_blocks_map[block_id]
+                    
+                    # Копируем image данные
+                    if ocr_block.get("image"):
+                        result_block["image"] = ocr_block["image"]
+                    
+                    # Копируем operator_hint
+                    if ocr_block.get("operator_hint"):
+                        result_block["operator_hint"] = ocr_block["operator_hint"]
+                    
+                    # Копируем raw_pdfplumber_text
+                    if ocr_block.get("raw_pdfplumber_text"):
+                        result_block["raw_pdfplumber_text"] = ocr_block["raw_pdfplumber_text"]
+                    
+                    # Копируем полный ocr_result
+                    if ocr_block.get("ocr_result"):
+                        result_block["ocr_result"] = ocr_block["ocr_result"]
                 
                 result_blocks.append(result_block)
         
