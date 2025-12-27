@@ -13,8 +13,8 @@ from rd_core.pdf_utils import PDFDocument
 
 logger = logging.getLogger(__name__)
 
-# Высота разделительной полосы с block_id
-BLOCK_SEPARATOR_HEIGHT = 60
+# Высота разделителя с block_id (только текст, без полосы)
+BLOCK_SEPARATOR_HEIGHT = 30
 
 MAX_STRIP_HEIGHT = 9000
 MAX_SINGLE_BLOCK_HEIGHT = 9000
@@ -162,29 +162,29 @@ def split_large_crop(crop: Image.Image, max_height: int = MAX_SINGLE_BLOCK_HEIGH
 
 def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARATOR_HEIGHT) -> Image.Image:
     """
-    Создать черную полосу-разделитель с белым текстом block_id.
+    Создать разделитель с черным текстом block_id на белом фоне.
     
     Args:
         block_id: уникальный ID блока
-        width: ширина полосы (должна соответствовать ширине кропа)
-        height: высота полосы (по умолчанию 20px)
+        width: ширина разделителя
+        height: высота разделителя
     
     Returns:
-        PIL Image с черной полосой и белым текстом [[[BLOCK_ID: uuid]]]
+        PIL Image с черным текстом [[[BLOCK_ID: uuid]]] на белом фоне
     """
-    separator = Image.new('RGB', (width, height), (0, 0, 0))  # Черный фон
+    separator = Image.new('RGB', (width, height), (255, 255, 255))  # Белый фон
     draw = ImageDraw.Draw(separator)
     
     text = f"[[[BLOCK_ID: {block_id}]]]"
     
-    # Пытаемся использовать моноширинный шрифт (размер 36px)
+    # Шрифт 20px
     try:
-        font = ImageFont.truetype("arial.ttf", 36)
+        font = ImageFont.truetype("arial.ttf", 20)
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype("DejaVuSansMono.ttf", 36)
+            font = ImageFont.truetype("DejaVuSansMono.ttf", 20)
         except (IOError, OSError):
-            font = ImageFont.load_default(size=36)
+            font = ImageFont.load_default(size=20)
     
     # Получаем размер текста
     bbox = draw.textbbox((0, 0), text, font=font)
@@ -195,7 +195,7 @@ def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARA
     x = (width - text_width) // 2
     y = (height - text_height) // 2
     
-    draw.text((x, y), text, fill=(255, 255, 255), font=font)  # Белый текст
+    draw.text((x, y), text, fill=(0, 0, 0), font=font)  # Черный текст
     
     return separator
 
