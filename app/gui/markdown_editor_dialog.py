@@ -85,18 +85,32 @@ a { color: #3794ff; text-decoration: none; }
 a:hover { text-decoration: underline; }
 img { max-width: 100%; height: auto; border-radius: 4px; }
 hr { border: none; border-top: 1px solid #3e3e42; margin: 24px 0; }
+.block-separator {
+    font-size: 24px;
+    color: #000;
+    margin: 16px 0 8px 0;
+    font-family: 'Segoe UI', sans-serif;
+}
 </style>
 """
 
 
 def markdown_to_html(md_text: str) -> str:
     """Конвертировать markdown в HTML"""
+    import re
     try:
         import mistune
         html = mistune.html(md_text)
     except ImportError:
         # Fallback - простая замена
         html = _simple_markdown_to_html(md_text)
+    
+    # Преобразуем разделители BLOCK_ID в стилизованные элементы
+    html = re.sub(
+        r'\[\[\[BLOCK_ID:\s*([a-f0-9\-]+)\]\]\]',
+        r'<div class="block-separator">BLOCK_ID: \1</div>',
+        html
+    )
     
     return f"<!DOCTYPE html><html><head>{MARKDOWN_CSS}</head><body>{html}</body></html>"
 
