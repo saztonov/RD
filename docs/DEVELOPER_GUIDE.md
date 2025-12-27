@@ -91,31 +91,6 @@ text = extract_text_pdfplumber(
 )
 ```
 
-### Вырезание кропов блоков
-
-```python
-from rd_core.cropping import (
-    crop_block_from_image,
-    crop_block_to_pdf,
-    crop_and_merge_blocks_from_pdf
-)
-
-# Вырезать блок из изображения страницы
-crop_image = crop_block_from_image(page_image, block, padding=5)
-
-# Вырезать блок как отдельный PDF (сохраняет векторные данные)
-crop_block_to_pdf(pdf_doc, block, "output/crop.pdf")
-
-# Полная обработка: кропы + группировка в полосы
-strip_paths, strip_images, strips, image_blocks, pdf_paths = \
-    crop_and_merge_blocks_from_pdf(
-        pdf_path="document.pdf",
-        blocks=blocks_list,
-        output_dir="output/crops",
-        save_image_crops_as_pdf=True
-    )
-```
-
 ### Remote OCR Client
 
 ```python

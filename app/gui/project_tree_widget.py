@@ -1,86 +1,27 @@
 """Виджет дерева проектов с поддержкой Supabase"""
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Dict, List
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem,
-    QMenu, QLabel, QAbstractItemView, QFrame, QLineEdit, QStyledItemDelegate, QStyleOptionViewItem, QStyle
+    QMenu, QLabel, QAbstractItemView, QFrame, QLineEdit, QMessageBox, QFileDialog
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent
-from PySide6.QtGui import QColor, QKeyEvent, QPainter, QFont
-
-
-class VersionHighlightDelegate(QStyledItemDelegate):
-    """Делегат для отображения версии красным цветом"""
-    
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index):
-        version = index.data(Qt.UserRole + 1)
-        if not version:
-            super().paint(painter, option, index)
-            return
-        
-        # Рисуем фон выделения
-        self.initStyleOption(option, index)
-        painter.save()
-        
-        if option.state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(option.rect, option.palette.highlight())
-        elif option.state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(option.rect, QColor("#2a2d2e"))
-        
-        text = index.data(Qt.DisplayRole)
-        icon_end = 2  # Позиция после иконки (эмодзи + пробел)
-        
-        # Разбиваем текст: иконка + остальное
-        parts = text.split(" ", 1)
-        icon_part = parts[0] + " " if parts else ""
-        rest = parts[1] if len(parts) > 1 else ""
-        
-        x = option.rect.x() + 4
-        y = option.rect.y()
-        h = option.rect.height()
-        
-        fm = painter.fontMetrics()
-        
-        # Иконка
-        painter.setPen(option.palette.text().color())
-        painter.drawText(x, y, fm.horizontalAdvance(icon_part), h, Qt.AlignVCenter, icon_part)
-        x += fm.horizontalAdvance(icon_part)
-        
-        # Версия красным
-        painter.setPen(QColor("#ff4444"))
-        font = painter.font()
-        font.setBold(True)
-        painter.setFont(font)
-        fm_bold = painter.fontMetrics()
-        version_with_space = version + "  "  # Два пробела для чёткого разделения
-        painter.drawText(x, y, fm_bold.horizontalAdvance(version_with_space), h, Qt.AlignVCenter, version_with_space)
-        x += fm_bold.horizontalAdvance(version_with_space)
-        
-        # Остальной текст
-        font.setBold(False)
-        painter.setFont(font)
-        painter.setPen(option.palette.text().color())
-        painter.drawText(x, y, option.rect.width() - x, h, Qt.AlignVCenter, rest)
-        
-        painter.restore()
+from PySide6.QtGui import QColor
 
 from app.tree_client import TreeClient, TreeNode, NodeType, NodeStatus, StageType, SectionType, FileType
 from app.gui.tree_node_operations import TreeNodeOperationsMixin, NODE_ICONS, STATUS_COLORS
+from app.gui.tree_delegates import VersionHighlightDelegate
+from app.gui.tree_sync_mixin import TreeSyncMixin, SYNC_ICONS
+from app.gui.tree_filter_mixin import TreeFilterMixin
+from app.gui.tree_context_menu import TreeContextMenuMixin
 from app.gui.sync_check_worker import SyncCheckWorker, SyncStatus
 
 logger = logging.getLogger(__name__)
-
-# Иконки статуса синхронизации
-SYNC_ICONS = {
-    SyncStatus.SYNCED: "✅",
-    SyncStatus.NOT_SYNCED: "⚠️",
-    SyncStatus.MISSING_LOCAL: "📥",
-    SyncStatus.CHECKING: "🔄",
-    SyncStatus.UNKNOWN: "",
-}
 
 # Названия типов узлов для UI
 NODE_TYPE_NAMES = {
@@ -94,7 +35,13 @@ NODE_TYPE_NAMES = {
 __all__ = ['ProjectTreeWidget', 'NODE_TYPE_NAMES']
 
 
-class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
+class ProjectTreeWidget(
+    TreeNodeOperationsMixin,
+    TreeSyncMixin,
+    TreeFilterMixin,
+    TreeContextMenuMixin,
+    QWidget
+):
     """Виджет дерева проектов"""
     
     document_selected = Signal(str, str)  # node_id, r2_key
@@ -470,7 +417,7 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             if not files:
                 # Fallback: проверяем R2 напрямую (markdown рядом с PDF)
                 from rd_core.r2_storage import R2Storage
-                from pathlib import Path, PurePosixPath
+                from pathlib import PurePosixPath
                 r2 = R2Storage()
                 doc_stem = Path(doc_node.name).stem
                 
@@ -562,7 +509,6 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             logger.info(f"[MD_EDITOR] Dialog shown")
         except Exception as e:
             logger.error(f"[MD_EDITOR] Failed to open markdown editor: {e}", exc_info=True)
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Ошибка", f"Не удалось открыть markdown: {e}")
     
     def highlight_document(self, node_id: str):
@@ -583,189 +529,6 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
             item.setForeground(0, QColor("#ffffff"))  # Белый текст
             self.tree.scrollToItem(item)
     
-    def _show_context_menu(self, pos):
-        """Показать контекстное меню"""
-        item = self.tree.itemAt(pos)
-        menu = QMenu(self)
-        
-        if item:
-            node = item.data(0, Qt.UserRole)
-            if isinstance(node, TreeNode):
-                allowed = node.get_allowed_child_types()
-                
-                for child_type in allowed:
-                    if child_type == NodeType.DOCUMENT:
-                        continue
-                    icon = NODE_ICONS.get(child_type, "+")
-                    action = menu.addAction(f"{icon} Добавить {NODE_TYPE_NAMES[child_type]}")
-                    action.setData(("add", child_type, node))
-                
-                if node.node_type == NodeType.TASK_FOLDER:
-                    action = menu.addAction("📄 Добавить файл")
-                    action.setData(("upload", node))
-                
-                if node.node_type == NodeType.DOCUMENT:
-                    # Открыть папку с файлами
-                    action = menu.addAction("📂 Открыть папку")
-                    action.setData(("open_folder", node))
-                    
-                    # Подменю выбора версии
-                    from app.gui.folder_settings_dialog import get_max_versions
-                    max_versions = get_max_versions()
-                    version_menu = menu.addMenu(f"📌 Версия [v{node.version or 1}]")
-                    for v in range(1, max_versions + 1):
-                        v_action = version_menu.addAction(f"v{v}")
-                        v_action.setData(("set_version", node, v))
-                        if v == (node.version or 1):
-                            v_action.setCheckable(True)
-                            v_action.setChecked(True)
-                    
-                    r2_key = node.attributes.get("r2_key", "")
-                    if r2_key and r2_key.lower().endswith(".pdf"):
-                        action = menu.addAction("🗑️ Удалить рамки/QR")
-                        action.setData(("remove_stamps", node))
-                    
-                    # Копировать/вставить аннотацию
-                    has_annotation = node.attributes.get("has_annotation", False)
-                    if has_annotation and r2_key:
-                        action = menu.addAction("📋 Скопировать аннотацию")
-                        action.setData(("copy_annotation", node))
-                    
-                    if self._copied_annotation and r2_key:
-                        action = menu.addAction("📥 Вставить аннотацию")
-                        action.setData(("paste_annotation", node))
-                    
-                    # Загрузить аннотацию из файла
-                    if r2_key:
-                        action = menu.addAction("📤 Загрузить аннотацию блоков")
-                        action.setData(("upload_annotation", node))
-                
-                menu.addSeparator()
-                menu.addAction("✏️ Переименовать").setData(("rename", node))
-                menu.addSeparator()
-                menu.addAction("🗑️ Удалить").setData(("delete", node))
-        else:
-            menu.addAction("📁 Создать проект").setData(("create_project",))
-        
-        action = menu.exec_(self.tree.mapToGlobal(pos))
-        if action:
-            data = action.data()
-            if data:
-                self._handle_menu_action(data)
-    
-    def _handle_menu_action(self, data):
-        """Обработать действие меню"""
-        if not data:
-            return
-        
-        action = data[0]
-        logger.debug(f"_handle_menu_action: action={action}, data={data}")
-        
-        if action == "create_project":
-            self._create_project()
-        elif action == "add":
-            child_type, parent_node = data[1], data[2]
-            self._create_child_node(parent_node, child_type)
-        elif action == "upload":
-            node = data[1]
-            self._upload_file(node)
-        elif action == "rename":
-            node = data[1]
-            self._rename_node(node)
-        elif action == "complete":
-            node = data[1]
-            self._set_status(node, NodeStatus.COMPLETED)
-        elif action == "activate":
-            node = data[1]
-            self._set_status(node, NodeStatus.ACTIVE)
-        elif action == "delete":
-            node = data[1]
-            self._delete_node(node)
-        elif action == "remove_stamps":
-            node = data[1]
-            self._remove_stamps_from_document(node)
-        elif action == "set_version":
-            node, version = data[1], data[2]
-            self._set_document_version(node, version)
-        elif action == "copy_annotation":
-            node = data[1]
-            self._copy_annotation(node)
-        elif action == "paste_annotation":
-            node = data[1]
-            self._paste_annotation(node)
-        elif action == "open_folder":
-            node = data[1]
-            self._open_document_folder(node)
-        elif action == "upload_annotation":
-            node = data[1]
-            self._upload_annotation_dialog(node)
-    
-    def _filter_tree(self, text: str):
-        """Фильтровать дерево по тексту"""
-        text = text.lower().strip()
-        
-        if not text:
-            self._show_all_items()
-            return
-        
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            self._filter_item(item, text)
-    
-    def _show_all_items(self):
-        """Показать все элементы дерева"""
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            self._show_item_recursive(item)
-    
-    def _show_item_recursive(self, item: QTreeWidgetItem):
-        """Рекурсивно показать элемент и его детей"""
-        item.setHidden(False)
-        for i in range(item.childCount()):
-            self._show_item_recursive(item.child(i))
-    
-    def _filter_item(self, item: QTreeWidgetItem, text: str, parent_matches: bool = False) -> bool:
-        """Фильтровать элемент и его детей"""
-        node = item.data(0, Qt.UserRole)
-        if node == "placeholder":
-            item.setHidden(True)
-            return False
-        
-        item_text = item.text(0).lower()
-        matches = text in item_text
-        
-        if isinstance(node, TreeNode):
-            self._ensure_children_loaded(item, node)
-        
-        if parent_matches:
-            item.setHidden(False)
-            item.setExpanded(True)
-            for i in range(item.childCount()):
-                self._filter_item(item.child(i), text, parent_matches=True)
-            return True
-        
-        has_matching_child = False
-        for i in range(item.childCount()):
-            child = item.child(i)
-            if self._filter_item(child, text, parent_matches=matches):
-                has_matching_child = True
-        
-        should_show = matches or has_matching_child
-        item.setHidden(not should_show)
-        
-        if should_show and item.childCount() > 0:
-            item.setExpanded(True)
-        
-        return should_show
-    
-    def _ensure_children_loaded(self, item: QTreeWidgetItem, node: TreeNode):
-        """Загрузить детей если они еще не загружены"""
-        if item.childCount() == 1:
-            child = item.child(0)
-            if child.data(0, Qt.UserRole) == "placeholder":
-                item.removeChild(child)
-                self._load_children(item, node)
-    
     def eventFilter(self, obj, event):
         """Обработка событий для дерева"""
         if obj == self.tree and event.type() == QEvent.KeyPress:
@@ -782,7 +545,6 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         """Скопировать аннотацию документа в буфер"""
         from rd_core.r2_storage import R2Storage
         from app.gui.file_operations import get_annotation_r2_key
-        from PySide6.QtWidgets import QMessageBox
         
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
@@ -810,7 +572,6 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         """Вставить аннотацию из буфера в документ"""
         from rd_core.r2_storage import R2Storage
         from app.gui.file_operations import get_annotation_r2_key
-        from PySide6.QtWidgets import QMessageBox
         
         if not self._copied_annotation:
             return
@@ -854,11 +615,8 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
     
     def _upload_annotation_dialog(self, node: TreeNode):
         """Диалог загрузки аннотации блоков из файла"""
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
         from rd_core.r2_storage import R2Storage
         from app.gui.file_operations import get_annotation_r2_key
-        from app.tree_client import FileType
-        from pathlib import Path
         
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
@@ -882,7 +640,6 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
                 json_content = f.read()
             
             # Валидация JSON
-            import json
             json.loads(json_content)  # Проверяем что это валидный JSON
             
             r2 = R2Storage()
@@ -939,107 +696,3 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
         except Exception as e:
             logger.error(f"Upload annotation failed: {e}")
             QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки аннотации:\n{e}")
-    
-    # === Проверка синхронизации с R2 ===
-    
-    def _start_sync_check(self):
-        """Запустить фоновую проверку синхронизации всех TASK_FOLDER и DOCUMENT"""
-        from app.gui.folder_settings_dialog import get_projects_dir
-        
-        projects_dir = get_projects_dir()
-        if not projects_dir:
-            logger.debug("Projects dir not set, skipping sync check")
-            return
-        
-        # Останавливаем предыдущий воркер если есть
-        if self._sync_worker and self._sync_worker.isRunning():
-            self._sync_worker.stop()
-        
-        self._sync_worker = SyncCheckWorker(self)
-        self._sync_worker.result_ready.connect(self._on_sync_check_result)
-        self._sync_worker.check_finished.connect(self._on_sync_check_finished)
-        
-        # Собираем узлы для проверки (TASK_FOLDER и DOCUMENT)
-        self._collect_nodes_for_sync_check(self._sync_worker, projects_dir)
-        
-        if self._sync_worker._nodes_to_check:
-            logger.debug(f"Starting sync check for {len(self._sync_worker._nodes_to_check)} nodes")
-            self._sync_worker.start()
-    
-    def _collect_nodes_for_sync_check(self, worker: SyncCheckWorker, projects_dir: str):
-        """Рекурсивно собрать все TASK_FOLDER и DOCUMENT для проверки"""
-        from pathlib import Path
-        
-        def collect_from_item(item: QTreeWidgetItem):
-            node = item.data(0, Qt.UserRole)
-            if not isinstance(node, TreeNode):
-                return
-            
-            if node.node_type == NodeType.TASK_FOLDER:
-                # Для TASK_FOLDER проверяем все файлы по префиксу
-                r2_prefix = f"tree_docs/{node.id}/"
-                local_folder = str(Path(projects_dir) / "cache" / node.id)
-                worker.add_check(node.id, r2_prefix, local_folder)
-            
-            elif node.node_type == NodeType.DOCUMENT:
-                # Для DOCUMENT проверяем конкретный файл
-                r2_key = node.attributes.get("r2_key", "")
-                if r2_key:
-                    if r2_key.startswith("tree_docs/"):
-                        rel_path = r2_key[len("tree_docs/"):]
-                    else:
-                        rel_path = r2_key
-                    local_folder = str(Path(projects_dir) / "cache" / Path(rel_path).parent)
-                    worker.add_check(node.id, r2_key, local_folder)
-            
-            # Рекурсивно для дочерних
-            for i in range(item.childCount()):
-                collect_from_item(item.child(i))
-        
-        # Обходим все корневые элементы
-        for i in range(self.tree.topLevelItemCount()):
-            collect_from_item(self.tree.topLevelItem(i))
-    
-    def _on_sync_check_result(self, node_id: str, status_value: str):
-        """Обработать результат проверки синхронизации"""
-        try:
-            status = SyncStatus(status_value)
-        except ValueError:
-            status = SyncStatus.UNKNOWN
-        
-        self._sync_statuses[node_id] = status
-        
-        # Обновляем отображение узла
-        item = self._node_map.get(node_id)
-        if item:
-            node = item.data(0, Qt.UserRole)
-            if isinstance(node, TreeNode):
-                self._update_item_sync_icon(item, node, status)
-    
-    def _update_item_sync_icon(self, item: QTreeWidgetItem, node: TreeNode, status: SyncStatus):
-        """Обновить иконку синхронизации для элемента дерева"""
-        icon = NODE_ICONS.get(node.node_type, "📄")
-        sync_icon = SYNC_ICONS.get(status, "")
-        
-        if node.node_type == NodeType.DOCUMENT:
-            version_tag = f"[v{node.version}]" if node.version else "[v1]"
-            has_annotation = node.attributes.get("has_annotation", False)
-            ann_icon = "📋" if has_annotation else ""
-            display_name = f"{icon} {node.name} {ann_icon} {sync_icon}".strip()
-            item.setText(0, display_name)
-            item.setData(0, Qt.UserRole + 1, version_tag)
-        elif node.node_type == NodeType.TASK_FOLDER:
-            if node.code:
-                display_name = f"{icon} [{node.code}] {node.name} {sync_icon}".strip()
-            else:
-                display_name = f"{icon} {node.name} {sync_icon}".strip()
-            item.setText(0, display_name)
-    
-    def _on_sync_check_finished(self):
-        """Проверка синхронизации завершена"""
-        logger.debug("Sync check finished")
-        self._sync_worker = None
-    
-    def check_sync_status(self):
-        """Публичный метод для запуска проверки синхронизации"""
-        self._start_sync_check()

@@ -852,24 +852,6 @@ python build.py
 
 ## Дополнительные модули
 
-### rd_core/cropping.py
-
-Утилиты для вырезания кропов блоков:
-
-```python
-def crop_block_from_image(page_image, block, padding=0) -> Image.Image:
-    """Вырезать блок из изображения страницы"""
-
-def crop_block_to_pdf(pdf_doc, block, output_path) -> Optional[str]:
-    """Вырезать блок как отдельный PDF"""
-
-def group_blocks_into_strips(blocks, block_crops) -> Tuple[List[MergedStrip], List]:
-    """Группировка TEXT/TABLE в полосы для batch-OCR"""
-
-def crop_and_merge_blocks_from_pdf(pdf_path, blocks, output_dir) -> Tuple[...]:
-    """Основная функция: кропы + группировка"""
-```
-
 ### rd_core/pdf_utils.py
 
 Работа с PDF через PyMuPDF:

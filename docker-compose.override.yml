@@ -1,0 +1,23 @@
+# Dev override (применяется автоматически при docker compose up)
+services:
+  web:
+    command: uvicorn services.remote_ocr.server.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+      - ./services/remote_ocr/data:/data
+    restart: "no"
+    mem_limit: null
+
+  redis:
+    ports:
+      - "6379:6379"
+    restart: "no"
+    mem_limit: null
+
+  worker:
+    volumes:
+      - .:/app
+      - ./services/remote_ocr/data:/data
+    restart: "no"
+    deploy: {}
+

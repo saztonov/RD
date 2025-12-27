@@ -7,125 +7,29 @@ PASS 2: OCR с загрузкой по одному кропу с диска
 from __future__ import annotations
 
 import gc
-import json
 import logging
 import os
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from PIL import Image
 
-from .memory_utils import force_gc, get_pil_image_size_mb, log_memory, log_memory_delta
+from .memory_utils import force_gc, log_memory, log_memory_delta
 from .pdf_streaming import (
     StreamingPDFProcessor,
     merge_crops_vertically,
     split_large_crop,
 )
 from .settings import settings
+from .manifest_models import CropManifestEntry, StripManifestEntry, TwoPassManifest
 
 # Константы из настроек
 MAX_STRIP_HEIGHT = settings.max_strip_height
 MAX_SINGLE_BLOCK_HEIGHT = settings.max_strip_height
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class CropManifestEntry:
-    """Запись в manifest для одного кропа"""
-    block_id: str
-    crop_path: str
-    block_type: str
-    page_index: int
-    part_idx: int = 0
-    total_parts: int = 1
-    width: int = 0
-    height: int = 0
-
-
-@dataclass
-class StripManifestEntry:
-    """Запись в manifest для полосы (merged strip)"""
-    strip_id: str
-    strip_path: str
-    block_ids: List[str] = field(default_factory=list)
-    block_parts: List[dict] = field(default_factory=list)  # [{block_id, part_idx, total_parts}]
-
-
-@dataclass
-class TwoPassManifest:
-    """Полный manifest двухпроходной обработки"""
-    pdf_path: str
-    crops_dir: str
-    strips: List[StripManifestEntry] = field(default_factory=list)
-    image_blocks: List[CropManifestEntry] = field(default_factory=list)
-    total_blocks: int = 0
-    
-    def save(self, path: str):
-        data = {
-            "pdf_path": self.pdf_path,
-            "crops_dir": self.crops_dir,
-            "total_blocks": self.total_blocks,
-            "strips": [
-                {
-                    "strip_id": s.strip_id,
-                    "strip_path": s.strip_path,
-                    "block_ids": s.block_ids,
-                    "block_parts": s.block_parts,
-                }
-                for s in self.strips
-            ],
-            "image_blocks": [
-                {
-                    "block_id": e.block_id,
-                    "crop_path": e.crop_path,
-                    "block_type": e.block_type,
-                    "page_index": e.page_index,
-                    "part_idx": e.part_idx,
-                    "total_parts": e.total_parts,
-                    "width": e.width,
-                    "height": e.height,
-                }
-                for e in self.image_blocks
-            ],
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    
-    @classmethod
-    def load(cls, path: str) -> "TwoPassManifest":
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        
-        manifest = cls(
-            pdf_path=data["pdf_path"],
-            crops_dir=data["crops_dir"],
-            total_blocks=data.get("total_blocks", 0),
-        )
-        
-        for s in data.get("strips", []):
-            manifest.strips.append(StripManifestEntry(
-                strip_id=s["strip_id"],
-                strip_path=s["strip_path"],
-                block_ids=s.get("block_ids", []),
-                block_parts=s.get("block_parts", []),
-            ))
-        
-        for e in data.get("image_blocks", []):
-            manifest.image_blocks.append(CropManifestEntry(
-                block_id=e["block_id"],
-                crop_path=e["crop_path"],
-                block_type=e["block_type"],
-                page_index=e["page_index"],
-                part_idx=e.get("part_idx", 0),
-                total_parts=e.get("total_parts", 1),
-                width=e.get("width", 0),
-                height=e.get("height", 0),
-            ))
-        
-        return manifest
 
 
 def pass1_prepare_crops(
@@ -141,9 +45,6 @@ def pass1_prepare_crops(
     
     Группирует TEXT/TABLE блоки в strips, IMAGE блоки сохраняет отдельно.
     Память освобождается после каждой страницы.
-    
-    Returns:
-        TwoPassManifest с путями ко всем кропам
     """
     from rd_core.models import BlockType
     
@@ -160,8 +61,7 @@ def pass1_prepare_crops(
     for block in blocks:
         blocks_by_page.setdefault(block.page_index, []).append(block)
     
-    # Временное хранение кропов для группировки в strips
-    # Храним только пути, не изображения
+    # Временное хранение путей к кропам
     block_crop_paths: Dict[str, List[Tuple[str, int, int]]] = {}  # block_id -> [(path, part_idx, total_parts)]
     image_block_entries: List[CropManifestEntry] = []
     image_pdf_paths: Dict[str, str] = {}
@@ -576,11 +476,9 @@ def pass2_ocr_from_manifest(
 def cleanup_manifest_files(manifest: TwoPassManifest) -> None:
     """Удалить все временные файлы после обработки"""
     try:
-        import shutil
         crops_dir = manifest.crops_dir
         if os.path.exists(crops_dir):
             shutil.rmtree(crops_dir)
             logger.info(f"Удалена директория кропов: {crops_dir}")
     except Exception as e:
         logger.warning(f"Ошибка удаления кропов: {e}")
-

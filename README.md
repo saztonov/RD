@@ -112,7 +112,6 @@ RD/
 │   ├── models.py                  # Block, Document, Page
 │   ├── pdf_utils.py               # PyMuPDF
 │   ├── annotation_io.py           # JSON I/O
-│   ├── cropping.py                # Кропы блоков
 │   ├── r2_storage.py              # R2 Storage клиент (sync)
 │   └── ocr/
 │       ├── base.py                # OCRBackend абстракция

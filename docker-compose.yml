@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # 1. API СЕРВЕР (Легкий) — принимает задачи, кладёт в Redis
   web:
     build:
       context: .
@@ -24,7 +23,6 @@ services:
         max-size: "10m"
         max-file: "5"
 
-  # 2. ОЧЕРЕДЬ (Redis) — брокер сообщений
   redis:
     image: redis:alpine
     restart: always
@@ -32,7 +30,6 @@ services:
       - redis_data:/data
     mem_limit: 256m
 
-  # 3. WORKER (Тяжелый) — Celery, обрабатывает OCR задачи
   worker:
     build:
       context: .
@@ -43,8 +40,6 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
-      - MAX_CONCURRENT_JOBS=1
-      - MAX_GLOBAL_OCR_REQUESTS=2
     depends_on:
       - redis
     restart: always
@@ -61,3 +56,4 @@ services:
 
 volumes:
   redis_data:
+

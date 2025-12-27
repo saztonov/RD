@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QInputDialog, QMessageBox, QFileDialog, QDialog, QTreeWidgetItem
 from PySide6.QtGui import QColor
@@ -11,6 +11,8 @@ from PySide6.QtCore import Qt
 
 from app.tree_client import TreeNode, NodeType, NodeStatus
 from app.gui.file_transfer_worker import FileTransferWorker, TransferTask, TransferType
+from app.gui.tree_cache_ops import TreeCacheOperationsMixin
+from app.gui.tree_folder_ops import TreeFolderOperationsMixin
 
 if TYPE_CHECKING:
     pass
@@ -33,7 +35,7 @@ STATUS_COLORS = {
 }
 
 
-class TreeNodeOperationsMixin:
+class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixin):
     """Миксин для CRUD операций с узлами дерева"""
     
     def _check_name_unique(self, parent_id: str, name: str, exclude_node_id: str = None) -> bool:
@@ -96,7 +98,6 @@ class TreeNodeOperationsMixin:
     
     def _get_user_role(self):
         """Получить Qt.UserRole"""
-        from PySide6.QtCore import Qt
         return Qt.UserRole
     
     def _close_if_open(self, r2_key: str):
@@ -311,7 +312,6 @@ class TreeNodeOperationsMixin:
     
     def _set_document_version(self, node: TreeNode, version: int):
         """Установить версию документа"""
-        from PySide6.QtCore import Qt
         try:
             self.client.update_node(node.id, version=version)
             node.version = version
@@ -352,374 +352,3 @@ class TreeNodeOperationsMixin:
                         del self._node_map[node.id]
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
-    
-    def _delete_branch_files(self, node: TreeNode):
-        """Рекурсивно удалить все файлы документов в ветке из R2 и кэша"""
-        from app.gui.folder_settings_dialog import get_projects_dir
-        import shutil
-        
-        # Сначала рекурсивно обрабатываем дочерние узлы (чтобы закрыть файлы)
-        try:
-            children = self.client.get_children(node.id)
-            for child in children:
-                self._delete_branch_files(child)
-        except Exception as e:
-            logger.error(f"Failed to get children for deletion: {e}")
-        
-        # Если это документ - удаляем его файлы
-        if node.node_type == NodeType.DOCUMENT:
-            self._delete_document_files(node)
-        
-        # Если это task_folder - удаляем всю папку из R2 и кэша
-        if node.node_type == NodeType.TASK_FOLDER:
-            # Удаляем папку из R2
-            try:
-                from rd_core.r2_storage import R2Storage
-                r2 = R2Storage()
-                r2_prefix = f"tree_docs/{node.id}/"
-                deleted = r2.delete_by_prefix(r2_prefix)
-                if deleted:
-                    logger.info(f"Deleted {deleted} files from R2 folder: {r2_prefix}")
-            except Exception as e:
-                logger.error(f"Failed to delete R2 folder: {e}")
-            
-            # Удаляем папку из локального кэша
-            projects_dir = get_projects_dir()
-            if projects_dir:
-                cache_folder = Path(projects_dir) / "cache" / node.id
-                if cache_folder.exists():
-                    try:
-                        shutil.rmtree(cache_folder)
-                        logger.info(f"Deleted cache folder: {cache_folder}")
-                    except Exception as e:
-                        logger.error(f"Failed to delete cache folder: {e}")
-    
-    def _delete_document_files(self, node: TreeNode):
-        """Удалить файлы документа из R2, локального кэша и БД"""
-        from rd_core.r2_storage import R2Storage
-        from app.gui.folder_settings_dialog import get_projects_dir
-        from app.gui.file_operations import get_annotation_r2_key
-        from pathlib import PurePosixPath
-        import shutil
-        
-        r2_key = node.attributes.get("r2_key", "")
-        
-        # Закрываем файл если он открыт в редакторе
-        self._close_if_open(r2_key)
-        
-        projects_dir = get_projects_dir()
-        
-        # Сначала удаляем все файлы из node_files из R2
-        if node.id:
-            try:
-                r2 = R2Storage()
-                node_files = self.client.get_node_files(node.id)
-                for nf in node_files:
-                    # Удаляем файл из R2
-                    if nf.r2_key:
-                        r2.delete_object(nf.r2_key)
-                        logger.info(f"Deleted node_file from R2: {nf.r2_key}")
-                        
-                        # Удаляем из локального кэша
-                        if projects_dir:
-                            if nf.r2_key.startswith("tree_docs/"):
-                                rel = nf.r2_key[len("tree_docs/"):]
-                            else:
-                                rel = nf.r2_key
-                            cache_path = Path(projects_dir) / "cache" / rel
-                            if cache_path.exists():
-                                cache_path.unlink()
-                                logger.debug(f"Deleted from cache: {cache_path}")
-                    
-                    # Удаляем запись из БД
-                    self.client.delete_node_file(nf.id)
-                    logger.info(f"Deleted node_file from DB: {nf.id}")
-            except Exception as e:
-                logger.error(f"Failed to delete node_files: {e}")
-        
-        # Удаляем из R2: PDF, аннотацию и папку crops
-        if r2_key:
-            try:
-                r2 = R2Storage()
-                
-                # Удаляем PDF
-                r2.delete_object(r2_key)
-                logger.info(f"Deleted from R2: {r2_key}")
-                
-                # Удаляем аннотацию
-                ann_r2_key = get_annotation_r2_key(r2_key)
-                r2.delete_object(ann_r2_key)
-                logger.info(f"Deleted annotation from R2: {ann_r2_key}")
-                
-                # Удаляем папку crops по префиксу
-                r2_prefix = str(PurePosixPath(r2_key).parent)
-                pdf_stem = Path(r2_key).stem
-                crops_prefix = f"{r2_prefix}/crops/{pdf_stem}/"
-                deleted_crops = r2.delete_by_prefix(crops_prefix)
-                if deleted_crops:
-                    logger.info(f"Deleted {deleted_crops} crops from R2")
-                
-                # Удаляем MD файл
-                md_key = f"{r2_prefix}/{pdf_stem}.md"
-                r2.delete_object(md_key)
-                
-            except Exception as e:
-                logger.error(f"Failed to delete from R2: {e}")
-        
-        # Удаляем из локального кэша
-        if projects_dir and r2_key:
-            if r2_key.startswith("tree_docs/"):
-                rel_path = r2_key[len("tree_docs/"):]
-            else:
-                rel_path = r2_key
-            
-            cache_file = Path(projects_dir) / "cache" / rel_path
-            pdf_stem = cache_file.stem
-            
-            # Удаляем PDF
-            if cache_file.exists():
-                try:
-                    cache_file.unlink()
-                    logger.info(f"Deleted from cache: {cache_file}")
-                except Exception as e:
-                    logger.error(f"Failed to delete from cache: {e}")
-            
-            # Удаляем аннотацию
-            ann_cache_file = cache_file.parent / f"{pdf_stem}_annotation.json"
-            if ann_cache_file.exists():
-                try:
-                    ann_cache_file.unlink()
-                    logger.info(f"Deleted annotation from cache: {ann_cache_file}")
-                except Exception as e:
-                    logger.error(f"Failed to delete annotation from cache: {e}")
-            
-            # Удаляем MD файл
-            md_cache_file = cache_file.parent / f"{pdf_stem}.md"
-            if md_cache_file.exists():
-                try:
-                    md_cache_file.unlink()
-                    logger.info(f"Deleted MD from cache: {md_cache_file}")
-                except Exception as e:
-                    logger.error(f"Failed to delete MD from cache: {e}")
-            
-            # Удаляем папку crops
-            crops_folder = cache_file.parent / "crops" / pdf_stem
-            if crops_folder.exists():
-                try:
-                    shutil.rmtree(crops_folder, ignore_errors=True)
-                    logger.info(f"Deleted crops folder from cache: {crops_folder}")
-                except Exception as e:
-                    logger.error(f"Failed to delete crops folder: {e}")
-            
-            # Удаляем пустую родительскую папку
-            if cache_file.parent.exists() and not any(cache_file.parent.iterdir()):
-                try:
-                    cache_file.parent.rmdir()
-                except Exception as e:
-                    logger.error(f"Failed to delete empty cache folder: {e}")
-    
-    def _copy_to_cache(self, src_path: str, r2_key: str):
-        """Скопировать загружаемый файл в локальный кэш"""
-        from app.gui.folder_settings_dialog import get_projects_dir
-        import shutil
-        
-        projects_dir = get_projects_dir()
-        if not projects_dir:
-            return
-        
-        if r2_key.startswith("tree_docs/"):
-            rel_path = r2_key[len("tree_docs/"):]
-        else:
-            rel_path = r2_key
-        
-        cache_path = Path(projects_dir) / "cache" / rel_path
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        try:
-            shutil.copy2(src_path, cache_path)
-            logger.debug(f"Copied to cache: {cache_path}")
-        except Exception as e:
-            logger.error(f"Failed to copy to cache: {e}")
-    
-    def _rename_cache_file(self, old_r2_key: str, new_r2_key: str):
-        """Переименовать файл в локальном кэше"""
-        from app.gui.folder_settings_dialog import get_projects_dir
-        
-        projects_dir = get_projects_dir()
-        if not projects_dir:
-            return
-        
-        # Формируем пути
-        def get_cache_path(r2_key: str) -> Path:
-            if r2_key.startswith("tree_docs/"):
-                rel_path = r2_key[len("tree_docs/"):]
-            else:
-                rel_path = r2_key
-            return Path(projects_dir) / "cache" / rel_path
-        
-        old_cache = get_cache_path(old_r2_key)
-        new_cache = get_cache_path(new_r2_key)
-        
-        if old_cache.exists():
-            try:
-                new_cache.parent.mkdir(parents=True, exist_ok=True)
-                old_cache.rename(new_cache)
-                logger.info(f"Renamed in cache: {old_cache} -> {new_cache}")
-            except Exception as e:
-                logger.error(f"Failed to rename in cache: {e}")
-    
-    def _open_document_folder(self, node: TreeNode):
-        """Открыть папку документа в проводнике (скачать с R2 если нет локально)"""
-        import subprocess
-        import sys
-        from app.gui.folder_settings_dialog import get_projects_dir
-        from rd_core.r2_storage import R2Storage
-        from pathlib import PurePosixPath
-        
-        r2_key = node.attributes.get("r2_key", "")
-        if not r2_key:
-            QMessageBox.warning(self, "Ошибка", "R2 ключ файла не найден")
-            return
-        
-        projects_dir = get_projects_dir()
-        if not projects_dir:
-            QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
-            return
-        
-        # Определяем локальную папку (parent от PDF файла)
-        if r2_key.startswith("tree_docs/"):
-            rel_path = r2_key[len("tree_docs/"):]
-        else:
-            rel_path = r2_key
-        
-        local_file = Path(projects_dir) / "cache" / rel_path
-        local_folder = local_file.parent
-        local_folder.mkdir(parents=True, exist_ok=True)
-        
-        # Скачиваем только PDF, аннотацию и MD (без кропов)
-        self.status_label.setText("Скачивание файлов с R2...")
-        try:
-            r2 = R2Storage()
-            r2_prefix = str(PurePosixPath(r2_key).parent)
-            pdf_stem = Path(r2_key).stem
-            
-            # Список файлов для скачивания: PDF, annotation, MD
-            files_to_download = [
-                (r2_key, local_file),  # PDF
-                (f"{r2_prefix}/{pdf_stem}_annotation.json", local_folder / f"{pdf_stem}_annotation.json"),
-                (f"{r2_prefix}/{pdf_stem}.md", local_folder / f"{pdf_stem}.md"),
-            ]
-            
-            downloaded = 0
-            for remote_key, local_path in files_to_download:
-                if not local_path.exists():
-                    if r2.exists(remote_key):
-                        if r2.download_file(remote_key, str(local_path)):
-                            downloaded += 1
-            
-            self.status_label.setText(f"Скачано файлов: {downloaded}")
-            logger.info(f"Downloaded {downloaded} files for document: {r2_key}")
-            
-        except Exception as e:
-            logger.error(f"Failed to download files from R2: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файлы:\n{e}")
-            return
-        
-        # Открываем папку в проводнике
-        try:
-            if sys.platform == "win32":
-                subprocess.run(["explorer", str(local_folder)], check=False)
-            elif sys.platform == "darwin":
-                subprocess.run(["open", str(local_folder)], check=False)
-            else:
-                subprocess.run(["xdg-open", str(local_folder)], check=False)
-            
-            self.status_label.setText(f"📂 {local_folder.name}")
-        except Exception as e:
-            logger.error(f"Failed to open folder: {e}")
-            QMessageBox.warning(self, "Ошибка", f"Не удалось открыть папку:\n{e}")
-    
-    def _remove_stamps_from_document(self, node: TreeNode):
-        """Удалить рамки и QR-коды из PDF документа (скачать из R2, обработать, загрузить обратно)"""
-        from rd_core.r2_storage import R2Storage
-        from rd_core.pdf_stamp_remover import remove_stamps_from_pdf
-        from app.gui.folder_settings_dialog import get_projects_dir
-        
-        r2_key = node.attributes.get("r2_key", "")
-        if not r2_key:
-            QMessageBox.warning(self, "Ошибка", "R2 ключ файла не найден")
-            return
-        
-        try:
-            r2 = R2Storage()
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка R2", f"Не удалось подключиться к R2:\n{e}")
-            return
-        
-        # Скачиваем в папку проектов (с учётом структуры папок)
-        projects_dir = get_projects_dir()
-        if not projects_dir:
-            QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
-            return
-        
-        # Сохраняем структуру папок из R2
-        if r2_key.startswith("tree_docs/"):
-            rel_path = r2_key[len("tree_docs/"):]
-        else:
-            rel_path = r2_key
-        
-        local_path = Path(projects_dir) / "cache" / rel_path
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Закрываем файл если открыт в редакторе
-        self._close_if_open(r2_key)
-        
-        # Если файл уже есть локально - используем его, иначе скачиваем
-        if not local_path.exists():
-            if not r2.download_file(r2_key, str(local_path)):
-                QMessageBox.critical(self, "Ошибка", f"Не удалось скачать файл из R2:\n{r2_key}")
-                return
-        
-        output_path = local_path.parent / f"{local_path.stem}_clean{local_path.suffix}"
-        success, result = remove_stamps_from_pdf(str(local_path), str(output_path))
-        
-        if not success:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось обработать файл:\n{result}")
-            return
-        
-        # Загружаем обработанный файл в R2
-        parent_item = self._node_map.get(node.id)
-        parent = parent_item.parent() if parent_item else None
-        parent_node = parent.data(0, self._get_user_role()) if parent else None
-        
-        if not isinstance(parent_node, TreeNode):
-            QMessageBox.warning(self, "Ошибка", "Не найден родительский узел")
-            return
-        
-        new_r2_key = f"tree_docs/{parent_node.id}/{output_path.name}"
-        
-        # Проверка уникальности имени в папке
-        if not self._check_name_unique(parent_node.id, output_path.name):
-            QMessageBox.warning(self, "Ошибка", f"Файл с именем '{output_path.name}' уже существует в этой папке")
-            return
-        
-        if not r2.upload_file(str(output_path), new_r2_key):
-            QMessageBox.critical(self, "Ошибка", "Не удалось загрузить обработанный файл в R2")
-            return
-        
-        try:
-            doc_node = self.client.add_document(
-                parent_id=parent_node.id,
-                name=output_path.name,
-                r2_key=new_r2_key,
-                file_size=output_path.stat().st_size,
-            )
-            child_item = self._create_tree_item(doc_node)
-            parent.addChild(child_item)
-            logger.info(f"Clean document added: {doc_node.id} with r2_key={new_r2_key}")
-            
-            QMessageBox.information(self, "Готово", f"Рамки удалены.\nФайл: {output_path.name}")
-        except Exception as e:
-            logger.exception(f"Error adding clean document: {e}")
-            QMessageBox.warning(self, "Внимание", f"Файл загружен в R2, но не добавлен в дерево:\n{e}")
-
