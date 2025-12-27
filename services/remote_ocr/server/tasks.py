@@ -498,7 +498,18 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
         md_project_name = job.node_id if job.node_id else job.id
     
     result_json_path = work_dir / "result.json"
-    generate_structured_markdown(pages, str(result_json_path), project_name=md_project_name, doc_name=pdf_path.name)
+    
+    # Используем исходный annotation (blocks.json) для группировки по BLOCK_ID
+    source_annotation_path = work_dir / "blocks.json"
+    annotation_arg = str(source_annotation_path) if source_annotation_path.exists() else None
+    
+    generate_structured_markdown(
+        pages, 
+        str(result_json_path), 
+        project_name=md_project_name, 
+        doc_name=pdf_path.name,
+        annotation_path=annotation_arg
+    )
     
     annotation_path = work_dir / "annotation.json"
     doc = Document(pdf_path=pdf_path.name, pages=pages)
