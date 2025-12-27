@@ -127,6 +127,63 @@ def postprocess_ocr_result(ocr_result: Dict[str, Any], annotation_block_ids: Set
     return ocr_result
 
 
+def extract_html_from_ocr_result(ocr_text: str, annotation_block_ids: Set[str]) -> str:
+    """Извлекает HTML из OCR результата TEXT блока"""
+    if not ocr_text:
+        return ""
+    
+    text = ocr_text.strip()
+    if not text:
+        return ""
+    
+    try:
+        parsed = json_module.loads(text)
+        if not isinstance(parsed, dict):
+            return text
+        
+        # Постобработка: группировка по BLOCK_ID
+        if annotation_block_ids:
+            parsed = postprocess_ocr_result(parsed, annotation_block_ids)
+        
+        # Извлекаем HTML из children
+        children = parsed.get("children", [])
+        html_parts = []
+        for child in children:
+            if isinstance(child, dict):
+                html = child.get("html", "")
+                if html:
+                    html_parts.append(html)
+        
+        if html_parts:
+            return "\n".join(html_parts)
+        
+        # Fallback: raw_text
+        return parsed.get("raw_text", text)
+        
+    except json_module.JSONDecodeError:
+        return text
+
+
+def extract_analysis_from_ocr_result(ocr_text: str) -> Dict[str, Any]:
+    """Извлекает analysis из OCR результата IMAGE блока"""
+    if not ocr_text:
+        return {}
+    
+    text = ocr_text.strip()
+    if not text:
+        return {}
+    
+    try:
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            parsed = json_module.loads(json_match.group(0))
+            if isinstance(parsed, dict):
+                return parsed
+        return {}
+    except json_module.JSONDecodeError:
+        return {}
+
+
 def generate_structured_json(
     pages: List, 
     output_path: str, 
@@ -135,7 +192,7 @@ def generate_structured_json(
     annotation_path: str = None
 ) -> str:
     """
-    Генерация JSON документа из размеченных блоков с учетом типов
+    Генерация JSON документа в формате annotation.json с добавленным html/analysis
     
     Args:
         pages: список Page объектов с блоками
@@ -164,85 +221,88 @@ def generate_structured_json(
             annotation_block_ids = extract_block_ids_from_annotation(annotation_path)
             logger.info(f"Загружено {len(annotation_block_ids)} block_id из annotation.json")
         
-        all_blocks = []
+        # Формируем результат в формате annotation.json
+        result_pages = []
+        
         for page in pages:
-            for block in page.blocks:
-                all_blocks.append((page.page_number, block))
-        
-        logger.info(f"generate_structured_json: всего блоков: {len(all_blocks)}")
-        
-        all_blocks.sort(key=lambda x: (x[0], x[1].coords_px[1]))
-        
-        result_blocks = []
-        skipped_no_ocr = 0
-        
-        for page_num, block in all_blocks:
-            if not block.ocr_text:
-                skipped_no_ocr += 1
-                logger.debug(f"Блок {block.id} пропущен: ocr_text={block.ocr_text!r}")
-                continue
+            page_blocks = []
             
-            text = block.ocr_text.strip()
-            if not text:
-                continue
-            
-            block_data = {
-                "block_id": block.id,
-                "block_type": block.block_type.value,
-                "page": page_num + 1 if page_num is not None else None,
-                "coords_px": list(block.coords_px),
-                "coords_norm": list(block.coords_norm),
-            }
-            
-            if block.block_type == BlockType.IMAGE:
-                image_uri = ""
-                mime_type = "image/png"
-                if block.image_file:
-                    crop_filename = Path(block.image_file).name
-                    image_uri = f"{r2_public_url}/tree_docs/{project_name}/crops/{crop_filename}"
-                    ext = Path(block.image_file).suffix.lower()
-                    if ext == ".pdf":
-                        mime_type = "application/pdf"
-                    elif ext in (".jpg", ".jpeg"):
-                        mime_type = "image/jpeg"
-                
-                block_data["image"] = {
-                    "uri": image_uri,
-                    "mime_type": mime_type
+            for block in sorted(page.blocks, key=lambda b: b.coords_px[1]):
+                # Базовая структура блока как в annotation.json
+                block_data = {
+                    "id": block.id,
+                    "page_index": block.page_index,
+                    "coords_px": list(block.coords_px),
+                    "coords_norm": list(block.coords_norm),
+                    "block_type": block.block_type.value,
+                    "source": block.source.value,
+                    "shape_type": block.shape_type.value,
+                    "image_file": block.image_file,
+                    "ocr_text": block.ocr_text
                 }
-                block_data["operator_hint"] = block.hint or ""
-                block_data["raw_pdfplumber_text"] = block.pdfplumber_text or ""
                 
-                # Парсим OCR результат как JSON если возможно
-                try:
-                    json_match = re.search(r'\{[\s\S]*\}', text)
-                    if json_match:
-                        block_data["ocr_result"] = json_module.loads(json_match.group(0))
-                    else:
-                        block_data["ocr_result"] = {"raw_text": text}
-                except json_module.JSONDecodeError:
-                    block_data["ocr_result"] = {"raw_text": text}
+                # Добавляем polygon_points если есть
+                if block.polygon_points:
+                    block_data["polygon_points"] = [list(p) for p in block.polygon_points]
+                
+                # Добавляем prompt если есть
+                if block.prompt:
+                    block_data["prompt"] = block.prompt
+                
+                # Добавляем hint если есть
+                if block.hint:
+                    block_data["hint"] = block.hint
+                
+                # Добавляем pdfplumber_text если есть
+                if block.pdfplumber_text:
+                    block_data["pdfplumber_text"] = block.pdfplumber_text
+                
+                # Добавляем linked_block_id если есть
+                if block.linked_block_id:
+                    block_data["linked_block_id"] = block.linked_block_id
+                
+                # Добавляем распознанный контент
+                if block.block_type == BlockType.TEXT:
+                    html = extract_html_from_ocr_result(block.ocr_text, annotation_block_ids)
+                    if html:
+                        block_data["html"] = html
+                
+                elif block.block_type == BlockType.IMAGE:
+                    # Добавляем image URI
+                    if block.image_file:
+                        crop_filename = Path(block.image_file).name
+                        image_uri = f"{r2_public_url}/tree_docs/{project_name}/crops/{crop_filename}"
+                        ext = Path(block.image_file).suffix.lower()
+                        mime_type = "image/png"
+                        if ext == ".pdf":
+                            mime_type = "application/pdf"
+                        elif ext in (".jpg", ".jpeg"):
+                            mime_type = "image/jpeg"
+                        block_data["image"] = {
+                            "uri": image_uri,
+                            "mime_type": mime_type
+                        }
+                    
+                    # Добавляем analysis из OCR результата
+                    analysis = extract_analysis_from_ocr_result(block.ocr_text)
+                    if analysis:
+                        block_data["analysis"] = analysis
+                
+                page_blocks.append(block_data)
             
-            elif block.block_type == BlockType.TEXT:
-                # Парсим OCR результат как JSON если возможно
-                try:
-                    parsed = json_module.loads(text)
-                    # Постобработка: группировка по BLOCK_ID если есть annotation
-                    if annotation_block_ids and isinstance(parsed, dict):
-                        parsed = postprocess_ocr_result(parsed, annotation_block_ids)
-                    block_data["ocr_result"] = parsed
-                except json_module.JSONDecodeError:
-                    block_data["ocr_result"] = {"raw_text": text}
-            
-            result_blocks.append(block_data)
-        
-        logger.info(f"generate_structured_json: обработано {len(result_blocks)} блоков, пропущено без OCR: {skipped_no_ocr}")
+            result_pages.append({
+                "page_number": page.page_number,
+                "width": page.width,
+                "height": page.height,
+                "blocks": page_blocks
+            })
         
         result = {
-            "doc_name": doc_name or "",
-            "project_name": project_name,
-            "blocks": result_blocks
+            "pdf_path": doc_name or "",
+            "pages": result_pages
         }
+        
+        logger.info(f"generate_structured_json: {len(result_pages)} страниц, {sum(len(p['blocks']) for p in result_pages)} блоков")
         
         with open(output_file, "w", encoding="utf-8") as f:
             json_module.dump(result, f, ensure_ascii=False, indent=2)
