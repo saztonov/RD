@@ -48,7 +48,13 @@ class R2Storage(R2UploadMixin, R2DownloadMixin, R2UtilsMixin):
         logger.info("Инициализация R2Storage...")
         
         # Получаем credentials из ENV
+        account_id = os.getenv("R2_ACCOUNT_ID")
         self.endpoint_url = os.getenv("R2_ENDPOINT_URL")
+        
+        # Конструируем endpoint_url из account_id если не задан напрямую
+        if not self.endpoint_url and account_id:
+            self.endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+        
         self.access_key = os.getenv("R2_ACCESS_KEY_ID")
         self.secret_key = os.getenv("R2_SECRET_ACCESS_KEY")
         self.bucket_name = os.getenv("R2_BUCKET_NAME")
@@ -56,7 +62,7 @@ class R2Storage(R2UploadMixin, R2DownloadMixin, R2UtilsMixin):
         if not all([self.endpoint_url, self.access_key, self.secret_key, self.bucket_name]):
             raise ValueError(
                 "Не все R2 переменные окружения заданы: "
-                "R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME"
+                "R2_ENDPOINT_URL (или R2_ACCOUNT_ID), R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME"
             )
         
         logger.info(f"R2 Endpoint: {self.endpoint_url}")

@@ -6,6 +6,10 @@
 import sys
 import logging
 from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv()  # Загрузка .env до импорта остальных модулей
+
 from PySide6.QtWidgets import QApplication
 from app.gui.main_window import MainWindow
 
