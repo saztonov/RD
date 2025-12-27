@@ -96,7 +96,6 @@ class BlockRenderingMixin:
         """Получить цвет для типа блока"""
         colors = {
             BlockType.TEXT: QColor(0, 255, 0),
-            BlockType.TABLE: QColor(0, 0, 255),
             BlockType.IMAGE: QColor(255, 140, 0),
         }
         return colors.get(block_type, QColor(128, 128, 128))

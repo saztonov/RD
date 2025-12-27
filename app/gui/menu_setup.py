@@ -206,12 +206,6 @@ class MenuSetupMixin:
         self.block_type_group.addAction(self.text_action)
         toolbar.addAction(self.text_action)
         
-        self.table_action = QAction("📊 Таблица", self)
-        self.table_action.setCheckable(True)
-        self.table_action.setData(BlockType.TABLE)
-        self.block_type_group.addAction(self.table_action)
-        toolbar.addAction(self.table_action)
-        
         self.image_action = QAction("🖼️ Картинка", self)
         self.image_action.setCheckable(True)
         self.image_action.setData(BlockType.IMAGE)

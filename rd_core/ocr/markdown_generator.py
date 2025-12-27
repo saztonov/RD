@@ -128,9 +128,6 @@ def generate_structured_markdown(
                 json_str = json_module.dumps(final_json, ensure_ascii=False, indent=2)
                 markdown_parts.append(f"```json\n{json_str}\n```\n\n")
             
-            elif block.block_type == BlockType.TABLE:
-                markdown_parts.append(f"{text}\n\n")
-                
             elif block.block_type == BlockType.TEXT:
                 markdown_parts.append(f"{text}\n\n")
         

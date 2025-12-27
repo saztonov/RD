@@ -10,9 +10,8 @@ from enum import Enum
 
 
 class BlockType(Enum):
-    """Типы блоков разметки (3 основных типа)"""
+    """Типы блоков разметки (2 типа: текст и картинка)"""
     TEXT = "text"
-    TABLE = "table"
     IMAGE = "image"
 
 
@@ -38,7 +37,7 @@ class Block:
         page_index: индекс страницы (начиная с 0)
         coords_px: координаты в пикселях (x1, y1, x2, y2) на отрендеренном изображении
         coords_norm: нормализованные координаты (0..1) относительно ширины/высоты
-        block_type: тип блока (TEXT/TABLE/IMAGE)
+        block_type: тип блока (TEXT/IMAGE)
         source: источник создания (USER/AUTO)
         shape_type: тип формы (RECTANGLE/POLYGON)
         polygon_points: координаты вершин полигона [(x1,y1), (x2,y2), ...] для POLYGON
@@ -47,7 +46,7 @@ class Block:
         prompt: промпт для OCR (dict с ключами system/user)
         hint: подсказка пользователя для IMAGE блока (описание содержимого)
         pdfplumber_text: сырой текст извлечённый pdfplumber для блока
-        linked_block_id: ID связанного блока (для IMAGE+TEXT или IMAGE+TABLE)
+        linked_block_id: ID связанного блока (для IMAGE+TEXT)
     """
     id: str
     page_index: int
@@ -226,10 +225,15 @@ class Block:
     def from_dict(cls, data: dict) -> 'Block':
         """Десериализация из словаря"""
         # Безопасное получение block_type с fallback на TEXT
-        try:
-            block_type = BlockType(data["block_type"])
-        except ValueError:
-            block_type = BlockType.TEXT  # Fallback для неизвестных типов
+        # TABLE конвертируется в TEXT для обратной совместимости
+        raw_type = data["block_type"]
+        if raw_type == "table":
+            block_type = BlockType.TEXT
+        else:
+            try:
+                block_type = BlockType(raw_type)
+            except ValueError:
+                block_type = BlockType.TEXT
         
         # Безопасное получение shape_type с fallback на RECTANGLE
         try:
