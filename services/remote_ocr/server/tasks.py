@@ -68,10 +68,6 @@ def run_ocr_task(self, job_id: str) -> dict:
         with open(blocks_path, "r", encoding="utf-8") as f:
             blocks_data = json.load(f)
         
-        # Если blocks_data это строка - распарсить ещё раз (двойная сериализация)
-        if isinstance(blocks_data, str):
-            blocks_data = json.loads(blocks_data)
-        
         if not blocks_data:
             update_job_status(job.id, "done", progress=1.0)
             create_empty_result(job, work_dir, pdf_path)
@@ -502,18 +498,7 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
         md_project_name = job.node_id if job.node_id else job.id
     
     result_json_path = work_dir / "result.json"
-    
-    # Используем исходный annotation (blocks.json) для группировки по BLOCK_ID
-    source_annotation_path = work_dir / "blocks.json"
-    annotation_arg = str(source_annotation_path) if source_annotation_path.exists() else None
-    
-    generate_structured_markdown(
-        pages, 
-        str(result_json_path), 
-        project_name=md_project_name, 
-        doc_name=pdf_path.name,
-        annotation_path=annotation_arg
-    )
+    generate_structured_markdown(pages, str(result_json_path), project_name=md_project_name, doc_name=pdf_path.name)
     
     annotation_path = work_dir / "annotation.json"
     doc = Document(pdf_path=pdf_path.name, pages=pages)
