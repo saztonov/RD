@@ -1,4 +1,4 @@
-"""Генератор структурированного Markdown из OCR результатов"""
+"""Генератор структурированного JSON из OCR результатов"""
 import logging
 import os
 import re
@@ -9,43 +9,18 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 
-_DUP_BLOCK_ID_PAIR_RE = re.compile(
-    r'(?im)^(?P<drop>\s*\[\[\[BLOCK_ID:\s*(?P<id>[a-f0-9\-]{36})\s*\]\]\]\s*)\r?\n'
-    r'(?:[ \t]*\r?\n)*'
-    r'(?P<keep>\s*\[{2,3}\s*BLOCK\\?_ID\s*:\s*(?P=id)\s*\]{2,3}\s*)'
-    r'(?P<nl>\r?\n)?'
-)
-
-
-def _remove_upper_duplicate_block_ids(markdown: str) -> str:
-    """
-    Удалить дубликат вида:
-      [[[BLOCK_ID: uuid]]]
-
-      [[BLOCK\\_ID: uuid]]
-    Оставляя нижний (OCR) вариант.
-    """
-    return _DUP_BLOCK_ID_PAIR_RE.sub(
-        lambda m: m.group("keep") + (m.group("nl") or ""),
-        markdown,
-    )
-
-
-def generate_structured_markdown(
+def generate_structured_json(
     pages: List, 
     output_path: str, 
-    images_dir: str = "images", 
     project_name: str = None, 
     doc_name: str = None
 ) -> str:
     """
-    Генерация markdown документа из размеченных блоков с учетом типов
-    Блоки выводятся последовательно без разделения по страницам
+    Генерация JSON документа из размеченных блоков с учетом типов
     
     Args:
         pages: список Page объектов с блоками
-        output_path: путь для сохранения markdown файла
-        images_dir: имя директории для изображений (относительно output_path)
+        output_path: путь для сохранения JSON файла
         project_name: имя проекта для формирования ссылки на R2
         doc_name: имя документа PDF
     
@@ -70,7 +45,7 @@ def generate_structured_markdown(
         
         all_blocks.sort(key=lambda x: (x[0], x[1].coords_px[1]))
         
-        markdown_parts = []
+        result_blocks = []
         
         for page_num, block in all_blocks:
             if not block.ocr_text:
@@ -80,30 +55,19 @@ def generate_structured_markdown(
             if not text:
                 continue
             
-            text = re.sub(r'\n{3,}', '\n\n', text)
+            block_data = {
+                "block_id": block.id,
+                "block_type": block.block_type.value,
+                "page": page_num + 1 if page_num is not None else None,
+                "coords_px": list(block.coords_px),
+                "coords_norm": list(block.coords_norm),
+            }
             
-            # IMAGE блоки: добавляем разделитель (они не на полосе, OCR не содержит разделителя)
-            # TEXT/TABLE: разделители уже есть в OCR тексте с изображения полосы
             if block.block_type == BlockType.IMAGE:
-                block_separator = f"[[[BLOCK_ID: {block.id}]]]\n\n"
-                markdown_parts.append(block_separator)
-            
-            if block.block_type == BlockType.IMAGE:
-                analysis = None
-                try:
-                    json_match = re.search(r'\{[\s\S]*\}', text)
-                    if json_match:
-                        analysis = json_module.loads(json_match.group(0))
-                    else:
-                        analysis = {"raw_text": text}
-                except json_module.JSONDecodeError:
-                    analysis = {"raw_text": text}
-                
                 image_uri = ""
                 mime_type = "image/png"
                 if block.image_file:
                     crop_filename = Path(block.image_file).name
-                    # project_name - это node_id для tree_docs
                     image_uri = f"{r2_public_url}/tree_docs/{project_name}/crops/{crop_filename}"
                     ext = Path(block.image_file).suffix.lower()
                     if ext == ".pdf":
@@ -111,34 +75,49 @@ def generate_structured_markdown(
                     elif ext in (".jpg", ".jpeg"):
                         mime_type = "image/jpeg"
                 
-                final_json = {
-                    "doc_metadata": {
-                        "doc_name": doc_name or "",
-                        "page": page_num + 1 if page_num is not None else None,
-                        "operator_hint": block.hint or ""
-                    },
-                    "image": {
-                        "uri": image_uri,
-                        "mime_type": mime_type
-                    },
-                    "raw_pdfplumber_text": block.pdfplumber_text or "",
-                    "analysis": analysis
+                block_data["image"] = {
+                    "uri": image_uri,
+                    "mime_type": mime_type
                 }
+                block_data["operator_hint"] = block.hint or ""
+                block_data["raw_pdfplumber_text"] = block.pdfplumber_text or ""
                 
-                json_str = json_module.dumps(final_json, ensure_ascii=False, indent=2)
-                markdown_parts.append(f"```json\n{json_str}\n```\n\n")
+                # Парсим OCR результат как JSON если возможно
+                try:
+                    json_match = re.search(r'\{[\s\S]*\}', text)
+                    if json_match:
+                        block_data["ocr_result"] = json_module.loads(json_match.group(0))
+                    else:
+                        block_data["ocr_result"] = {"raw_text": text}
+                except json_module.JSONDecodeError:
+                    block_data["ocr_result"] = {"raw_text": text}
             
             elif block.block_type == BlockType.TEXT:
-                markdown_parts.append(f"{text}\n\n")
+                # Парсим OCR результат как JSON если возможно
+                try:
+                    parsed = json_module.loads(text)
+                    block_data["ocr_result"] = parsed
+                except json_module.JSONDecodeError:
+                    block_data["ocr_result"] = {"raw_text": text}
+            
+            result_blocks.append(block_data)
         
-        full_markdown = "".join(markdown_parts)
-        full_markdown = _remove_upper_duplicate_block_ids(full_markdown)
-        output_file.write_text(full_markdown, encoding='utf-8')
+        result = {
+            "doc_name": doc_name or "",
+            "project_name": project_name,
+            "blocks": result_blocks
+        }
         
-        logger.info(f"Структурированный markdown документ сохранен: {output_file}")
+        with open(output_file, "w", encoding="utf-8") as f:
+            json_module.dump(result, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Структурированный JSON документ сохранен: {output_file}")
         return str(output_file)
         
     except Exception as e:
-        logger.error(f"Ошибка генерации структурированного markdown: {e}", exc_info=True)
+        logger.error(f"Ошибка генерации структурированного JSON: {e}", exc_info=True)
         raise
 
+
+# Alias для обратной совместимости
+generate_structured_markdown = generate_structured_json

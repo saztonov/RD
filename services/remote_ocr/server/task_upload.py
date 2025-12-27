@@ -33,13 +33,13 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     
     doc_stem = Path(job.document_name).stem
     
-    # result.md (переименовываем по имени документа)
-    result_md_path = work_dir / "result.md"
-    if result_md_path.exists():
-        md_filename = f"{doc_stem}.md"
-        r2_key = f"{r2_prefix}/{md_filename}"
-        r2.upload_file(str(result_md_path), r2_key)
-        add_job_file(job.id, "result_md", r2_key, md_filename, result_md_path.stat().st_size)
+    # result.json (переименовываем по имени документа)
+    result_json_path = work_dir / "result.json"
+    if result_json_path.exists():
+        json_filename = f"{doc_stem}.json"
+        r2_key = f"{r2_prefix}/{json_filename}"
+        r2.upload_file(str(result_json_path), r2_key)
+        add_job_file(job.id, "result_json", r2_key, json_filename, result_json_path.stat().st_size)
     
     # annotation.json -> {doc_stem}_annotation.json (перезаписываем существующий)
     annotation_path = work_dir / "annotation.json"

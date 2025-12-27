@@ -79,11 +79,12 @@ def download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:
 
 def create_empty_result(job: Job, work_dir: Path, pdf_path: Path) -> None:
     """Создать пустой результат"""
-    result_md_path = work_dir / "result.md"
+    result_json_path = work_dir / "result.json"
     annotation_path = work_dir / "annotation.json"
     
-    with open(result_md_path, "w", encoding="utf-8") as f:
-        f.write("# OCR Results\n\nNo blocks to process.\n")
+    import json as json_module
+    with open(result_json_path, "w", encoding="utf-8") as f:
+        json_module.dump({"doc_name": pdf_path.name, "project_name": "", "blocks": []}, f, ensure_ascii=False, indent=2)
     
     with open(annotation_path, "w", encoding="utf-8") as f:
         from rd_core.models import Document

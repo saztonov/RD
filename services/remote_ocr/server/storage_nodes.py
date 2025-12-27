@@ -91,13 +91,13 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
     
     doc_stem = Path(doc_name).stem
     
-    # result.md (переименован по имени документа)
-    result_md = work_path / "result.md"
-    if result_md.exists():
-        md_filename = f"{doc_stem}.md"
+    # result.json (переименован по имени документа)
+    result_json = work_path / "result.json"
+    if result_json.exists():
+        json_filename = f"{doc_stem}.json"
         add_node_file(
-            node_id, "result_md", f"{tree_prefix}/{md_filename}",
-            md_filename, result_md.stat().st_size, "text/markdown"
+            node_id, "result_json", f"{tree_prefix}/{json_filename}",
+            json_filename, result_json.stat().st_size, "application/json"
         )
         registered += 1
     

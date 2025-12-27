@@ -488,8 +488,8 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
     else:
         md_project_name = job.node_id if job.node_id else job.id
     
-    result_md_path = work_dir / "result.md"
-    generate_structured_markdown(pages, str(result_md_path), project_name=md_project_name, doc_name=pdf_path.name)
+    result_json_path = work_dir / "result.json"
+    generate_structured_markdown(pages, str(result_json_path), project_name=md_project_name, doc_name=pdf_path.name)
     
     annotation_path = work_dir / "annotation.json"
     doc = Document(pdf_path=pdf_path.name, pages=pages)

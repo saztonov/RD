@@ -67,13 +67,13 @@ class DownloadMixin:
             # Используем result_prefix из API (папка где лежит PDF)
             actual_prefix = job_details.get("result_prefix") or r2_prefix
             
-            # Скачиваем только MD файл (кропы не нужны)
+            # Скачиваем только JSON файл (кропы не нужны)
             files_to_download = [
-                (f"{doc_stem}.md", f"{pdf_stem}.md"),
+                (f"{doc_stem}.json", f"{pdf_stem}.json"),
             ]
             # Обратная совместимость: старый формат файла
-            if not r2.exists(f"{actual_prefix}/{doc_stem}.md"):
-                files_to_download[0] = ("result.md", f"{pdf_stem}.md")
+            if not r2.exists(f"{actual_prefix}/{doc_stem}.json"):
+                files_to_download[0] = ("result.json", f"{pdf_stem}.json")
             
             total_files = len(files_to_download)
             self._signals.download_started.emit(job_id, total_files)
