@@ -123,11 +123,13 @@ class BlockHandlersMixin:
         """Обработка выбора блока"""
         if not self.annotation_document:
             self._hide_hint_panel()
+            self._hide_ocr_preview()
             return
         
         current_page_data = self._get_or_create_page(self.current_page)
         if not current_page_data or not (0 <= block_idx < len(current_page_data.blocks)):
             self._hide_hint_panel()
+            self._hide_ocr_preview()
             return
         
         block = current_page_data.blocks[block_idx]
@@ -137,6 +139,9 @@ class BlockHandlersMixin:
             self._show_hint_panel(block)
         else:
             self._hide_hint_panel()
+        
+        # Показываем OCR preview для выбранного блока
+        self._show_ocr_preview(block.id)
         
         self.blocks_tree_manager.select_block_in_tree(block_idx)
     
@@ -157,6 +162,24 @@ class BlockHandlersMixin:
             self.hint_edit.clear()
             self.hint_edit.blockSignals(False)
             self.hint_group.setEnabled(False)
+    
+    def _show_ocr_preview(self, block_id: str):
+        """Показать OCR preview для блока"""
+        if hasattr(self, 'ocr_preview') and self.ocr_preview:
+            self.ocr_preview.show_block(block_id)
+    
+    def _hide_ocr_preview(self):
+        """Скрыть OCR preview"""
+        if hasattr(self, 'ocr_preview') and self.ocr_preview:
+            self.ocr_preview.clear()
+    
+    def _load_ocr_result_file(self):
+        """Загрузить _result.json для текущего PDF"""
+        if hasattr(self, 'ocr_preview') and self.ocr_preview:
+            pdf_path = getattr(self, '_current_pdf_path', None)
+            r2_key = getattr(self, '_current_r2_key', None)
+            if pdf_path:
+                self.ocr_preview.load_result_file(pdf_path, r2_key)
     
     def _on_blocks_selected(self, block_indices: list):
         """Обработка множественного выбора блоков"""
@@ -325,6 +348,9 @@ class BlockHandlersMixin:
                 self._show_hint_panel(block)
             else:
                 self._hide_hint_panel()
+            
+            # Показываем OCR preview
+            self._show_ocr_preview(block.id)
     
     
     def _clear_current_page(self):

@@ -158,6 +158,10 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
         self._render_current_page()
         self._update_ui()
         
+        # Загружаем OCR result file для preview
+        if hasattr(self, '_load_ocr_result_file'):
+            self._load_ocr_result_file()
+        
         # Обновляем заголовок
         self.setWindowTitle(f"PDF Annotation Tool - {Path(pdf_path).name}")
     

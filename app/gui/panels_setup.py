@@ -15,10 +15,12 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QDockWidget,
     QToolButton,
+    QSplitter,
 )
 from PySide6.QtCore import Qt, QSize
 from app.gui.page_viewer import PageViewer
 from app.gui.project_tree_widget import ProjectTreeWidget
+from app.gui.ocr_preview_widget import OcrPreviewWidget
 
 
 class PanelsSetupMixin:
@@ -105,6 +107,13 @@ class PanelsSetupMixin:
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(4, 4, 4, 4)
         
+        # Splitter для разделения дерева блоков и OCR preview
+        main_splitter = QSplitter(Qt.Vertical)
+        
+        # Верхняя часть: дерево блоков
+        blocks_container = QWidget()
+        blocks_layout = QVBoxLayout(blocks_container)
+        blocks_layout.setContentsMargins(0, 0, 0, 0)
         
         # Кнопки перемещения блоков
         move_buttons_layout = QHBoxLayout()
@@ -116,7 +125,7 @@ class PanelsSetupMixin:
         self.move_block_down_btn.clicked.connect(self._move_block_down)
         move_buttons_layout.addWidget(self.move_block_down_btn)
         
-        layout.addLayout(move_buttons_layout)
+        blocks_layout.addLayout(move_buttons_layout)
         
         self.blocks_tabs = QTabWidget()
         
@@ -133,7 +142,7 @@ class PanelsSetupMixin:
         self.blocks_tree.installEventFilter(self)
         self.blocks_tabs.addTab(self.blocks_tree, "Страница")
         
-        layout.addWidget(self.blocks_tabs)
+        blocks_layout.addWidget(self.blocks_tabs)
         
         # Подсказка для IMAGE блока
         self.hint_group = QGroupBox("Подсказка (IMAGE)")
@@ -147,7 +156,18 @@ class PanelsSetupMixin:
         
         self.hint_group.setEnabled(False)
         self._selected_image_block = None
-        layout.addWidget(self.hint_group)
+        blocks_layout.addWidget(self.hint_group)
+        
+        main_splitter.addWidget(blocks_container)
+        
+        # Нижняя часть: OCR Preview
+        self.ocr_preview = OcrPreviewWidget()
+        main_splitter.addWidget(self.ocr_preview)
+        
+        # Соотношение размеров: 40% дерево, 60% preview
+        main_splitter.setSizes([200, 300])
+        
+        layout.addWidget(main_splitter)
         
         return widget
     

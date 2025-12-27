@@ -416,6 +416,10 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
             if updated_count > 0:
                 self.main_window._auto_save_annotation()
             
+            # Перезагружаем OCR result file для preview
+            if hasattr(self.main_window, '_load_ocr_result_file'):
+                self.main_window._load_ocr_result_file()
+            
             logger.info(f"OCR результаты применены: {updated_count} блоков обновлено")
         except Exception as e:
             logger.error(f"Ошибка применения OCR результатов: {e}")

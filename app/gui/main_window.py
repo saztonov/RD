@@ -248,6 +248,9 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         # Сбросить подсветку документа в дереве
         if hasattr(self, 'project_tree_widget'):
             self.project_tree_widget.highlight_document("")
+        # Очистить OCR preview
+        if hasattr(self, 'ocr_preview') and self.ocr_preview:
+            self.ocr_preview.clear()
         self._update_ui()
     
     def _save_settings(self):
