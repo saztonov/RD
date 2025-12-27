@@ -51,6 +51,22 @@ class JobDetailsDialog(QDialog):
         
         main_layout.addRow("ID задачи:", job_id_layout)
         
+        # ID папки на R2 (извлекаем из r2_prefix)
+        r2_prefix = self.job_details.get("r2_prefix", "")
+        if r2_prefix:
+            folder_id = r2_prefix.rstrip("/").split("/")[-1]
+            folder_id_layout = QHBoxLayout()
+            folder_id_label = QLabel(folder_id)
+            folder_id_layout.addWidget(folder_id_label, 1)
+            
+            copy_folder_btn = QPushButton("📋")
+            copy_folder_btn.setMaximumWidth(30)
+            copy_folder_btn.setToolTip("Скопировать ID папки в буфер обмена")
+            copy_folder_btn.clicked.connect(lambda: self._copy_to_clipboard(folder_id))
+            folder_id_layout.addWidget(copy_folder_btn)
+            
+            main_layout.addRow("ID папки:", folder_id_layout)
+        
         # Документ
         doc_name = self.job_details.get("document_name", "")
         main_layout.addRow("Документ:", QLabel(doc_name))

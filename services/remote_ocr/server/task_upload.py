@@ -5,7 +5,7 @@ import logging
 import shutil
 from pathlib import Path
 
-from .storage import Job, add_job_file, get_node_pdf_r2_key
+from .storage import Job, add_job_file, delete_job_files, get_node_pdf_r2_key
 from .task_helpers import get_r2_storage
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,8 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     # annotation.json -> {doc_stem}_annotation.json (перезаписываем существующий)
     annotation_path = work_dir / "annotation.json"
     if annotation_path.exists():
+        # Удаляем старый blocks файл чтобы не дублировать annotation
+        delete_job_files(job.id, ["blocks"])
         annotation_filename = f"{doc_stem}_annotation.json"
         r2_key = f"{r2_prefix}/{annotation_filename}"
         r2.upload_file(str(annotation_path), r2_key)
