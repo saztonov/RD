@@ -9,6 +9,41 @@ from typing import List
 logger = logging.getLogger(__name__)
 
 
+_BLOCK_SEPARATOR_LINE_RE = re.compile(
+    r'^\s*\[{2,3}\s*BLOCK\\?_ID\s*:\s*([a-f0-9\-]{36})\s*\]{2,3}\s*$',
+    re.IGNORECASE,
+)
+
+
+def _normalize_leading_block_separators(text: str, block_id: str) -> str:
+    """
+    OCR иногда дублирует разделитель в начале блока (например, [[[BLOCK_ID...]]] + [[BLOCK\\_ID...]]).
+    Для TEXT/TABLE оставляем ровно один канонический разделитель в начале.
+    """
+    lines = text.splitlines()
+    i = 0
+    found_sep = False
+
+    # Пропускаем пустые строки и "похожие на разделитель" строки в начале
+    while i < len(lines):
+        s = lines[i].strip()
+        if not s:
+            i += 1
+            continue
+        if _BLOCK_SEPARATOR_LINE_RE.match(s):
+            found_sep = True
+            i += 1
+            continue
+        break
+
+    if not found_sep:
+        return text
+
+    rest = "\n".join(lines[i:]).lstrip()
+    canonical = f"[[[BLOCK_ID: {block_id}]]]"
+    return canonical if not rest else f"{canonical}\n\n{rest}"
+
+
 def generate_structured_markdown(
     pages: List, 
     output_path: str, 
@@ -59,6 +94,10 @@ def generate_structured_markdown(
                 continue
             
             text = re.sub(r'\n{3,}', '\n\n', text)
+
+            # TEXT/TABLE: OCR уже содержит разделители (на полосе), но иногда дублирует их.
+            if block.block_type in (BlockType.TEXT, BlockType.TABLE):
+                text = _normalize_leading_block_separators(text, block.id)
             
             # IMAGE блоки: добавляем разделитель (они не на полосе, OCR не содержит разделителя)
             # TEXT/TABLE: разделители уже есть в OCR тексте с изображения полосы
