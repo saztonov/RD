@@ -18,7 +18,7 @@ def extract_block_ids_from_annotation(annotation_path: str) -> Set[str]:
         block_ids = set()
         
         # Формат 1: Document формат с pages.blocks
-        if "pages" in data:
+        if isinstance(data, dict) and "pages" in data:
             for page in data.get("pages", []):
                 for block in page.get("blocks", []):
                     if block.get("id"):
@@ -36,132 +36,85 @@ def extract_block_ids_from_annotation(annotation_path: str) -> Set[str]:
         return set()
 
 
-def split_children_by_block_id(
-    children: List[Dict[str, Any]], 
-    annotation_block_ids: Set[str]
-) -> List[Dict[str, Any]]:
+def extract_html_by_block_id(ocr_text: str, annotation_block_ids: Set[str]) -> Dict[str, str]:
     """
-    Разделяет children по паттернам [[BLOCK_ID: uuid]].
-    Элементы между маркерами группируются в один блок.
+    Извлекает HTML для каждого BLOCK_ID из OCR результата.
+    Возвращает словарь {block_id: html}
     """
-    block_id_pattern = re.compile(r'\[\[BLOCK_ID:\s*([a-f0-9-]+)\]\]', re.IGNORECASE)
-    
-    result_blocks = []
-    current_block_id = None
-    current_elements = []
-    
-    def flush_current_block():
-        nonlocal current_elements, current_block_id
-        if current_elements and current_block_id:
-            # Собираем HTML всех элементов
-            combined_html = ""
-            for elem in current_elements:
-                html = elem.get("html", "")
-                # Удаляем маркеры BLOCK_ID из HTML
-                html = block_id_pattern.sub("", html)
-                # Убираем пустые <p></p> от маркеров
-                html = re.sub(r'<p>\s*</p>', '', html)
-                combined_html += html
-            
-            if combined_html.strip():
-                result_blocks.append({
-                    "id": current_block_id,
-                    "block_type": "UserBlock",
-                    "html": combined_html.strip()
-                })
-        current_elements = []
-        current_block_id = None
-    
-    for child in children:
-        # Обрабатываем Page элемент рекурсивно
-        if child.get("block_type") == "Page":
-            page_children = child.get("children", [])
-            if page_children:
-                nested_result = split_children_by_block_id(page_children, annotation_block_ids)
-                if nested_result:
-                    result_blocks.extend(nested_result)
-            continue
-        
-        html = child.get("html", "")
-        match = block_id_pattern.search(html)
-        
-        if match:
-            found_id = match.group(1)
-            if found_id in annotation_block_ids:
-                # Нашли новый маркированный блок - сохраняем предыдущий
-                flush_current_block()
-                current_block_id = found_id
-                current_elements.append(child)
-            else:
-                # ID не в annotation - просто добавляем к текущему
-                if current_block_id:
-                    current_elements.append(child)
-        else:
-            # Нет маркера - добавляем к текущему блоку
-            if current_block_id:
-                current_elements.append(child)
-    
-    # Сохраняем последний блок
-    flush_current_block()
-    
-    return result_blocks
-
-
-def postprocess_ocr_result(ocr_result: Dict[str, Any], annotation_block_ids: Set[str]) -> Dict[str, Any]:
-    """
-    Постобработка ocr_result: группировка children по BLOCK_ID.
-    Оставляет только block_type и html.
-    """
-    if not ocr_result or not isinstance(ocr_result, dict):
-        return ocr_result
-    
-    children = ocr_result.get("children", [])
-    if not children:
-        return ocr_result
-    
-    new_children = split_children_by_block_id(children, annotation_block_ids)
-    
-    if new_children:
-        return {"children": new_children}
-    
-    return ocr_result
-
-
-def extract_html_from_ocr_result(ocr_text: str, annotation_block_ids: Set[str]) -> str:
-    """Извлекает HTML из OCR результата TEXT блока"""
     if not ocr_text:
-        return ""
+        return {}
     
     text = ocr_text.strip()
     if not text:
-        return ""
+        return {}
+    
+    block_id_pattern = re.compile(r'\[\[BLOCK_ID:\s*([a-f0-9-]+)\]\]', re.IGNORECASE)
     
     try:
         parsed = json_module.loads(text)
         if not isinstance(parsed, dict):
-            return text
+            return {}
         
-        # Постобработка: группировка по BLOCK_ID
-        if annotation_block_ids:
-            parsed = postprocess_ocr_result(parsed, annotation_block_ids)
-        
-        # Извлекаем HTML из children
         children = parsed.get("children", [])
-        html_parts = []
+        if not children:
+            return {}
+        
+        # Собираем все children из Page если есть
+        all_elements = []
         for child in children:
-            if isinstance(child, dict):
-                html = child.get("html", "")
-                if html:
-                    html_parts.append(html)
+            if child.get("block_type") == "Page":
+                page_children = child.get("children", [])
+                all_elements.extend(page_children)
+            else:
+                all_elements.append(child)
         
-        if html_parts:
-            return "\n".join(html_parts)
+        # Группируем элементы по BLOCK_ID
+        result = {}
+        current_block_id = None
+        current_html_parts = []
         
-        # Fallback: raw_text
-        return parsed.get("raw_text", text)
+        for elem in all_elements:
+            html = elem.get("html", "")
+            if not html:
+                continue
+            
+            match = block_id_pattern.search(html)
+            if match:
+                found_id = match.group(1)
+                if found_id in annotation_block_ids:
+                    # Сохраняем предыдущий блок
+                    if current_block_id and current_html_parts:
+                        combined = "".join(current_html_parts)
+                        # Очищаем маркеры
+                        combined = block_id_pattern.sub("", combined)
+                        combined = re.sub(r'<p>\s*</p>', '', combined)
+                        if combined.strip():
+                            result[current_block_id] = combined.strip()
+                    
+                    # Начинаем новый блок
+                    current_block_id = found_id
+                    current_html_parts = [html]
+                else:
+                    # Маркер не в annotation - добавляем к текущему
+                    if current_block_id:
+                        current_html_parts.append(html)
+            else:
+                # Нет маркера - добавляем к текущему блоку
+                if current_block_id:
+                    current_html_parts.append(html)
+        
+        # Сохраняем последний блок
+        if current_block_id and current_html_parts:
+            combined = "".join(current_html_parts)
+            combined = block_id_pattern.sub("", combined)
+            combined = re.sub(r'<p>\s*</p>', '', combined)
+            if combined.strip():
+                result[current_block_id] = combined.strip()
+        
+        return result
         
     except json_module.JSONDecodeError:
-        return text
+        return {}
 
 
 def extract_analysis_from_ocr_result(ocr_text: str) -> Dict[str, Any]:
@@ -221,6 +174,16 @@ def generate_structured_json(
             annotation_block_ids = extract_block_ids_from_annotation(annotation_path)
             logger.info(f"Загружено {len(annotation_block_ids)} block_id из annotation.json")
         
+        # Собираем HTML для каждого BLOCK_ID из всех OCR результатов
+        html_by_block_id: Dict[str, str] = {}
+        for page in pages:
+            for block in page.blocks:
+                if block.ocr_text and block.block_type == BlockType.TEXT:
+                    extracted = extract_html_by_block_id(block.ocr_text, annotation_block_ids)
+                    html_by_block_id.update(extracted)
+        
+        logger.info(f"Извлечено HTML для {len(html_by_block_id)} блоков")
+        
         # Формируем результат в формате annotation.json
         result_pages = []
         
@@ -263,9 +226,9 @@ def generate_structured_json(
                 
                 # Добавляем распознанный контент
                 if block.block_type == BlockType.TEXT:
-                    html = extract_html_from_ocr_result(block.ocr_text, annotation_block_ids)
-                    if html:
-                        block_data["html"] = html
+                    # Берём HTML из собранного маппинга по block_id
+                    if block.id in html_by_block_id:
+                        block_data["html"] = html_by_block_id[block.id]
                 
                 elif block.block_type == BlockType.IMAGE:
                     # Добавляем image URI
