@@ -67,9 +67,10 @@ class DownloadMixin:
             # Используем result_prefix из API (папка где лежит PDF)
             actual_prefix = job_details.get("result_prefix") or r2_prefix
             
-            # Скачиваем только JSON файл (кропы не нужны)
+            # Скачиваем JSON файлы (кропы не нужны)
             files_to_download = [
                 (f"{doc_stem}.json", f"{pdf_stem}.json"),
+                (f"{doc_stem}_result.json", f"{pdf_stem}_result.json"),
             ]
             # Обратная совместимость: старый формат файла
             if not r2.exists(f"{actual_prefix}/{doc_stem}.json"):
@@ -85,7 +86,13 @@ class DownloadMixin:
                 self._signals.download_progress.emit(job_id, current, local_name)
                 remote_key = f"{actual_prefix}/{remote_name}"
                 local_path = extract_path / local_name
-                r2.download_file(remote_key, str(local_path))
+                try:
+                    if r2.exists(remote_key):
+                        r2.download_file(remote_key, str(local_path))
+                    else:
+                        logger.debug(f"Файл не существует в R2: {remote_key}")
+                except Exception as e:
+                    logger.warning(f"Не удалось скачать {remote_key}: {e}")
             
             logger.info(f"✅ Результат скачан в папку документа: {extract_dir}")
             self._signals.download_finished.emit(job_id, extract_dir)

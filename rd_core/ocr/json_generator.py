@@ -146,19 +146,77 @@ def _extract_all_html_from_ocr_result(ocr_result: Any) -> str:
     return "".join(html_parts)
 
 
-def _parse_html_by_block_ids(ocr_json_data: Dict) -> Dict[str, str]:
+def _fuzzy_uuid_match(ocr_uuid: str, known_uuids: List[str], threshold: float = 0.85) -> Optional[str]:
+    """
+    Нечёткое сравнение UUID с учётом возможных OCR-искажений.
+    
+    Args:
+        ocr_uuid: UUID извлечённый из OCR (может содержать ошибки)
+        known_uuids: список известных правильных UUID из annotation
+        threshold: минимальный процент совпадения (0.85 = 85%)
+    
+    Returns:
+        Наиболее подходящий UUID или None
+    """
+    if not ocr_uuid or not known_uuids:
+        return None
+    
+    # Нормализуем OCR UUID (убираем пробелы, приводим к нижнему регистру)
+    ocr_clean = ocr_uuid.strip().lower().replace(" ", "")
+    
+    # Точное совпадение
+    for known in known_uuids:
+        if ocr_clean == known.lower():
+            return known
+    
+    # Нечёткое сравнение - считаем совпадающие символы на тех же позициях
+    best_match = None
+    best_score = 0.0
+    
+    for known in known_uuids:
+        known_lower = known.lower()
+        
+        # Сравниваем посимвольно
+        min_len = min(len(ocr_clean), len(known_lower))
+        max_len = max(len(ocr_clean), len(known_lower))
+        
+        if max_len == 0:
+            continue
+        
+        matches = sum(1 for i in range(min_len) if ocr_clean[i] == known_lower[i])
+        score = matches / max_len
+        
+        if score > best_score:
+            best_score = score
+            best_match = known
+    
+    if best_score >= threshold:
+        logger.debug(f"Fuzzy UUID match: '{ocr_uuid}' -> '{best_match}' (score: {best_score:.2%})")
+        return best_match
+    
+    return None
+
+
+def _parse_html_by_block_ids(ocr_json_data: Dict, known_block_ids: List[str] = None) -> Dict[str, str]:
     """
     Парсит итоговый JSON и группирует HTML по BLOCK_ID.
     
     Находит паттерны [[BLOCK_ID: uuid]] в HTML и группирует контент
-    от одного паттерна до следующего.
+    от одного паттерна до следующего. Использует нечёткое сравнение
+    для учёта OCR-искажений в UUID.
+    
+    Args:
+        ocr_json_data: данные из итогового OCR JSON
+        known_block_ids: список известных правильных UUID из annotation
     
     Returns:
         Dict[block_id, html_content]
     """
     block_html_map: Dict[str, str] = {}
-    block_id_pattern = re.compile(r'\[\[BLOCK_ID:\s*([a-f0-9\-]+)\]\]', re.IGNORECASE)
+    # Более гибкий паттерн для искажённых UUID
+    block_id_pattern = re.compile(r'\[\[BLOCK_ID:\s*([a-f0-9\-]{30,40})\]\]', re.IGNORECASE)
     
+    known_ids = known_block_ids or []
     blocks = ocr_json_data.get("blocks", [])
     
     for block in blocks:
@@ -178,13 +236,27 @@ def _parse_html_by_block_ids(ocr_json_data: Dict) -> Dict[str, str]:
             # Нет паттернов - весь HTML привязываем к block_id из блока
             block_id = block.get("block_id")
             if block_id:
-                block_html_map[block_id] = full_html
+                if block_id in block_html_map:
+                    block_html_map[block_id] += "\n" + full_html
+                else:
+                    block_html_map[block_id] = full_html
             continue
         
         # Группируем HTML по паттернам
         for i, match in enumerate(matches):
-            block_id = match.group(1)
-            start_pos = match.start()
+            ocr_block_id = match.group(1)
+            
+            # Нечёткое сравнение UUID если есть известные ID
+            if known_ids:
+                matched_id = _fuzzy_uuid_match(ocr_block_id, known_ids)
+                if matched_id:
+                    block_id = matched_id
+                else:
+                    # Если не нашли совпадение, используем как есть
+                    block_id = ocr_block_id
+                    logger.warning(f"BLOCK_ID '{ocr_block_id}' не найден среди известных блоков")
+            else:
+                block_id = ocr_block_id
             
             # Конец = начало следующего паттерна или конец строки
             if i + 1 < len(matches):
@@ -235,8 +307,18 @@ def generate_grouped_result_json(
         with open(annotation_json_path, "r", encoding="utf-8") as f:
             annotation_data = json_module.load(f)
         
-        # Парсим HTML по BLOCK_ID
-        block_html_map = _parse_html_by_block_ids(ocr_data)
+        # Собираем известные block_ids из annotation для нечёткого сравнения
+        known_block_ids = []
+        for page in annotation_data.get("pages", []):
+            for block in page.get("blocks", []):
+                block_id = block.get("id")
+                if block_id:
+                    known_block_ids.append(block_id)
+        
+        logger.info(f"generate_grouped_result_json: известно {len(known_block_ids)} блоков из annotation")
+        
+        # Парсим HTML по BLOCK_ID с нечётким сравнением
+        block_html_map = _parse_html_by_block_ids(ocr_data, known_block_ids)
         logger.info(f"generate_grouped_result_json: найдено {len(block_html_map)} блоков с HTML")
         
         # Формируем результат на основе annotation
