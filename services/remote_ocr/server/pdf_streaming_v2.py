@@ -312,7 +312,8 @@ def _group_and_merge_strips(
             try:
                 # Извлекаем block_ids для разделителей
                 block_ids = [b[0] for b in current_strip_blocks]
-                merged = merge_crops_vertically(crops, gap, block_ids=block_ids)
+                part_idxs = [b[2] for b in current_strip_blocks]
+                merged = merge_crops_vertically(crops, gap, block_ids=block_ids, part_idxs=part_idxs)
                 merged.save(strip_path, "PNG", compress_level=compress_level)
                 merged.close()
             except Exception as e:

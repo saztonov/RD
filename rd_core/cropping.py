@@ -203,7 +203,8 @@ def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARA
 def merge_crops_vertically(
     crops: List[Image.Image], 
     gap: int = 20,
-    block_ids: Optional[List[str]] = None
+    block_ids: Optional[List[str]] = None,
+    part_idxs: Optional[List[int]] = None,
 ) -> Image.Image:
     """
     Объединить кропы вертикально с опциональными разделителями block_id.
@@ -221,18 +222,27 @@ def merge_crops_vertically(
         raise ValueError("Список кропов пуст")
     
     use_separators = block_ids is not None and len(block_ids) == len(crops)
+    use_part_idxs = part_idxs is not None and len(part_idxs) == len(crops)
     max_width = max(c.width for c in crops)
     
     # Считаем количество уникальных переходов между блоками
     if use_separators:
         separator_count = 0
+        sequence_count = 0
         prev_id = None
-        for bid in block_ids:
+        for i, bid in enumerate(block_ids):
             if bid != prev_id:
-                separator_count += 1
+                sequence_count += 1
+                # Не вставляем разделитель в начале strip, если это продолжение блока (part_idx > 0)
+                if not (i == 0 and use_part_idxs and (part_idxs[i] or 0) > 0):
+                    separator_count += 1
                 prev_id = bid
         separator_height = BLOCK_SEPARATOR_HEIGHT
-        total_height = sum(c.height for c in crops) + separator_height * separator_count + gap * (len(crops) - separator_count)
+        total_height = (
+            sum(c.height for c in crops)
+            + separator_height * separator_count
+            + gap * (len(crops) - sequence_count)
+        )
     else:
         total_height = sum(c.height for c in crops) + gap * (len(crops) - 1)
     
@@ -243,15 +253,19 @@ def merge_crops_vertically(
     for i, crop in enumerate(crops):
         if use_separators:
             current_block_id = block_ids[i]
-            if current_block_id != prev_block_id:
-                # Новый блок - вставляем разделитель
-                separator = create_block_separator(current_block_id, max_width)
-                merged.paste(separator, (0, y_offset))
-                y_offset += separator.height
-                prev_block_id = current_block_id
-            elif i > 0:
+            if current_block_id == prev_block_id and i > 0:
                 # Часть того же блока - только gap
                 y_offset += gap
+            elif current_block_id != prev_block_id:
+                # Новый блок (или продолжение блока в начале strip)
+                insert_sep = True
+                if i == 0 and use_part_idxs and (part_idxs[i] or 0) > 0:
+                    insert_sep = False
+                if insert_sep:
+                    separator = create_block_separator(current_block_id, max_width)
+                    merged.paste(separator, (0, y_offset))
+                    y_offset += separator.height
+                prev_block_id = current_block_id
         elif i > 0:
             y_offset += gap
         
@@ -380,7 +394,8 @@ def crop_and_merge_blocks_from_pdf(
             try:
                 # Извлекаем block_ids из block_parts для разделителей
                 block_ids = [bp.block.id for bp in strip.block_parts]
-                strip_images[strip.strip_id] = merge_crops_vertically(strip.crops, block_ids=block_ids)
+                part_idxs = [bp.part_idx for bp in strip.block_parts]
+                strip_images[strip.strip_id] = merge_crops_vertically(strip.crops, block_ids=block_ids, part_idxs=part_idxs)
             except Exception as e:
                 logger.error(f"Ошибка создания полосы {strip.strip_id}: {e}")
     
