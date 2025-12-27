@@ -68,6 +68,10 @@ def run_ocr_task(self, job_id: str) -> dict:
         with open(blocks_path, "r", encoding="utf-8") as f:
             blocks_data = json.load(f)
         
+        # Если blocks_data это строка - распарсить ещё раз (двойная сериализация)
+        if isinstance(blocks_data, str):
+            blocks_data = json.loads(blocks_data)
+        
         if not blocks_data:
             update_job_status(job.id, "done", progress=1.0)
             create_empty_result(job, work_dir, pdf_path)
