@@ -4,7 +4,6 @@
 
 from PySide6.QtWidgets import QLabel, QGraphicsOpacityEffect
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QPalette
 
 
 class Toast(QLabel):

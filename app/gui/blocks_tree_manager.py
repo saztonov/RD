@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QMenu, QInputDialog, QMessageBox
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
 from rd_core.models import BlockType, Block, BlockSource
 
 logger = logging.getLogger(__name__)

@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QToolButton,
 )
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon
 from app.gui.page_viewer import PageViewer
 from app.gui.project_tree_widget import ProjectTreeWidget
 
