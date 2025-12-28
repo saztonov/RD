@@ -174,15 +174,28 @@ class ContextMenuMixin:
                     group_name = block.group_name
                     break
         else:
-            # Запрашиваем название новой группы
-            from PySide6.QtWidgets import QInputDialog
-            name, ok = QInputDialog.getText(
-                main_window, "Новая группа", "Введите название группы:"
+            # Показываем немодальный диалог
+            from app.gui.group_name_dialog import GroupNameDialog
+            dialog = GroupNameDialog(
+                main_window, blocks_data,
+                lambda data, gid, name: self._apply_group_from_context(data, gid, name)
             )
-            if not ok or not name.strip():
-                return
-            group_name = name.strip()
-            group_id = str(uuid.uuid4())
+            dialog.show()
+            return
+        
+        self._apply_group_from_context(blocks_data, group_id, group_name)
+    
+    def _apply_group_from_context(self, blocks_data: list, group_id: str, group_name: str):
+        """Применить группировку к блокам из контекстного меню"""
+        main_window = self.parent().window()
+        if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:
+            return
+        
+        current_page = main_window.current_page
+        if current_page >= len(main_window.annotation_document.pages):
+            return
+        
+        page = main_window.annotation_document.pages[current_page]
         
         # Сохраняем состояние для undo
         if hasattr(main_window, '_save_undo_state'):

@@ -345,15 +345,19 @@ class BlocksTreeManager:
                 if group_name:
                     break
         else:
-            # Запрашиваем название новой группы
-            name, ok = QInputDialog.getText(
-                self.parent, "Новая группа", "Введите название группы:"
+            # Показываем немодальный диалог
+            from app.gui.group_name_dialog import GroupNameDialog
+            dialog = GroupNameDialog(
+                self.parent, blocks_data,
+                lambda data, gid, name: self._apply_group(data, gid, name)
             )
-            if not ok or not name.strip():
-                return
-            group_name = name.strip()
-            group_id = str(uuid.uuid4())
+            dialog.show()
+            return
         
+        self._apply_group(blocks_data, group_id, group_name)
+    
+    def _apply_group(self, blocks_data: list, group_id: str, group_name: str):
+        """Применить группировку к блокам"""
         # Сохраняем состояние для undo
         if hasattr(self.parent, '_save_undo_state'):
             self.parent._save_undo_state()

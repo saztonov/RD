@@ -718,15 +718,22 @@ class BlockHandlersMixin:
                     group_name = block.group_name
                     break
         else:
-            # Запрашиваем название новой группы
-            from PySide6.QtWidgets import QInputDialog
-            name, ok = QInputDialog.getText(
-                self, "Новая группа", "Введите название группы:"
+            # Показываем немодальный диалог
+            from app.gui.group_name_dialog import GroupNameDialog
+            dialog = GroupNameDialog(
+                self, list(selected_indices),
+                lambda data, gid, name: self._apply_group_to_blocks(data, gid, name)
             )
-            if not ok or not name.strip():
-                return
-            group_name = name.strip()
-            group_id = str(uuid.uuid4())
+            dialog.show()
+            return
+        
+        self._apply_group_to_blocks(list(selected_indices), group_id, group_name)
+    
+    def _apply_group_to_blocks(self, selected_indices: list, group_id: str, group_name: str):
+        """Применить группировку к блокам на текущей странице"""
+        current_page_data = self._get_or_create_page(self.current_page)
+        if not current_page_data:
+            return
         
         self._save_undo_state()
         
