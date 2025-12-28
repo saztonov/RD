@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize
 from app.gui.page_viewer import PageViewer
 from app.gui.project_tree_widget import ProjectTreeWidget
-from app.gui.ocr_preview_widget import OcrPreviewWidget
 
 
 class PanelsSetupMixin:
@@ -175,13 +174,6 @@ class PanelsSetupMixin:
         blocks_layout.addWidget(self.hint_group)
         
         main_splitter.addWidget(blocks_container)
-        
-        # Нижняя часть: OCR Preview
-        self.ocr_preview = OcrPreviewWidget()
-        main_splitter.addWidget(self.ocr_preview)
-        
-        # Соотношение размеров: 40% дерево, 60% preview
-        main_splitter.setSizes([200, 300])
         
         layout.addWidget(main_splitter)
         

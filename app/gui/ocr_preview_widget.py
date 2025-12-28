@@ -175,8 +175,14 @@ class OcrPreviewWidget(QWidget):
             self.html_edit.setEnabled(False)
             return
         
+        block_type = block_data.get("block_type", "text")
+        
         # Получаем HTML (ocr_html из result.json)
         html_content = block_data.get("ocr_html", "") or block_data.get("html", "")
+        
+        # Для IMAGE блоков: форматируем ocr_json если есть
+        if block_type == "image":
+            html_content = self._format_image_block(block_data, html_content)
         
         # Fallback: ocr_text если нет HTML
         if not html_content and block_data.get("ocr_text"):
@@ -201,6 +207,61 @@ class OcrPreviewWidget(QWidget):
         self.html_edit.setEnabled(True)
         
         self.title_label.setText(f"OCR: {block_id[:8]}...")
+    
+    def _format_image_block(self, block_data: dict, html_content: str) -> str:
+        """Форматировать IMAGE блок с ocr_json и crop_url."""
+        parts = []
+        
+        # Ссылка на кроп
+        crop_url = block_data.get("crop_url")
+        if crop_url:
+            parts.append(f'<p><a href="{crop_url}" target="_blank">📎 Открыть кроп</a></p>')
+        
+        # ocr_json от модели
+        ocr_json = block_data.get("ocr_json")
+        if ocr_json:
+            parts.append(self._format_ocr_json(ocr_json))
+        elif html_content:
+            parts.append(html_content)
+        elif block_data.get("ocr_text"):
+            parts.append(f"<pre>{block_data['ocr_text']}</pre>")
+        
+        return "\n".join(parts) if parts else html_content
+    
+    def _format_ocr_json(self, ocr_json: dict) -> str:
+        """Форматировать ocr_json в HTML."""
+        parts = []
+        
+        # Описание
+        if ocr_json.get("content_summary"):
+            parts.append(f"<p><b>Описание:</b> {ocr_json['content_summary']}</p>")
+        
+        if ocr_json.get("detailed_description"):
+            parts.append(f"<p>{ocr_json['detailed_description']}</p>")
+        
+        # Локация
+        loc = ocr_json.get("location", {})
+        if loc:
+            zone = loc.get("zone_name", "—")
+            grid = loc.get("grid_lines", "—")
+            parts.append(f"<p><b>Зона:</b> {zone} | <b>Оси:</b> {grid}</p>")
+        
+        # Ключевые сущности
+        entities = ocr_json.get("key_entities", [])
+        if entities:
+            entities_str = ", ".join(str(e) for e in entities[:15])
+            parts.append(f"<p><b>Сущности:</b> {entities_str}</p>")
+        
+        # Чистый OCR текст
+        if ocr_json.get("clean_ocr_text"):
+            parts.append(f"<pre>{ocr_json['clean_ocr_text']}</pre>")
+        
+        # Если ничего не распознали — показываем JSON как есть
+        if not parts:
+            import json as json_module
+            parts.append(f"<pre>{json_module.dumps(ocr_json, ensure_ascii=False, indent=2)}</pre>")
+        
+        return "\n".join(parts)
     
     def _format_analysis(self, analysis: dict) -> str:
         """Форматировать analysis в HTML"""

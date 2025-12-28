@@ -524,10 +524,10 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
     except Exception as e:
         logger.warning(f"Ошибка генерации HTML: {e}")
     
-    # Генерация result.json (annotation + ocr_html для каждого блока)
+    # Генерация result.json (annotation + ocr_html + crop_url для каждого блока)
     result_path = work_dir / "result.json"
     try:
-        merge_ocr_results(annotation_path, html_path, result_path)
+        merge_ocr_results(annotation_path, html_path, result_path, project_name=project_name)
     except Exception as e:
         logger.warning(f"Ошибка генерации result.json: {e}")
     

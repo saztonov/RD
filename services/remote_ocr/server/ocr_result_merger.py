@@ -185,10 +185,44 @@ def build_segments_from_html(
     return segments, meta
 
 
+def _parse_ocr_json(ocr_text: Optional[str]) -> Optional[dict]:
+    """Попытаться распарсить ocr_text как JSON."""
+    if not ocr_text:
+        return None
+    
+    text = ocr_text.strip()
+    if not text:
+        return None
+    
+    # Если начинается с { или [ — пробуем как JSON
+    if text.startswith('{') or text.startswith('['):
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+    
+    # Ищем JSON внутри markdown ```json ... ```
+    json_match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
+    if json_match:
+        try:
+            return json.loads(json_match.group(1))
+        except json.JSONDecodeError:
+            pass
+    
+    return None
+
+
+def _build_crop_url(block_id: str, r2_public_url: str, project_name: str) -> str:
+    """Сформировать URL кропа для блока."""
+    return f"{r2_public_url}/tree_docs/{project_name}/crops/{block_id}.pdf"
+
+
 def merge_ocr_results(
     annotation_path: Path,
     ocr_html_path: Path,
     output_path: Path,
+    project_name: Optional[str] = None,
+    r2_public_url: Optional[str] = None,
     score_cutoff: int = 92
 ) -> bool:
     """
@@ -196,11 +230,18 @@ def merge_ocr_results(
     
     Добавляет к каждому блоку:
     - ocr_html: HTML-фрагмент блока
+    - ocr_json: распарсенный JSON из ocr_text (для IMAGE блоков)
+    - crop_url: ссылка на кроп (для IMAGE блоков)
     - ocr_meta: {method, match_score, marker_text_sample}
     
     Returns:
         True если успешно, False при ошибке
     """
+    import os
+    
+    if not r2_public_url:
+        r2_public_url = os.getenv("R2_PUBLIC_URL", "https://rd1.svarovsky.ru")
+    
     try:
         if not annotation_path.exists():
             logger.warning(f"annotation.json не найден: {annotation_path}")
@@ -233,8 +274,27 @@ def merge_ocr_results(
         for page in result.get("pages", []):
             for blk in page.get("blocks", []):
                 bid = blk["id"]
+                block_type = blk.get("block_type", "text")
+                
+                # HTML фрагмент
                 blk["ocr_html"] = segments.get(bid, "")
                 blk["ocr_meta"] = meta.get(bid, {"method": [], "match_score": 0.0, "marker_text_sample": ""})
+                
+                # Для IMAGE блоков: парсим JSON из ocr_text и добавляем crop_url
+                if block_type == "image":
+                    ocr_text = blk.get("ocr_text", "")
+                    parsed_json = _parse_ocr_json(ocr_text)
+                    if parsed_json:
+                        blk["ocr_json"] = parsed_json
+                    
+                    # Добавляем ссылку на кроп
+                    if project_name:
+                        blk["crop_url"] = _build_crop_url(bid, r2_public_url, project_name)
+                    elif blk.get("image_file"):
+                        # Fallback: используем image_file если есть
+                        crop_name = Path(blk["image_file"]).name
+                        blk["crop_url"] = f"{r2_public_url}/crops/{crop_name}"
+                
                 if blk["ocr_html"]:
                     matched += 1
                 else:
