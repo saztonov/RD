@@ -41,7 +41,7 @@ class BlockRenderingMixin:
         color = self._get_block_color(block.block_type)
         pen = QPen(color, 2)
         
-        # Блоки в группе имеют фиолетовую рамку
+        # Блоки в группе имеют фиолетовую рамку, но заливка по типу блока
         if block.group_id:
             pen.setColor(QColor(138, 43, 226))  # BlueViolet
             pen.setWidth(3)
@@ -57,9 +57,8 @@ class BlockRenderingMixin:
         if idx == self.selected_block_idx:
             pen.setWidth(4)
         
-        # Цвет заливки: фиолетовый для групп, стандартный для остальных
-        fill_color = QColor(138, 43, 226, 25) if block.group_id else QColor(color.red(), color.green(), color.blue(), 30)
-        brush = QBrush(fill_color)
+        # Заливка всегда по типу блока (текст/картинка)
+        brush = QBrush(QColor(color.red(), color.green(), color.blue(), 30))
         
         if block.shape_type == ShapeType.POLYGON and block.polygon_points:
             polygon = QPolygonF([QPointF(x, y) for x, y in block.polygon_points])
