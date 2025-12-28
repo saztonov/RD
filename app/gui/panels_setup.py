@@ -142,6 +142,20 @@ class PanelsSetupMixin:
         self.blocks_tree.installEventFilter(self)
         self.blocks_tabs.addTab(self.blocks_tree, "Страница")
         
+        # Вкладка: Группы
+        self.groups_tree = QTreeWidget()
+        self.groups_tree.setHeaderLabels(["Группа", "Блоков"])
+        self.groups_tree.setColumnWidth(0, 180)
+        self.groups_tree.setSortingEnabled(False)
+        self.groups_tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.groups_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.groups_tree.customContextMenuRequested.connect(self._on_groups_tree_context_menu)
+        self.groups_tree.itemClicked.connect(self._on_groups_tree_clicked)
+        self.blocks_tabs.addTab(self.groups_tree, "Группы")
+        
+        # Переменная для выбранной группы
+        self.selected_group_id = None
+        
         blocks_layout.addWidget(self.blocks_tabs)
         
         # Подсказка для IMAGE блока

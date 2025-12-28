@@ -1,6 +1,7 @@
 """Mixin для контекстного меню в PageViewer"""
 from __future__ import annotations
 
+import uuid
 from PySide6.QtWidgets import QMenu
 
 from rd_core.models import BlockType, Block, BlockSource
@@ -48,6 +49,20 @@ class ContextMenuMixin:
                         action.triggered.connect(
                             lambda checked, b=block, target_type=bt: 
                             self._create_linked_block(b, target_type))
+        
+        menu.addSeparator()
+        
+        # Группировка блоков (если выбрано больше одного блока)
+        if len(selected_blocks) > 1:
+            group_action = menu.addAction("📦 Сгруппировать")
+            group_action.triggered.connect(lambda: self._group_blocks(selected_blocks))
+        
+        # Добавить в выбранную группу (если есть выбранная группа)
+        main_window = self.parent().window()
+        if hasattr(main_window, 'selected_group_id') and main_window.selected_group_id:
+            add_to_group_action = menu.addAction(f"➕ Добавить в группу {main_window.selected_group_id[:8]}...")
+            add_to_group_action.triggered.connect(
+                lambda: self._add_blocks_to_group(selected_blocks, main_window.selected_group_id))
         
         menu.addSeparator()
         
@@ -135,6 +150,82 @@ class ContextMenuMixin:
         main_window._render_current_page()
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
+    
+    def _group_blocks(self, blocks_data: list):
+        """Сгруппировать блоки"""
+        main_window = self.parent().window()
+        if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:
+            return
+        
+        current_page = main_window.current_page
+        if current_page >= len(main_window.annotation_document.pages):
+            return
+        
+        page = main_window.annotation_document.pages[current_page]
+        
+        # Проверяем, есть ли выбранная группа
+        group_id = getattr(main_window, 'selected_group_id', None)
+        if not group_id:
+            # Создаём новую группу
+            group_id = str(uuid.uuid4())
+        
+        # Сохраняем состояние для undo
+        if hasattr(main_window, '_save_undo_state'):
+            main_window._save_undo_state()
+        
+        # Применяем group_id ко всем выбранным блокам
+        for data in blocks_data:
+            block_idx = data["idx"]
+            if block_idx < len(page.blocks):
+                page.blocks[block_idx].group_id = group_id
+        
+        # Обновляем UI
+        main_window._render_current_page()
+        if hasattr(main_window, 'blocks_tree_manager'):
+            main_window.blocks_tree_manager.update_blocks_tree()
+        if hasattr(main_window, '_update_groups_tree'):
+            main_window._update_groups_tree()
+        if hasattr(main_window, '_auto_save_annotation'):
+            main_window._auto_save_annotation()
+        
+        # Уведомление
+        from app.gui.toast import show_toast
+        show_toast(main_window, f"Блоки сгруппированы ({len(blocks_data)} шт.)")
+    
+    def _add_blocks_to_group(self, blocks_data: list, group_id: str):
+        """Добавить блоки в существующую группу"""
+        main_window = self.parent().window()
+        if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:
+            return
+        
+        current_page = main_window.current_page
+        if current_page >= len(main_window.annotation_document.pages):
+            return
+        
+        page = main_window.annotation_document.pages[current_page]
+        
+        # Сохраняем состояние для undo
+        if hasattr(main_window, '_save_undo_state'):
+            main_window._save_undo_state()
+        
+        # Применяем group_id ко всем выбранным блокам
+        for data in blocks_data:
+            block_idx = data["idx"]
+            if block_idx < len(page.blocks):
+                page.blocks[block_idx].group_id = group_id
+        
+        # Обновляем UI
+        main_window._render_current_page()
+        if hasattr(main_window, 'blocks_tree_manager'):
+            main_window.blocks_tree_manager.update_blocks_tree()
+        if hasattr(main_window, '_update_groups_tree'):
+            main_window._update_groups_tree()
+        if hasattr(main_window, '_auto_save_annotation'):
+            main_window._auto_save_annotation()
+        
+        # Уведомление
+        from app.gui.toast import show_toast
+        show_toast(main_window, f"Блоки добавлены в группу ({len(blocks_data)} шт.)")
 
 
 
