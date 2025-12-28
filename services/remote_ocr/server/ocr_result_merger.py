@@ -8,18 +8,18 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
-from bs4 import BeautifulSoup
-
-try:
-    from rapidfuzz import process, fuzz
-    RAPIDFUZZ_AVAILABLE = True
-except ImportError:
-    RAPIDFUZZ_AVAILABLE = False
-
 logger = logging.getLogger(__name__)
 
 UUID_LIKE_RE = re.compile(
     r"([0-9A-Za-z]{8}[-\s_]*[0-9A-Za-z]{4}[-\s_]*[0-9A-Za-z]{4}[-\s_]*[0-9A-Za-z]{4}[-\s_]*[0-9A-Za-z]{12})"
+)
+
+# Паттерн для маркеров блоков: [[BLOCK ID: uuid]] или похожие варианты OCR
+BLOCK_MARKER_RE = re.compile(
+    r"\[\[?\s*BLOCK[\s_]*ID\s*[:\-]?\s*"
+    r"([0-9A-Za-z]{8}[-\s_]*[0-9A-Za-z]{4}[-\s_]*[0-9A-Za-z]{4}[-\s_]*[0-9A-Za-z]{4}[-\s_]*[0-9A-Za-z]{12})"
+    r"\s*\]?\]?",
+    re.IGNORECASE
 )
 
 OCR_REPLACEMENTS = {
@@ -77,21 +77,30 @@ def match_uuid(
     if norm and norm in expected_set:
         return norm, 100.0
 
-    if norm and RAPIDFUZZ_AVAILABLE:
-        best = process.extractOne(norm, expected_ids, scorer=fuzz.ratio, score_cutoff=score_cutoff)
-        if best:
-            return best[0], float(best[1])
+    # Простой fuzzy matching без rapidfuzz
+    if norm:
+        best_match = None
+        best_score = 0.0
+        for expected in expected_ids:
+            # Подсчёт совпадающих символов
+            matches = sum(1 for a, b in zip(norm, expected) if a == b)
+            score = (matches / max(len(norm), len(expected))) * 100
+            if score > best_score and score >= score_cutoff:
+                best_match = expected
+                best_score = score
+        if best_match:
+            return best_match, best_score
 
     return None, 0.0
 
 
-def build_segments_with_meta(
-    soup: BeautifulSoup,
+def build_segments_from_html(
+    html_text: str,
     expected_ids: list[str],
     score_cutoff: int = 92
 ) -> tuple[dict[str, str], dict[str, dict]]:
     """
-    Построить сегменты HTML для каждого блока.
+    Построить сегменты HTML для каждого блока используя regex.
     
     Returns:
         segments: dict[block_id -> html_fragment]
@@ -101,90 +110,77 @@ def build_segments_with_meta(
     segments: dict[str, str] = {}
     meta: dict[str, dict] = {}
 
-    containers = soup.select("div.page")
-    if not containers:
-        containers = [soup.body] if soup.body else [soup]
+    # Находим все маркеры блоков с их позициями
+    markers = []
+    for match in BLOCK_MARKER_RE.finditer(html_text):
+        uuid_candidate = match.group(1)
+        matched_id, score = match_uuid(uuid_candidate, expected_ids, expected_set, score_cutoff)
+        if matched_id:
+            markers.append({
+                "start": match.start(),
+                "end": match.end(),
+                "block_id": matched_id,
+                "score": score,
+                "marker_text": match.group(0)[:120]
+            })
 
-    # 1) Основной путь: режем по маркерам [[BLOCK ID: ...]]
-    for container in containers:
-        children = list(container.find_all(recursive=False))
-        delims = []
+    if not markers:
+        # Фоллбек: ищем блоки по div.block структуре
+        block_pattern = re.compile(
+            r'<div[^>]*class="[^"]*block[^"]*"[^>]*>(.*?)</div>\s*</div>',
+            re.DOTALL | re.IGNORECASE
+        )
+        for match in block_pattern.finditer(html_text):
+            content = match.group(1)
+            cands = extract_uuid_candidates(content)
+            for cand in cands:
+                matched_id, score = match_uuid(cand, expected_ids, expected_set, score_cutoff)
+                if matched_id and matched_id not in segments:
+                    # Извлекаем block-content
+                    content_match = re.search(
+                        r'<div[^>]*class="[^"]*block-content[^"]*"[^>]*>(.*?)</div>',
+                        content, re.DOTALL | re.IGNORECASE
+                    )
+                    if content_match:
+                        segments[matched_id] = content_match.group(1).strip()
+                        meta[matched_id] = {
+                            "method": ["fallback"],
+                            "match_score": score,
+                            "marker_text_sample": cand[:120]
+                        }
+                    break
+        return segments, meta
 
-        for idx, child in enumerate(children):
-            txt = child.get_text(" ", strip=True)
-            if not txt:
-                continue
+    # Сортируем маркеры по позиции
+    markers.sort(key=lambda x: x["start"])
 
-            if ("block" in txt.lower()) or ("id" in txt.lower()) or ("[[" in txt) or ("]]" in txt):
-                cands = extract_uuid_candidates(txt)
-                if not cands:
-                    continue
+    # Извлекаем контент между маркерами
+    for i, marker in enumerate(markers):
+        block_id = marker["block_id"]
+        content_start = marker["end"]
+        content_end = markers[i + 1]["start"] if i + 1 < len(markers) else len(html_text)
+        
+        # Извлекаем HTML между маркерами
+        fragment = html_text[content_start:content_end].strip()
+        
+        # Убираем закрывающие теги от маркера и открывающие от следующего
+        fragment = re.sub(r'^[\s\S]*?(?=<[a-z])', '', fragment, count=1)
+        fragment = re.sub(r'<div[^>]*class="[^"]*block-header[^"]*"[^>]*>[\s\S]*$', '', fragment)
+        fragment = fragment.strip()
 
-                matched, score = match_uuid(cands[0], expected_ids, expected_set, score_cutoff=score_cutoff)
-                if matched:
-                    delims.append((idx, matched, score, txt))
-
-        if not delims:
+        if not fragment:
             continue
 
-        for j, (idx, bid, score, raw_txt) in enumerate(delims):
-            start = idx + 1
-            end = delims[j + 1][0] if (j + 1) < len(delims) else len(children)
-            frag_nodes = children[start:end]
-            frag_html = "".join(str(n) for n in frag_nodes).strip()
-
-            if not frag_html:
-                continue
-
-            if bid in segments:
-                segments[bid] += "\n" + frag_html
-                meta[bid]["match_score"] = max(meta[bid]["match_score"], score)
-                meta[bid]["method"].add("marker")
-            else:
-                segments[bid] = frag_html
-                meta[bid] = {
-                    "method": {"marker"},
-                    "match_score": score,
-                    "marker_text_sample": raw_txt[:120],
-                }
-
-    # 2) Фоллбек: ищем UUID в block-content (для image-блоков с URL на crop)
-    for block_div in soup.select("div.block"):
-        content_div = block_div.select_one("div.block-content")
-        if not content_div:
-            continue
-
-        html = str(content_div)
-        cands = extract_uuid_candidates(html)
-        if not cands:
-            continue
-
-        best_id = None
-        best_score = 0.0
-        best_raw = None
-
-        for cand in cands:
-            m, s = match_uuid(cand, expected_ids, expected_set, score_cutoff=score_cutoff)
-            if m and s > best_score:
-                best_id, best_score, best_raw = m, s, cand
-
-        if not best_id or best_id in segments:
-            continue
-
-        frag_html = "".join(str(n) for n in content_div.contents).strip()
-        if not frag_html:
-            continue
-
-        segments[best_id] = frag_html
-        meta[best_id] = {
-            "method": {"fallback"},
-            "match_score": best_score,
-            "marker_text_sample": (best_raw or "")[:120],
-        }
-
-    # Приводим method set -> list (для JSON)
-    for bid in meta:
-        meta[bid]["method"] = sorted(list(meta[bid]["method"]))
+        if block_id in segments:
+            segments[block_id] += "\n" + fragment
+            meta[block_id]["match_score"] = max(meta[block_id]["match_score"], marker["score"])
+        else:
+            segments[block_id] = fragment
+            meta[block_id] = {
+                "method": ["marker"],
+                "match_score": marker["score"],
+                "marker_text_sample": marker["marker_text"]
+            }
 
     return segments, meta
 
@@ -221,7 +217,6 @@ def merge_ocr_results(
         
         if not expected_ids:
             logger.info("Нет блоков для обработки")
-            # Сохраняем как есть
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(ann, f, ensure_ascii=False, indent=2)
             return True
@@ -229,13 +224,7 @@ def merge_ocr_results(
         with open(ocr_html_path, "r", encoding="utf-8") as f:
             html_text = f.read()
         
-        try:
-            soup = BeautifulSoup(html_text, "lxml")
-        except Exception:
-            # Fallback парсер
-            soup = BeautifulSoup(html_text, "html.parser")
-        
-        segments, meta = build_segments_with_meta(soup, expected_ids, score_cutoff=score_cutoff)
+        segments, meta = build_segments_from_html(html_text, expected_ids, score_cutoff=score_cutoff)
         
         result = deepcopy(ann)
         missing = []
