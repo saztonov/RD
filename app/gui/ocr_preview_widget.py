@@ -188,7 +188,13 @@ class OcrPreviewWidget(QWidget):
         if not html_content and block_data.get("ocr_text"):
             html_content = f"<pre>{block_data['ocr_text']}</pre>"
         
-        if not html_content:
+        # Добавляем данные штампа если есть
+        stamp_data = block_data.get("stamp_data")
+        stamp_html = ""
+        if stamp_data:
+            stamp_html = self._format_stamp_data(stamp_data)
+        
+        if not html_content and not stamp_html:
             self.preview_edit.setHtml(
                 '<p style="color: #888;">Пустой OCR результат</p>'
             )
@@ -196,8 +202,13 @@ class OcrPreviewWidget(QWidget):
             self.html_edit.setEnabled(False)
             return
         
+        # Объединяем контент блока и штамп
+        full_content = html_content
+        if stamp_html:
+            full_content = f"{stamp_html}\n{html_content}" if html_content else stamp_html
+        
         # Показываем HTML
-        styled_html = self._apply_preview_styles(html_content)
+        styled_html = self._apply_preview_styles(full_content)
         self.preview_edit.setHtml(styled_html)
         
         # Редактор
@@ -227,6 +238,44 @@ class OcrPreviewWidget(QWidget):
             parts.append(f"<pre>{block_data['ocr_text']}</pre>")
         
         return "\n".join(parts) if parts else html_content
+    
+    def _format_stamp_data(self, stamp_data: dict) -> str:
+        """Форматировать данные штампа в HTML."""
+        parts = ['<div style="border: 1px solid #569cd6; padding: 8px; margin: 8px 0; border-radius: 4px;">']
+        parts.append('<h3 style="margin: 0 0 8px 0;">📋 Штамп</h3>')
+        
+        if stamp_data.get("document_code"):
+            parts.append(f'<p><b>Шифр:</b> {stamp_data["document_code"]}</p>')
+        
+        if stamp_data.get("project_name"):
+            parts.append(f'<p><b>Проект:</b> {stamp_data["project_name"]}</p>')
+        
+        if stamp_data.get("sheet_name"):
+            parts.append(f'<p><b>Наименование:</b> {stamp_data["sheet_name"]}</p>')
+        
+        sheet_num = stamp_data.get("sheet_number", "")
+        total = stamp_data.get("total_sheets", "")
+        if sheet_num or total:
+            parts.append(f'<p><b>Лист:</b> {sheet_num}/{total}</p>')
+        
+        if stamp_data.get("stage"):
+            parts.append(f'<p><b>Стадия:</b> {stamp_data["stage"]}</p>')
+        
+        if stamp_data.get("organization"):
+            parts.append(f'<p><b>Организация:</b> {stamp_data["organization"]}</p>')
+        
+        signatures = stamp_data.get("signatures", [])
+        if signatures:
+            sig_parts = []
+            for sig in signatures:
+                role = sig.get("role", "")
+                name = sig.get("surname", "")
+                date = sig.get("date", "")
+                sig_parts.append(f"{role}: {name} ({date})")
+            parts.append(f'<p><b>Подписи:</b> {"; ".join(sig_parts)}</p>')
+        
+        parts.append('</div>')
+        return "\n".join(parts)
     
     def _format_ocr_json(self, ocr_json: dict) -> str:
         """Форматировать ocr_json в HTML."""

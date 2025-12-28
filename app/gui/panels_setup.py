@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize
 from app.gui.page_viewer import PageViewer
 from app.gui.project_tree_widget import ProjectTreeWidget
+from app.gui.ocr_preview_widget import OcrPreviewWidget
 
 
 class PanelsSetupMixin:
@@ -156,6 +157,10 @@ class PanelsSetupMixin:
         self.groups_tree.customContextMenuRequested.connect(self._on_groups_tree_context_menu)
         self.groups_tree.itemClicked.connect(self._on_groups_tree_clicked)
         self.blocks_tabs.addTab(self.groups_tree, "Группы")
+        
+        # Вкладка: OCR preview
+        self.ocr_preview = OcrPreviewWidget()
+        self.blocks_tabs.addTab(self.ocr_preview, "OCR")
         
         # Переменная для выбранной группы
         self.selected_group_id = None
