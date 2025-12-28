@@ -190,6 +190,8 @@ class PanelsSetupMixin:
         
         layout.addWidget(self.main_right_tabs)
     
+        return widget
+    
     def _on_right_tab_changed(self, index: int):
         """Обработка переключения вкладок правой панели"""
         if not hasattr(self, 'remote_ocr_panel') or not self.remote_ocr_panel:
@@ -200,8 +202,6 @@ class PanelsSetupMixin:
             self.remote_ocr_panel.hide()
         else:  # Блоки
             self.remote_ocr_panel.show()
-        
-        return widget
     
     def _on_hint_changed(self):
         """Автосохранение подсказки при изменении"""
