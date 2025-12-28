@@ -68,6 +68,14 @@ def run_ocr_task(self, job_id: str) -> dict:
         with open(blocks_path, "r", encoding="utf-8") as f:
             blocks_data = json.load(f)
         
+        # annotation.json имеет структуру {pdf_path, pages: [{blocks: [...]}]}
+        # Извлекаем блоки из всех страниц
+        if isinstance(blocks_data, dict) and "pages" in blocks_data:
+            all_blocks = []
+            for page in blocks_data.get("pages", []):
+                all_blocks.extend(page.get("blocks", []))
+            blocks_data = all_blocks
+        
         if not blocks_data:
             update_job_status(job.id, "done", progress=1.0)
             create_empty_result(job, work_dir, pdf_path)
