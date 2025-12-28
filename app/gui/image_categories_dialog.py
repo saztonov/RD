@@ -282,14 +282,19 @@ class ImageCategoriesDialog(QDialog):
                 is_default=False
             )
             
+            # Сохраняем ID новой категории
+            new_cat_id = new_cat.get("id") if new_cat else None
+            
             self._load_categories()
             
             # Выбираем новую категорию
-            for i in range(self.categories_list.count()):
-                item = self.categories_list.item(i)
-                if item.data(Qt.UserRole).get("id") == new_cat.get("id"):
-                    self.categories_list.setCurrentItem(item)
-                    break
+            if new_cat_id:
+                for i in range(self.categories_list.count()):
+                    item = self.categories_list.item(i)
+                    item_data = item.data(Qt.UserRole)
+                    if item_data and item_data.get("id") == new_cat_id:
+                        self.categories_list.setCurrentItem(item)
+                        break
             
             from app.gui.toast import show_toast
             show_toast(self.parent() or self, "Категория создана")
@@ -314,9 +319,12 @@ class ImageCategoriesDialog(QDialog):
             QMessageBox.warning(self, "Ошибка", "Введите код категории")
             return
         
+        # Сохраняем ID до перезагрузки списка
+        category_id = self._current_category["id"]
+        
         try:
             self._tree_client.update_image_category(
-                self._current_category["id"],
+                category_id,
                 name=name,
                 code=code,
                 description=self.desc_edit.text().strip(),
@@ -330,7 +338,7 @@ class ImageCategoriesDialog(QDialog):
             # Восстанавливаем выбор
             for i in range(self.categories_list.count()):
                 item = self.categories_list.item(i)
-                if item.data(Qt.UserRole).get("id") == self._current_category["id"]:
+                if item.data(Qt.UserRole).get("id") == category_id:
                     self.categories_list.setCurrentItem(item)
                     break
             
@@ -350,9 +358,12 @@ class ImageCategoriesDialog(QDialog):
             QMessageBox.warning(self, "Ошибка", "Нельзя удалить категорию по умолчанию")
             return
         
+        cat_name = self._current_category.get('name', '???')
+        cat_id = self._current_category.get("id")
+        
         reply = QMessageBox.question(
             self, "Подтверждение",
-            f"Удалить категорию '{self._current_category.get('name')}'?",
+            f"Удалить категорию '{cat_name}'?",
             QMessageBox.Yes | QMessageBox.No
         )
         
@@ -360,7 +371,7 @@ class ImageCategoriesDialog(QDialog):
             return
         
         try:
-            self._tree_client.delete_image_category(self._current_category["id"])
+            self._tree_client.delete_image_category(cat_id)
             self._load_categories()
             
             from app.gui.toast import show_toast
