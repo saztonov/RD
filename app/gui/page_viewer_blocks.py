@@ -41,18 +41,25 @@ class BlockRenderingMixin:
         color = self._get_block_color(block.block_type)
         pen = QPen(color, 2)
         
+        # Блоки в группе имеют фиолетовую рамку
+        if block.group_id:
+            pen.setColor(QColor(138, 43, 226))  # BlueViolet
+            pen.setWidth(3)
+        
         if block.source == BlockSource.AUTO:
             pen.setStyle(Qt.DashLine)
             pen.setWidth(3)
         
         if idx in self.selected_block_indices:
-            pen.setColor(QColor(0, 0, 255))
+            pen.setColor(QColor(0, 120, 255))
             pen.setWidth(4)
         
         if idx == self.selected_block_idx:
             pen.setWidth(4)
         
-        brush = QBrush(QColor(color.red(), color.green(), color.blue(), 30))
+        # Цвет заливки: фиолетовый для групп, стандартный для остальных
+        fill_color = QColor(138, 43, 226, 25) if block.group_id else QColor(color.red(), color.green(), color.blue(), 30)
+        brush = QBrush(fill_color)
         
         if block.shape_type == ShapeType.POLYGON and block.polygon_points:
             polygon = QPolygonF([QPointF(x, y) for x, y in block.polygon_points])

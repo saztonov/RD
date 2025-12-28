@@ -571,7 +571,48 @@ class BlockHandlersMixin:
         
         if data.get("type") == "group":
             # Выбрана группа
-            self.selected_group_id = data.get("group_id")
+            group_id = data.get("group_id")
+            self.selected_group_id = group_id
+            
+            if group_id:
+                # Находим первый блок группы и все блоки на его странице
+                first_block_info = None
+                for page in self.annotation_document.pages:
+                    for idx, block in enumerate(page.blocks):
+                        if block.group_id == group_id:
+                            if first_block_info is None:
+                                first_block_info = (page.page_number, idx)
+                            break
+                    if first_block_info:
+                        break
+                
+                if first_block_info:
+                    page_num, _ = first_block_info
+                    
+                    # Переходим на страницу
+                    if self.current_page != page_num:
+                        self.navigation_manager.save_current_zoom()
+                    
+                    self.current_page = page_num
+                    self.navigation_manager.load_page_image(self.current_page)
+                    self.navigation_manager.restore_zoom()
+                    
+                    current_page_data = self._get_or_create_page(self.current_page)
+                    self.page_viewer.set_blocks(current_page_data.blocks if current_page_data else [])
+                    self.page_viewer.fit_to_view()
+                    
+                    # Выделяем все блоки группы на этой странице
+                    group_indices = [
+                        idx for idx, block in enumerate(current_page_data.blocks)
+                        if block.group_id == group_id
+                    ]
+                    
+                    self.page_viewer.selected_block_idx = None
+                    self.page_viewer.selected_block_indices = group_indices
+                    self.page_viewer._redraw_blocks()
+                    
+                    self._update_ui()
+            
             # Раскрываем группу
             item.setExpanded(not item.isExpanded())
             

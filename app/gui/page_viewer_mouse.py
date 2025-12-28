@@ -46,6 +46,11 @@ class MouseEventsMixin:
             
             if event.modifiers() & Qt.ControlModifier:
                 if clicked_block is not None:
+                    # Если есть единично выбранный блок, добавляем его в множественный выбор
+                    if self.selected_block_idx is not None and self.selected_block_idx not in self.selected_block_indices:
+                        self.selected_block_indices.append(self.selected_block_idx)
+                        self.selected_block_idx = None
+                    
                     if clicked_block in self.selected_block_indices:
                         self.selected_block_indices.remove(clicked_block)
                     else:
