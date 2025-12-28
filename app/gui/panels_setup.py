@@ -130,10 +130,11 @@ class PanelsSetupMixin:
         
         # Вкладка: Страница → Блок
         self.blocks_tree = QTreeWidget()
-        self.blocks_tree.setHeaderLabels(["Название", "Тип", "Группа"])
-        self.blocks_tree.setColumnWidth(0, 120)
-        self.blocks_tree.setColumnWidth(1, 60)
-        self.blocks_tree.setColumnWidth(2, 100)
+        self.blocks_tree.setHeaderLabels(["Название", "Тип", "Категория", "Группа"])
+        self.blocks_tree.setColumnWidth(0, 100)
+        self.blocks_tree.setColumnWidth(1, 50)
+        self.blocks_tree.setColumnWidth(2, 70)
+        self.blocks_tree.setColumnWidth(3, 80)
         self.blocks_tree.setSortingEnabled(False)
         self.blocks_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.blocks_tree.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -145,8 +146,10 @@ class PanelsSetupMixin:
         
         # Вкладка: Группы
         self.groups_tree = QTreeWidget()
-        self.groups_tree.setHeaderLabels(["Группа", "Блоков"])
-        self.groups_tree.setColumnWidth(0, 180)
+        self.groups_tree.setHeaderLabels(["Группа", "Блоков", "Категория"])
+        self.groups_tree.setColumnWidth(0, 140)
+        self.groups_tree.setColumnWidth(1, 50)
+        self.groups_tree.setColumnWidth(2, 70)
         self.groups_tree.setSortingEnabled(False)
         self.groups_tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.groups_tree.setContextMenuPolicy(Qt.CustomContextMenu)

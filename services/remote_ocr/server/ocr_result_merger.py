@@ -217,6 +217,34 @@ def _build_crop_url(block_id: str, r2_public_url: str, project_name: str) -> str
     return f"{r2_public_url}/tree_docs/{project_name}/crops/{block_id}.pdf"
 
 
+def _propagate_stamp_data(page: dict) -> None:
+    """
+    Распространить данные штампа на все блоки страницы.
+    Если на странице есть image блок с category_code='stamp',
+    его ocr_json копируется в stamp_data всех блоков.
+    """
+    blocks = page.get("blocks", [])
+    
+    # Ищем блок штампа
+    stamp_block = None
+    for blk in blocks:
+        if (blk.get("block_type") == "image" and 
+            blk.get("category_code") == "stamp"):
+            stamp_block = blk
+            break
+    
+    if not stamp_block:
+        return
+    
+    stamp_json = stamp_block.get("ocr_json")
+    if not stamp_json:
+        return
+    
+    # Копируем stamp_data во все блоки страницы
+    for blk in blocks:
+        blk["stamp_data"] = stamp_json
+
+
 def merge_ocr_results(
     annotation_path: Path,
     ocr_html_path: Path,
@@ -299,6 +327,9 @@ def merge_ocr_results(
                     matched += 1
                 else:
                     missing.append(bid)
+            
+            # Распространение данных штампа на все блоки страницы
+            _propagate_stamp_data(page)
         
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)

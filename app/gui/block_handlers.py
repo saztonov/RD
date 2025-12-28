@@ -15,6 +15,28 @@ logger = logging.getLogger(__name__)
 class BlockHandlersMixin:
     """Миксин для обработки блоков"""
     
+    _categories_cache = None
+    
+    def _get_category_name(self, category_id: str) -> str:
+        """Получить название категории по ID"""
+        if not category_id:
+            return ""
+        
+        if BlockHandlersMixin._categories_cache is None:
+            try:
+                from app.tree_client import TreeClient
+                client = TreeClient()
+                if client.is_available():
+                    BlockHandlersMixin._categories_cache = {
+                        cat["id"]: cat["name"] for cat in client.get_image_categories()
+                    }
+                else:
+                    BlockHandlersMixin._categories_cache = {}
+            except Exception:
+                BlockHandlersMixin._categories_cache = {}
+        
+        return BlockHandlersMixin._categories_cache.get(category_id, "")
+    
     def _get_or_create_page(self, page_num: int) -> Page:
         """Получить страницу или создать новую"""
         if not self.annotation_document:
@@ -569,6 +591,10 @@ class BlockHandlersMixin:
                 block_item = QTreeWidgetItem(group_item)
                 block_item.setText(0, f"Стр.{page_num + 1} Блок {block_idx + 1}")
                 block_item.setText(1, block.block_type.value)
+                # Колонка Категория (для IMAGE блоков)
+                from rd_core.models import BlockType
+                cat_name = self._get_category_name(block.category_id) if block.block_type == BlockType.IMAGE else ""
+                block_item.setText(2, cat_name)
                 block_item.setData(0, Qt.UserRole, {
                     "type": "block", 
                     "page": page_num, 
