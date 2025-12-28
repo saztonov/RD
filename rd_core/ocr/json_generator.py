@@ -2,12 +2,59 @@
 import logging
 import os
 import re
+import sys
 import json as json_module
 from datetime import datetime
 from pathlib import Path
 from typing import List, Any
 
 logger = logging.getLogger(__name__)
+
+
+def _encode_block_id_to_armor(uuid_str: str) -> str:
+    """
+    Закодировать UUID блока в armor формат XXXX-XXXX-XXX.
+    Локальная реализация для совместимости.
+    """
+    # Пробуем импортировать из services если доступно
+    try:
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent / "services" / "remote_ocr" / "server"))
+        from armor_id import encode_block_id
+        return encode_block_id(uuid_str)
+    except ImportError:
+        pass
+    
+    # Fallback: локальная реализация ArmorID
+    ALPHABET = "34679ACDEFGHJKLMNPQRTUVWXY"
+    
+    def num_to_base26(num: int, length: int) -> str:
+        if num == 0:
+            return ALPHABET[0] * length
+        result = []
+        while num > 0:
+            result.append(ALPHABET[num % 26])
+            num //= 26
+        while len(result) < length:
+            result.append(ALPHABET[0])
+        return "".join(reversed(result[-length:]))
+    
+    def calculate_checksum(payload: str) -> str:
+        char_map = {c: i for i, c in enumerate(ALPHABET)}
+        v1, v2, v3 = 0, 0, 0
+        for i, char in enumerate(payload):
+            val = char_map.get(char, 0)
+            v1 += val
+            v2 += val * (i + 3)
+            v3 += val * (i + 7) * (i + 1)
+        return ALPHABET[v1 % 26] + ALPHABET[v2 % 26] + ALPHABET[v3 % 26]
+    
+    clean = uuid_str.replace("-", "").lower()
+    hex_prefix = clean[:10]
+    num = int(hex_prefix, 16)
+    payload = num_to_base26(num, 8)
+    checksum = calculate_checksum(payload)
+    full_code = payload + checksum
+    return f"{full_code[:4]}-{full_code[4:8]}-{full_code[8:]}"
 
 
 def _extract_html_from_ocr_text(ocr_text: str) -> str:
@@ -138,6 +185,10 @@ def generate_html_from_pages(
                 html_parts.append(f'<div class="block block-type-{block_type}">')
                 html_parts.append(f'<div class="block-header">Блок #{idx + 1} (стр. {page_num}) | Тип: {block_type} | ID: {block.id[:8]}...</div>')
                 html_parts.append('<div class="block-content">')
+                
+                # Вставляем маркер BLOCK: XXXX-XXXX-XXX для ocr_result_merger
+                armor_code = _encode_block_id_to_armor(block.id)
+                html_parts.append(f'<p>BLOCK: {armor_code}</p>')
                 
                 # Извлекаем HTML из ocr_text
                 block_html = _extract_html_from_ocr_text(block.ocr_text)

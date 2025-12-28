@@ -306,9 +306,12 @@ def build_segments_from_html(
         fragment = html_text[content_start:content_end]
         
         # Убираем закрывающий тег </p> или </div> сразу после маркера (обёртка маркера)
+        # Формат: BLOCK: XXXX-XXXX-XXX</p>\n... 
         fragment = re.sub(r'^\s*\]?\]?\s*</\w+>\s*', '', fragment)
         # Новый формат: убираем пробелы после BLOCK: code
         fragment = re.sub(r'^\s+', '', fragment)
+        # Убираем маркер <p>BLOCK: ...</p> для следующего блока в конце фрагмента
+        fragment = re.sub(r'\s*<p>\s*BLOCK:\s*[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3}\s*</p>\s*$', '', fragment, flags=re.IGNORECASE)
         
         # Убираем открывающий тег <p> или подобный перед следующим маркером
         # Ищем конец полезного контента - до div.block-header или до открывающего <p>[[BLOCK
