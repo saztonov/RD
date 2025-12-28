@@ -127,6 +127,48 @@ class ImageCategoriesDialog(QDialog):
         
         right_layout.addWidget(fields_group)
         
+        # Панель быстрой вставки переменных
+        vars_group = QGroupBox("📝 Вставка переменных (клик → вставка в курсор)")
+        vars_layout = QHBoxLayout(vars_group)
+        vars_layout.setSpacing(4)
+        
+        self._variables = [
+            ("{DOC_NAME}", "Имя PDF"),
+            ("{PAGE_NUM}", "Стр."),
+            ("{BLOCK_ID}", "ID блока"),
+            ("{OPERATOR_HINT}", "Подсказка"),
+            ("{PDFPLUMBER_TEXT}", "Текст PDF"),
+        ]
+        
+        var_btn_style = """
+            QPushButton {
+                background: #3b3b3b;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 4px 8px;
+                font-family: Consolas, monospace;
+                font-size: 11px;
+                color: #7dd3fc;
+            }
+            QPushButton:hover {
+                background: #4b4b4b;
+                border-color: #7dd3fc;
+            }
+            QPushButton:pressed {
+                background: #2563eb;
+            }
+        """
+        
+        for var_name, var_desc in self._variables:
+            btn = QPushButton(var_name)
+            btn.setToolTip(f"{var_desc} — кликните для вставки")
+            btn.setStyleSheet(var_btn_style)
+            btn.clicked.connect(lambda checked, v=var_name: self._insert_variable(v))
+            vars_layout.addWidget(btn)
+        
+        vars_layout.addStretch()
+        right_layout.addWidget(vars_group)
+        
         # System Prompt
         system_group = QGroupBox("System / Role Prompt")
         system_layout = QVBoxLayout(system_group)
@@ -152,20 +194,13 @@ class ImageCategoriesDialog(QDialog):
         user_info = QLabel("<i style='color:#888'>Инструкция для конкретного блока (user message)</i>")
         user_layout.addWidget(user_info)
         
-        variables_info = QLabel(
-            "Переменные: {DOC_NAME}, {PAGE_OR_NULL}, {TILE_ID_OR_NULL}, "
-            "{TILE_HINT_OR_NULL}, {PDFPLUMBER_TEXT_OR_EMPTY}"
-        )
-        variables_info.setStyleSheet("color: #666; font-size: 10px;")
-        user_layout.addWidget(variables_info)
-        
         self.user_edit = QTextEdit()
         self.user_edit.setPlaceholderText(
             "Extract the following data from the image and return as JSON:\n"
             "- title: string\n"
-            "- dimensions: array\n"
-            "- notes: array\n\n"
-            "Operator hint: {TILE_HINT_OR_NULL}"
+            "- dimensions: array\n\n"
+            "Operator hint: {OPERATOR_HINT}\n"
+            "PDF text: {PDFPLUMBER_TEXT}"
         )
         self.user_edit.setStyleSheet("font-family: Consolas, monospace; font-size: 11px;")
         self.user_edit.setMinimumHeight(150)
@@ -213,6 +248,24 @@ class ImageCategoriesDialog(QDialog):
         self.system_edit.setEnabled(enabled)
         self.user_edit.setEnabled(enabled)
         self.delete_btn.setEnabled(enabled)
+    
+    def _insert_variable(self, variable: str):
+        """Вставить переменную в активное поле ввода (system или user)"""
+        # Определяем какое поле имеет фокус
+        focused = None
+        if self.system_edit.hasFocus():
+            focused = self.system_edit
+        elif self.user_edit.hasFocus():
+            focused = self.user_edit
+        else:
+            # По умолчанию вставляем в user (чаще используется)
+            focused = self.user_edit
+            self.user_edit.setFocus()
+        
+        # Вставляем переменную в позицию курсора
+        cursor = focused.textCursor()
+        cursor.insertText(variable)
+        focused.setTextCursor(cursor)
     
     def _load_categories(self):
         """Загрузить категории из Supabase"""

@@ -49,11 +49,10 @@ def fill_image_prompt_variables(
     
     Переменные:
         {DOC_NAME} - имя PDF документа
-        {PAGE_OR_NULL} - номер страницы (1-based) или "null"
-        {TILE_ID_OR_NULL} - ID блока или "null"
-        {TILE_HINT_OR_NULL} - подсказка пользователя или "null"
-        {OPERATOR_HINT_OR_EMPTY} - подсказка пользователя или пустая строка
-        {PDFPLUMBER_TEXT_OR_EMPTY} - извлечённый текст pdfplumber
+        {PAGE_NUM} - номер страницы (1-based)
+        {BLOCK_ID} - ID блока
+        {OPERATOR_HINT} - подсказка оператора (или пустая строка)
+        {PDFPLUMBER_TEXT} - извлечённый текст pdfplumber (или пустая строка)
     """
     # Получаем промпт с учётом категории
     effective_prompt = get_image_block_prompt(prompt_data, category_id, category_code)
@@ -68,12 +67,10 @@ def fill_image_prompt_variables(
     
     variables = {
         "{DOC_NAME}": doc_name or "unknown",
-        "{PAGE_OR_NULL}": str(page_index + 1) if page_index is not None else "null",
-        "{TILE_ID_OR_NULL}": block_id or "null",
-        "{TILE_HINT_OR_NULL}": hint if hint else "null",
-        "{OPERATOR_HINT_OR_EMPTY}": hint if hint else "",
-        "{PDFPLUMBER_TEXT_OR_EMPTY}": pdfplumber_text or "",
-        "{PDFPLUMBER_TEXT_RAW}": pdfplumber_text or "",
+        "{PAGE_NUM}": str(page_index + 1) if page_index is not None else "1",
+        "{BLOCK_ID}": block_id or "",
+        "{OPERATOR_HINT}": hint if hint else "",
+        "{PDFPLUMBER_TEXT}": pdfplumber_text or "",
     }
     
     for key, value in variables.items():
