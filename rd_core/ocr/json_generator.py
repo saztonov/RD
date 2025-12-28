@@ -15,6 +15,7 @@ def _extract_html_from_ocr_text(ocr_text: str) -> str:
     Извлечь HTML из ocr_text.
     
     ocr_text может содержать:
+    - Чистый HTML от Datalab
     - JSON с полем html или children[].html
     - Просто текст (fallback)
     """
@@ -24,6 +25,10 @@ def _extract_html_from_ocr_text(ocr_text: str) -> str:
     text = ocr_text.strip()
     if not text:
         return ""
+    
+    # Если начинается с HTML тега - возвращаем как есть
+    if text.startswith('<'):
+        return text
     
     # Пробуем распарсить как JSON
     try:

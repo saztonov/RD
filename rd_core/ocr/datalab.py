@@ -86,7 +86,7 @@ RULES:
                         data = {
                             'mode': 'accurate',
                             'paginate': 'true',
-                            'output_format': 'json,html',
+                            'output_format': 'html',
                             'disable_image_extraction': 'true',
                             'disable_image_captions': 'true',
                             'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT,
@@ -154,16 +154,10 @@ RULES:
                     
                     if status == 'complete':
                         logger.info("Datalab: задача успешно завершена")
-                        json_result = poll_result.get('json', '')
                         html_result = poll_result.get('html', '')
-                        logger.debug(f"Datalab: тип результата: {type(json_result)}, ключи ответа: {list(poll_result.keys())}")
-                        # Сохраняем HTML результат
+                        logger.debug(f"Datalab: ключи ответа: {list(poll_result.keys())}")
                         self.last_html_result = html_result if html_result else None
-                        # Если результат - dict, преобразуем в строку JSON
-                        if isinstance(json_result, dict):
-                            import json as json_lib
-                            return json_lib.dumps(json_result, ensure_ascii=False)
-                        return json_result if json_result else ''
+                        return html_result if html_result else ''
                     elif status == 'failed':
                         error = poll_result.get('error', 'Unknown error')
                         logger.error(f"Datalab: задача завершилась с ошибкой: {error}")
