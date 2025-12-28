@@ -1,12 +1,20 @@
 """Генератор структурированного JSON из OCR результатов"""
+import copy
+import difflib
 import logging
 import os
 import re
 import json as json_module
+from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# Регулярки для извлечения UUID
+UUID_RE = re.compile(r"[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12}")
+# Поддержка и [[...]] и [[[...]]] (с тройными скобками)
+BRACKET_RE = re.compile(r"\[\[\[?\s*(.*?)\s*\]?\]\]")  # содержимое внутри [[ ... ]] или [[[ ... ]]]
 
 
 def generate_structured_json(
@@ -158,241 +166,277 @@ def _extract_all_html_from_ocr_result(ocr_result: Any) -> str:
     return "".join(html_parts)
 
 
-def _fuzzy_uuid_match(ocr_uuid: str, known_uuids: List[str], threshold: float = 0.85) -> Optional[str]:
+# ========== Новый алгоритм группировки HTML по BLOCK_ID ==========
+
+def _canonicalize_uuid(text: str) -> Optional[str]:
     """
-    Нечёткое сравнение UUID с учётом возможных OCR-искажений.
-    
-    Args:
-        ocr_uuid: UUID извлечённый из OCR (может содержать ошибки)
-        known_uuids: список известных правильных UUID из annotation
-        threshold: минимальный процент совпадения (0.85 = 85%)
-    
-    Returns:
-        Наиболее подходящий UUID или None
+    Пытается вытащить UUID из строки (внутри [[...]]), нормализовать и вернуть.
     """
-    if not ocr_uuid or not known_uuids:
+    if not text:
         return None
-    
-    # Нормализуем OCR UUID (убираем пробелы, приводим к нижнему регистру)
-    ocr_clean = ocr_uuid.strip().lower().replace(" ", "")
-    
-    # Точное совпадение
-    for known in known_uuids:
-        if ocr_clean == known.lower():
-            return known
-    
-    # Нечёткое сравнение - считаем совпадающие символы на тех же позициях
-    best_match = None
-    best_score = 0.0
-    
-    for known in known_uuids:
-        known_lower = known.lower()
-        
-        # Сравниваем посимвольно
-        min_len = min(len(ocr_clean), len(known_lower))
-        max_len = max(len(ocr_clean), len(known_lower))
-        
-        if max_len == 0:
-            continue
-        
-        matches = sum(1 for i in range(min_len) if ocr_clean[i] == known_lower[i])
-        score = matches / max_len
-        
-        if score > best_score:
-            best_score = score
-            best_match = known
-    
-    if best_score >= threshold:
-        logger.debug(f"Fuzzy UUID match: '{ocr_uuid}' -> '{best_match}' (score: {best_score:.2%})")
-        return best_match
-    
+    s = text.strip().lower().replace("_", "-")
+
+    # 1) UUID с дефисами/подчёркиваниями
+    m = UUID_RE.search(s)
+    if m:
+        return m.group(0).replace("_", "-").lower()
+
+    # 2) UUID без дефисов: 32 hex -> вставляем дефисы
+    hex_only = re.sub(r"[^0-9a-f]", "", s)
+    if len(hex_only) >= 32:
+        h = hex_only[:32]
+        return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+
     return None
 
 
-def _parse_html_by_block_ids(ocr_json_data: Dict, known_block_ids: List[str] = None) -> Dict[str, str]:
+def _similarity(a: str, b: str) -> float:
+    """Вычисляет схожесть двух строк через SequenceMatcher."""
+    return difflib.SequenceMatcher(a=a, b=b).ratio()
+
+
+def _build_prefix_index(expected_ids: List[str]) -> Dict[str, List[str]]:
     """
-    Парсит итоговый JSON и группирует HTML по BLOCK_ID.
-    
-    Находит паттерны [[BLOCK_ID: uuid]] в HTML и группирует контент
-    от одного паттерна до следующего. Использует нечёткое сравнение
-    для учёта OCR-искажений в UUID.
-    
-    Args:
-        ocr_json_data: данные из итогового OCR JSON
-        known_block_ids: список известных правильных UUID из annotation
-    
-    Returns:
-        Dict[block_id, html_content]
+    У UUID первая группа (8 символов) обычно распознаётся лучше остальных.
+    Это сильно ускоряет нечёткий поиск: сначала ограничиваем пул кандидатов по префиксу.
     """
-    block_html_map: Dict[str, str] = {}
-    # Более гибкий паттерн для искажённых UUID
-    block_id_pattern = re.compile(r'\[\[BLOCK_ID:\s*([a-f0-9\-]{30,40})\]\]', re.IGNORECASE)
-    
-    known_ids = known_block_ids or []
-    blocks = ocr_json_data.get("blocks", [])
-    
-    for block in blocks:
-        ocr_result = block.get("ocr_result")
-        if not ocr_result:
-            continue
-        
-        # Извлекаем все HTML из ocr_result
-        full_html = _extract_all_html_from_ocr_result(ocr_result)
-        if not full_html:
-            continue
-        
-        # Находим все BLOCK_ID паттерны с их позициями
-        matches = list(block_id_pattern.finditer(full_html))
-        
-        if not matches:
-            # Нет паттернов - весь HTML привязываем к block_id из блока
-            block_id = block.get("block_id")
-            if block_id:
-                if block_id in block_html_map:
-                    block_html_map[block_id] += "\n" + full_html
-                else:
-                    block_html_map[block_id] = full_html
-            continue
-        
-        # Группируем HTML по паттернам
-        for i, match in enumerate(matches):
-            ocr_block_id = match.group(1)
-            
-            # Нечёткое сравнение UUID если есть известные ID
-            if known_ids:
-                matched_id = _fuzzy_uuid_match(ocr_block_id, known_ids)
-                if matched_id:
-                    block_id = matched_id
-                else:
-                    # Если не нашли совпадение, используем как есть
-                    block_id = ocr_block_id
-                    logger.warning(f"BLOCK_ID '{ocr_block_id}' не найден среди известных блоков")
-            else:
-                block_id = ocr_block_id
-            
-            # Конец = начало следующего паттерна или конец строки
-            if i + 1 < len(matches):
-                end_pos = matches[i + 1].start()
-            else:
-                end_pos = len(full_html)
-            
-            # Извлекаем HTML сегмент (без самого паттерна)
-            segment = full_html[match.end():end_pos].strip()
-            
-            # Убираем обёртку <p>[[BLOCK_ID:...]]</p> если есть
-            segment = re.sub(r'^</p>\s*', '', segment)
-            segment = re.sub(r'\s*<p>\s*$', '', segment)
-            
-            if block_id in block_html_map:
-                block_html_map[block_id] += "\n" + segment
-            else:
-                block_html_map[block_id] = segment
-    
-    return block_html_map
+    idx: Dict[str, List[str]] = {}
+    for eid in expected_ids:
+        prefix = eid.split("-")[0] if "-" in eid else eid[:8]
+        idx.setdefault(prefix, []).append(eid)
+    return idx
+
+
+def _best_fuzzy_match(
+    candidate_uuid: str, 
+    expected_ids: List[str], 
+    prefix_index: Dict[str, List[str]], 
+    threshold: float
+) -> Optional[Dict]:
+    """
+    Нечёткое сравнение UUID с использованием SequenceMatcher.
+    Возвращает dict с match_id, score и возможно ambiguous_with.
+    """
+    if not candidate_uuid:
+        return None
+
+    cand = candidate_uuid.lower()
+    pool = expected_ids
+
+    # Оптимизация: сначала ищем по префиксу
+    pref = cand.split("-")[0] if "-" in cand else cand[:8]
+    if pref in prefix_index:
+        pool = prefix_index[pref]
+
+    best = None
+    second = None
+
+    for eid in pool:
+        sc = _similarity(cand, eid.lower())
+        if best is None or sc > best[1]:
+            second = best
+            best = (eid, sc)
+        elif second is None or sc > second[1]:
+            second = (eid, sc)
+
+    if best and best[1] >= threshold:
+        out = {"match_id": best[0], "score": best[1]}
+        if second and second[1] >= threshold and (best[1] - second[1]) < 0.03:
+            out["ambiguous_with"] = second[0]
+            out["second_score"] = second[1]
+        return out
+
+    return None
+
+
+def _extract_markers(html: str) -> List[Dict]:
+    """
+    Находит все [[...]] и возвращает список меток с позициями.
+    Важно: режем по границам <p>...</p>, чтобы не оставлять "висящие" <p>.
+    """
+    markers = []
+    for m in BRACKET_RE.finditer(html):
+        inside = m.group(1)
+        cand_uuid = _canonicalize_uuid(inside)
+
+        # границы абзаца с меткой
+        para_start = html.rfind("<p", 0, m.start())
+        if para_start == -1 or html.find(">", para_start, m.start()) == -1:
+            para_start = m.start()
+
+        para_end = html.find("</p>", m.end())
+        para_end = (para_end + len("</p>")) if para_end != -1 else m.end()
+
+        markers.append({
+            "raw_token": m.group(0),
+            "inside": inside,
+            "uuid_cand": cand_uuid,
+            "para_start": para_start,
+            "para_end": para_end,
+        })
+
+    markers.sort(key=lambda x: x["para_start"])
+    return markers
+
+
+def _split_html_by_markers(html: str) -> List[Dict]:
+    """
+    Возвращает список сегментов:
+      [{ marker: {...}, segment_html: "<h1>...</h1>..." }, ...]
+    """
+    markers = _extract_markers(html)
+    if not markers:
+        return []
+
+    segments = []
+    for i, mk in enumerate(markers):
+        start = mk["para_end"]
+        end = markers[i + 1]["para_start"] if i + 1 < len(markers) else len(html)
+        segments.append({"marker": mk, "segment_html": html[start:end].strip()})
+
+    return segments
 
 
 def generate_grouped_result_json(
     ocr_json_path: str,
     annotation_json_path: str,
-    output_path: str
+    output_path: str,
+    threshold: float = 0.85
 ) -> str:
     """
     Генерация result.json с группированными HTML блоками.
     
-    Берёт блоки из annotation.json и добавляет поле html,
-    сгруппированное из итогового OCR JSON по паттернам [[BLOCK_ID: uuid]].
+    Алгоритм:
+    1. Загружаем разметку из annotation.json и собираем список ожидаемых block_id
+    2. Загружаем OCR-результат из preliminary.json (ocr_json_path)
+    3. Для каждого OCR-блока типа text извлекаем HTML из children[0].html
+    4. Находим разделители [[BLOCK ID: ...]] и режем HTML на сегменты
+    5. Нечётко сопоставляем распознанные ID с ожидаемыми block_id
+    6. Формируем result.json с ocr_html и ocr_meta для каждого блока
     
     Args:
-        ocr_json_path: путь к итоговому JSON с OCR результатами
+        ocr_json_path: путь к preliminary JSON с OCR результатами
         annotation_json_path: путь к annotation.json
         output_path: путь для сохранения result.json
+        threshold: порог нечёткого совпадения UUID (0.85 = 85%)
     
     Returns:
         Путь к сохранённому файлу
     """
     try:
-        # Читаем итоговый OCR JSON
+        # Читаем OCR результаты (preliminary.json)
         with open(ocr_json_path, "r", encoding="utf-8") as f:
-            ocr_data = json_module.load(f)
+            preliminary = json_module.load(f)
         
         # Читаем annotation.json
         with open(annotation_json_path, "r", encoding="utf-8") as f:
-            annotation_data = json_module.load(f)
+            annotation = json_module.load(f)
         
-        # Собираем известные block_ids из annotation для нечёткого сравнения
-        known_block_ids = []
-        for page in annotation_data.get("pages", []):
-            for block in page.get("blocks", []):
-                block_id = block.get("id")
-                if block_id:
-                    known_block_ids.append(block_id)
+        result = copy.deepcopy(annotation)
         
-        logger.info(f"generate_grouped_result_json: известно {len(known_block_ids)} блоков из annotation")
+        # Собираем ожидаемые текстовые block_id из annotation
+        expected_text_ids: List[str] = []
+        for page in result.get("pages", []):
+            for blk in page.get("blocks", []):
+                if blk.get("block_type") == "text":
+                    expected_text_ids.append(blk["id"])
         
-        # Парсим HTML по BLOCK_ID с нечётким сравнением
-        block_html_map = _parse_html_by_block_ids(ocr_data, known_block_ids)
-        logger.info(f"generate_grouped_result_json: найдено {len(block_html_map)} блоков с HTML")
+        prefix_index = _build_prefix_index(expected_text_ids)
         
-        # Создаём маппинг OCR блоков по block_id для IMAGE данных
-        ocr_blocks_map: Dict[str, Dict] = {}
-        for ocr_block in ocr_data.get("blocks", []):
-            ocr_block_id = ocr_block.get("block_id")
-            if ocr_block_id:
-                ocr_blocks_map[ocr_block_id] = ocr_block
+        logger.info(f"generate_grouped_result_json: известно {len(expected_text_ids)} текстовых блоков из annotation")
         
-        # Формируем результат на основе annotation
-        result_blocks = []
+        # Карта: block_id -> {ocr_html, ocr_meta}
+        ocr_map: Dict[str, Dict] = {}
         
-        for page in annotation_data.get("pages", []):
-            for block in page.get("blocks", []):
-                block_id = block.get("id")
-                block_type = block.get("block_type")
+        for pre_blk in preliminary.get("blocks", []):
+            if pre_blk.get("block_type") != "text":
+                continue
+            
+            ocr_result = pre_blk.get("ocr_result") or {}
+            children = ocr_result.get("children") or []
+            if not children:
+                continue
+            
+            html_full = children[0].get("html") or ""
+            if not html_full:
+                continue
+            
+            segments = _split_html_by_markers(html_full)
+            
+            for seg in segments:
+                cand = seg["marker"]["uuid_cand"]
+                m = _best_fuzzy_match(cand, expected_text_ids, prefix_index, threshold=threshold) if cand else None
+                if not m:
+                    continue
                 
-                result_block = {
-                    "id": block_id,
-                    "page_index": block.get("page_index"),
-                    "coords_px": block.get("coords_px"),
-                    "coords_norm": block.get("coords_norm"),
-                    "block_type": block_type,
-                    "source": block.get("source"),
-                    "shape_type": block.get("shape_type"),
-                    "html": block_html_map.get(block_id, "")
+                block_id = m["match_id"]
+                # Если один block_id встретился дважды — оставляем вариант с лучшим score
+                prev = ocr_map.get(block_id)
+                if prev is None or m["score"] > prev["ocr_meta"]["match_score"]:
+                    ocr_map[block_id] = {
+                        "ocr_html": seg["segment_html"],
+                        "ocr_meta": {
+                            "source_pre_block_id": pre_blk.get("block_id"),
+                            "marker_raw": seg["marker"]["raw_token"],
+                            "marker_inside": seg["marker"]["inside"],
+                            "marker_uuid_cand": cand,
+                            "match_score": m["score"],
+                            "ambiguous_with": m.get("ambiguous_with"),
+                            "second_score": m.get("second_score"),
+                        }
+                    }
+        
+        logger.info(f"generate_grouped_result_json: найдено {len(ocr_map)} текстовых блоков с HTML")
+        
+        # Карта image analysis по block_id
+        image_analysis_map: Dict[str, Any] = {}
+        image_data_map: Dict[str, Dict] = {}
+        for pre_blk in preliminary.get("blocks", []):
+            if pre_blk.get("block_type") == "image":
+                bid = pre_blk.get("block_id")
+                image_analysis_map[bid] = pre_blk.get("ocr_result")
+                image_data_map[bid] = {
+                    "image": pre_blk.get("image"),
+                    "operator_hint": pre_blk.get("operator_hint"),
+                    "raw_pdfplumber_text": pre_blk.get("raw_pdfplumber_text"),
                 }
-                
-                # Копируем опциональные поля из annotation
-                if block.get("polygon_points"):
-                    result_block["polygon_points"] = block["polygon_points"]
-                if block.get("prompt"):
-                    result_block["prompt"] = block["prompt"]
-                if block.get("hint"):
-                    result_block["hint"] = block["hint"]
-                
-                # Для IMAGE блоков добавляем полные данные из OCR JSON
-                if block_type == "image" and block_id in ocr_blocks_map:
-                    ocr_block = ocr_blocks_map[block_id]
-                    
-                    # Копируем image данные
-                    if ocr_block.get("image"):
-                        result_block["image"] = ocr_block["image"]
-                    
-                    # Копируем operator_hint
-                    if ocr_block.get("operator_hint"):
-                        result_block["operator_hint"] = ocr_block["operator_hint"]
-                    
-                    # Копируем raw_pdfplumber_text
-                    if ocr_block.get("raw_pdfplumber_text"):
-                        result_block["raw_pdfplumber_text"] = ocr_block["raw_pdfplumber_text"]
-                    
-                    # Копируем полный ocr_result
-                    if ocr_block.get("ocr_result"):
-                        result_block["ocr_result"] = ocr_block["ocr_result"]
-                
-                result_blocks.append(result_block)
         
-        result = {
-            "pdf_path": annotation_data.get("pdf_path", ""),
-            "blocks": result_blocks
+        # Обновляем блоки в result
+        missing = []
+        for page in result.get("pages", []):
+            for blk in page.get("blocks", []):
+                bid = blk.get("id")
+                block_type = blk.get("block_type")
+                
+                if block_type == "text":
+                    found = ocr_map.get(bid)
+                    if found:
+                        blk["ocr_html"] = found["ocr_html"]
+                        blk["ocr_meta"] = found["ocr_meta"]
+                    else:
+                        blk["ocr_html"] = None
+                        blk["ocr_meta"] = {"status": "not_found"}
+                        missing.append(bid)
+                
+                elif block_type == "image":
+                    blk["image_analysis"] = image_analysis_map.get(bid)
+                    # Копируем дополнительные данные изображения
+                    img_data = image_data_map.get(bid, {})
+                    if img_data.get("image"):
+                        blk["image"] = img_data["image"]
+                    if img_data.get("operator_hint"):
+                        blk["operator_hint"] = img_data["operator_hint"]
+                    if img_data.get("raw_pdfplumber_text"):
+                        blk["raw_pdfplumber_text"] = img_data["raw_pdfplumber_text"]
+        
+        result["_merge_info"] = {
+            "generated_at_utc": datetime.utcnow().isoformat() + "Z",
+            "threshold": threshold,
+            "missing_text_block_ids": missing,
         }
+        
+        if missing:
+            logger.warning(f"generate_grouped_result_json: не найдено HTML для {len(missing)} блоков: {missing[:5]}...")
         
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -406,4 +450,3 @@ def generate_grouped_result_json(
     except Exception as e:
         logger.error(f"Ошибка генерации grouped result JSON: {e}", exc_info=True)
         raise
-
