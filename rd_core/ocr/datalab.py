@@ -40,6 +40,7 @@ RULES:
         self.api_key = api_key
         self.headers = {"X-Api-Key": api_key}
         self.rate_limiter = rate_limiter
+        self.last_html_result: Optional[str] = None  # HTML результат последнего запроса
         try:
             import requests
             from requests.adapters import HTTPAdapter
@@ -85,7 +86,7 @@ RULES:
                         data = {
                             'mode': 'accurate',
                             'paginate': 'true',
-                            'output_format': 'json',
+                            'output_format': 'json,html',
                             'disable_image_extraction': 'true',
                             'disable_image_captions': 'true',
                             'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT,
@@ -154,7 +155,10 @@ RULES:
                     if status == 'complete':
                         logger.info("Datalab: задача успешно завершена")
                         json_result = poll_result.get('json', '')
+                        html_result = poll_result.get('html', '')
                         logger.debug(f"Datalab: тип результата: {type(json_result)}, ключи ответа: {list(poll_result.keys())}")
+                        # Сохраняем HTML результат
+                        self.last_html_result = html_result if html_result else None
                         # Если результат - dict, преобразуем в строку JSON
                         if isinstance(json_result, dict):
                             import json as json_lib

@@ -441,9 +441,9 @@ def _run_legacy_ocr(
 
 
 def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> str:
-    """Генерация результатов OCR (markdown, annotation)"""
+    """Генерация результатов OCR (markdown, annotation, html)"""
     from rd_core.models import Page, Document, Block, ShapeType
-    from rd_core.ocr import generate_structured_json, generate_grouped_result_json
+    from rd_core.ocr import generate_structured_json, generate_grouped_result_json, generate_html_from_ocr
     from .pdf_streaming import get_page_dimensions_streaming
     
     # Логирование состояния блоков
@@ -525,5 +525,17 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
         )
     except Exception as e:
         logger.warning(f"Ошибка генерации grouped_result.json: {e}")
+    
+    # Генерация итогового HTML файла из OCR результатов
+    html_path = work_dir / "ocr_result.html"
+    try:
+        generate_html_from_ocr(
+            str(result_json_path),
+            str(html_path),
+            doc_name=pdf_path.name
+        )
+        logger.info(f"HTML файл сгенерирован: {html_path}")
+    except Exception as e:
+        logger.warning(f"Ошибка генерации HTML: {e}")
     
     return r2_prefix

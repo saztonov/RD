@@ -166,6 +166,106 @@ def _extract_all_html_from_ocr_result(ocr_result: Any) -> str:
     return "".join(html_parts)
 
 
+def generate_html_from_ocr(
+    ocr_json_path: str,
+    output_path: str,
+    doc_name: str = None
+) -> str:
+    """
+    Генерация итогового HTML файла из OCR результатов.
+    
+    Args:
+        ocr_json_path: путь к result.json с OCR результатами
+        output_path: путь для сохранения HTML файла
+        doc_name: имя документа для заголовка
+    
+    Returns:
+        Путь к сохранённому файлу
+    """
+    try:
+        with open(ocr_json_path, "r", encoding="utf-8") as f:
+            ocr_data = json_module.load(f)
+        
+        html_parts = []
+        
+        # HTML заголовок
+        title = doc_name or ocr_data.get("doc_name", "OCR Result")
+        html_parts.append(f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title} - OCR</title>
+    <style>
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 2rem; line-height: 1.6; }}
+        .block {{ margin: 1.5rem 0; padding: 1rem; border-left: 3px solid #3498db; background: #f8f9fa; }}
+        .block-header {{ font-size: 0.8rem; color: #666; margin-bottom: 0.5rem; }}
+        .block-content {{ }}
+        .block-type-text {{ border-left-color: #2ecc71; }}
+        .block-type-table {{ border-left-color: #e74c3c; }}
+        .block-type-image {{ border-left-color: #9b59b6; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 0.5rem; text-align: left; }}
+        th {{ background: #f0f0f0; }}
+        img {{ max-width: 100%; height: auto; }}
+        h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; }}
+    </style>
+</head>
+<body>
+<h1>{title}</h1>
+<p>Сгенерировано: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+""")
+        
+        blocks = ocr_data.get("blocks", [])
+        
+        for block in blocks:
+            block_id = block.get("block_id", "")
+            block_type = block.get("block_type", "text")
+            block_num = block.get("block_number", "")
+            page = block.get("page", "")
+            
+            html_parts.append(f'<div class="block block-type-{block_type}">')
+            html_parts.append(f'<div class="block-header">Блок #{block_num} (стр. {page}) | Тип: {block_type} | ID: {block_id[:8]}...</div>')
+            html_parts.append('<div class="block-content">')
+            
+            ocr_result = block.get("ocr_result", {})
+            
+            # Извлекаем HTML из ocr_result
+            block_html = _extract_all_html_from_ocr_result(ocr_result)
+            
+            if block_html:
+                html_parts.append(block_html)
+            elif isinstance(ocr_result, dict):
+                # Fallback: raw_text
+                raw_text = ocr_result.get("raw_text", "")
+                if raw_text:
+                    html_parts.append(f"<pre>{raw_text}</pre>")
+            
+            # Для IMAGE блоков добавляем изображение
+            if block_type == "image":
+                image_info = block.get("image", {})
+                image_uri = image_info.get("uri", "")
+                if image_uri:
+                    html_parts.append(f'<p><a href="{image_uri}" target="_blank">Открыть изображение</a></p>')
+            
+            html_parts.append('</div></div>')
+        
+        html_parts.append("</body></html>")
+        
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(html_parts))
+        
+        logger.info(f"HTML файл сохранён: {output_file} ({len(blocks)} блоков)")
+        return str(output_file)
+        
+    except Exception as e:
+        logger.error(f"Ошибка генерации HTML: {e}", exc_info=True)
+        raise
+
+
 # ========== Новый алгоритм группировки HTML по BLOCK_ID ==========
 
 def _canonicalize_uuid(text: str) -> Optional[str]:
