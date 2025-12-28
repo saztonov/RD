@@ -348,6 +348,12 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         dialog = OCRSettingsDialog(self)
         dialog.exec()
     
+    def _show_image_categories(self):
+        """Показать диалог настройки категорий изображений"""
+        from app.gui.image_categories_dialog import ImageCategoriesDialog
+        dialog = ImageCategoriesDialog(self)
+        dialog.exec()
+    
     def _send_to_remote_ocr(self):
         """Отправить выделенные блоки на Remote OCR"""
         if self.remote_ocr_panel:

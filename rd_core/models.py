@@ -49,6 +49,8 @@ class Block:
         linked_block_id: ID связанного блока (для IMAGE+TEXT)
         group_id: ID группы блоков (None = общая группа)
         group_name: название группы (отображаемое пользователю)
+        category_id: ID категории изображения (для IMAGE блоков)
+        category_code: код категории изображения (для IMAGE блоков)
     """
     id: str
     page_index: int
@@ -66,6 +68,8 @@ class Block:
     linked_block_id: Optional[str] = None  # ID связанного блока
     group_id: Optional[str] = None  # ID группы блоков
     group_name: Optional[str] = None  # Название группы
+    category_id: Optional[str] = None  # ID категории изображения
+    category_code: Optional[str] = None  # Код категории изображения (для сериализации)
     
     @staticmethod
     def generate_id() -> str:
@@ -227,6 +231,10 @@ class Block:
             result["group_id"] = self.group_id
         if self.group_name:
             result["group_name"] = self.group_name
+        if self.category_id:
+            result["category_id"] = self.category_id
+        if self.category_code:
+            result["category_code"] = self.category_code
         return result
     
     @classmethod
@@ -270,7 +278,9 @@ class Block:
             pdfplumber_text=data.get("pdfplumber_text"),
             linked_block_id=data.get("linked_block_id"),
             group_id=data.get("group_id"),
-            group_name=data.get("group_name")
+            group_name=data.get("group_name"),
+            category_id=data.get("category_id"),
+            category_code=data.get("category_code")
         )
 
 

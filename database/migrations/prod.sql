@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2025-12-27T17:05:16.685379
+-- Generated: 2025-12-28T18:47:41.412751
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -376,6 +376,29 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
 COMMENT ON TABLE public.app_settings IS 'Глобальные настройки приложения (key-value JSON)';
 COMMENT ON COLUMN public.app_settings.key IS 'Уникальный ключ настройки (например: ocr_server_settings)';
 COMMENT ON COLUMN public.app_settings.value IS 'Значение настройки в формате JSON';
+
+-- Table: public.image_categories
+-- Description: Категории изображений с промптами для OCR
+CREATE TABLE IF NOT EXISTS public.image_categories (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    code text NOT NULL,
+    description text,
+    system_prompt text NOT NULL DEFAULT ''::text,
+    user_prompt text NOT NULL DEFAULT ''::text,
+    is_default boolean DEFAULT false,
+    sort_order integer DEFAULT 0,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT image_categories_code_key UNIQUE (code),
+    CONSTRAINT image_categories_pkey PRIMARY KEY (id)
+);
+COMMENT ON TABLE public.image_categories IS 'Категории изображений с промптами для OCR';
+COMMENT ON COLUMN public.image_categories.name IS 'Отображаемое название категории';
+COMMENT ON COLUMN public.image_categories.code IS 'Уникальный код категории (slug)';
+COMMENT ON COLUMN public.image_categories.system_prompt IS 'System/Role промпт для модели';
+COMMENT ON COLUMN public.image_categories.user_prompt IS 'User Input промпт для модели';
+COMMENT ON COLUMN public.image_categories.is_default IS 'Категория по умолчанию для всех новых IMAGE блоков';
 
 -- Table: public.job_files
 -- Description: Файлы связанные с OCR задачами
@@ -827,7 +850,7 @@ $function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
+CREATE OR REPLACE FUNCTION extensions.armor(bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -835,7 +858,7 @@ AS '$libdir/pgcrypto', $function$pg_armor$function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea)
+CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1082,7 +1105,7 @@ $function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1090,7 +1113,7 @@ AS '$libdir/pgcrypto', $function$pg_hmac$function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1146,7 +1169,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1154,11 +1177,19 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
+
+
+-- Function: extensions.pgp_pub_decrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
+ RETURNS bytea
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
@@ -1171,14 +1202,6 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 -- Function: extensions.pgp_pub_decrypt_bytea
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
- RETURNS bytea
- LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
-
-
--- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1202,14 +1225,6 @@ AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
- RETURNS bytea
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
-
-
--- Function: extensions.pgp_pub_encrypt_bytea
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
@@ -1217,12 +1232,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
--- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
- RETURNS text
+-- Function: extensions.pgp_pub_encrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
+ RETURNS bytea
  LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_decrypt
@@ -1233,12 +1248,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
 AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
--- Function: extensions.pgp_sym_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text)
- RETURNS bytea
+-- Function: extensions.pgp_sym_decrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
+ RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
+AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_decrypt_bytea
@@ -1249,12 +1264,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text, text)
 AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
 
 
--- Function: extensions.pgp_sym_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
+-- Function: extensions.pgp_sym_decrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt
@@ -1265,8 +1280,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)
 AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
 
 
+-- Function: extensions.pgp_sym_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
+
+
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1274,7 +1297,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1604,6 +1627,18 @@ AS $function$
 
 -- Function: public.update_app_settings_timestamp
 CREATE OR REPLACE FUNCTION public.update_app_settings_timestamp()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$function$
+
+
+-- Function: public.update_image_categories_updated_at
+CREATE OR REPLACE FUNCTION public.update_image_categories_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
@@ -3290,6 +3325,9 @@ $function$
 -- Trigger: app_settings_updated_at on public.app_settings
 CREATE TRIGGER app_settings_updated_at BEFORE UPDATE ON public.app_settings FOR EACH ROW EXECUTE FUNCTION update_app_settings_timestamp()
 
+-- Trigger: trigger_image_categories_updated_at on public.image_categories
+CREATE TRIGGER trigger_image_categories_updated_at BEFORE UPDATE ON public.image_categories FOR EACH ROW EXECUTE FUNCTION update_image_categories_updated_at()
+
 -- Trigger: update_job_settings_updated_at on public.job_settings
 CREATE TRIGGER update_job_settings_updated_at BEFORE UPDATE ON public.job_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
@@ -3495,6 +3533,15 @@ CREATE INDEX users_is_anonymous_idx ON auth.users USING btree (is_anonymous);
 
 -- Index on auth.users
 CREATE UNIQUE INDEX users_phone_key ON auth.users USING btree (phone);
+
+-- Index on public.image_categories
+CREATE INDEX idx_image_categories_code ON public.image_categories USING btree (code);
+
+-- Index on public.image_categories
+CREATE INDEX idx_image_categories_is_default ON public.image_categories USING btree (is_default) WHERE (is_default = true);
+
+-- Index on public.image_categories
+CREATE UNIQUE INDEX image_categories_code_key ON public.image_categories USING btree (code);
 
 -- Index on public.job_files
 CREATE INDEX idx_job_files_job_id ON public.job_files USING btree (job_id);

@@ -2,18 +2,50 @@
 from __future__ import annotations
 
 import uuid
+import logging
 from PySide6.QtWidgets import QMenu
 
 from rd_core.models import BlockType, Block, BlockSource
+
+logger = logging.getLogger(__name__)
 
 
 class ContextMenuMixin:
     """Миксин для контекстного меню"""
     
+    # Кэш категорий изображений
+    _image_categories_cache = None
+    _tree_client = None
+    
     def contextMenuEvent(self, event):
         """Обработка контекстного меню"""
         if self.selected_block_idx is not None:
             self._show_context_menu(event.globalPos())
+    
+    def _get_image_categories(self):
+        """Получить категории изображений из кэша или Supabase"""
+        if ContextMenuMixin._image_categories_cache is not None:
+            return ContextMenuMixin._image_categories_cache
+        
+        try:
+            if ContextMenuMixin._tree_client is None:
+                from app.tree_client import TreeClient
+                ContextMenuMixin._tree_client = TreeClient()
+            
+            if ContextMenuMixin._tree_client.is_available():
+                ContextMenuMixin._image_categories_cache = ContextMenuMixin._tree_client.get_image_categories()
+            else:
+                ContextMenuMixin._image_categories_cache = []
+        except Exception as e:
+            logger.warning(f"Не удалось загрузить категории: {e}")
+            ContextMenuMixin._image_categories_cache = []
+        
+        return ContextMenuMixin._image_categories_cache
+    
+    @classmethod
+    def invalidate_categories_cache(cls):
+        """Сбросить кэш категорий"""
+        cls._image_categories_cache = None
     
     def _show_context_menu(self, global_pos):
         """Показать контекстное меню"""
@@ -34,6 +66,31 @@ class ContextMenuMixin:
             action = type_menu.addAction(block_type.value)
             action.triggered.connect(lambda checked, bt=block_type, blocks=selected_blocks: 
                                     self._apply_type_to_blocks(blocks, bt))
+        
+        # Подменю выбора категории для IMAGE блоков
+        if len(selected_blocks) >= 1:
+            block_idx = selected_blocks[0]["idx"]
+            if 0 <= block_idx < len(self.current_blocks):
+                block = self.current_blocks[block_idx]
+                if block.block_type == BlockType.IMAGE:
+                    categories = self._get_image_categories()
+                    if categories:
+                        cat_menu = menu.addMenu("📂 Категория изображения")
+                        for cat in categories:
+                            cat_name = cat.get("name", "???")
+                            cat_id = cat.get("id")
+                            cat_code = cat.get("code")
+                            
+                            # Отметка текущей категории
+                            prefix = "✓ " if block.category_id == cat_id else "  "
+                            if cat.get("is_default"):
+                                prefix = "⭐ " if block.category_id == cat_id else "☆ "
+                            
+                            action = cat_menu.addAction(f"{prefix}{cat_name}")
+                            action.triggered.connect(
+                                lambda checked, cid=cat_id, ccode=cat_code, blocks=selected_blocks:
+                                self._apply_category_to_blocks(blocks, cid, ccode)
+                            )
         
         # Добавить связанный блок (только для одного блока)
         if len(selected_blocks) == 1:
@@ -150,6 +207,44 @@ class ContextMenuMixin:
         main_window._render_current_page()
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
+    
+    def _apply_category_to_blocks(self, blocks_data: list, category_id: str, category_code: str):
+        """Применить категорию к IMAGE блокам"""
+        main_window = self.parent().window()
+        if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:
+            return
+        
+        current_page = main_window.current_page
+        if current_page >= len(main_window.annotation_document.pages):
+            return
+        
+        page = main_window.annotation_document.pages[current_page]
+        
+        # Сохраняем состояние для undo
+        if hasattr(main_window, '_save_undo_state'):
+            main_window._save_undo_state()
+        
+        count = 0
+        for data in blocks_data:
+            block_idx = data["idx"]
+            if block_idx < len(page.blocks):
+                block = page.blocks[block_idx]
+                if block.block_type == BlockType.IMAGE:
+                    block.category_id = category_id
+                    block.category_code = category_code
+                    count += 1
+        
+        main_window._render_current_page()
+        if hasattr(main_window, 'blocks_tree_manager'):
+            main_window.blocks_tree_manager.update_blocks_tree()
+        if hasattr(main_window, '_auto_save_annotation'):
+            main_window._auto_save_annotation()
+        
+        # Уведомление
+        if count > 0:
+            from app.gui.toast import show_toast
+            cat_name = category_code or "default"
+            show_toast(main_window, f"Категория установлена: {cat_name}")
     
     def _group_blocks(self, blocks_data: list):
         """Сгруппировать блоки"""

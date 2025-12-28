@@ -357,13 +357,19 @@ def _run_legacy_ocr(
             pdfplumber_text = extract_pdfplumber_text_for_block(str(pdf_path), block.page_index, block.coords_norm)
             doc_name = pdf_path.name
             
+            # Получаем category_id и category_code из блока
+            category_id = getattr(block, 'category_id', None)
+            category_code = getattr(block, 'category_code', None)
+            
             prompt_data = fill_image_prompt_variables(
                 prompt_data=block.prompt,
                 doc_name=doc_name,
                 page_index=block.page_index,
                 block_id=block.id,
                 hint=getattr(block, 'hint', None),
-                pdfplumber_text=pdfplumber_text
+                pdfplumber_text=pdfplumber_text,
+                category_id=category_id,
+                category_code=category_code
             )
             
             global_sem.acquire()

@@ -8,16 +8,44 @@ from typing import Optional, Dict, List
 logger = logging.getLogger(__name__)
 
 
+def get_image_block_prompt(
+    block_prompt: Optional[dict],
+    category_id: Optional[str] = None,
+    category_code: Optional[str] = None
+) -> Optional[dict]:
+    """
+    Получить промпт для IMAGE блока с учётом категории.
+    Приоритет: block.prompt > category prompt > default category
+    """
+    # Если блок имеет собственный промпт — используем его
+    if block_prompt and (block_prompt.get("system") or block_prompt.get("user")):
+        return block_prompt
+    
+    # Иначе получаем промпт из категории
+    try:
+        from .storage_settings import get_category_prompt
+        category_prompt = get_category_prompt(category_id, category_code)
+        if category_prompt:
+            return category_prompt
+    except Exception as e:
+        logger.warning(f"Не удалось получить промпт категории: {e}")
+    
+    return None
+
+
 def fill_image_prompt_variables(
     prompt_data: Optional[dict],
     doc_name: str,
     page_index: int,
     block_id: str,
     hint: Optional[str],
-    pdfplumber_text: str
+    pdfplumber_text: str,
+    category_id: Optional[str] = None,
+    category_code: Optional[str] = None
 ) -> dict:
     """
-    Заполнить переменные в промпте для IMAGE блока
+    Заполнить переменные в промпте для IMAGE блока.
+    Если prompt_data пуст — берёт промпт из категории.
     
     Переменные:
         {DOC_NAME} - имя PDF документа
@@ -27,12 +55,15 @@ def fill_image_prompt_variables(
         {OPERATOR_HINT_OR_EMPTY} - подсказка пользователя или пустая строка
         {PDFPLUMBER_TEXT_OR_EMPTY} - извлечённый текст pdfplumber
     """
-    if not prompt_data:
-        return {"system": "", "user": "Опиши что изображено на картинке."}
+    # Получаем промпт с учётом категории
+    effective_prompt = get_image_block_prompt(prompt_data, category_id, category_code)
+    
+    if not effective_prompt:
+        return {"system": "", "user": "Опиши что изображено на картинке. Верни результат как JSON."}
     
     result = {
-        "system": prompt_data.get("system", ""),
-        "user": prompt_data.get("user", "")
+        "system": effective_prompt.get("system", ""),
+        "user": effective_prompt.get("user", "")
     }
     
     variables = {

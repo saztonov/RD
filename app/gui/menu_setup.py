@@ -82,6 +82,13 @@ class MenuSetupMixin:
         
         settings_menu.addSeparator()
         
+        # Настройка категорий изображений
+        image_categories_action = QAction("🖼️ Настройка категорий изображений", self)
+        image_categories_action.triggered.connect(self._show_image_categories)
+        settings_menu.addAction(image_categories_action)
+        
+        settings_menu.addSeparator()
+        
         ocr_settings_action = QAction("⚙️ Настройки OCR сервера", self)
         ocr_settings_action.triggered.connect(self._show_ocr_settings)
         settings_menu.addAction(ocr_settings_action)
