@@ -293,7 +293,7 @@ def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARA
     bbox = draw.textbbox((0, 0), text, font=font)
     text_height = bbox[3] - bbox[1]
     
-    x = 0
+    x = 50
     y = (height - text_height) // 2
     
     draw.text((x, y), text, fill=(255, 255, 255), font=font)
