@@ -84,11 +84,10 @@ RULES:
                         files = {'file': (os.path.basename(tmp_path), f, 'image/png')}
                         data = {
                             'mode': 'accurate',
-                            'force_ocr': 'true',
-                            'paginate': 'false',
-                            'use_llm': 'true',
+                            'paginate': 'true',
                             'output_format': 'json',
                             'disable_image_extraction': 'true',
+                            'disable_image_captions': 'true',
                             'block_correction_prompt': self.BLOCK_CORRECTION_PROMPT,
                             'additional_config': json.dumps({'keep_pageheader_in_output': True})
                         }
