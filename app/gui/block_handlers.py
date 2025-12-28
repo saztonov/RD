@@ -517,6 +517,15 @@ class BlockHandlersMixin:
         if not hasattr(self, 'groups_tree'):
             return
         
+        # Сохраняем развёрнутые группы
+        expanded_groups = set()
+        for i in range(self.groups_tree.topLevelItemCount()):
+            item = self.groups_tree.topLevelItem(i)
+            if item.isExpanded():
+                data = item.data(0, Qt.UserRole)
+                if data and data.get("group_id"):
+                    expanded_groups.add(data["group_id"])
+        
         self.groups_tree.clear()
         
         if not self.annotation_document:
@@ -566,6 +575,10 @@ class BlockHandlersMixin:
                     "idx": block_idx,
                     "group_id": group_id
                 })
+            
+            # Восстанавливаем развёрнутое состояние
+            if group_id in expanded_groups:
+                group_item.setExpanded(True)
     
     def _on_groups_tree_clicked(self, item: QTreeWidgetItem, column: int):
         """Клик по элементу дерева групп"""
