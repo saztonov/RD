@@ -51,6 +51,15 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         add_job_file(job.id, "ocr_html", r2_key, html_filename, html_path.stat().st_size)
         logger.info(f"Загружен OCR HTML в R2: {r2_key}")
     
+    # result.json -> {doc_stem}_result.json (annotation + ocr_html для каждого блока)
+    result_path = work_dir / "result.json"
+    if result_path.exists():
+        result_filename = f"{doc_stem}_result.json"
+        r2_key = f"{r2_prefix}/{result_filename}"
+        r2.upload_file(str(result_path), r2_key)
+        add_job_file(job.id, "result", r2_key, result_filename, result_path.stat().st_size)
+        logger.info(f"Загружен result.json в R2: {r2_key}")
+    
     # crops/ (проверяем оба варианта: crops и crops_final для двухпроходного алгоритма)
     for crops_subdir in ["crops", "crops_final"]:
         crops_path = work_dir / crops_subdir

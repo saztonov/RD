@@ -33,6 +33,7 @@ from .memory_utils import log_memory, log_memory_delta, force_gc, log_pil_images
 from .pdf_streaming_v2 import pass1_prepare_crops, pass2_ocr_from_manifest, cleanup_manifest_files
 from .task_helpers import check_paused, download_job_files, create_empty_result
 from .task_upload import upload_results_to_r2, copy_crops_to_final
+from .ocr_result_merger import merge_ocr_results
 
 logger = logging.getLogger(__name__)
 
@@ -522,5 +523,12 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
         logger.info(f"HTML файл сгенерирован: {html_path}")
     except Exception as e:
         logger.warning(f"Ошибка генерации HTML: {e}")
+    
+    # Генерация result.json (annotation + ocr_html для каждого блока)
+    result_path = work_dir / "result.json"
+    try:
+        merge_ocr_results(annotation_path, html_path, result_path)
+    except Exception as e:
+        logger.warning(f"Ошибка генерации result.json: {e}")
     
     return r2_prefix

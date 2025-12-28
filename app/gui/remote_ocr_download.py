@@ -60,9 +60,10 @@ class DownloadMixin:
             
             actual_prefix = job_details.get("result_prefix") or r2_prefix
             
-            # Скачиваем _ocr.html
+            # Скачиваем _ocr.html и _result.json
             files_to_download = [
                 (f"{doc_stem}_ocr.html", f"{pdf_stem}_ocr.html"),
+                (f"{doc_stem}_result.json", f"{pdf_stem}_result.json"),
             ]
             
             self._signals.download_started.emit(job_id, len(files_to_download))
