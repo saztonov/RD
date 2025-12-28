@@ -10,10 +10,11 @@ from typing import Optional, Dict, Any
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTextEdit, QSplitter, QMessageBox
+    QPushButton, QTextEdit, QSplitter, QMessageBox,
+    QApplication, QGroupBox
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QCursor
 
 logger = logging.getLogger(__name__)
 
@@ -36,28 +37,50 @@ class OcrPreviewWidget(QWidget):
     def _setup_ui(self):
         """Настройка UI"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
         
-        # Заголовок
+        # Заголовок с ID блока
         header = QHBoxLayout()
+        header.setSpacing(4)
+        
         self.title_label = QLabel("OCR Preview")
         self.title_label.setStyleSheet("font-weight: bold; font-size: 11px;")
         header.addWidget(self.title_label)
+        
+        # ID блока (полный, с возможностью копирования)
+        self.block_id_label = QLabel("")
+        self.block_id_label.setStyleSheet("""
+            QLabel {
+                color: #888;
+                font-family: 'Consolas', monospace;
+                font-size: 10px;
+                padding: 2px 4px;
+                background: #2d2d2d;
+                border-radius: 3px;
+            }
+        """)
+        self.block_id_label.setCursor(QCursor(Qt.PointingHandCursor))
+        self.block_id_label.setToolTip("Клик для копирования ID")
+        self.block_id_label.mousePressEvent = self._copy_block_id
+        header.addWidget(self.block_id_label)
+        
         header.addStretch()
         
         # Кнопка сохранения (локально + R2)
-        self.save_btn = QPushButton("💾")
+        self.save_btn = QPushButton("💾 Сохранить")
         self.save_btn.setToolTip("Сохранить (локально + R2)")
-        self.save_btn.setFixedSize(26, 26)
         self.save_btn.clicked.connect(self._save_all)
         self.save_btn.setEnabled(False)
         header.addWidget(self.save_btn)
         
         layout.addLayout(header)
         
-        # Splitter для preview и редактирования
-        splitter = QSplitter(Qt.Vertical)
+        # Главный splitter
+        main_splitter = QSplitter(Qt.Vertical)
+        
+        # === Верхняя часть: Preview + Editor ===
+        content_splitter = QSplitter(Qt.Vertical)
         
         # HTML Preview (только чтение, рендеринг)
         self.preview_edit = QTextEdit()
@@ -73,7 +96,7 @@ class OcrPreviewWidget(QWidget):
                 font-size: 12px;
             }
         """)
-        splitter.addWidget(self.preview_edit)
+        content_splitter.addWidget(self.preview_edit)
         
         # Raw HTML Editor
         editor_widget = QWidget()
@@ -99,13 +122,52 @@ class OcrPreviewWidget(QWidget):
         self.html_edit.textChanged.connect(self._on_text_changed)
         editor_layout.addWidget(self.html_edit)
         
-        splitter.addWidget(editor_widget)
-        splitter.setSizes([200, 100])
+        content_splitter.addWidget(editor_widget)
+        content_splitter.setSizes([250, 150])
         
-        layout.addWidget(splitter)
+        main_splitter.addWidget(content_splitter)
+        
+        # === Нижняя часть: Штамп ===
+        self.stamp_group = QGroupBox("📋 Штамп листа")
+        self.stamp_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #569cd6;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: #569cd6;
+            }
+        """)
+        stamp_layout = QVBoxLayout(self.stamp_group)
+        stamp_layout.setContentsMargins(8, 12, 8, 8)
+        
+        self.stamp_content = QLabel("")
+        self.stamp_content.setWordWrap(True)
+        self.stamp_content.setStyleSheet("font-size: 11px; color: #d4d4d4;")
+        self.stamp_content.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        stamp_layout.addWidget(self.stamp_content)
+        
+        self.stamp_group.hide()
+        main_splitter.addWidget(self.stamp_group)
+        
+        main_splitter.setSizes([400, 150])
+        layout.addWidget(main_splitter)
         
         # Placeholder
         self._show_placeholder()
+    
+    def _copy_block_id(self, event):
+        """Копировать ID блока в буфер обмена"""
+        if self._current_block_id:
+            QApplication.clipboard().setText(self._current_block_id)
+            from app.gui.toast import show_toast
+            show_toast(self.window(), f"ID скопирован: {self._current_block_id}")
     
     def _show_placeholder(self):
         """Показать заглушку"""
@@ -115,6 +177,8 @@ class OcrPreviewWidget(QWidget):
         )
         self.html_edit.clear()
         self.html_edit.setEnabled(False)
+        self.block_id_label.setText("")
+        self.stamp_group.hide()
         self._current_block_id = None
     
     def load_result_file(self, pdf_path: str, r2_key: Optional[str] = None):
@@ -160,6 +224,9 @@ class OcrPreviewWidget(QWidget):
         self._is_modified = False
         self.save_btn.setEnabled(False)
         
+        # Обновляем ID блока
+        self.block_id_label.setText(block_id if block_id else "")
+        
         if not self._result_data or not block_id:
             self._show_placeholder()
             return
@@ -173,6 +240,7 @@ class OcrPreviewWidget(QWidget):
             )
             self.html_edit.clear()
             self.html_edit.setEnabled(False)
+            self.stamp_group.hide()
             return
         
         block_type = block_data.get("block_type", "text")
@@ -188,13 +256,14 @@ class OcrPreviewWidget(QWidget):
         if not html_content and block_data.get("ocr_text"):
             html_content = f"<pre>{block_data['ocr_text']}</pre>"
         
-        # Добавляем данные штампа если есть
+        # Обрабатываем штамп отдельно
         stamp_data = block_data.get("stamp_data")
-        stamp_html = ""
         if stamp_data:
-            stamp_html = self._format_stamp_data(stamp_data)
+            self._show_stamp(stamp_data)
+        else:
+            self.stamp_group.hide()
         
-        if not html_content and not stamp_html:
+        if not html_content:
             self.preview_edit.setHtml(
                 '<p style="color: #888;">Пустой OCR результат</p>'
             )
@@ -202,13 +271,8 @@ class OcrPreviewWidget(QWidget):
             self.html_edit.setEnabled(False)
             return
         
-        # Объединяем контент блока и штамп
-        full_content = html_content
-        if stamp_html:
-            full_content = f"{stamp_html}\n{html_content}" if html_content else stamp_html
-        
         # Показываем HTML
-        styled_html = self._apply_preview_styles(full_content)
+        styled_html = self._apply_preview_styles(html_content)
         self.preview_edit.setHtml(styled_html)
         
         # Редактор
@@ -217,7 +281,39 @@ class OcrPreviewWidget(QWidget):
         self.html_edit.blockSignals(False)
         self.html_edit.setEnabled(True)
         
-        self.title_label.setText(f"OCR: {block_id[:8]}...")
+        self.title_label.setText("OCR Preview")
+    
+    def _show_stamp(self, stamp_data: dict):
+        """Показать данные штампа в отдельном блоке"""
+        lines = []
+        
+        if stamp_data.get("document_code"):
+            lines.append(f"<b>Шифр:</b> {stamp_data['document_code']}")
+        
+        if stamp_data.get("sheet_name"):
+            lines.append(f"<b>Наименование:</b> {stamp_data['sheet_name']}")
+        
+        sheet_num = stamp_data.get("sheet_number", "")
+        total = stamp_data.get("total_sheets", "")
+        if sheet_num or total:
+            lines.append(f"<b>Лист:</b> {sheet_num}/{total}")
+        
+        if stamp_data.get("stage"):
+            lines.append(f"<b>Стадия:</b> {stamp_data['stage']}")
+        
+        if stamp_data.get("organization"):
+            lines.append(f"<b>Организация:</b> {stamp_data['organization']}")
+        
+        if stamp_data.get("project_name"):
+            lines.append(f"<b>Проект:</b> {stamp_data['project_name']}")
+        
+        signatures = stamp_data.get("signatures", [])
+        if signatures:
+            sig_parts = [f"{s.get('role', '')}: {s.get('surname', '')} ({s.get('date', '')})" for s in signatures]
+            lines.append(f"<b>Подписи:</b> {'; '.join(sig_parts)}")
+        
+        self.stamp_content.setText("<br>".join(lines))
+        self.stamp_group.show()
     
     def _format_image_block(self, block_data: dict, html_content: str) -> str:
         """Форматировать IMAGE блок с ocr_json и crop_url."""
@@ -426,5 +522,7 @@ class OcrPreviewWidget(QWidget):
         self._current_block_id = None
         self._blocks_index = {}
         self.title_label.setText("OCR Preview")
+        self.block_id_label.setText("")
+        self.stamp_group.hide()
         self._show_placeholder()
 

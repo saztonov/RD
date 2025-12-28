@@ -105,15 +105,16 @@ class PanelsSetupMixin:
         """Создать виджет блоков"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         
-        # Splitter для разделения дерева блоков и OCR preview
-        main_splitter = QSplitter(Qt.Vertical)
+        # Главные вкладки: Блоки | OCR
+        self.main_right_tabs = QTabWidget()
         
-        # Верхняя часть: дерево блоков
+        # === Вкладка "Блоки" ===
         blocks_container = QWidget()
         blocks_layout = QVBoxLayout(blocks_container)
-        blocks_layout.setContentsMargins(0, 0, 0, 0)
+        blocks_layout.setContentsMargins(4, 4, 4, 4)
         
         # Кнопки перемещения блоков
         move_buttons_layout = QHBoxLayout()
@@ -127,6 +128,7 @@ class PanelsSetupMixin:
         
         blocks_layout.addLayout(move_buttons_layout)
         
+        # Под-вкладки: Страница | Группы
         self.blocks_tabs = QTabWidget()
         
         # Вкладка: Страница → Блок
@@ -158,10 +160,6 @@ class PanelsSetupMixin:
         self.groups_tree.itemClicked.connect(self._on_groups_tree_clicked)
         self.blocks_tabs.addTab(self.groups_tree, "Группы")
         
-        # Вкладка: OCR preview
-        self.ocr_preview = OcrPreviewWidget()
-        self.blocks_tabs.addTab(self.ocr_preview, "OCR")
-        
         # Переменная для выбранной группы
         self.selected_group_id = None
         
@@ -181,9 +179,27 @@ class PanelsSetupMixin:
         self._selected_image_block = None
         blocks_layout.addWidget(self.hint_group)
         
-        main_splitter.addWidget(blocks_container)
+        self.main_right_tabs.addTab(blocks_container, "Блоки")
         
-        layout.addWidget(main_splitter)
+        # === Вкладка "OCR" ===
+        self.ocr_preview = OcrPreviewWidget()
+        self.main_right_tabs.addTab(self.ocr_preview, "OCR")
+        
+        # Подключаем переключение вкладок для управления Remote OCR panel
+        self.main_right_tabs.currentChanged.connect(self._on_right_tab_changed)
+        
+        layout.addWidget(self.main_right_tabs)
+    
+    def _on_right_tab_changed(self, index: int):
+        """Обработка переключения вкладок правой панели"""
+        if not hasattr(self, 'remote_ocr_panel') or not self.remote_ocr_panel:
+            return
+        
+        # Скрываем Remote OCR panel на вкладке OCR (индекс 1)
+        if index == 1:  # OCR
+            self.remote_ocr_panel.hide()
+        else:  # Блоки
+            self.remote_ocr_panel.show()
         
         return widget
     
