@@ -10,7 +10,6 @@ from PySide6.QtCore import Qt
 from rd_core.models import Document, BlockType
 from rd_core.pdf_utils import PDFDocument
 from app.gui.blocks_tree_manager import BlocksTreeManager
-from app.gui.prompt_manager import PromptManager
 from app.gui.navigation_manager import NavigationManager
 from app.gui.menu_setup import MenuSetupMixin
 from app.gui.panels_setup import PanelsSetupMixin
@@ -39,7 +38,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.redo_stack: list = []
         
         # Менеджеры (инициализируются после setup_ui)
-        self.prompt_manager = PromptManager(self)
         self.blocks_tree_manager = None
         self.navigation_manager = None
         self.remote_ocr_panel = None
@@ -58,9 +56,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         # Инициализация менеджеров после создания UI
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree)
         self.navigation_manager = NavigationManager(self)
-        
-        # Инициализация промптов
-        self.prompt_manager.ensure_default_prompts()  # Проверяем наличие промптов в R2
         
         self.setWindowTitle("PDF Annotation Tool")
         self.resize(1200, 800)
@@ -215,23 +210,6 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self.page_viewer.set_blocks(page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()
             self._update_ui()
-    
-    def _sync_from_r2(self):
-        """Синхронизировать промты из R2"""
-        from PySide6.QtWidgets import QMessageBox
-        
-        if not self.prompt_manager.r2_storage:
-            QMessageBox.warning(self, "R2 недоступен", "R2 Storage не настроен. Проверьте .env файл.")
-            return
-        
-        # Проверяем наличие промптов
-        self.prompt_manager.ensure_default_prompts()
-        
-        QMessageBox.information(
-            self,
-            "Синхронизация завершена",
-            "Промпты обновлены"
-        )
     
     def _clear_interface(self):
         """Очистить интерфейс при отсутствии файлов"""

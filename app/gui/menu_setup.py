@@ -58,13 +58,6 @@ class MenuSetupMixin:
         # Подменю "Панели"
         panels_menu = view_menu.addMenu("📋 Панели")
         
-        # Меню "Промты"
-        prompts_menu = menubar.addMenu("&Промты")
-        
-        image_prompt_action = QAction("🖼️ Картинка", self)
-        image_prompt_action.triggered.connect(lambda: self._edit_prompt_by_key("image"))
-        prompts_menu.addAction(image_prompt_action)
-        
         # Меню "Настройки"
         settings_menu = menubar.addMenu("&Настройки")
         
@@ -92,18 +85,6 @@ class MenuSetupMixin:
         ocr_settings_action = QAction("⚙️ Настройки OCR сервера", self)
         ocr_settings_action.triggered.connect(self._show_ocr_settings)
         settings_menu.addAction(ocr_settings_action)
-    
-    def _edit_prompt_by_key(self, prompt_key: str):
-        """Редактировать промт по ключу"""
-        display_names = {"image": "Картинка"}
-        display_name = display_names.get(prompt_key, prompt_key)
-        
-        if hasattr(self, 'prompt_manager'):
-            self.prompt_manager.edit_prompt(
-                prompt_key,
-                f"Редактирование промта: {display_name}",
-                None
-            )
     
     def _setup_toolbar(self):
         """Настройка панели инструментов"""

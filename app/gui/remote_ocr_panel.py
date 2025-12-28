@@ -294,21 +294,9 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         return blocks
     
     def _attach_prompts_to_blocks(self, blocks):
-        """Добавить промпты к IMAGE блокам"""
-        from rd_core.models import BlockType
-        
-        if not hasattr(self.main_window, 'prompt_manager'):
-            return
-        
-        pm = self.main_window.prompt_manager
-        
-        for block in blocks:
-            if block.block_type == BlockType.IMAGE:
-                if getattr(block, "prompt", None):
-                    continue
-                prompt = pm.load_prompt("image")
-                if prompt:
-                    block.prompt = prompt
+        """Промпты берутся из категорий в Supabase на стороне сервера"""
+        # Промпты теперь загружаются на сервере из image_categories в Supabase
+        pass
 
     def _on_download_started(self, job_id: str, total_files: int):
         """Слот: начало скачивания"""
