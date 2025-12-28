@@ -1,5 +1,6 @@
 # GUI Framework
 PySide6>=6.6.0
+PySide6-WebEngine>=6.6.0
 
 # PDF Processing
 PyMuPDF>=1.26.7

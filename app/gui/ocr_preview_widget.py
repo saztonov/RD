@@ -13,8 +13,9 @@ from PySide6.QtWidgets import (
     QPushButton, QTextEdit, QSplitter, QMessageBox,
     QApplication, QGroupBox
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QUrl
 from PySide6.QtGui import QFont, QCursor
+from PySide6.QtWebEngineWidgets import QWebEngineView
 
 logger = logging.getLogger(__name__)
 
@@ -82,20 +83,17 @@ class OcrPreviewWidget(QWidget):
         # === Верхняя часть: Preview + Editor ===
         content_splitter = QSplitter(Qt.Vertical)
         
-        # HTML Preview (только чтение, рендеринг)
-        self.preview_edit = QTextEdit()
-        self.preview_edit.setReadOnly(True)
+        # HTML Preview (QWebEngineView для корректного рендеринга HTML/CSS)
+        self.preview_edit = QWebEngineView()
         self.preview_edit.setStyleSheet("""
-            QTextEdit {
+            QWebEngineView {
                 background-color: #1e1e1e;
-                color: #d4d4d4;
                 border: 1px solid #3c3c3c;
                 border-radius: 4px;
-                padding: 8px;
-                font-family: 'Segoe UI', Arial, sans-serif;
-                font-size: 12px;
             }
         """)
+        # Отключаем контекстное меню браузера
+        self.preview_edit.setContextMenuPolicy(Qt.NoContextMenu)
         content_splitter.addWidget(self.preview_edit)
         
         # Raw HTML Editor
@@ -432,24 +430,48 @@ class OcrPreviewWidget(QWidget):
         return "\n".join(parts) if parts else "<p>Нет данных</p>"
     
     def _apply_preview_styles(self, html: str) -> str:
-        """Добавить стили для preview"""
+        """Добавить стили для preview (полноценный CSS для WebEngine)"""
         style = """
         <style>
-            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #d4d4d4; }
-            table { border-collapse: collapse; width: 100%; margin: 8px 0; }
-            th, td { border: 1px solid #444; padding: 4px 8px; text-align: left; }
-            th { background-color: #2d2d2d; }
+            * { box-sizing: border-box; }
+            body { 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                font-size: 13px; 
+                line-height: 1.5;
+                color: #d4d4d4; 
+                background-color: #1e1e1e;
+                margin: 8px;
+                padding: 0;
+            }
+            table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+            th, td { border: 1px solid #444; padding: 6px 10px; text-align: left; vertical-align: top; }
+            th { background-color: #2d2d2d; font-weight: 600; }
             tr:nth-child(even) { background-color: #252526; }
-            h1, h2, h3 { color: #569cd6; margin: 8px 0 4px 0; }
-            h1 { font-size: 14px; }
-            h2 { font-size: 13px; }
-            h3 { font-size: 12px; }
-            p { margin: 4px 0; }
-            ul, ol { margin: 4px 0; padding-left: 20px; }
-            pre { background: #1e1e1e; padding: 8px; border-radius: 4px; overflow-x: auto; }
+            tr:hover { background-color: #333; }
+            h1, h2, h3, h4 { color: #569cd6; margin: 16px 0 8px 0; }
+            h1 { font-size: 18px; border-bottom: 1px solid #444; padding-bottom: 4px; }
+            h2 { font-size: 16px; }
+            h3 { font-size: 14px; }
+            h4 { font-size: 13px; }
+            p { margin: 8px 0; }
+            ul, ol { margin: 8px 0; padding-left: 24px; }
+            li { margin: 4px 0; }
+            pre { 
+                background: #252526; 
+                padding: 10px; 
+                border-radius: 4px; 
+                overflow-x: auto; 
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 12px;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+            }
+            a { color: #4fc3f7; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            img { max-width: 100%; height: auto; }
         </style>
         """
-        return f"<html><head>{style}</head><body>{html}</body></html>"
+        return f"<!DOCTYPE html><html><head><meta charset='UTF-8'>{style}</head><body>{html}</body></html>"
     
     def _on_text_changed(self):
         """Обработка изменения текста"""
