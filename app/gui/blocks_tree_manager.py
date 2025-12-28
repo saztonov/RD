@@ -42,9 +42,6 @@ class BlocksTreeManager:
                 block_item = QTreeWidgetItem(page_item)
                 # Добавляем индикаторы
                 indicators = ""
-                # Индикатор группы
-                if block.group_id:
-                    indicators += " 📦"
                 # Индикатор связи
                 if block.linked_block_id:
                     indicators += " 🔗"
@@ -53,10 +50,12 @@ class BlocksTreeManager:
                     indicators += " 💡" if block.hint else " 📝"
                 block_item.setText(0, f"Блок {idx + 1}{indicators}")
                 block_item.setText(1, block.block_type.value)
+                # Колонка Группа
+                block_item.setText(2, block.group_name or "")
                 # Tooltip
                 tooltip_parts = []
-                if block.group_id:
-                    tooltip_parts.append(f"📦 Группа: {block.group_id[:8]}...")
+                if block.group_name:
+                    tooltip_parts.append(f"📦 Группа: {block.group_name}")
                 if block.linked_block_id:
                     tooltip_parts.append("🔗 Связан с другим блоком")
                 if block.hint:
@@ -334,15 +333,32 @@ class BlocksTreeManager:
         
         # Проверяем, есть ли выбранная группа
         group_id = getattr(self.parent, 'selected_group_id', None)
-        if not group_id:
-            # Создаём новую группу
+        group_name = None
+        
+        if group_id:
+            # Берём название существующей группы
+            for page in self.parent.annotation_document.pages:
+                for block in page.blocks:
+                    if block.group_id == group_id and block.group_name:
+                        group_name = block.group_name
+                        break
+                if group_name:
+                    break
+        else:
+            # Запрашиваем название новой группы
+            name, ok = QInputDialog.getText(
+                self.parent, "Новая группа", "Введите название группы:"
+            )
+            if not ok or not name.strip():
+                return
+            group_name = name.strip()
             group_id = str(uuid.uuid4())
         
         # Сохраняем состояние для undo
         if hasattr(self.parent, '_save_undo_state'):
             self.parent._save_undo_state()
         
-        # Применяем group_id ко всем выбранным блокам
+        # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
             page_num = data["page"]
             block_idx = data["idx"]
@@ -351,6 +367,7 @@ class BlocksTreeManager:
                 page = self.parent.annotation_document.pages[page_num]
                 if block_idx < len(page.blocks):
                     page.blocks[block_idx].group_id = group_id
+                    page.blocks[block_idx].group_name = group_name
         
         # Обновляем UI
         self.parent._render_current_page()
@@ -362,18 +379,28 @@ class BlocksTreeManager:
         
         # Уведомление
         from app.gui.toast import show_toast
-        show_toast(self.parent, f"Блоки сгруппированы ({len(blocks_data)} шт.)")
+        show_toast(self.parent, f"Блоки сгруппированы: {group_name}")
     
     def add_blocks_to_group(self, blocks_data: list, group_id: str):
         """Добавить блоки в существующую группу"""
         if not self.parent.annotation_document:
             return
         
+        # Находим название группы
+        group_name = None
+        for page in self.parent.annotation_document.pages:
+            for block in page.blocks:
+                if block.group_id == group_id and block.group_name:
+                    group_name = block.group_name
+                    break
+            if group_name:
+                break
+        
         # Сохраняем состояние для undo
         if hasattr(self.parent, '_save_undo_state'):
             self.parent._save_undo_state()
         
-        # Применяем group_id ко всем выбранным блокам
+        # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
             page_num = data["page"]
             block_idx = data["idx"]
@@ -382,6 +409,7 @@ class BlocksTreeManager:
                 page = self.parent.annotation_document.pages[page_num]
                 if block_idx < len(page.blocks):
                     page.blocks[block_idx].group_id = group_id
+                    page.blocks[block_idx].group_name = group_name
         
         # Обновляем UI
         self.parent._render_current_page()
@@ -393,4 +421,4 @@ class BlocksTreeManager:
         
         # Уведомление
         from app.gui.toast import show_toast
-        show_toast(self.parent, f"Блоки добавлены в группу ({len(blocks_data)} шт.)")
+        show_toast(self.parent, f"Блоки добавлены в группу: {group_name}")

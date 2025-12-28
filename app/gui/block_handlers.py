@@ -523,15 +523,18 @@ class BlockHandlersMixin:
             return
         
         # Собираем все группы из всего документа
-        groups = {}  # group_id -> list of (page_num, block_idx, block)
+        groups = {}  # group_id -> {"name": str, "blocks": list of (page_num, block_idx, block)}
         ungrouped_count = 0
         
         for page in self.annotation_document.pages:
             for idx, block in enumerate(page.blocks):
                 if block.group_id:
                     if block.group_id not in groups:
-                        groups[block.group_id] = []
-                    groups[block.group_id].append((page.page_number, idx, block))
+                        groups[block.group_id] = {"name": block.group_name or "Без названия", "blocks": []}
+                    groups[block.group_id]["blocks"].append((page.page_number, idx, block))
+                    # Обновляем название, если оно есть
+                    if block.group_name:
+                        groups[block.group_id]["name"] = block.group_name
                 else:
                     ungrouped_count += 1
         
@@ -543,13 +546,14 @@ class BlockHandlersMixin:
             default_item.setData(0, Qt.UserRole, {"type": "group", "group_id": None})
         
         # Добавляем остальные группы
-        for group_id, blocks in groups.items():
+        for group_id, group_data in groups.items():
             group_item = QTreeWidgetItem(self.groups_tree)
-            short_id = group_id[:8] + "..."
-            group_item.setText(0, f"📦 Группа {short_id}")
+            group_name = group_data["name"]
+            blocks = group_data["blocks"]
+            group_item.setText(0, f"📦 {group_name}")
             group_item.setText(1, str(len(blocks)))
-            group_item.setData(0, Qt.UserRole, {"type": "group", "group_id": group_id})
-            group_item.setToolTip(0, f"ID: {group_id}\nБлоков: {len(blocks)}")
+            group_item.setData(0, Qt.UserRole, {"type": "group", "group_id": group_id, "group_name": group_name})
+            group_item.setToolTip(0, f"Блоков: {len(blocks)}")
             
             # Добавляем блоки как дочерние элементы
             for page_num, block_idx, block in blocks:
@@ -660,7 +664,11 @@ class BlockHandlersMixin:
             group_id = data.get("group_id")
             
             if group_id:  # Не для общей группы
-                # Переименовать группу (пока не реализовано, т.к. ID = UUID)
+                # Переименовать группу
+                rename_action = menu.addAction("✏️ Переименовать")
+                rename_action.triggered.connect(lambda: self._rename_group(group_id, data.get("group_name", "")))
+                
+                menu.addSeparator()
                 
                 # Удалить группу (разгруппировать)
                 ungroup_action = menu.addAction("📤 Разгруппировать")
@@ -701,16 +709,32 @@ class BlockHandlersMixin:
         
         # Проверяем, есть ли выбранная группа
         group_id = getattr(self, 'selected_group_id', None)
-        if not group_id:
-            # Создаём новую группу
+        group_name = None
+        
+        if group_id:
+            # Берём название существующей группы
+            for block in current_page_data.blocks:
+                if block.group_id == group_id and block.group_name:
+                    group_name = block.group_name
+                    break
+        else:
+            # Запрашиваем название новой группы
+            from PySide6.QtWidgets import QInputDialog
+            name, ok = QInputDialog.getText(
+                self, "Новая группа", "Введите название группы:"
+            )
+            if not ok or not name.strip():
+                return
+            group_name = name.strip()
             group_id = str(uuid.uuid4())
         
         self._save_undo_state()
         
-        # Применяем group_id ко всем выбранным блокам
+        # Применяем group_id и group_name ко всем выбранным блокам
         for block_idx in selected_indices:
             if 0 <= block_idx < len(current_page_data.blocks):
                 current_page_data.blocks[block_idx].group_id = group_id
+                current_page_data.blocks[block_idx].group_name = group_name
         
         # Обновляем UI
         self._render_current_page()
@@ -719,7 +743,7 @@ class BlockHandlersMixin:
         
         # Уведомление
         from app.gui.toast import show_toast
-        show_toast(self, f"Блоки сгруппированы ({len(selected_indices)} шт.)")
+        show_toast(self, f"Блоки сгруппированы: {group_name}")
     
     def _ungroup_blocks(self, group_id: str):
         """Разгруппировать блоки (убрать группу)"""
@@ -787,6 +811,7 @@ class BlockHandlersMixin:
         self._save_undo_state()
         
         page.blocks[block_idx].group_id = None
+        page.blocks[block_idx].group_name = None
         
         self._render_current_page()
         self._update_groups_tree()
@@ -794,4 +819,35 @@ class BlockHandlersMixin:
         
         from app.gui.toast import show_toast
         show_toast(self, "Блок удалён из группы")
+    
+    def _rename_group(self, group_id: str, current_name: str):
+        """Переименовать группу"""
+        if not self.annotation_document or not group_id:
+            return
+        
+        from PySide6.QtWidgets import QInputDialog
+        new_name, ok = QInputDialog.getText(
+            self, "Переименовать группу", "Новое название группы:", text=current_name
+        )
+        
+        if not ok or not new_name.strip():
+            return
+        
+        new_name = new_name.strip()
+        
+        self._save_undo_state()
+        
+        # Обновляем название у всех блоков группы
+        for page in self.annotation_document.pages:
+            for block in page.blocks:
+                if block.group_id == group_id:
+                    block.group_name = new_name
+        
+        self._render_current_page()
+        self._update_groups_tree()
+        self.blocks_tree_manager.update_blocks_tree()
+        self._auto_save_annotation()
+        
+        from app.gui.toast import show_toast
+        show_toast(self, f"Группа переименована: {new_name}")
 

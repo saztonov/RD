@@ -165,19 +165,35 @@ class ContextMenuMixin:
         
         # Проверяем, есть ли выбранная группа
         group_id = getattr(main_window, 'selected_group_id', None)
-        if not group_id:
-            # Создаём новую группу
+        group_name = None
+        
+        if group_id:
+            # Берём название существующей группы
+            for block in page.blocks:
+                if block.group_id == group_id and block.group_name:
+                    group_name = block.group_name
+                    break
+        else:
+            # Запрашиваем название новой группы
+            from PySide6.QtWidgets import QInputDialog
+            name, ok = QInputDialog.getText(
+                main_window, "Новая группа", "Введите название группы:"
+            )
+            if not ok or not name.strip():
+                return
+            group_name = name.strip()
             group_id = str(uuid.uuid4())
         
         # Сохраняем состояние для undo
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
-        # Применяем group_id ко всем выбранным блокам
+        # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
             block_idx = data["idx"]
             if block_idx < len(page.blocks):
                 page.blocks[block_idx].group_id = group_id
+                page.blocks[block_idx].group_name = group_name
         
         # Обновляем UI
         main_window._render_current_page()
@@ -190,7 +206,7 @@ class ContextMenuMixin:
         
         # Уведомление
         from app.gui.toast import show_toast
-        show_toast(main_window, f"Блоки сгруппированы ({len(blocks_data)} шт.)")
+        show_toast(main_window, f"Блоки сгруппированы: {group_name}")
     
     def _add_blocks_to_group(self, blocks_data: list, group_id: str):
         """Добавить блоки в существующую группу"""
@@ -204,15 +220,26 @@ class ContextMenuMixin:
         
         page = main_window.annotation_document.pages[current_page]
         
+        # Находим название группы
+        group_name = None
+        for p in main_window.annotation_document.pages:
+            for block in p.blocks:
+                if block.group_id == group_id and block.group_name:
+                    group_name = block.group_name
+                    break
+            if group_name:
+                break
+        
         # Сохраняем состояние для undo
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
-        # Применяем group_id ко всем выбранным блокам
+        # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
             block_idx = data["idx"]
             if block_idx < len(page.blocks):
                 page.blocks[block_idx].group_id = group_id
+                page.blocks[block_idx].group_name = group_name
         
         # Обновляем UI
         main_window._render_current_page()
@@ -225,7 +252,7 @@ class ContextMenuMixin:
         
         # Уведомление
         from app.gui.toast import show_toast
-        show_toast(main_window, f"Блоки добавлены в группу ({len(blocks_data)} шт.)")
+        show_toast(main_window, f"Блоки добавлены в группу: {group_name}")
 
 
 

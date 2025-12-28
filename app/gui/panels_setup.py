@@ -131,8 +131,10 @@ class PanelsSetupMixin:
         
         # Вкладка: Страница → Блок
         self.blocks_tree = QTreeWidget()
-        self.blocks_tree.setHeaderLabels(["Название", "Тип"])
-        self.blocks_tree.setColumnWidth(0, 150)
+        self.blocks_tree.setHeaderLabels(["Название", "Тип", "Группа"])
+        self.blocks_tree.setColumnWidth(0, 120)
+        self.blocks_tree.setColumnWidth(1, 60)
+        self.blocks_tree.setColumnWidth(2, 100)
         self.blocks_tree.setSortingEnabled(False)
         self.blocks_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.blocks_tree.setContextMenuPolicy(Qt.CustomContextMenu)

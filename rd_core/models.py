@@ -48,6 +48,7 @@ class Block:
         pdfplumber_text: сырой текст извлечённый pdfplumber для блока
         linked_block_id: ID связанного блока (для IMAGE+TEXT)
         group_id: ID группы блоков (None = общая группа)
+        group_name: название группы (отображаемое пользователю)
     """
     id: str
     page_index: int
@@ -64,6 +65,7 @@ class Block:
     pdfplumber_text: Optional[str] = None  # Сырой текст pdfplumber
     linked_block_id: Optional[str] = None  # ID связанного блока
     group_id: Optional[str] = None  # ID группы блоков
+    group_name: Optional[str] = None  # Название группы
     
     @staticmethod
     def generate_id() -> str:
@@ -223,6 +225,8 @@ class Block:
             result["linked_block_id"] = self.linked_block_id
         if self.group_id:
             result["group_id"] = self.group_id
+        if self.group_name:
+            result["group_name"] = self.group_name
         return result
     
     @classmethod
@@ -265,7 +269,8 @@ class Block:
             hint=data.get("hint"),
             pdfplumber_text=data.get("pdfplumber_text"),
             linked_block_id=data.get("linked_block_id"),
-            group_id=data.get("group_id")
+            group_id=data.get("group_id"),
+            group_name=data.get("group_name")
         )
 
 

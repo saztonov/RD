@@ -41,10 +41,10 @@ class BlockRenderingMixin:
         color = self._get_block_color(block.block_type)
         pen = QPen(color, 2)
         
-        # Блоки в группе имеют фиолетовую рамку, но заливка по типу блока
+        # Блоки в группе имеют красную рамку, но заливка по типу блока
         if block.group_id:
-            pen.setColor(QColor(138, 43, 226))  # BlueViolet
-            pen.setWidth(3)
+            pen.setColor(QColor(220, 20, 60))  # Crimson
+            pen.setWidth(4)
         
         if block.source == BlockSource.AUTO:
             pen.setStyle(Qt.DashLine)
@@ -90,6 +90,19 @@ class BlockRenderingMixin:
         label.setPos(x2 - 20, y1 + 2)
         self.scene.addItem(label)
         self.block_labels[block.id] = label
+        
+        # Иконка галочки по центру для блоков в группе
+        if block.group_id:
+            center_x = (x1 + x2) / 2
+            center_y = (y1 + y2) / 2
+            check_label = QGraphicsTextItem("✓")
+            check_font = QFont("Arial", 16, QFont.Bold)
+            check_label.setFont(check_font)
+            check_label.setDefaultTextColor(QColor(220, 20, 60))  # Crimson
+            check_label.setFlag(check_label.GraphicsItemFlag.ItemIgnoresTransformations, True)
+            check_label.setPos(center_x - 8, center_y - 12)
+            self.scene.addItem(check_label)
+            self.block_labels[block.id + "_check"] = check_label
         
         if idx == self.selected_block_idx:
             if block.shape_type == ShapeType.RECTANGLE:
