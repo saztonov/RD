@@ -170,8 +170,8 @@ class ArmorID:
         expected_uuids: List[str]
     ) -> Tuple[Optional[str], float]:
         """
-        Сопоставить armor код с ожидаемыми uuid.
-        Returns: (matched_uuid, score)
+        Сопоставить armor код с ожидаемыми ID (UUID или armor ID).
+        Returns: (matched_id, score)
         """
         # Пробуем восстановить код
         success, fixed, _ = cls.repair(armor_code)
@@ -179,16 +179,26 @@ class ArmorID:
         if not success:
             return None, 0.0
         
-        # Декодируем в hex prefix
+        # Сначала: прямое совпадение с armor ID
+        fixed_clean = fixed.replace("-", "").upper()
+        for expected in expected_uuids:
+            expected_clean = expected.replace("-", "").upper()
+            # Проверяем armor ID формат (11 символов из нашего алфавита)
+            if len(expected_clean) == 11 and all(c in cls.ALPHABET for c in expected_clean):
+                if expected_clean == fixed_clean:
+                    return expected, 100.0
+        
+        # Legacy: декодируем в hex prefix и ищем UUID
         hex_prefix = cls.decode(fixed)
         if not hex_prefix:
             return None, 0.0
         
-        # Ищем uuid с таким префиксом
         for uuid in expected_uuids:
             clean_uuid = uuid.replace("-", "").lower()
-            if clean_uuid.startswith(hex_prefix):
-                return uuid, 100.0
+            # Проверяем что это UUID (32 hex символа)
+            if len(clean_uuid) == 32 and all(c in '0123456789abcdef' for c in clean_uuid):
+                if clean_uuid.startswith(hex_prefix):
+                    return uuid, 100.0
         
         return None, 0.0
 
@@ -247,9 +257,19 @@ class ArmorID:
 
 
 # Удобные функции для использования
-def encode_block_id(uuid_str: str) -> str:
-    """Закодировать block_id в armor формат."""
-    return ArmorID.encode(uuid_str)
+def encode_block_id(block_id: str) -> str:
+    """
+    Закодировать block_id в armor формат.
+    Если уже armor ID - возвращает как есть.
+    """
+    # Проверяем: уже armor ID?
+    clean = block_id.replace("-", "").upper()
+    if len(clean) == 11 and all(c in ArmorID.ALPHABET for c in clean):
+        # Форматируем в стандартный вид XXXX-XXXX-XXX
+        return f"{clean[:4]}-{clean[4:8]}-{clean[8:]}"
+    
+    # Legacy: конвертируем UUID
+    return ArmorID.encode(block_id)
 
 
 def decode_armor_code(armor_code: str) -> Optional[str]:

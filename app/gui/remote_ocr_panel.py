@@ -372,7 +372,7 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
                 return
             
             from rd_core.annotation_io import AnnotationIO
-            loaded_doc = AnnotationIO.load_annotation(str(ann_path))
+            loaded_doc, _ = AnnotationIO.load_annotation(str(ann_path), migrate_ids=False)
             
             if not loaded_doc:
                 return

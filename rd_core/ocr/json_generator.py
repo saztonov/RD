@@ -11,20 +11,19 @@ from typing import List, Any
 logger = logging.getLogger(__name__)
 
 
-def _encode_block_id_to_armor(uuid_str: str) -> str:
+def _get_block_armor_id(block_id: str) -> str:
     """
-    Закодировать UUID блока в armor формат XXXX-XXXX-XXX.
-    Локальная реализация для совместимости.
-    """
-    # Пробуем импортировать из services если доступно
-    try:
-        sys.path.insert(0, str(Path(__file__).parent.parent.parent / "services" / "remote_ocr" / "server"))
-        from armor_id import encode_block_id
-        return encode_block_id(uuid_str)
-    except ImportError:
-        pass
+    Получить armor ID блока.
     
-    # Fallback: локальная реализация ArmorID
+    Новые блоки уже имеют ID в формате XXXX-XXXX-XXX.
+    Для legacy UUID блоков - конвертируем в armor формат.
+    """
+    # Если уже в armor формате (11 символов без дефисов, pattern XXXX-XXXX-XXX)
+    clean = block_id.replace("-", "")
+    if len(clean) == 11 and all(c in "34679ACDEFGHJKLMNPQRTUVWXY" for c in clean):
+        return block_id  # Уже armor ID
+    
+    # Legacy: конвертируем UUID в armor формат
     ALPHABET = "34679ACDEFGHJKLMNPQRTUVWXY"
     
     def num_to_base26(num: int, length: int) -> str:
@@ -48,7 +47,7 @@ def _encode_block_id_to_armor(uuid_str: str) -> str:
             v3 += val * (i + 7) * (i + 1)
         return ALPHABET[v1 % 26] + ALPHABET[v2 % 26] + ALPHABET[v3 % 26]
     
-    clean = uuid_str.replace("-", "").lower()
+    clean = block_id.replace("-", "").lower()
     hex_prefix = clean[:10]
     num = int(hex_prefix, 16)
     payload = num_to_base26(num, 8)
@@ -187,7 +186,7 @@ def generate_html_from_pages(
                 html_parts.append('<div class="block-content">')
                 
                 # Вставляем маркер BLOCK: XXXX-XXXX-XXX для ocr_result_merger
-                armor_code = _encode_block_id_to_armor(block.id)
+                armor_code = _get_block_armor_id(block.id)
                 html_parts.append(f'<p>BLOCK: {armor_code}</p>')
                 
                 # Извлекаем HTML из ocr_text

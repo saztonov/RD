@@ -90,10 +90,18 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
         
         # Загрузить локальный файл
         if ann_path.exists():
-            loaded = AnnotationIO.load_annotation(str(ann_path))
+            loaded, was_migrated = AnnotationIO.load_annotation(str(ann_path))
             if loaded:
                 self.annotation_document = loaded
                 logger.info(f"Annotation loaded: {ann_path}")
+                
+                # Если ID были мигрированы - сохраняем обратно
+                if was_migrated:
+                    logger.info(f"Block IDs migrated, saving annotation")
+                    AnnotationIO.save_annotation(loaded, str(ann_path))
+                    # Синхронизируем с R2
+                    self._sync_annotation_to_r2()
+                
                 # Аннотация уже есть - значит синхронизирована
                 self._annotation_synced = True
                 # Обновляем флаг has_annotation в дереве
@@ -196,7 +204,7 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
         if not file_path:
             return
         
-        loaded_doc = AnnotationIO.load_annotation(file_path)
+        loaded_doc, _ = AnnotationIO.load_annotation(file_path)
         if loaded_doc:
             # Поддержка относительного пути
             try:
@@ -240,7 +248,7 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
                 return
             
             # Загружаем аннотацию
-            loaded_doc = AnnotationIO.load_annotation(str(ann_path))
+            loaded_doc, _ = AnnotationIO.load_annotation(str(ann_path))
             if not loaded_doc:
                 return
             

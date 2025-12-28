@@ -3,10 +3,86 @@
 Содержит классы для представления страниц PDF и блоков разметки
 """
 
-import uuid
+import secrets
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 from enum import Enum
+
+
+# ArmorID алфавит (26 OCR-устойчивых символов)
+_ARMOR_ALPHABET = "34679ACDEFGHJKLMNPQRTUVWXY"
+_ARMOR_CHAR_MAP = {c: i for i, c in enumerate(_ARMOR_ALPHABET)}
+
+
+def _num_to_base26(num: int, length: int) -> str:
+    """Конвертировать число в base26 строку фиксированной длины."""
+    if num == 0:
+        return _ARMOR_ALPHABET[0] * length
+    result = []
+    while num > 0:
+        result.append(_ARMOR_ALPHABET[num % 26])
+        num //= 26
+    while len(result) < length:
+        result.append(_ARMOR_ALPHABET[0])
+    return "".join(reversed(result[-length:]))
+
+
+def _calculate_checksum(payload: str) -> str:
+    """Вычислить 3-символьную контрольную сумму."""
+    v1, v2, v3 = 0, 0, 0
+    for i, char in enumerate(payload):
+        val = _ARMOR_CHAR_MAP.get(char, 0)
+        v1 += val
+        v2 += val * (i + 3)
+        v3 += val * (i + 7) * (i + 1)
+    return (_ARMOR_ALPHABET[v1 % 26] + 
+            _ARMOR_ALPHABET[v2 % 26] + 
+            _ARMOR_ALPHABET[v3 % 26])
+
+
+def generate_armor_id() -> str:
+    """
+    Генерировать уникальный ID блока в формате XXXX-XXXX-XXX.
+    
+    40 бит энтропии (8 символов payload) + 3 символа контрольной суммы.
+    """
+    # 40 бит = 5 байт
+    random_bytes = secrets.token_bytes(5)
+    num = int.from_bytes(random_bytes, 'big')
+    
+    payload = _num_to_base26(num, 8)
+    checksum = _calculate_checksum(payload)
+    full_code = payload + checksum
+    return f"{full_code[:4]}-{full_code[4:8]}-{full_code[8:]}"
+
+
+def is_armor_id(block_id: str) -> bool:
+    """Проверить, является ли ID armor форматом (XXXX-XXXX-XXX)."""
+    clean = block_id.replace("-", "").upper()
+    return len(clean) == 11 and all(c in _ARMOR_ALPHABET for c in clean)
+
+
+def uuid_to_armor_id(uuid_str: str) -> str:
+    """Конвертировать UUID в armor ID формат."""
+    clean = uuid_str.replace("-", "").lower()
+    hex_prefix = clean[:10]
+    num = int(hex_prefix, 16)
+    payload = _num_to_base26(num, 8)
+    checksum = _calculate_checksum(payload)
+    full_code = payload + checksum
+    return f"{full_code[:4]}-{full_code[4:8]}-{full_code[8:]}"
+
+
+def migrate_block_id(block_id: str) -> tuple[str, bool]:
+    """
+    Мигрировать ID блока в armor формат если нужно.
+    
+    Returns: (new_id, was_migrated)
+    """
+    if is_armor_id(block_id):
+        return block_id, False
+    # Legacy UUID -> armor
+    return uuid_to_armor_id(block_id), True
 
 
 class BlockType(Enum):
@@ -73,8 +149,8 @@ class Block:
     
     @staticmethod
     def generate_id() -> str:
-        """Генерировать уникальный ID для блока"""
-        return str(uuid.uuid4())
+        """Генерировать уникальный ID для блока в формате XXXX-XXXX-XXX"""
+        return generate_armor_id()
     
     @staticmethod
     def px_to_norm(coords_px: Tuple[int, int, int, int], 
@@ -238,8 +314,17 @@ class Block:
         return result
     
     @classmethod
-    def from_dict(cls, data: dict) -> 'Block':
-        """Десериализация из словаря"""
+    def from_dict(cls, data: dict, migrate_ids: bool = True) -> tuple['Block', bool]:
+        """
+        Десериализация из словаря.
+        
+        Args:
+            data: словарь с данными блока
+            migrate_ids: мигрировать UUID в armor ID формат
+        
+        Returns:
+            (Block, was_migrated) - блок и флаг миграции
+        """
         # Безопасное получение block_type с fallback на TEXT
         # TABLE конвертируется в TEXT для обратной совместимости
         raw_type = data["block_type"]
@@ -262,8 +347,26 @@ class Block:
         if "polygon_points" in data and data["polygon_points"]:
             polygon_points = [tuple(p) for p in data["polygon_points"]]
         
-        return cls(
-            id=data["id"],
+        # Миграция ID
+        was_migrated = False
+        block_id = data["id"]
+        linked_block_id = data.get("linked_block_id")
+        group_id = data.get("group_id")
+        
+        if migrate_ids:
+            block_id, m1 = migrate_block_id(block_id)
+            was_migrated = m1
+            
+            if linked_block_id:
+                linked_block_id, m2 = migrate_block_id(linked_block_id)
+                was_migrated = was_migrated or m2
+            
+            if group_id:
+                group_id, m3 = migrate_block_id(group_id)
+                was_migrated = was_migrated or m3
+        
+        block = cls(
+            id=block_id,
             page_index=data["page_index"],
             coords_px=tuple(data["coords_px"]),
             coords_norm=tuple(data["coords_norm"]),
@@ -276,12 +379,13 @@ class Block:
             prompt=data.get("prompt"),
             hint=data.get("hint"),
             pdfplumber_text=data.get("pdfplumber_text"),
-            linked_block_id=data.get("linked_block_id"),
-            group_id=data.get("group_id"),
+            linked_block_id=linked_block_id,
+            group_id=group_id,
             group_name=data.get("group_name"),
             category_id=data.get("category_id"),
             category_code=data.get("category_code")
         )
+        return block, was_migrated
 
 
 # ========== LEGACY КЛАССЫ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ ==========
@@ -312,19 +416,31 @@ class Page:
         }
     
     @classmethod
-    def from_dict(cls, data: dict) -> 'Page':
-        """Десериализация из словаря"""
+    def from_dict(cls, data: dict, migrate_ids: bool = True) -> tuple['Page', bool]:
+        """
+        Десериализация из словаря.
+        
+        Returns:
+            (Page, was_migrated)
+        """
         # Поддержка page_index из новой модели
         page_num = data.get("page_number")
         if page_num is None:
             page_num = data.get("page_index", 0)
+        
+        blocks = []
+        was_migrated = False
+        for b in data.get("blocks", []):
+            block, migrated = Block.from_dict(b, migrate_ids)
+            blocks.append(block)
+            was_migrated = was_migrated or migrated
             
         return cls(
             page_number=page_num,
             width=data["width"],
             height=data["height"],
-            blocks=[Block.from_dict(b) for b in data.get("blocks", [])]
-        )
+            blocks=blocks
+        ), was_migrated
 
 
 @dataclass
@@ -347,9 +463,19 @@ class Document:
         }
     
     @classmethod
-    def from_dict(cls, data: dict) -> 'Document':
-        """Десериализация из словаря с поддержкой старого формата"""
-        raw_pages = [Page.from_dict(p) for p in data.get("pages", [])]
+    def from_dict(cls, data: dict, migrate_ids: bool = True) -> tuple['Document', bool]:
+        """
+        Десериализация из словаря с поддержкой старого формата.
+        
+        Returns:
+            (Document, was_migrated) - документ и флаг миграции ID
+        """
+        raw_pages = []
+        was_migrated = False
+        for p in data.get("pages", []):
+            page, migrated = Page.from_dict(p, migrate_ids)
+            raw_pages.append(page)
+            was_migrated = was_migrated or migrated
         
         # Определяем, старый ли это формат (page_number != индекс массива)
         is_old_format = False
@@ -378,5 +504,5 @@ class Document:
         else:
             pages = raw_pages
         
-        return cls(pdf_path=data["pdf_path"], pages=pages)
+        return cls(pdf_path=data["pdf_path"], pages=pages), was_migrated
 

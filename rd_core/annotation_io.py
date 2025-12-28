@@ -33,23 +33,25 @@ class AnnotationIO:
             raise
     
     @staticmethod
-    def load_annotation(file_path: str) -> Optional[Document]:
+    def load_annotation(file_path: str, migrate_ids: bool = True) -> tuple[Optional[Document], bool]:
         """
         Загрузить разметку Document из JSON
         
         Args:
             file_path: путь к JSON-файлу
+            migrate_ids: мигрировать legacy UUID в armor ID формат
         
         Returns:
-            Экземпляр Document или None при ошибке
+            (Document, was_migrated) - документ и флаг миграции ID
         """
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            doc = Document.from_dict(data)
-            logger.info(f"Разметка загружена: {file_path}")
-            return doc
+            doc, was_migrated = Document.from_dict(data, migrate_ids)
+            logger.info(f"Разметка загружена: {file_path}" + 
+                       (" (ID мигрированы)" if was_migrated else ""))
+            return doc, was_migrated
         except Exception as e:
             logger.error(f"Ошибка загрузки разметки: {e}")
-            return None
+            return None, False
 

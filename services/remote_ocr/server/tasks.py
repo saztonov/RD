@@ -86,7 +86,7 @@ def run_ocr_task(self, job_id: str) -> dict:
         from rd_core.models import Block
         from rd_core.ocr import create_ocr_engine
         
-        blocks = [Block.from_dict(b) for b in blocks_data]
+        blocks = [Block.from_dict(b, migrate_ids=False)[0] for b in blocks_data]
         total_blocks = len(blocks)
         
         logger.info(f"Задача {job.id}: {total_blocks} блоков")
