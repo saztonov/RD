@@ -441,16 +441,14 @@ def _run_legacy_ocr(
 
 
 def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> str:
-    """Генерация результатов OCR (markdown, annotation, html)"""
+    """Генерация результатов OCR (annotation.json + HTML)"""
     from rd_core.models import Page, Document, Block, ShapeType
-    from rd_core.ocr import generate_structured_json, generate_grouped_result_json, generate_html_from_ocr
+    from rd_core.ocr import generate_html_from_pages
     from .pdf_streaming import get_page_dimensions_streaming
     
     # Логирование состояния блоков
     blocks_with_ocr = sum(1 for b in blocks if b.ocr_text)
     logger.info(f"_generate_results: всего блоков={len(blocks)}, с ocr_text={blocks_with_ocr}")
-    for b in blocks[:5]:  # Первые 5 для отладки
-        logger.debug(f"  Блок {b.id}: type={b.block_type}, ocr_text={len(b.ocr_text) if b.ocr_text else 'None'}")
     
     # Сохраняем оригинальный порядок блоков (индекс в исходном списке)
     blocks_by_page: dict[int, list[tuple[int, any]]] = {}
@@ -464,7 +462,6 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
     for page_idx in sorted(blocks_by_page.keys()):
         dims = page_dims.get(page_idx)
         width, height = dims if dims else (0, 0)
-        # Сортируем по оригинальному индексу (порядок 1,2,3... как в GUI)
         page_blocks = [b for _, b in sorted(blocks_by_page[page_idx], key=lambda x: x[0])]
         
         # Пересчитываем coords_px и polygon_points
@@ -501,38 +498,26 @@ def _generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) ->
     else:
         r2_prefix = job.r2_prefix
     
-    # Извлекаем путь для markdown ссылок
+    # Извлекаем путь для ссылок
     if r2_prefix.startswith("tree_docs/"):
-        md_project_name = r2_prefix[len("tree_docs/"):]
+        project_name = r2_prefix[len("tree_docs/"):]
     else:
-        md_project_name = job.node_id if job.node_id else job.id
+        project_name = job.node_id if job.node_id else job.id
     
-    result_json_path = work_dir / "result.json"
-    generate_structured_json(pages, str(result_json_path), project_name=md_project_name, doc_name=pdf_path.name)
-    
+    # annotation.json (для хранения разметки блоков)
     annotation_path = work_dir / "annotation.json"
     doc = Document(pdf_path=pdf_path.name, pages=pages)
     with open(annotation_path, "w", encoding="utf-8") as f:
         json.dump(doc.to_dict(), f, ensure_ascii=False, indent=2)
     
-    # Генерация grouped_result.json с HTML сгруппированным по BLOCK_ID
-    grouped_result_path = work_dir / "grouped_result.json"
-    try:
-        generate_grouped_result_json(
-            str(result_json_path),
-            str(annotation_path),
-            str(grouped_result_path)
-        )
-    except Exception as e:
-        logger.warning(f"Ошибка генерации grouped_result.json: {e}")
-    
-    # Генерация итогового HTML файла из OCR результатов
+    # Генерация итогового HTML файла
     html_path = work_dir / "ocr_result.html"
     try:
-        generate_html_from_ocr(
-            str(result_json_path),
+        generate_html_from_pages(
+            pages,
             str(html_path),
-            doc_name=pdf_path.name
+            doc_name=pdf_path.name,
+            project_name=project_name
         )
         logger.info(f"HTML файл сгенерирован: {html_path}")
     except Exception as e:

@@ -33,31 +33,14 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     
     doc_stem = Path(job.document_name).stem
     
-    # result.json -> {doc_stem}_preliminary.json (OCR результаты)
-    result_json_path = work_dir / "result.json"
-    if result_json_path.exists():
-        json_filename = f"{doc_stem}_preliminary.json"
-        r2_key = f"{r2_prefix}/{json_filename}"
-        r2.upload_file(str(result_json_path), r2_key)
-        add_job_file(job.id, "preliminary_json", r2_key, json_filename, result_json_path.stat().st_size)
-    
-    # annotation.json -> {doc_stem}_annotation.json (перезаписываем существующий)
+    # annotation.json -> {doc_stem}_annotation.json
     annotation_path = work_dir / "annotation.json"
     if annotation_path.exists():
-        # Удаляем старый blocks файл чтобы не дублировать annotation
         delete_job_files(job.id, ["blocks"])
         annotation_filename = f"{doc_stem}_annotation.json"
         r2_key = f"{r2_prefix}/{annotation_filename}"
         r2.upload_file(str(annotation_path), r2_key)
         add_job_file(job.id, "annotation", r2_key, annotation_filename, annotation_path.stat().st_size)
-    
-    # grouped_result.json -> {doc_stem}_result.json
-    grouped_result_path = work_dir / "grouped_result.json"
-    if grouped_result_path.exists():
-        result_filename = f"{doc_stem}_result.json"
-        r2_key = f"{r2_prefix}/{result_filename}"
-        r2.upload_file(str(grouped_result_path), r2_key)
-        add_job_file(job.id, "grouped_result", r2_key, result_filename, grouped_result_path.stat().st_size)
     
     # ocr_result.html -> {doc_stem}_ocr.html (итоговый HTML после OCR)
     html_path = work_dir / "ocr_result.html"
