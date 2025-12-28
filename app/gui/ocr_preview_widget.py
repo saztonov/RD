@@ -122,6 +122,7 @@ class OcrPreviewWidget(QWidget):
         self._result_data = None
         self._result_path = None
         self._r2_key = r2_key
+        self._blocks_index: Dict[str, Dict] = {}
         
         if not pdf_path:
             return
@@ -137,7 +138,16 @@ class OcrPreviewWidget(QWidget):
             with open(result_path, "r", encoding="utf-8") as f:
                 self._result_data = json.load(f)
             self._result_path = result_path
-            blocks_count = len(self._result_data.get("blocks", []))
+            
+            # Индексируем блоки по ID из структуры {pages: [{blocks: [...]}]}
+            blocks_count = 0
+            for page in self._result_data.get("pages", []):
+                for block in page.get("blocks", []):
+                    block_id = block.get("id")
+                    if block_id:
+                        self._blocks_index[block_id] = block
+                        blocks_count += 1
+            
             logger.info(f"Loaded result file: {result_path} ({blocks_count} blocks)")
             self.title_label.setText(f"OCR Preview ({blocks_count} блоков)")
         except Exception as e:
@@ -154,13 +164,8 @@ class OcrPreviewWidget(QWidget):
             self._show_placeholder()
             return
         
-        # Ищем блок в данных
-        blocks = self._result_data.get("blocks", [])
-        block_data = None
-        for b in blocks:
-            if b.get("id") == block_id:
-                block_data = b
-                break
+        # Ищем блок по индексу
+        block_data = self._blocks_index.get(block_id)
         
         if not block_data:
             self.preview_edit.setHtml(
@@ -170,15 +175,12 @@ class OcrPreviewWidget(QWidget):
             self.html_edit.setEnabled(False)
             return
         
-        # Получаем HTML
-        html_content = block_data.get("html", "")
+        # Получаем HTML (ocr_html из result.json)
+        html_content = block_data.get("ocr_html", "") or block_data.get("html", "")
         
-        # Для IMAGE блоков показываем ocr_result
-        if not html_content and "ocr_result" in block_data:
-            ocr_result = block_data.get("ocr_result", {})
-            analysis = ocr_result.get("analysis", {})
-            if analysis:
-                html_content = self._format_analysis(analysis)
+        # Fallback: ocr_text если нет HTML
+        if not html_content and block_data.get("ocr_text"):
+            html_content = f"<pre>{block_data['ocr_text']}</pre>"
         
         if not html_content:
             self.preview_edit.setHtml(
@@ -264,12 +266,14 @@ class OcrPreviewWidget(QWidget):
         try:
             new_html = self.html_edit.toPlainText()
             
-            # Обновляем данные
-            blocks = self._result_data.get("blocks", [])
-            for b in blocks:
-                if b.get("id") == self._current_block_id:
-                    b["html"] = new_html
-                    break
+            # Обновляем данные в структуре {pages: [{blocks: [...]}]}
+            for page in self._result_data.get("pages", []):
+                for b in page.get("blocks", []):
+                    if b.get("id") == self._current_block_id:
+                        b["ocr_html"] = new_html
+                        # Обновляем индекс
+                        self._blocks_index[self._current_block_id] = b
+                        break
             
             # Сохраняем локально
             with open(self._result_path, "w", encoding="utf-8") as f:
@@ -310,6 +314,7 @@ class OcrPreviewWidget(QWidget):
         self._result_data = None
         self._result_path = None
         self._current_block_id = None
+        self._blocks_index = {}
         self.title_label.setText("OCR Preview")
         self._show_placeholder()
 
