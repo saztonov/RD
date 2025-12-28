@@ -268,35 +268,35 @@ def split_large_crop(crop: Image.Image, max_height: int = MAX_SINGLE_BLOCK_HEIGH
     return parts
 
 
-BLOCK_SEPARATOR_HEIGHT = 30
+BLOCK_SEPARATOR_HEIGHT = 42
 
 
 def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARATOR_HEIGHT) -> Image.Image:
     """
-    Создать разделитель с черным текстом block_id на белом фоне.
+    Создать разделитель с белым текстом block_id на черном фоне.
+    Высота 42px, шрифт 36px, выравнивание по левому краю.
     """
     from PIL import ImageFont
-    separator = Image.new('RGB', (width, height), (255, 255, 255))
+    separator = Image.new('RGB', (width, height), (0, 0, 0))
     draw = ImageDraw.Draw(separator)
     
     text = f"[[[BLOCK_ID: {block_id}]]]"
     
     try:
-        font = ImageFont.truetype("arial.ttf", 20)
+        font = ImageFont.truetype("arial.ttf", 36)
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype("DejaVuSansMono.ttf", 20)
+            font = ImageFont.truetype("DejaVuSansMono.ttf", 36)
         except (IOError, OSError):
-            font = ImageFont.load_default(size=20)
+            font = ImageFont.load_default(size=36)
     
     bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
     
-    x = (width - text_width) // 2
+    x = 0
     y = (height - text_height) // 2
     
-    draw.text((x, y), text, fill=(0, 0, 0), font=font)
+    draw.text((x, y), text, fill=(255, 255, 255), font=font)
     return separator
 
 
