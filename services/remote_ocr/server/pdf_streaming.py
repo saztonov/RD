@@ -268,19 +268,23 @@ def split_large_crop(crop: Image.Image, max_height: int = MAX_SINGLE_BLOCK_HEIGH
     return parts
 
 
-BLOCK_SEPARATOR_HEIGHT = 42
+BLOCK_SEPARATOR_HEIGHT = 60
 
 
 def create_block_separator(block_id: str, width: int, height: int = BLOCK_SEPARATOR_HEIGHT) -> Image.Image:
     """
     Создать разделитель с белым текстом block_id на черном фоне.
-    Высота 42px, шрифт 36px, выравнивание по левому краю.
+    Высота 60px, шрифт 36px, выравнивание по левому краю.
+    Формат: BLOCK: XXXX-XXXX-XXX (OCR-устойчивый код)
     """
     from PIL import ImageFont
+    from .armor_id import encode_block_id
+    
     separator = Image.new('RGB', (width, height), (0, 0, 0))
     draw = ImageDraw.Draw(separator)
     
-    text = f"[[[BLOCK_ID: {block_id}]]]"
+    armor_code = encode_block_id(block_id)
+    text = f"BLOCK: {armor_code}"
     
     try:
         font = ImageFont.truetype("arial.ttf", 36)
