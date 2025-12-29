@@ -56,12 +56,17 @@ def get_image_category_by_code(code: str) -> Optional[Dict[str, Any]]:
 
 
 def get_default_image_category() -> Optional[Dict[str, Any]]:
-    """Получить категорию по умолчанию"""
+    """Получить категорию по умолчанию (code='default' или is_default=True)"""
     categories = get_image_categories()
+    # Приоритет: категория с code='default'
+    for cat in categories:
+        if cat.get("code") == "default":
+            return cat
+    # Fallback: категория с is_default=True
     for cat in categories:
         if cat.get("is_default"):
             return cat
-    # Fallback на первую категорию
+    # Fallback: первая категория
     return categories[0] if categories else None
 
 

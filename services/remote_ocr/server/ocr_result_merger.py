@@ -466,9 +466,16 @@ def merge_ocr_results(
         matched = 0
         
         for page in result.get("pages", []):
+            # Конвертируем page_number в 1-based для внешнего формата
+            if "page_number" in page:
+                page["page_number"] = page["page_number"] + 1
             for blk in page.get("blocks", []):
                 bid = blk["id"]
                 block_type = blk.get("block_type", "text")
+                
+                # Конвертируем page_index в 1-based для внешнего формата
+                if "page_index" in blk:
+                    blk["page_index"] = blk["page_index"] + 1
                 
                 # HTML фрагмент
                 blk["ocr_html"] = segments.get(bid, "")

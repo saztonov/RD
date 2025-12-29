@@ -370,12 +370,8 @@ class ProjectTreeWidget(
     def _add_placeholder(self, item: QTreeWidgetItem, node: TreeNode):
         """Добавить placeholder для lazy loading"""
         allowed = node.get_allowed_child_types()
-        # Для документов всегда добавляем placeholder (markdown может быть)
-        if node.node_type == NodeType.DOCUMENT:
-            placeholder = QTreeWidgetItem(["..."])
-            placeholder.setData(0, Qt.UserRole, "placeholder")
-            item.addChild(placeholder)
-        elif allowed:
+        # Для документов НЕ добавляем placeholder (md файлы не отображаются)
+        if allowed:
             placeholder = QTreeWidgetItem(["..."])
             placeholder.setData(0, Qt.UserRole, "placeholder")
             item.addChild(placeholder)
@@ -395,11 +391,6 @@ class ProjectTreeWidget(
     def _load_children(self, parent_item: QTreeWidgetItem, parent_node: TreeNode):
         """Загрузить дочерние узлы"""
         try:
-            # Для документов загружаем markdown файлы
-            if parent_node.node_type == NodeType.DOCUMENT:
-                self._load_document_files(parent_item, parent_node)
-                return
-            
             children = self.client.get_children(parent_node.id)
             for child in children:
                 child_item = self._create_tree_item(child)
@@ -408,108 +399,18 @@ class ProjectTreeWidget(
         except Exception as e:
             logger.error(f"Failed to load children: {e}")
     
-    def _load_document_files(self, parent_item: QTreeWidgetItem, doc_node: TreeNode):
-        """Загрузить файлы документа (markdown)"""
-        try:
-            files = self.client.get_node_files(doc_node.id, FileType.RESULT_MD)
-            logger.debug(f"Document {doc_node.id}: found {len(files)} md files")
-            
-            if not files:
-                # Fallback: проверяем R2 напрямую (markdown рядом с PDF)
-                from rd_core.r2_storage import R2Storage
-                from pathlib import PurePosixPath
-                r2 = R2Storage()
-                doc_stem = Path(doc_node.name).stem
-                
-                # Markdown лежит рядом с PDF
-                pdf_r2_key = doc_node.attributes.get("r2_key", "")
-                if pdf_r2_key:
-                    tree_prefix = str(PurePosixPath(pdf_r2_key).parent)
-                else:
-                    tree_prefix = f"tree_docs/{doc_node.id}"
-                
-                md_key = f"{tree_prefix}/{doc_stem}.md"
-                if r2.exists(md_key):
-                    from app.tree_client import NodeFile
-                    virtual_file = NodeFile(
-                        id="virtual",
-                        node_id=doc_node.id,
-                        file_type=FileType.RESULT_MD,
-                        r2_key=md_key,
-                        file_name=f"{doc_stem}.md"
-                    )
-                    files = [virtual_file]
-                    logger.info(f"Found markdown in R2: {md_key}")
-            
-            for f in files:
-                md_item = QTreeWidgetItem([f"📄 {f.file_name}"])
-                md_item.setData(0, Qt.UserRole, ("markdown", doc_node, f))
-                md_item.setForeground(0, QColor("#9cdcfe"))
-                parent_item.addChild(md_item)
-                logger.info(f"[LOAD_FILES] Added markdown item: {f.file_name}, r2_key={f.r2_key}")
-        except Exception as e:
-            logger.error(f"Failed to load document files: {e}", exc_info=True)
     
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
-        """Двойной клик - открыть документ (скачать из R2) или markdown"""
+        """Двойной клик - открыть документ (скачать из R2)"""
         data = item.data(0, Qt.UserRole)
-        item_text = item.text(0) if item else "None"
-        logger.info(f"[DBL_CLICK] item_text='{item_text}', data_type={type(data).__name__}, data={data}")
-        
-        # Markdown файл (Qt конвертирует tuple в list)
-        if isinstance(data, (tuple, list)):
-            logger.info(f"[DBL_CLICK] sequence detected, len={len(data)}, first={data[0] if data else 'empty'}")
-            if len(data) >= 1 and data[0] == "markdown":
-                _, doc_node, node_file = data
-                logger.info(f"[DBL_CLICK] Opening markdown: {node_file.file_name}, r2_key={node_file.r2_key}")
-                self._open_markdown_editor(doc_node, node_file)
-                return
-            else:
-                logger.warning(f"[DBL_CLICK] tuple but not markdown: {data}")
         
         # Документ PDF
         if isinstance(data, TreeNode) and data.node_type == NodeType.DOCUMENT:
             r2_key = data.attributes.get("r2_key", "")
-            logger.info(f"[DBL_CLICK] PDF document: {data.name}, r2_key={r2_key}")
             if r2_key:
                 self.highlight_document(data.id)
                 self.document_selected.emit(data.id, r2_key)
-        else:
-            logger.info(f"[DBL_CLICK] Not handled: data_type={type(data).__name__}")
     
-    def _open_markdown_editor(self, doc_node: TreeNode, node_file):
-        """Открыть редактор markdown"""
-        from rd_core.r2_storage import R2Storage
-        from app.gui.markdown_editor_dialog import MarkdownEditorDialog
-        
-        logger.info(f"[MD_EDITOR] Starting, doc={doc_node.name}, file={node_file.file_name}, r2_key={node_file.r2_key}")
-        
-        try:
-            r2 = R2Storage()
-            logger.info(f"[MD_EDITOR] Downloading from R2: {node_file.r2_key}")
-            md_text = r2.download_text(node_file.r2_key) or ""
-            logger.info(f"[MD_EDITOR] Downloaded {len(md_text)} chars")
-            
-            def save_callback(new_text: str) -> bool:
-                try:
-                    return r2.upload_text(new_text, node_file.r2_key)
-                except Exception as e:
-                    logger.error(f"Failed to save markdown: {e}")
-                    return False
-            
-            logger.info(f"[MD_EDITOR] Creating dialog")
-            dialog = MarkdownEditorDialog(
-                title=f"{doc_node.name} — {node_file.file_name}",
-                markdown_text=md_text,
-                save_callback=save_callback,
-                parent=self.window()
-            )
-            logger.info(f"[MD_EDITOR] Showing dialog")
-            dialog.show()
-            logger.info(f"[MD_EDITOR] Dialog shown")
-        except Exception as e:
-            logger.error(f"[MD_EDITOR] Failed to open markdown editor: {e}", exc_info=True)
-            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть markdown: {e}")
     
     def highlight_document(self, node_id: str):
         """Подсветить текущий открытый документ"""
@@ -612,6 +513,93 @@ class ProjectTreeWidget(
         except Exception as e:
             logger.error(f"Paste annotation failed: {e}")
             QMessageBox.critical(self, "Ошибка", f"Ошибка вставки: {e}")
+    
+    def _detect_and_assign_stamps(self, node: TreeNode):
+        """Определить и назначить штамп на всех страницах PDF"""
+        from rd_core.r2_storage import R2Storage
+        from rd_core.models import Document, BlockType
+        from rd_core.annotation_io import AnnotationIO
+        from app.gui.file_operations import get_annotation_r2_key
+        
+        r2_key = node.attributes.get("r2_key", "")
+        if not r2_key:
+            QMessageBox.warning(self, "Ошибка", "Документ не имеет привязки к R2")
+            return
+        
+        try:
+            r2 = R2Storage()
+            ann_r2_key = get_annotation_r2_key(r2_key)
+            
+            # Загрузить аннотацию из R2
+            json_content = r2.download_text(ann_r2_key)
+            if not json_content:
+                QMessageBox.warning(self, "Ошибка", "Аннотация документа не найдена")
+                return
+            
+            import json as json_module
+            data = json_module.loads(json_content)
+            doc, _ = Document.from_dict(data)
+            
+            # Получить категорию stamp из базы
+            stamp_category = self.client.get_image_category_by_code("stamp")
+            stamp_category_id = stamp_category.get("id") if stamp_category else None
+            
+            modified_count = 0
+            
+            # Пройтись по всем страницам
+            for page in doc.pages:
+                if not page.blocks:
+                    continue
+                
+                # Найти блок в правом нижнем углу
+                # Критерий: центр блока в правом нижнем квадранте (x > 0.5, y > 0.7)
+                # и максимально близок к углу (1, 1)
+                best_block = None
+                best_score = -1
+                
+                for block in page.blocks:
+                    x1, y1, x2, y2 = block.coords_norm
+                    cx = (x1 + x2) / 2
+                    cy = (y1 + y2) / 2
+                    
+                    # Проверяем что блок в правом нижнем углу
+                    if cx > 0.5 and cy > 0.7:
+                        # Score = близость к правому нижнему углу
+                        score = cx + cy
+                        if score > best_score:
+                            best_score = score
+                            best_block = block
+                
+                # Назначить штамп
+                if best_block:
+                    best_block.block_type = BlockType.IMAGE
+                    best_block.category_code = "stamp"
+                    if stamp_category_id:
+                        best_block.category_id = stamp_category_id
+                    modified_count += 1
+            
+            if modified_count == 0:
+                QMessageBox.information(self, "Результат", "Штампы не найдены")
+                return
+            
+            # Сохранить аннотацию обратно в R2
+            updated_json = json_module.dumps(doc.to_dict(), ensure_ascii=False, indent=2)
+            if not r2.upload_text(updated_json, ann_r2_key):
+                QMessageBox.critical(self, "Ошибка", "Не удалось сохранить аннотацию")
+                return
+            
+            self.status_label.setText(f"🔖 Назначено штампов: {modified_count}")
+            QMessageBox.information(
+                self, "Успех", 
+                f"Штамп назначен на {modified_count} страницах"
+            )
+            
+            # Сигнал для обновления открытого документа
+            self.annotation_replaced.emit(r2_key)
+            
+        except Exception as e:
+            logger.error(f"Detect stamps failed: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка определения штампов:\n{e}")
     
     def _upload_annotation_dialog(self, node: TreeNode):
         """Диалог загрузки аннотации блоков из файла"""

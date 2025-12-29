@@ -79,6 +79,11 @@ class TreeContextMenuMixin:
                     if r2_key:
                         action = menu.addAction("📤 Загрузить аннотацию блоков")
                         action.setData(("upload_annotation", node))
+                    
+                    # Определить и назначить штамп
+                    if r2_key and r2_key.lower().endswith(".pdf"):
+                        action = menu.addAction("🔖 Определить и назначить штамп")
+                        action.setData(("detect_stamps", node))
                 
                 menu.addSeparator()
                 menu.addAction("✏️ Переименовать").setData(("rename", node))
@@ -141,5 +146,8 @@ class TreeContextMenuMixin:
         elif action == "upload_annotation":
             node = data[1]
             self._upload_annotation_dialog(node)
+        elif action == "detect_stamps":
+            node = data[1]
+            self._detect_and_assign_stamps(node)
 
 
