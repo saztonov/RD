@@ -194,3 +194,4 @@ class R2UploadMixin:
             logger.error(f"❌ Ошибка загрузки текста в R2: {e}")
             return False
 
+

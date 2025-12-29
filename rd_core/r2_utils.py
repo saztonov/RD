@@ -240,3 +240,4 @@ class R2UtilsMixin:
             logger.error(f"❌ Ошибка проверки существования объекта: {e}")
             return False
 
+

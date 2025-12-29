@@ -32,3 +32,4 @@ def init_db() -> None:
         logger.error(f"❌ Supabase: ошибка подключения: {e}")
         raise
 
+

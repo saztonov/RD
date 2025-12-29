@@ -41,3 +41,4 @@ class Job:
     files: List[JobFile] = field(default_factory=list)
     settings: Optional[JobSettings] = None
 
+

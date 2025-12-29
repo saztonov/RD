@@ -234,3 +234,4 @@ class FileDownloadMixin:
         
         self._download_worker = None
 
+

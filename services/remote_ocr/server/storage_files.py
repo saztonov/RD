@@ -83,3 +83,4 @@ def _row_to_job_file(row: dict) -> JobFile:
         created_at=row["created_at"]
     )
 
+

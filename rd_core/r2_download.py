@@ -72,3 +72,4 @@ class R2DownloadMixin:
                 logger.error(f"❌ Ошибка загрузки текста из R2: {e}")
             return None
 
+

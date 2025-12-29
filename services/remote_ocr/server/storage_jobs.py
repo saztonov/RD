@@ -287,3 +287,4 @@ def _row_to_job(row: dict) -> Job:
         node_id=row.get("node_id")
     )
 
+

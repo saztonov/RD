@@ -77,3 +77,4 @@ class TreeFilterMixin:
                 item.removeChild(child)
                 self._load_children(item, node)
 
+

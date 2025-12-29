@@ -130,3 +130,4 @@ class TreeSyncMixin:
         """Публичный метод для запуска проверки синхронизации"""
         self._start_sync_check()
 
+

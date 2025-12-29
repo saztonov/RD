@@ -142,3 +142,4 @@ class TreeContextMenuMixin:
             node = data[1]
             self._upload_annotation_dialog(node)
 
+
