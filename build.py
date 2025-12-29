@@ -59,8 +59,8 @@ a = Analysis(
         'PySide6.QtQuickControls2', 'PySide6.QtQuickWidgets', 'PySide6.QtRemoteObjects',
         'PySide6.QtScxml', 'PySide6.QtSensors', 'PySide6.QtSerialPort',
         'PySide6.QtSql', 'PySide6.QtStateMachine', 'PySide6.QtSvg', 'PySide6.QtSvgWidgets',
-        'PySide6.QtTest', 'PySide6.QtTextToSpeech', 'PySide6.QtWebChannel',
-        'PySide6.QtWebSockets', 'PySide6.QtXml',
+        'PySide6.QtTest', 'PySide6.QtTextToSpeech',
+        'PySide6.QtWebSockets',
         'PySide6.QtPdf', 'PySide6.QtPdfWidgets',
         'PySide6.QtShaderTools', 'PySide6.QtSpatialAudio', 'PySide6.QtVirtualKeyboard',
         'PySide6.QtNetworkAuth',
@@ -76,8 +76,8 @@ exclude_binaries = [
     'Qt6Multimedia', 'Qt6Nfc', 'Qt6OpenGL', 'Qt6Positioning',
     'Qt6RemoteObjects', 'Qt6Scxml', 'Qt6Sensors', 'Qt6SerialPort',
     'Qt6Sql', 'Qt6StateMachine', 'Qt6Svg', 'Qt6Test', 'Qt6TextToSpeech',
-    'Qt6VirtualKeyboard', 'Qt6WebChannel', 'Qt6WebSockets', 'Qt6Xml',
-    'opengl32sw', 'd3dcompiler', 'icudt', 'icuuc', 'icuin',
+    'Qt6VirtualKeyboard', 'Qt6WebSockets',
+    'opengl32sw',
 ]
 a.binaries = [b for b in a.binaries if not any(ex in b[0] for ex in exclude_binaries)]
 
@@ -94,7 +94,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=True,
     upx=True,
-    upx_exclude=['vcruntime140.dll', 'python*.dll', 'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.dll'],
+    upx_exclude=['vcruntime140.dll', 'python*.dll', 'Qt6*.dll', 'icu*.dll'],
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
