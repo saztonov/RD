@@ -190,9 +190,6 @@ class BlockHandlersMixin:
         """Показать OCR preview для блока"""
         if hasattr(self, 'ocr_preview') and self.ocr_preview:
             self.ocr_preview.show_block(block_id)
-            # Переключаемся на вкладку OCR
-            if hasattr(self, 'main_right_tabs'):
-                self.main_right_tabs.setCurrentWidget(self.ocr_preview)
     
     def _hide_ocr_preview(self):
         """Скрыть OCR preview"""
