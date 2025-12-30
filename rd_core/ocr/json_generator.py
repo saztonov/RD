@@ -302,7 +302,7 @@ def generate_html_from_pages(
                 page_num = page.page_number + 1 if page.page_number is not None else ""
                 
                 html_parts.append(f'<div class="block block-type-{block_type}">')
-                html_parts.append(f'<div class="block-header">Блок #{idx + 1} (стр. {page_num}) | Тип: {block_type} | ID: {block.id[:8]}...</div>')
+                html_parts.append(f'<div class="block-header">Блок #{idx + 1} (стр. {page_num}) | Тип: {block_type}</div>')
                 html_parts.append('<div class="block-content">')
                 
                 # Вставляем маркер BLOCK: XXXX-XXXX-XXX для ocr_result_merger
