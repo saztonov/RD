@@ -29,28 +29,6 @@ class R2UtilsMixin:
 
         return content_types.get(extension, "application/octet-stream")
 
-    def list_objects(self, prefix: str = "") -> list[str]:
-        """
-        Список объектов в bucket
-
-        Args:
-            prefix: Префикс для фильтрации
-
-        Returns:
-            Список ключей объектов
-        """
-        try:
-            response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix)
-
-            if "Contents" not in response:
-                return []
-
-            return [obj["Key"] for obj in response["Contents"]]
-
-        except ClientError as e:
-            logger.error(f"Ошибка получения списка объектов: {e}")
-            return []
-
     def delete_object(self, remote_key: str) -> bool:
         """
         Удалить объект из R2
@@ -197,29 +175,6 @@ class R2UtilsMixin:
             logger.error(f"❌ Ошибка получения списка из R2: {e}")
             return []
 
-    def get_object_metadata(self, remote_key: str) -> Optional[dict]:
-        """
-        Получить метаданные объекта (Size, ETag)
-
-        Args:
-            remote_key: Ключ объекта
-
-        Returns:
-            Dict с Size и ETag или None
-        """
-        try:
-            response = self.s3_client.head_object(Bucket=self.bucket_name, Key=remote_key)
-            return {
-                "Size": response.get("ContentLength", 0),
-                "ETag": response.get("ETag", "").strip('"'),
-            }
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code in ("404", "NoSuchKey"):
-                return None
-            logger.error(f"❌ Ошибка получения метаданных объекта: {e}")
-            return None
-
     def exists(self, remote_key: str) -> bool:
         """
         Проверить существование объекта в R2
@@ -239,5 +194,6 @@ class R2UtilsMixin:
                 return False
             logger.error(f"❌ Ошибка проверки существования объекта: {e}")
             return False
+
 
 

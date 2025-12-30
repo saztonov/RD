@@ -59,3 +59,4 @@ class VersionHighlightDelegate(QStyledItemDelegate):
         painter.restore()
 
 
+

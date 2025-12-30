@@ -150,47 +150,6 @@ def update_job_task_name(job_id: str, task_name: str) -> bool:
     return len(result.data) > 0
 
 
-def count_processing_jobs() -> int:
-    """Подсчитать количество задач в статусе processing"""
-    client = get_client()
-    result = client.table("jobs").select("id", count="exact").eq("status", "processing").execute()
-    return result.count or 0
-
-
-def claim_next_job(max_concurrent: int = 2) -> Optional[Job]:
-    """Взять следующую задачу в очереди (атомарно переключить в processing)"""
-    from .storage_files import get_job_files
-    from .storage_settings import get_job_settings
-    
-    client = get_client()
-    
-    processing_count = count_processing_jobs()
-    if processing_count >= max_concurrent:
-        return None
-    
-    result = client.table("jobs").select("*").eq("status", "queued").order("created_at").limit(1).execute()
-    
-    if not result.data:
-        return None
-    
-    job_id = result.data[0]["id"]
-    now = datetime.utcnow().isoformat()
-    
-    update_result = client.table("jobs").update({
-        "status": "processing",
-        "updated_at": now
-    }).eq("id", job_id).eq("status", "queued").execute()
-    
-    if update_result.data:
-        job = _row_to_job(update_result.data[0])
-        # Загружаем файлы и настройки для обработки
-        job.files = get_job_files(job_id)
-        job.settings = get_job_settings(job_id)
-        return job
-    
-    return None
-
-
 def delete_job(job_id: str) -> bool:
     """Удалить задачу из БД (каскадно удалит files и settings)"""
     client = get_client()
@@ -209,27 +168,6 @@ def reset_job_for_restart(job_id: str) -> bool:
         "updated_at": now
     }).eq("id", job_id).execute()
     return len(result.data) > 0
-
-
-def recover_stuck_jobs() -> int:
-    """При старте воркера: ставим ВСЕ активные задачи на паузу"""
-    now = datetime.utcnow().isoformat()
-    client = get_client()
-    
-    result1 = client.table("jobs").update({
-        "status": "paused",
-        "updated_at": now
-    }).eq("status", "queued").execute()
-    
-    result2 = client.table("jobs").update({
-        "status": "paused",
-        "updated_at": now
-    }).eq("status", "processing").execute()
-    
-    count = len(result1.data) + len(result2.data)
-    if count > 0:
-        logger.warning(f"⏸️ При старте: {count} задач поставлено на паузу")
-    return count
 
 
 def pause_job(job_id: str) -> bool:
@@ -286,5 +224,6 @@ def _row_to_job(row: dict) -> Job:
         r2_prefix=row.get("r2_prefix", ""),
         node_id=row.get("node_id")
     )
+
 
 

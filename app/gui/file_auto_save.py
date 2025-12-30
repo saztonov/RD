@@ -191,3 +191,4 @@ class FileAutoSaveMixin:
             logger.debug(f"Update tree annotation icon failed: {e}")
 
 
+

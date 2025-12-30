@@ -123,45 +123,6 @@ class R2UploadMixin:
         logger.info(f"=== Загрузка завершена: ✅ {success_count} успешно, ❌ {error_count} ошибок ===")
         return (success_count, error_count)
 
-    def upload_ocr_results(self, output_dir: str, project_name: Optional[str] = None) -> bool:
-        """
-        Загрузить результаты OCR в R2
-
-        Args:
-            output_dir: Директория с результатами OCR
-            project_name: Имя проекта (используется как префикс)
-
-        Returns:
-            True если успешно
-        """
-        logger.info("=" * 60)
-        logger.info("=== ЗАГРУЗКА РЕЗУЛЬТАТОВ OCR В R2 ===")
-        logger.info(f"Output directory: {output_dir}")
-        logger.info(f"Project name: {project_name}")
-
-        output_path = Path(output_dir)
-        if not output_path.exists():
-            logger.error(f"❌ Директория результатов не найдена: {output_dir}")
-            return False
-
-        # Формируем префикс
-        if project_name:
-            remote_prefix = f"ocr_results/{project_name}"
-        else:
-            remote_prefix = f"ocr_results/{output_path.name}"
-
-        logger.info(f"Remote prefix в R2: {remote_prefix}")
-        logger.info(f"Bucket: {self.bucket_name}")
-
-        success, errors = self.upload_directory(str(output_path), remote_prefix)
-
-        if errors == 0:
-            logger.info(f"✅ Все файлы успешно загружены в R2 bucket '{self.bucket_name}'")
-            return True
-        else:
-            logger.warning(f"⚠️ Загрузка завершена с ошибками: {success} успешно, {errors} ошибок")
-            return False
-
     def upload_text(self, content: str, remote_key: str, content_type: str = None) -> bool:
         """
         Загрузить текстовый контент в R2
@@ -193,5 +154,6 @@ class R2UploadMixin:
         except ClientError as e:
             logger.error(f"❌ Ошибка загрузки текста в R2: {e}")
             return False
+
 
 
