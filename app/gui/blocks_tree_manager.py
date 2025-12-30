@@ -18,30 +18,43 @@ class BlocksTreeManager:
     """Управление деревом блоков"""
     
     _categories_cache = None
+    _categories_code_cache = None
     
     def __init__(self, parent, blocks_tree: QTreeWidget):
         self.parent = parent
         self.blocks_tree = blocks_tree
     
-    def _get_category_name(self, category_id: str) -> str:
-        """Получить название категории по ID"""
-        if not category_id:
-            return ""
-        
+    def _get_category_name(self, category_id: str, category_code: str = None) -> str:
+        """Получить название категории по ID или коду"""
         if BlocksTreeManager._categories_cache is None:
             try:
                 from app.tree_client import TreeClient
                 client = TreeClient()
                 if client.is_available():
+                    cats = client.get_image_categories()
                     BlocksTreeManager._categories_cache = {
-                        cat["id"]: cat["name"] for cat in client.get_image_categories()
+                        cat["id"]: cat["name"] for cat in cats
+                    }
+                    BlocksTreeManager._categories_code_cache = {
+                        cat["code"]: cat["name"] for cat in cats
                     }
                 else:
                     BlocksTreeManager._categories_cache = {}
+                    BlocksTreeManager._categories_code_cache = {}
             except Exception:
                 BlocksTreeManager._categories_cache = {}
+                BlocksTreeManager._categories_code_cache = {}
         
-        return BlocksTreeManager._categories_cache.get(category_id, "")
+        if category_id:
+            name = BlocksTreeManager._categories_cache.get(category_id, "")
+            if name:
+                return name
+        
+        if category_code:
+            code_cache = BlocksTreeManager._categories_code_cache or {}
+            return code_cache.get(category_code, category_code)
+        
+        return ""
     
     def update_blocks_tree(self):
         """Обновить дерево блоков со всех страниц, группировка по страницам"""
@@ -73,7 +86,7 @@ class BlocksTreeManager:
                 block_item.setText(0, f"Блок {idx + 1}{indicators}")
                 block_item.setText(1, block.block_type.value)
                 # Колонка Категория (для IMAGE блоков)
-                cat_name = self._get_category_name(block.category_id) if block.block_type == BlockType.IMAGE else ""
+                cat_name = self._get_category_name(block.category_id, block.category_code) if block.block_type == BlockType.IMAGE else ""
                 block_item.setText(2, cat_name)
                 # Колонка Группа
                 block_item.setText(3, block.group_name or "")
