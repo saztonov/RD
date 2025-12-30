@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
+from app.gui.utils import format_datetime_utc3
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLabel, 
@@ -125,13 +126,13 @@ class JobDetailsDialog(QDialog):
         # Дата создания
         created_at = self.job_details.get("created_at", "")
         if created_at:
-            created_str = self._format_datetime_utc3(created_at)
+            created_str = format_datetime_utc3(created_at)
             time_layout.addRow("Дата создания (МСК):", QLabel(created_str))
         
         # Дата обновления
         updated_at = self.job_details.get("updated_at", "")
         if updated_at:
-            updated_str = self._format_datetime_utc3(updated_at)
+            updated_str = format_datetime_utc3(updated_at)
             time_layout.addRow("Последнее обновление (МСК):", QLabel(updated_str))
         
         # Прогнозная дата окончания (только для processing)
@@ -225,11 +226,6 @@ class JobDetailsDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok)
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)
-    
-    def _format_datetime_utc3(self, dt_str: str) -> str:
-        """Конвертировать UTC время в UTC+3 (МСК)"""
-        from app.gui.utils import format_datetime_utc3
-        return format_datetime_utc3(dt_str)
     
     def _copy_to_clipboard(self, text: str):
         """Скопировать текст в буфер обмена"""

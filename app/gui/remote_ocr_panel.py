@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from app.gui.remote_ocr_signals import WorkerSignals
 from app.gui.remote_ocr_download import DownloadMixin
 from app.gui.remote_ocr_job_operations import JobOperationsMixin
+from app.gui.utils import format_datetime_utc3
 
 if TYPE_CHECKING:
     from app.gui.main_window import MainWindow
@@ -199,7 +200,7 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
             display_name = job.task_name if job.task_name else job.document_name
             self.jobs_table.setItem(row, 1, QTableWidgetItem(display_name))
             
-            created_at_str = self._format_datetime_utc3(job.created_at)
+            created_at_str = format_datetime_utc3(job.created_at)
             created_item = QTableWidgetItem(created_at_str)
             created_item.setData(Qt.UserRole, job.created_at)
             self.jobs_table.setItem(row, 2, created_item)
@@ -452,8 +453,3 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         """Освобождаем ресурсы"""
         self._executor.shutdown(wait=False)
         super().closeEvent(event)
-    
-    def _format_datetime_utc3(self, dt_str: str) -> str:
-        """Конвертировать UTC время в UTC+3 (МСК)"""
-        from app.gui.utils import format_datetime_utc3
-        return format_datetime_utc3(dt_str)

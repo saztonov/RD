@@ -13,8 +13,8 @@ def check_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) ->
 
 def get_r2_storage():
     """Получить R2 Storage клиент (async-обёртка)"""
-    from services.remote_ocr.server.async_r2_storage import AsyncR2StorageSync
-    return AsyncR2StorageSync()
+    from services.remote_ocr.server.task_helpers import get_r2_storage as _get_r2_storage
+    return _get_r2_storage()
 
 
 def get_r2_sync_client():
