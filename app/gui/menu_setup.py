@@ -190,15 +190,21 @@ class MenuSetupMixin:
         self.text_action = QAction("📝 Текст", self)
         self.text_action.setCheckable(True)
         self.text_action.setChecked(True)
-        self.text_action.setData(BlockType.TEXT)
+        self.text_action.setData({"block_type": BlockType.TEXT})
         self.block_type_group.addAction(self.text_action)
         toolbar.addAction(self.text_action)
         
         self.image_action = QAction("🖼️ Картинка", self)
         self.image_action.setCheckable(True)
-        self.image_action.setData(BlockType.IMAGE)
+        self.image_action.setData({"block_type": BlockType.IMAGE})
         self.block_type_group.addAction(self.image_action)
         toolbar.addAction(self.image_action)
+        
+        self.stamp_action = QAction("🔏 Штамп", self)
+        self.stamp_action.setCheckable(True)
+        self.stamp_action.setData({"block_type": BlockType.IMAGE, "category_code": "stamp"})
+        self.block_type_group.addAction(self.stamp_action)
+        toolbar.addAction(self.stamp_action)
         
         toolbar.addSeparator()
         

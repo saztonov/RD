@@ -70,7 +70,9 @@ class BlockHandlersMixin:
         self._save_undo_state()
         
         checked_action = self.block_type_group.checkedAction()
-        block_type = checked_action.data() if checked_action else BlockType.TEXT
+        action_data = checked_action.data() if checked_action else {}
+        block_type = action_data.get("block_type", BlockType.TEXT) if isinstance(action_data, dict) else BlockType.TEXT
+        category_code = action_data.get("category_code") if isinstance(action_data, dict) else None
         
         current_page_data = self._get_or_create_page(self.current_page)
         if not current_page_data:
@@ -85,6 +87,8 @@ class BlockHandlersMixin:
             source=BlockSource.USER,
             shape_type=ShapeType.RECTANGLE
         )
+        if category_code:
+            block.category_code = category_code
         
         logger.debug(f"Block created: {block.id} coords_px={block.coords_px} page_size={current_page_data.width}x{current_page_data.height}")
         
@@ -107,7 +111,9 @@ class BlockHandlersMixin:
         self._save_undo_state()
         
         checked_action = self.block_type_group.checkedAction()
-        block_type = checked_action.data() if checked_action else BlockType.TEXT
+        action_data = checked_action.data() if checked_action else {}
+        block_type = action_data.get("block_type", BlockType.TEXT) if isinstance(action_data, dict) else BlockType.TEXT
+        category_code = action_data.get("category_code") if isinstance(action_data, dict) else None
         
         current_page_data = self._get_or_create_page(self.current_page)
         if not current_page_data:
@@ -128,6 +134,8 @@ class BlockHandlersMixin:
             shape_type=ShapeType.POLYGON,
             polygon_points=points
         )
+        if category_code:
+            block.category_code = category_code
         
         logger.debug(f"Polygon created: {block.id} bbox={block.coords_px} vertices={len(points)}")
         
