@@ -6,7 +6,7 @@ import sys
 import json as json_module
 from datetime import datetime
 from pathlib import Path
-from typing import List, Any
+from typing import List, Any, Optional, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +116,121 @@ def _escape_html(text: str) -> str:
             .replace('"', "&quot;"))
 
 
+def _parse_stamp_json(ocr_text: Optional[str]) -> Optional[Dict]:
+    """Извлечь JSON штампа из ocr_text."""
+    if not ocr_text:
+        return None
+    
+    text = ocr_text.strip()
+    if not text:
+        return None
+    
+    # Прямой JSON
+    if text.startswith('{'):
+        try:
+            return json_module.loads(text)
+        except json_module.JSONDecodeError:
+            pass
+    
+    # JSON внутри ```json ... ```
+    json_match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
+    if json_match:
+        try:
+            return json_module.loads(json_match.group(1))
+        except json_module.JSONDecodeError:
+            pass
+    
+    return None
+
+
+def _format_stamp_html(stamp_data: Dict) -> str:
+    """Форматировать данные штампа в компактный HTML блок."""
+    parts = []
+    
+    # Шифр
+    if stamp_data.get("document_code"):
+        parts.append(f"<b>Шифр:</b> {stamp_data['document_code']}")
+    
+    # Стадия
+    if stamp_data.get("stage"):
+        parts.append(f"<b>Стадия:</b> {stamp_data['stage']}")
+    
+    # Лист
+    sheet_num = stamp_data.get("sheet_number", "")
+    total = stamp_data.get("total_sheets", "")
+    if sheet_num or total:
+        parts.append(f"<b>Лист:</b> {sheet_num} (из {total})" if total else f"<b>Лист:</b> {sheet_num}")
+    
+    # Объект
+    if stamp_data.get("project_name"):
+        parts.append(f"<b>Объект:</b> {stamp_data['project_name']}")
+    
+    # Наименование листа
+    if stamp_data.get("sheet_name"):
+        parts.append(f"<b>Наименование:</b> {stamp_data['sheet_name']}")
+    
+    # Организация
+    if stamp_data.get("organization"):
+        parts.append(f"<b>Организация:</b> {stamp_data['organization']}")
+    
+    # Ревизии/изменения
+    revisions = stamp_data.get("revisions")
+    if revisions:
+        if isinstance(revisions, list) and revisions:
+            # Берём последнюю ревизию
+            last_rev = revisions[-1] if revisions else {}
+            rev_num = last_rev.get("revision_number", "")
+            doc_num = last_rev.get("document_number", "")
+            rev_date = last_rev.get("date", "")
+            if rev_num or doc_num:
+                rev_str = f"Изм. {rev_num}"
+                if doc_num:
+                    rev_str += f" (Док. № {doc_num}"
+                    if rev_date:
+                        rev_str += f" от {rev_date}"
+                    rev_str += ")"
+                parts.append(f"<b>Статус:</b> {rev_str}")
+        elif isinstance(revisions, str):
+            parts.append(f"<b>Статус:</b> {revisions}")
+    
+    # Подписи
+    signatures = stamp_data.get("signatures")
+    if signatures:
+        if isinstance(signatures, list):
+            sig_parts = []
+            for sig in signatures:
+                if isinstance(sig, dict):
+                    role = sig.get("role", "")
+                    name = sig.get("name", "")
+                    if role and name:
+                        sig_parts.append(f"{role}: {name}")
+                elif isinstance(sig, str):
+                    sig_parts.append(sig)
+            if sig_parts:
+                parts.append(f"<b>Ответственные:</b> {'; '.join(sig_parts)}")
+        elif isinstance(signatures, str):
+            parts.append(f"<b>Ответственные:</b> {signatures}")
+    
+    if not parts:
+        return ""
+    
+    return (
+        '<div class="stamp-info">'
+        + " | ".join(parts)
+        + '</div>'
+    )
+
+
+def _find_page_stamp(blocks: List) -> Optional[Dict]:
+    """Найти данные штампа на странице (из блока с category_code='stamp')."""
+    for block in blocks:
+        if getattr(block, 'category_code', None) == 'stamp':
+            stamp_data = _parse_stamp_json(block.ocr_text)
+            if stamp_data:
+                return stamp_data
+    return None
+
+
 def generate_html_from_pages(
     pages: List,
     output_path: str,
@@ -158,6 +273,7 @@ def generate_html_from_pages(
         .block-type-text {{ border-left-color: #2ecc71; }}
         .block-type-table {{ border-left-color: #e74c3c; }}
         .block-type-image {{ border-left-color: #9b59b6; }}
+        .stamp-info {{ font-size: 0.75rem; color: #2980b9; background: #eef6fc; padding: 0.4rem 0.6rem; margin-top: 0.5rem; border-radius: 3px; border: 1px solid #bde0f7; }}
         table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
         th, td {{ border: 1px solid #ddd; padding: 0.5rem; text-align: left; }}
         th {{ background: #f0f0f0; }}
@@ -173,6 +289,10 @@ def generate_html_from_pages(
         
         block_count = 0
         for page in pages:
+            # Находим данные штампа для этой страницы
+            page_stamp = _find_page_stamp(page.blocks)
+            stamp_html = _format_stamp_html(page_stamp) if page_stamp else ""
+            
             for idx, block in enumerate(page.blocks):
                 if not block.ocr_text:
                     continue
@@ -199,6 +319,10 @@ def generate_html_from_pages(
                     if project_name:
                         image_uri = f"{r2_public_url}/tree_docs/{project_name}/crops/{crop_filename}"
                         html_parts.append(f'<p><a href="{image_uri}" target="_blank">Открыть изображение</a></p>')
+                
+                # Добавляем информацию о штампе под каждым блоком
+                if stamp_html:
+                    html_parts.append(stamp_html)
                 
                 html_parts.append('</div></div>')
         
