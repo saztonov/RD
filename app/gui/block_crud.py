@@ -238,19 +238,6 @@ class BlockCRUDMixin:
         
         self.blocks_tree_manager.select_blocks_in_tree(block_indices)
     
-    def _on_block_editing(self, block_idx: int):
-        """Обработка двойного клика для редактирования блока"""
-        if not self.annotation_document:
-            return
-        
-        current_page_data = self._get_or_create_page(self.current_page)
-        if not current_page_data:
-            return
-        
-        if 0 <= block_idx < len(current_page_data.blocks):
-            self.page_viewer.selected_block_idx = block_idx
-            self._on_block_selected(block_idx)
-    
     def _on_block_deleted(self, block_idx: int):
         """Обработка удаления блока"""
         if not self.annotation_document:

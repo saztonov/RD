@@ -266,12 +266,6 @@ class MouseEventsMixin:
             if self.drawing_polygon:
                 self._finish_polygon()
                 return
-            
-            scene_pos = self.mapToScene(event.pos())
-            clicked_block = self._find_block_at_position(scene_pos)
-            
-            if clicked_block is not None:
-                self.blockEditing.emit(clicked_block)
     
     def mouseReleaseEvent(self, event):
         """Обработка отпускания мыши"""

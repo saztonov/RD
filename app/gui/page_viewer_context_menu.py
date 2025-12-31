@@ -61,13 +61,41 @@ class ContextMenuMixin:
         if not selected_blocks:
             return
         
-        type_menu = menu.addMenu(f"Изменить тип ({len(selected_blocks)} блоков)")
-        for block_type in BlockType:
-            action = type_menu.addAction(block_type.value)
-            action.triggered.connect(lambda checked, bt=block_type, blocks=selected_blocks: 
-                                    self._apply_type_to_blocks(blocks, bt))
+        # 1. Добавить связанный блок (только для одного блока)
+        if len(selected_blocks) == 1:
+            block_idx = selected_blocks[0]["idx"]
+            if 0 <= block_idx < len(self.current_blocks):
+                block = self.current_blocks[block_idx]
+                add_linked_action = menu.addAction("🔗 Добавить связанный блок")
+                
+                # Определяем противоположный тип
+                opposite_type = BlockType.IMAGE if block.block_type == BlockType.TEXT else BlockType.TEXT
+                add_linked_action.triggered.connect(
+                    lambda checked, b=block, target_type=opposite_type: 
+                    self._create_linked_block(b, target_type))
         
-        # Подменю выбора категории для IMAGE блоков
+        # 2. Изменить тип
+        if len(selected_blocks) == 1:
+            # Для одного блока - сразу меняем на противоположный
+            block_idx = selected_blocks[0]["idx"]
+            if 0 <= block_idx < len(self.current_blocks):
+                block = self.current_blocks[block_idx]
+                opposite_type = BlockType.IMAGE if block.block_type == BlockType.TEXT else BlockType.TEXT
+                change_type_action = menu.addAction(f"Изменить тип → {opposite_type.value}")
+                change_type_action.triggered.connect(
+                    lambda checked, blocks=selected_blocks, bt=opposite_type: 
+                    self._apply_type_to_blocks(blocks, bt))
+        else:
+            # Для нескольких блоков - показываем список text/image
+            type_menu = menu.addMenu(f"Изменить тип ({len(selected_blocks)} блоков)")
+            action_text = type_menu.addAction("TEXT")
+            action_text.triggered.connect(lambda checked, blocks=selected_blocks: 
+                                         self._apply_type_to_blocks(blocks, BlockType.TEXT))
+            action_image = type_menu.addAction("IMAGE")
+            action_image.triggered.connect(lambda checked, blocks=selected_blocks: 
+                                          self._apply_type_to_blocks(blocks, BlockType.IMAGE))
+        
+        # 3. Категория изображения
         if len(selected_blocks) >= 1:
             block_idx = selected_blocks[0]["idx"]
             if 0 <= block_idx < len(self.current_blocks):
@@ -92,21 +120,6 @@ class ContextMenuMixin:
                                 self._apply_category_to_blocks(blocks, cid, ccode)
                             )
         
-        # Добавить связанный блок (только для одного блока)
-        if len(selected_blocks) == 1:
-            block_idx = selected_blocks[0]["idx"]
-            if 0 <= block_idx < len(self.current_blocks):
-                block = self.current_blocks[block_idx]
-                link_menu = menu.addMenu("🔗 Добавить связанный блок")
-                
-                # Показываем типы, отличные от текущего
-                for bt in BlockType:
-                    if bt != block.block_type:
-                        action = link_menu.addAction(f"+ {bt.value}")
-                        action.triggered.connect(
-                            lambda checked, b=block, target_type=bt: 
-                            self._create_linked_block(b, target_type))
-        
         menu.addSeparator()
         
         # Группировка блоков (если выбрано больше одного блока)
@@ -123,10 +136,7 @@ class ContextMenuMixin:
         
         menu.addSeparator()
         
-        if len(selected_blocks) == 1:
-            edit_action = menu.addAction("Редактировать")
-            edit_action.triggered.connect(lambda: self.blockEditing.emit(self.selected_block_idx))
-        
+        # 4. Удалить
         delete_action = menu.addAction(f"Удалить ({len(selected_blocks)} блоков)")
         delete_action.triggered.connect(lambda blocks=selected_blocks: self._delete_blocks(blocks))
         

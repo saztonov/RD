@@ -26,7 +26,6 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
     polygonDrawn = Signal(list)
     block_selected = Signal(int)
     blocks_selected = Signal(list)
-    blockEditing = Signal(int)
     blockDeleted = Signal(int)
     blocks_deleted = Signal(list)
     blockMoved = Signal(int, int, int, int, int)
