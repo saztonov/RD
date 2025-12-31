@@ -287,6 +287,18 @@ def generate_html_from_pages(
 <p>Сгенерировано: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
 """]
         
+        # Собираем блоки по группам для отображения групповой информации
+        groups: Dict[str, List] = {}  # group_id -> list of blocks
+        all_blocks: Dict[str, Any] = {}  # block_id -> block
+        for page in pages:
+            for block in page.blocks:
+                all_blocks[block.id] = block
+                group_id = getattr(block, 'group_id', None)
+                if group_id:
+                    if group_id not in groups:
+                        groups[group_id] = []
+                    groups[group_id].append(block)
+        
         block_count = 0
         for page in pages:
             # Находим данные штампа для этой страницы
@@ -312,6 +324,24 @@ def generate_html_from_pages(
                 # Вставляем маркер BLOCK: XXXX-XXXX-XXX для ocr_result_merger
                 armor_code = _get_block_armor_id(block.id)
                 html_parts.append(f'<p>BLOCK: {armor_code}</p>')
+                
+                # Grouped blocks: группа и все блоки в ней
+                group_id = getattr(block, 'group_id', None)
+                if group_id and group_id in groups:
+                    group_name = getattr(block, 'group_name', None) or group_id
+                    group_block_ids = [_get_block_armor_id(b.id) for b in groups[group_id]]
+                    html_parts.append(f'<p><b>Grouped blocks:</b> {group_name} [{", ".join(group_block_ids)}]</p>')
+                
+                # Linked block: связанный блок
+                linked_id = getattr(block, 'linked_block_id', None)
+                if linked_id:
+                    linked_armor = _get_block_armor_id(linked_id)
+                    html_parts.append(f'<p><b>Linked block:</b> {linked_armor}</p>')
+                
+                # Created at: дата создания блока
+                created_at = getattr(block, 'created_at', None)
+                if created_at:
+                    html_parts.append(f'<p><b>Created:</b> {created_at}</p>')
                 
                 # Добавляем информацию о штампе сразу после маркера блока (в метаинформацию)
                 if stamp_html:

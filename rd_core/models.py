@@ -5,6 +5,7 @@
 
 import secrets
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Tuple, Optional
 from enum import Enum
 
@@ -127,6 +128,7 @@ class Block:
         group_name: название группы (отображаемое пользователю)
         category_id: ID категории изображения (для IMAGE блоков)
         category_code: код категории изображения (для IMAGE блоков)
+        created_at: дата и время создания блока (ISO формат)
     """
     id: str
     page_index: int
@@ -146,6 +148,7 @@ class Block:
     group_name: Optional[str] = None  # Название группы
     category_id: Optional[str] = None  # ID категории изображения
     category_code: Optional[str] = None  # Код категории изображения (для сериализации)
+    created_at: Optional[str] = None  # Дата создания (ISO формат)
     
     @staticmethod
     def generate_id() -> str:
@@ -254,7 +257,8 @@ class Block:
             prompt=prompt,
             hint=hint,
             pdfplumber_text=pdfplumber_text,
-            linked_block_id=linked_block_id
+            linked_block_id=linked_block_id,
+            created_at=datetime.utcnow().isoformat()
         )
     
     def get_width_height_px(self) -> Tuple[int, int]:
@@ -311,6 +315,8 @@ class Block:
             result["category_id"] = self.category_id
         if self.category_code:
             result["category_code"] = self.category_code
+        if self.created_at:
+            result["created_at"] = self.created_at
         return result
     
     @classmethod
@@ -383,7 +389,8 @@ class Block:
             group_id=group_id,
             group_name=data.get("group_name"),
             category_id=data.get("category_id"),
-            category_code=data.get("category_code")
+            category_code=data.get("category_code"),
+            created_at=data.get("created_at")
         )
         return block, was_migrated
 
