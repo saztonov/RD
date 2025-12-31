@@ -720,9 +720,25 @@ class ProjectTreeWidget(
             r2_base_url = os.getenv("R2_PUBLIC_URL", "https://rd1.svarovsky.ru")
             r2_base_url = f"{r2_base_url}/{r2_prefix.rstrip('/')}"
             
+            # Определяем локальную папку
+            from app.gui.folder_settings_dialog import get_projects_dir
+            from pathlib import Path
+            local_folder = None
+            if node.node_type == NodeType.DOCUMENT:
+                r2_key = node.attributes.get("r2_key", "")
+                if r2_key:
+                    projects_dir = get_projects_dir()
+                    rel_path = r2_key[len("tree_docs/"):] if r2_key.startswith("tree_docs/") else r2_key
+                    local_folder = Path(projects_dir) / Path(rel_path).parent
+            
             self.status_label.setText("")
             
-            dialog = R2FilesDialog(r2_base_url, r2_files, self)
+            dialog = R2FilesDialog(
+                r2_base_url, r2_files, self,
+                r2_prefix=r2_prefix,
+                node_id=node.id,
+                local_folder=local_folder,
+            )
             dialog.exec()
             
         except Exception as e:

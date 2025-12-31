@@ -350,13 +350,9 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         if not node:
             return
         
-        # Удаляем placeholder и перезагружаем файлы документа
-        while item.childCount() > 0:
-            item.removeChild(item.child(0))
-        
-        tree._load_document_files(item, node)
-        item.setExpanded(True)
-        logger.info(f"Refreshed document files in tree: {node_id}")
+        # Обновляем отображение элемента (документы не имеют дочерних узлов)
+        tree._start_sync_check()
+        logger.info(f"Refreshed document in tree: {node_id}")
     
     def _reload_annotation_from_result(self, extract_dir: str):
         """Обновить ocr_text в блоках из результата OCR, сохраняя оригинальную геометрию"""
