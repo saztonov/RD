@@ -217,8 +217,90 @@ def merge_ocr_results(
             logger.warning(f"Не найдено HTML для {len(missing)} блоков. Примеры: {missing[:3]}")
         
         logger.info(f"result.json сохранён: {output_path} ({matched}/{len(expected_ids)} блоков сопоставлено)")
+        
+        # Регенерируем HTML из разделённых ocr_html
+        regenerate_html_from_result(result, ocr_html_path)
+        
         return True
         
     except Exception as e:
         logger.error(f"Ошибка объединения OCR результатов: {e}", exc_info=True)
         return False
+
+
+def regenerate_html_from_result(result: dict, output_path: Path) -> None:
+    """
+    Регенерировать HTML файл из result.json с правильно разделёнными блоками.
+    
+    Использует ocr_html (уже разделённый по маркерам) вместо ocr_text.
+    """
+    from datetime import datetime
+    
+    doc_name = result.get("pdf_path", "OCR Result")
+    
+    html_parts = [f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{doc_name} - OCR</title>
+    <style>
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 2rem; line-height: 1.6; }}
+        .block {{ margin: 1.5rem 0; padding: 1rem; border-left: 3px solid #3498db; background: #f8f9fa; }}
+        .block-header {{ font-size: 0.8rem; color: #666; margin-bottom: 0.5rem; }}
+        .block-content {{ }}
+        .block-type-text {{ border-left-color: #2ecc71; }}
+        .block-type-table {{ border-left-color: #e74c3c; }}
+        .block-type-image {{ border-left-color: #9b59b6; }}
+        .stamp-info {{ font-size: 0.75rem; color: #2980b9; background: #eef6fc; padding: 0.4rem 0.6rem; margin-top: 0.5rem; border-radius: 3px; border: 1px solid #bde0f7; }}
+        .stamp-inherited {{ color: #7f8c8d; background: #f5f5f5; border-color: #ddd; font-style: italic; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 0.5rem; text-align: left; }}
+        th {{ background: #f0f0f0; }}
+        img {{ max-width: 100%; height: auto; }}
+        h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; }}
+        pre {{ white-space: pre-wrap; word-wrap: break-word; background: #fff; padding: 0.5rem; }}
+    </style>
+</head>
+<body>
+<h1>{doc_name}</h1>
+<p>Сгенерировано: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+"""]
+    
+    block_count = 0
+    for page in result.get("pages", []):
+        page_num = page.get("page_number", "")
+        
+        for idx, blk in enumerate(page.get("blocks", [])):
+            # Пропускаем блоки штампа
+            if blk.get("category_code") == "stamp":
+                continue
+            
+            block_id = blk.get("id", "")
+            block_type = blk.get("block_type", "text")
+            ocr_html = blk.get("ocr_html", "")
+            
+            # Если нет ocr_html - пропускаем
+            if not ocr_html:
+                continue
+            
+            block_count += 1
+            
+            html_parts.append(f'<div class="block block-type-{block_type}">')
+            html_parts.append(f'<div class="block-header">Блок #{idx + 1} (стр. {page_num}) | Тип: {block_type}</div>')
+            html_parts.append('<div class="block-content">')
+            
+            # Добавляем маркер блока
+            html_parts.append(f'<p>BLOCK: {block_id}</p>')
+            
+            # Добавляем ocr_html (уже содержит stamp_info, grouped/linked info и контент)
+            html_parts.append(ocr_html)
+            
+            html_parts.append('</div></div>')
+    
+    html_parts.append("</body></html>")
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(html_parts))
+    
+    logger.info(f"HTML регенерирован из result.json: {output_path} ({block_count} блоков)")
