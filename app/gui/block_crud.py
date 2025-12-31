@@ -250,6 +250,16 @@ class BlockCRUDMixin:
         if 0 <= block_idx < len(current_page_data.blocks):
             self._save_undo_state()
             
+            # Получаем удаляемый блок
+            deleted_block = current_page_data.blocks[block_idx]
+            deleted_block_id = deleted_block.id
+            
+            # Очищаем связи: если у других блоков есть ссылка на удаляемый блок
+            for page in self.annotation_document.pages:
+                for block in page.blocks:
+                    if block.linked_block_id == deleted_block_id:
+                        block.linked_block_id = None
+            
             self.page_viewer.selected_block_idx = None
             del current_page_data.blocks[block_idx]
             
@@ -269,6 +279,18 @@ class BlockCRUDMixin:
             return
         
         self._save_undo_state()
+        
+        # Собираем ID удаляемых блоков
+        deleted_block_ids = set()
+        for block_idx in block_indices:
+            if 0 <= block_idx < len(current_page_data.blocks):
+                deleted_block_ids.add(current_page_data.blocks[block_idx].id)
+        
+        # Очищаем связи: если у блоков есть ссылки на удаляемые блоки
+        for page in self.annotation_document.pages:
+            for block in page.blocks:
+                if block.linked_block_id in deleted_block_ids:
+                    block.linked_block_id = None
         
         # Сортируем индексы в обратном порядке для корректного удаления
         sorted_indices = sorted(block_indices, reverse=True)
@@ -406,6 +428,16 @@ class BlockCRUDMixin:
         
         if reply == QMessageBox.Yes:
             self._save_undo_state()
+            
+            # Собираем ID всех удаляемых блоков
+            deleted_block_ids = {block.id for block in current_page_data.blocks}
+            
+            # Очищаем связи: если у блоков на других страницах есть ссылки на удаляемые блоки
+            for page in self.annotation_document.pages:
+                for block in page.blocks:
+                    if block.linked_block_id in deleted_block_ids:
+                        block.linked_block_id = None
+            
             current_page_data.blocks.clear()
             self.page_viewer.set_blocks([])
             self.blocks_tree_manager.update_blocks_tree()
