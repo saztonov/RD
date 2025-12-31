@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem,
     QMenu, QLabel, QAbstractItemView, QFrame, QLineEdit, QMessageBox, QFileDialog
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QEvent
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QSettings
 from PySide6.QtGui import QColor
 
 from app.tree_client import TreeClient, TreeNode, NodeType, NodeStatus, StageType, SectionType, FileType
@@ -61,6 +61,7 @@ class ProjectTreeWidget(
         self._last_node_count: int = 0  # Для отслеживания изменений
         self._sync_statuses: Dict[str, SyncStatus] = {}  # node_id -> SyncStatus
         self._sync_worker: SyncCheckWorker = None
+        self._expanded_nodes: set = set()  # Множество ID раскрытых узлов
         self._setup_ui()
         self._setup_auto_refresh()
         
@@ -243,6 +244,7 @@ class ProjectTreeWidget(
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.tree.itemExpanded.connect(self._on_item_expanded)
+        self.tree.itemCollapsed.connect(self._on_item_collapsed)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.tree.installEventFilter(self)
         self.tree.setStyleSheet("""
@@ -279,6 +281,7 @@ class ProjectTreeWidget(
             self.status_label.setText("⚠ Supabase недоступен")
             return
         
+        self._load_expanded_state()
         self.refresh_types()
         self._refresh_tree()
     
@@ -319,6 +322,9 @@ class ProjectTreeWidget(
                 self._add_placeholder(item, node)
             
             self.status_label.setText(f"Проектов: {len(roots)}")
+            
+            # Восстанавливаем раскрытое состояние с задержкой
+            QTimer.singleShot(100, self._restore_expanded_state)
             
             # Запускаем проверку синхронизации с задержкой
             QTimer.singleShot(500, self._start_sync_check)
@@ -378,15 +384,28 @@ class ProjectTreeWidget(
     
     def _on_item_expanded(self, item: QTreeWidgetItem):
         """Lazy loading при раскрытии"""
+        node = item.data(0, Qt.UserRole)
+        if isinstance(node, TreeNode):
+            # Сохраняем ID раскрытого узла
+            self._expanded_nodes.add(node.id)
+            self._save_expanded_state()
+            
         if item.childCount() == 1:
             child = item.child(0)
             if child.data(0, Qt.UserRole) == "placeholder":
-                node = item.data(0, Qt.UserRole)
                 if isinstance(node, TreeNode):
                     item.removeChild(child)
                     self._load_children(item, node)
                     # Запускаем проверку синхронизации для загруженных дочерних
                     QTimer.singleShot(100, self._start_sync_check)
+    
+    def _on_item_collapsed(self, item: QTreeWidgetItem):
+        """Обработчик сворачивания узла"""
+        node = item.data(0, Qt.UserRole)
+        if isinstance(node, TreeNode):
+            # Удаляем ID свернутого узла
+            self._expanded_nodes.discard(node.id)
+            self._save_expanded_state()
     
     def _load_children(self, parent_item: QTreeWidgetItem, parent_node: TreeNode):
         """Загрузить дочерние узлы"""
@@ -815,3 +834,42 @@ class ProjectTreeWidget(
             "zip": "📦",
         }
         return icons.get(ext, "📄")
+    
+    def _save_expanded_state(self):
+        """Сохранить состояние раскрытых узлов"""
+        try:
+            settings = QSettings("RDApp", "ProjectTree")
+            settings.setValue("expanded_nodes", list(self._expanded_nodes))
+        except Exception as e:
+            logger.debug(f"Failed to save expanded state: {e}")
+    
+    def _load_expanded_state(self):
+        """Загрузить состояние раскрытых узлов"""
+        try:
+            settings = QSettings("RDApp", "ProjectTree")
+            expanded_list = settings.value("expanded_nodes", [])
+            if expanded_list:
+                self._expanded_nodes = set(expanded_list)
+            else:
+                self._expanded_nodes = set()
+        except Exception as e:
+            logger.debug(f"Failed to load expanded state: {e}")
+            self._expanded_nodes = set()
+    
+    def _restore_expanded_state(self):
+        """Восстановить раскрытое состояние дерева"""
+        if not self._expanded_nodes:
+            return
+        
+        def expand_recursive(item: QTreeWidgetItem):
+            node = item.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode) and node.id in self._expanded_nodes:
+                # Раскрываем узел
+                item.setExpanded(True)
+                # Обрабатываем дочерние элементы
+                for i in range(item.childCount()):
+                    expand_recursive(item.child(i))
+        
+        # Проходим по всем корневым элементам
+        for i in range(self.tree.topLevelItemCount()):
+            expand_recursive(self.tree.topLevelItem(i))
