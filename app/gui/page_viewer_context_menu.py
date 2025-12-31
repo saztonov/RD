@@ -158,9 +158,11 @@ class ContextMenuMixin:
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.transform()
         saved_zoom_factor = self.zoom_factor
+        saved_h_scroll = self.horizontalScrollBar().value()
+        saved_v_scroll = self.verticalScrollBar().value()
         
         # Создаём новый блок с теми же координатами
         new_block = Block.create(
@@ -185,9 +187,11 @@ class ContextMenuMixin:
         # Обновляем UI
         main_window._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.setTransform(saved_transform)
         self.zoom_factor = saved_zoom_factor
+        self.horizontalScrollBar().setValue(saved_h_scroll)
+        self.verticalScrollBar().setValue(saved_v_scroll)
         
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
@@ -218,9 +222,11 @@ class ContextMenuMixin:
         
         page = main_window.annotation_document.pages[current_page]
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.transform()
         saved_zoom_factor = self.zoom_factor
+        saved_h_scroll = self.horizontalScrollBar().value()
+        saved_v_scroll = self.verticalScrollBar().value()
         
         for data in blocks_data:
             block_idx = data["idx"]
@@ -229,9 +235,11 @@ class ContextMenuMixin:
         
         main_window._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.setTransform(saved_transform)
         self.zoom_factor = saved_zoom_factor
+        self.horizontalScrollBar().setValue(saved_h_scroll)
+        self.verticalScrollBar().setValue(saved_v_scroll)
         
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
@@ -265,9 +273,11 @@ class ContextMenuMixin:
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.transform()
         saved_zoom_factor = self.zoom_factor
+        saved_h_scroll = self.horizontalScrollBar().value()
+        saved_v_scroll = self.verticalScrollBar().value()
         
         count = 0
         for data in blocks_data:
@@ -281,9 +291,11 @@ class ContextMenuMixin:
         
         main_window._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.setTransform(saved_transform)
         self.zoom_factor = saved_zoom_factor
+        self.horizontalScrollBar().setValue(saved_h_scroll)
+        self.verticalScrollBar().setValue(saved_v_scroll)
         
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
@@ -346,9 +358,11 @@ class ContextMenuMixin:
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.transform()
         saved_zoom_factor = self.zoom_factor
+        saved_h_scroll = self.horizontalScrollBar().value()
+        saved_v_scroll = self.verticalScrollBar().value()
         
         # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
@@ -360,9 +374,11 @@ class ContextMenuMixin:
         # Обновляем UI
         main_window._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.setTransform(saved_transform)
         self.zoom_factor = saved_zoom_factor
+        self.horizontalScrollBar().setValue(saved_h_scroll)
+        self.verticalScrollBar().setValue(saved_v_scroll)
         
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
@@ -401,9 +417,11 @@ class ContextMenuMixin:
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.transform()
         saved_zoom_factor = self.zoom_factor
+        saved_h_scroll = self.horizontalScrollBar().value()
+        saved_v_scroll = self.verticalScrollBar().value()
         
         # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
@@ -415,9 +433,11 @@ class ContextMenuMixin:
         # Обновляем UI
         main_window._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.setTransform(saved_transform)
         self.zoom_factor = saved_zoom_factor
+        self.horizontalScrollBar().setValue(saved_h_scroll)
+        self.verticalScrollBar().setValue(saved_v_scroll)
         
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()

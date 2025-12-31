@@ -253,9 +253,11 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.page_viewer.transform()
         saved_zoom_factor = self.page_viewer.zoom_factor
+        saved_h_scroll = self.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.page_viewer.verticalScrollBar().value()
         
         # Применяем group_id и group_name ко всем выбранным блокам
         for block_idx in selected_indices:
@@ -266,9 +268,11 @@ class BlockGroupsMixin:
         # Обновляем UI
         self._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.page_viewer.setTransform(saved_transform)
         self.page_viewer.zoom_factor = saved_zoom_factor
+        self.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         self._update_groups_tree()
         self._auto_save_annotation()
@@ -284,9 +288,11 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.page_viewer.transform()
         saved_zoom_factor = self.page_viewer.zoom_factor
+        saved_h_scroll = self.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.page_viewer.verticalScrollBar().value()
         
         count = 0
         for page in self.annotation_document.pages:
@@ -297,9 +303,11 @@ class BlockGroupsMixin:
         
         self._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.page_viewer.setTransform(saved_transform)
         self.page_viewer.zoom_factor = saved_zoom_factor
+        self.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         self._update_groups_tree()
         self._auto_save_annotation()
@@ -327,18 +335,22 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.page_viewer.transform()
         saved_zoom_factor = self.page_viewer.zoom_factor
+        saved_h_scroll = self.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.page_viewer.verticalScrollBar().value()
         
         for page in self.annotation_document.pages:
             page.blocks = [b for b in page.blocks if b.group_id != group_id]
         
         self._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.page_viewer.setTransform(saved_transform)
         self.page_viewer.zoom_factor = saved_zoom_factor
+        self.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         self._update_groups_tree()
         self._auto_save_annotation()
@@ -360,18 +372,22 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.page_viewer.transform()
         saved_zoom_factor = self.page_viewer.zoom_factor
+        saved_h_scroll = self.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.page_viewer.verticalScrollBar().value()
         
         page.blocks[block_idx].group_id = None
         page.blocks[block_idx].group_name = None
         
         self._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.page_viewer.setTransform(saved_transform)
         self.page_viewer.zoom_factor = saved_zoom_factor
+        self.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         self._update_groups_tree()
         self._auto_save_annotation()
@@ -396,9 +412,11 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.page_viewer.transform()
         saved_zoom_factor = self.page_viewer.zoom_factor
+        saved_h_scroll = self.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.page_viewer.verticalScrollBar().value()
         
         # Обновляем название у всех блоков группы
         for page in self.annotation_document.pages:
@@ -408,9 +426,11 @@ class BlockGroupsMixin:
         
         self._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.page_viewer.setTransform(saved_transform)
         self.page_viewer.zoom_factor = saved_zoom_factor
+        self.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         self._update_groups_tree()
         self.blocks_tree_manager.update_blocks_tree()

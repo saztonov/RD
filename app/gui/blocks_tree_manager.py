@@ -258,9 +258,11 @@ class BlocksTreeManager:
         
         hint = hint.strip() if hint else None
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.parent.page_viewer.transform()
         saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        saved_h_scroll = self.parent.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.parent.page_viewer.verticalScrollBar().value()
         
         # Применяем подсказку ко всем выбранным IMAGE блокам
         for data in blocks_data:
@@ -276,9 +278,11 @@ class BlocksTreeManager:
         self.update_blocks_tree()
         self.parent._render_current_page(update_tree=False)
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.parent.page_viewer.setTransform(saved_transform)
         self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        self.parent.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.parent.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         # Уведомление
         count = len(blocks_data)
@@ -292,9 +296,11 @@ class BlocksTreeManager:
         if not self.parent.annotation_document:
             return
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.parent.page_viewer.transform()
         saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        saved_h_scroll = self.parent.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.parent.page_viewer.verticalScrollBar().value()
         
         for data in blocks_data:
             page_num = data["page"]
@@ -308,9 +314,11 @@ class BlocksTreeManager:
         self.update_blocks_tree()
         self.parent._render_current_page(update_tree=False)
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.parent.page_viewer.setTransform(saved_transform)
         self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        self.parent.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.parent.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         logger.info(f"Подсказка очищена для {len(blocks_data)} IMAGE блоков")
     
@@ -319,9 +327,11 @@ class BlocksTreeManager:
         if not self.parent.annotation_document:
             return
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.parent.page_viewer.transform()
         saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        saved_h_scroll = self.parent.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.parent.page_viewer.verticalScrollBar().value()
         
         for data in blocks_data:
             page_num = data["page"]
@@ -334,9 +344,11 @@ class BlocksTreeManager:
         
         self.parent._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.parent.page_viewer.setTransform(saved_transform)
         self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        self.parent.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.parent.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         self.update_blocks_tree()
     
@@ -361,9 +373,11 @@ class BlocksTreeManager:
         if hasattr(self.parent, '_save_undo_state'):
             self.parent._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.parent.page_viewer.transform()
         saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        saved_h_scroll = self.parent.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.parent.page_viewer.verticalScrollBar().value()
         
         # Создаём новый блок с теми же координатами
         new_block = Block.create(
@@ -387,9 +401,11 @@ class BlocksTreeManager:
         # Обновляем UI
         self.parent._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.parent.page_viewer.setTransform(saved_transform)
         self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        self.parent.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.parent.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         self.update_blocks_tree()
         if hasattr(self.parent, '_auto_save_annotation'):
@@ -435,9 +451,11 @@ class BlocksTreeManager:
         if hasattr(self.parent, '_save_undo_state'):
             self.parent._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.parent.page_viewer.transform()
         saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        saved_h_scroll = self.parent.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.parent.page_viewer.verticalScrollBar().value()
         
         # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
@@ -453,9 +471,11 @@ class BlocksTreeManager:
         # Обновляем UI
         self.parent._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.parent.page_viewer.setTransform(saved_transform)
         self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        self.parent.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.parent.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         self.update_blocks_tree()
         if hasattr(self.parent, '_update_groups_tree'):
@@ -486,9 +506,11 @@ class BlocksTreeManager:
         if hasattr(self.parent, '_save_undo_state'):
             self.parent._save_undo_state()
         
-        # Сохраняем текущий зум
+        # Сохраняем текущий зум и позицию
         saved_transform = self.parent.page_viewer.transform()
         saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        saved_h_scroll = self.parent.page_viewer.horizontalScrollBar().value()
+        saved_v_scroll = self.parent.page_viewer.verticalScrollBar().value()
         
         # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
@@ -504,9 +526,11 @@ class BlocksTreeManager:
         # Обновляем UI
         self.parent._render_current_page()
         
-        # Восстанавливаем зум
+        # Восстанавливаем зум и позицию
         self.parent.page_viewer.setTransform(saved_transform)
         self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        self.parent.page_viewer.horizontalScrollBar().setValue(saved_h_scroll)
+        self.parent.page_viewer.verticalScrollBar().setValue(saved_v_scroll)
         
         self.update_blocks_tree()
         if hasattr(self.parent, '_update_groups_tree'):
