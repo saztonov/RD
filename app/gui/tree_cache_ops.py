@@ -156,10 +156,10 @@ class TreeCacheOperationsMixin:
                 r2.delete_object(ann_r2_key)
                 logger.info(f"Deleted annotation from R2: {ann_r2_key}")
                 
-                # Удаляем папку crops по префиксу
+                # Удаляем папку crops по префиксу (кропы лежат как {node_id}/crops/{block_id}.pdf)
                 r2_prefix = str(PurePosixPath(r2_key).parent)
                 pdf_stem = Path(r2_key).stem
-                crops_prefix = f"{r2_prefix}/crops/{pdf_stem}/"
+                crops_prefix = f"{r2_prefix}/crops/"
                 deleted_crops = r2.delete_by_prefix(crops_prefix)
                 if deleted_crops:
                     logger.info(f"Deleted {deleted_crops} crops from R2")
@@ -167,6 +167,14 @@ class TreeCacheOperationsMixin:
                 # Удаляем MD файл
                 md_key = f"{r2_prefix}/{pdf_stem}.md"
                 r2.delete_object(md_key)
+                
+                # Удаляем _ocr.html
+                ocr_html_key = f"{r2_prefix}/{pdf_stem}_ocr.html"
+                r2.delete_object(ocr_html_key)
+                
+                # Удаляем _result.json
+                result_json_key = f"{r2_prefix}/{pdf_stem}_result.json"
+                r2.delete_object(result_json_key)
                 
             except Exception as e:
                 logger.error(f"Failed to delete from R2: {e}")
@@ -207,8 +215,26 @@ class TreeCacheOperationsMixin:
                 except Exception as e:
                     logger.error(f"Failed to delete MD from cache: {e}")
             
-            # Удаляем папку crops
-            crops_folder = cache_file.parent / "crops" / pdf_stem
+            # Удаляем _ocr.html
+            ocr_html_file = cache_file.parent / f"{pdf_stem}_ocr.html"
+            if ocr_html_file.exists():
+                try:
+                    ocr_html_file.unlink()
+                    logger.info(f"Deleted OCR HTML from cache: {ocr_html_file}")
+                except Exception as e:
+                    logger.error(f"Failed to delete OCR HTML from cache: {e}")
+            
+            # Удаляем _result.json
+            result_json_file = cache_file.parent / f"{pdf_stem}_result.json"
+            if result_json_file.exists():
+                try:
+                    result_json_file.unlink()
+                    logger.info(f"Deleted result.json from cache: {result_json_file}")
+                except Exception as e:
+                    logger.error(f"Failed to delete result.json from cache: {e}")
+            
+            # Удаляем папку crops (кропы лежат в {node_id}/crops/)
+            crops_folder = cache_file.parent / "crops"
             if crops_folder.exists():
                 try:
                     shutil.rmtree(crops_folder, ignore_errors=True)
