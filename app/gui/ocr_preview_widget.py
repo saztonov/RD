@@ -32,6 +32,7 @@ class OcrPreviewWidget(QWidget):
         self._result_path: Optional[Path] = None
         self._r2_key: Optional[str] = None
         self._is_modified = False
+        self._is_editing = False  # Режим редактирования
         
         self._setup_ui()
     
@@ -68,12 +69,12 @@ class OcrPreviewWidget(QWidget):
         
         header.addStretch()
         
-        # Кнопка сохранения (локально + R2)
-        self.save_btn = QPushButton("💾 Сохранить")
-        self.save_btn.setToolTip("Сохранить (локально + R2)")
-        self.save_btn.clicked.connect(self._save_all)
-        self.save_btn.setEnabled(False)
-        header.addWidget(self.save_btn)
+        # Кнопка редактирования/сохранения
+        self.edit_save_btn = QPushButton("✏️ Редактировать")
+        self.edit_save_btn.setToolTip("Редактировать HTML")
+        self.edit_save_btn.clicked.connect(self._toggle_edit_mode)
+        self.edit_save_btn.setEnabled(False)
+        header.addWidget(self.edit_save_btn)
         
         layout.addLayout(header)
         
@@ -96,9 +97,9 @@ class OcrPreviewWidget(QWidget):
         self.preview_edit.setContextMenuPolicy(Qt.NoContextMenu)
         content_splitter.addWidget(self.preview_edit)
         
-        # Raw HTML Editor
-        editor_widget = QWidget()
-        editor_layout = QVBoxLayout(editor_widget)
+        # Raw HTML Editor (скрыт по умолчанию)
+        self.editor_widget = QWidget()
+        editor_layout = QVBoxLayout(self.editor_widget)
         editor_layout.setContentsMargins(0, 4, 0, 0)
         
         editor_label = QLabel("HTML (редактирование)")
@@ -120,8 +121,11 @@ class OcrPreviewWidget(QWidget):
         self.html_edit.textChanged.connect(self._on_text_changed)
         editor_layout.addWidget(self.html_edit)
         
-        content_splitter.addWidget(editor_widget)
+        content_splitter.addWidget(self.editor_widget)
         content_splitter.setSizes([250, 150])
+        
+        # Скрываем редактор по умолчанию
+        self.editor_widget.hide()
         
         main_splitter.addWidget(content_splitter)
         
@@ -220,7 +224,13 @@ class OcrPreviewWidget(QWidget):
         """Показать OCR результат для блока"""
         self._current_block_id = block_id
         self._is_modified = False
-        self.save_btn.setEnabled(False)
+        self._is_editing = False
+        
+        # Сбрасываем в режим просмотра
+        self.editor_widget.hide()
+        self.edit_save_btn.setText("✏️ Редактировать")
+        self.edit_save_btn.setToolTip("Редактировать HTML")
+        self.edit_save_btn.setEnabled(False)
         
         # Обновляем ID блока
         self.block_id_label.setText(block_id if block_id else "")
@@ -273,11 +283,14 @@ class OcrPreviewWidget(QWidget):
         styled_html = self._apply_preview_styles(html_content)
         self.preview_edit.setHtml(styled_html)
         
-        # Редактор
+        # Редактор (загружаем контент, но не показываем)
         self.html_edit.blockSignals(True)
         self.html_edit.setPlainText(html_content)
         self.html_edit.blockSignals(False)
         self.html_edit.setEnabled(True)
+        
+        # Включаем кнопку редактирования
+        self.edit_save_btn.setEnabled(True)
         
         self.title_label.setText("OCR Preview")
     
@@ -473,13 +486,31 @@ class OcrPreviewWidget(QWidget):
         """
         return f"<!DOCTYPE html><html><head><meta charset='UTF-8'>{style}</head><body>{html}</body></html>"
     
-    def _on_text_changed(self):
-        """Обработка изменения текста"""
+    def _toggle_edit_mode(self):
+        """Переключение между режимами просмотра и редактирования"""
         if not self._current_block_id:
             return
         
+        if self._is_editing:
+            # Сохраняем и закрываем редактор
+            self._save_all()
+            self._is_editing = False
+            self.editor_widget.hide()
+            self.edit_save_btn.setText("✏️ Редактировать")
+            self.edit_save_btn.setToolTip("Редактировать HTML")
+        else:
+            # Открываем редактор
+            self._is_editing = True
+            self.editor_widget.show()
+            self.edit_save_btn.setText("💾 Сохранить")
+            self.edit_save_btn.setToolTip("Сохранить изменения (локально + R2)")
+    
+    def _on_text_changed(self):
+        """Обработка изменения текста"""
+        if not self._current_block_id or not self._is_editing:
+            return
+        
         self._is_modified = True
-        self.save_btn.setEnabled(True)
         
         # Обновляем preview
         new_html = self.html_edit.toPlainText()
@@ -526,7 +557,6 @@ class OcrPreviewWidget(QWidget):
                 logger.error(f"Failed to save to R2: {e}")
             
             self._is_modified = False
-            self.save_btn.setEnabled(False)
             
             from app.gui.toast import show_toast
             show_toast(self.window(), "Сохранено")
