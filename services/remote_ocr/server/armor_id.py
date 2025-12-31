@@ -112,6 +112,7 @@ class ArmorID:
     def repair(cls, input_code: str) -> Tuple[bool, Optional[str], str]:
         """
         Восстановить повреждённый код (до 3 ошибок).
+        Поддерживает коды 10-12 символов (OCR может добавить/убрать символы).
         Returns: (success, fixed_code, message)
         """
         clean = input_code.replace("-", "").replace(" ", "").upper()
@@ -120,6 +121,23 @@ class ArmorID:
         if cls._is_valid(clean):
             formatted = f"{clean[:4]}-{clean[4:8]}-{clean[8:]}"
             return True, formatted, "Код корректен"
+        
+        # Укороченный код (10 символов) — пробуем вставить символ в каждую позицию
+        if len(clean) == 10:
+            for pos in range(11):  # 11 позиций для вставки
+                for char in cls.ALPHABET:
+                    candidate = clean[:pos] + char + clean[pos:]
+                    if cls._is_valid(candidate):
+                        formatted = f"{candidate[:4]}-{candidate[4:8]}-{candidate[8:]}"
+                        return True, formatted, "Восстановлен отсутствующий символ"
+        
+        # Удлинённый код (12 символов) — пробуем удалить лишний
+        if len(clean) == 12:
+            for i in range(12):
+                candidate = clean[:i] + clean[i+1:]
+                if cls._is_valid(candidate):
+                    formatted = f"{candidate[:4]}-{candidate[4:8]}-{candidate[8:]}"
+                    return True, formatted, "Удалён лишний символ"
         
         # Строим кандидатов для каждой позиции
         candidates_per_pos = []

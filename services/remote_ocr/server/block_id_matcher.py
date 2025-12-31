@@ -5,8 +5,9 @@ import re
 from typing import Optional
 
 # Новый формат: BLOCK: XXXX-XXXX-XXX (armor код)
+# Последний сегмент 2-4 символа: OCR может обрезать/добавить символы
 ARMOR_BLOCK_MARKER_RE = re.compile(
-    r"BLOCK:\s*([A-Z0-9]{4}[-\s]*[A-Z0-9]{4}[-\s]*[A-Z0-9]{3})",
+    r"BLOCK:\s*([A-Z0-9]{4}[-\s]*[A-Z0-9]{4}[-\s]*[A-Z0-9]{2,4})",
     re.IGNORECASE
 )
 
