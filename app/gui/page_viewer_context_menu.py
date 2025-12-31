@@ -61,33 +61,47 @@ class ContextMenuMixin:
         if not selected_blocks:
             return
         
-        # 1. Добавить связанный блок (только для одного блока)
+        # 1. Добавить связанные блоки (для одного или нескольких блоков)
         if len(selected_blocks) == 1:
             block_idx = selected_blocks[0]["idx"]
             if 0 <= block_idx < len(self.current_blocks):
                 block = self.current_blocks[block_idx]
-                add_linked_action = menu.addAction("🔗 Добавить связанный блок")
-                
-                # Определяем противоположный тип
                 opposite_type = BlockType.IMAGE if block.block_type == BlockType.TEXT else BlockType.TEXT
+                add_linked_action = menu.addAction(f"🔗 Добавить связанный блок ({opposite_type.value})")
                 add_linked_action.triggered.connect(
-                    lambda checked, b=block, target_type=opposite_type: 
-                    self._create_linked_block(b, target_type))
+                    lambda checked, blocks=selected_blocks: 
+                    self._create_linked_blocks(blocks))
+        else:
+            # Для нескольких блоков
+            add_linked_action = menu.addAction(f"🔗 Добавить связанные блоки ({len(selected_blocks)})")
+            add_linked_action.triggered.connect(
+                lambda checked, blocks=selected_blocks: 
+                self._create_linked_blocks(blocks))
         
         # 2. Изменить тип
-        if len(selected_blocks) == 1:
-            # Для одного блока - сразу меняем на противоположный
-            block_idx = selected_blocks[0]["idx"]
+        # Проверяем, все ли блоки одного типа
+        block_types = []
+        for data in selected_blocks:
+            block_idx = data["idx"]
             if 0 <= block_idx < len(self.current_blocks):
-                block = self.current_blocks[block_idx]
-                opposite_type = BlockType.IMAGE if block.block_type == BlockType.TEXT else BlockType.TEXT
+                block_types.append(self.current_blocks[block_idx].block_type)
+        
+        all_same_type = len(set(block_types)) == 1 if block_types else False
+        
+        if all_same_type:
+            # Все блоки одного типа - сразу меняем на противоположный
+            current_type = block_types[0]
+            opposite_type = BlockType.IMAGE if current_type == BlockType.TEXT else BlockType.TEXT
+            if len(selected_blocks) == 1:
                 change_type_action = menu.addAction(f"Изменить тип → {opposite_type.value}")
-                change_type_action.triggered.connect(
-                    lambda checked, blocks=selected_blocks, bt=opposite_type: 
-                    self._apply_type_to_blocks(blocks, bt))
+            else:
+                change_type_action = menu.addAction(f"Изменить типы → {opposite_type.value} ({len(selected_blocks)})")
+            change_type_action.triggered.connect(
+                lambda checked, blocks=selected_blocks, bt=opposite_type: 
+                self._apply_type_to_blocks(blocks, bt))
         else:
-            # Для нескольких блоков - показываем список text/image
-            type_menu = menu.addMenu(f"Изменить тип ({len(selected_blocks)} блоков)")
+            # Блоки разных типов - показываем список text/image
+            type_menu = menu.addMenu(f"Изменить типы ({len(selected_blocks)} блоков)")
             action_text = type_menu.addAction("TEXT")
             action_text.triggered.connect(lambda checked, blocks=selected_blocks: 
                                          self._apply_type_to_blocks(blocks, BlockType.TEXT))
@@ -95,7 +109,29 @@ class ContextMenuMixin:
             action_image.triggered.connect(lambda checked, blocks=selected_blocks: 
                                           self._apply_type_to_blocks(blocks, BlockType.IMAGE))
         
-        # 3. Категория изображения
+        # 3. Сгруппировать
+        # Группировка блоков (если выбрано больше одного блока)
+        if len(selected_blocks) > 1:
+            group_action = menu.addAction("📦 Сгруппировать")
+            group_action.triggered.connect(lambda: self._group_blocks(selected_blocks))
+        
+        # Добавить в выбранную группу (если есть выбранная группа)
+        main_window = self.parent().window()
+        if hasattr(main_window, 'selected_group_id') and main_window.selected_group_id:
+            add_to_group_action = menu.addAction(f"➕ Добавить в группу {main_window.selected_group_id[:8]}...")
+            add_to_group_action.triggered.connect(
+                lambda: self._add_blocks_to_group(selected_blocks, main_window.selected_group_id))
+        
+        # 4. Удалить
+        if len(selected_blocks) == 1:
+            delete_action = menu.addAction("🗑️ Удалить")
+        else:
+            delete_action = menu.addAction(f"🗑️ Удалить ({len(selected_blocks)} блоков)")
+        delete_action.triggered.connect(lambda blocks=selected_blocks: self._delete_blocks(blocks))
+        
+        # Дополнительные опции (категория изображения)
+        menu.addSeparator()
+        
         if len(selected_blocks) >= 1:
             block_idx = selected_blocks[0]["idx"]
             if 0 <= block_idx < len(self.current_blocks):
@@ -120,30 +156,85 @@ class ContextMenuMixin:
                                 self._apply_category_to_blocks(blocks, cid, ccode)
                             )
         
-        menu.addSeparator()
-        
-        # Группировка блоков (если выбрано больше одного блока)
-        if len(selected_blocks) > 1:
-            group_action = menu.addAction("📦 Сгруппировать")
-            group_action.triggered.connect(lambda: self._group_blocks(selected_blocks))
-        
-        # Добавить в выбранную группу (если есть выбранная группа)
-        main_window = self.parent().window()
-        if hasattr(main_window, 'selected_group_id') and main_window.selected_group_id:
-            add_to_group_action = menu.addAction(f"➕ Добавить в группу {main_window.selected_group_id[:8]}...")
-            add_to_group_action.triggered.connect(
-                lambda: self._add_blocks_to_group(selected_blocks, main_window.selected_group_id))
-        
-        menu.addSeparator()
-        
-        # 4. Удалить
-        delete_action = menu.addAction(f"Удалить ({len(selected_blocks)} блоков)")
-        delete_action.triggered.connect(lambda blocks=selected_blocks: self._delete_blocks(blocks))
-        
         menu.exec(global_pos)
     
+    def _create_linked_blocks(self, blocks_data: list):
+        """Создать связанные блоки для множественного выбора"""
+        main_window = self.parent().window()
+        if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:
+            return
+        
+        current_page = main_window.current_page
+        if current_page >= len(main_window.annotation_document.pages):
+            return
+        
+        page = main_window.annotation_document.pages[current_page]
+        
+        # Сохраняем состояние для undo
+        if hasattr(main_window, '_save_undo_state'):
+            main_window._save_undo_state()
+        
+        # Сохраняем текущий зум и позицию
+        saved_transform = self.transform()
+        saved_zoom_factor = self.zoom_factor
+        saved_h_scroll = self.horizontalScrollBar().value()
+        saved_v_scroll = self.verticalScrollBar().value()
+        
+        # Создаём связанные блоки для каждого выбранного блока
+        created_count = 0
+        for data in blocks_data:
+            block_idx = data["idx"]
+            if 0 <= block_idx < len(page.blocks):
+                source_block = page.blocks[block_idx]
+                
+                # Определяем противоположный тип
+                target_type = BlockType.IMAGE if source_block.block_type == BlockType.TEXT else BlockType.TEXT
+                
+                # Создаём новый блок с теми же координатами
+                new_block = Block.create(
+                    page_index=source_block.page_index,
+                    coords_px=source_block.coords_px,
+                    page_width=page.width,
+                    page_height=page.height,
+                    block_type=target_type,
+                    source=BlockSource.USER,
+                    shape_type=source_block.shape_type,
+                    polygon_points=source_block.polygon_points,
+                    linked_block_id=source_block.id
+                )
+                
+                # Связываем исходный блок с новым
+                source_block.linked_block_id = new_block.id
+                
+                # Добавляем новый блок сразу после исходного
+                # Важно: используем актуальный индекс, так как массив меняется
+                current_idx = page.blocks.index(source_block)
+                page.blocks.insert(current_idx + 1, new_block)
+                created_count += 1
+        
+        # Обновляем UI
+        main_window._render_current_page()
+        
+        # Восстанавливаем зум и позицию
+        self.setTransform(saved_transform)
+        self.zoom_factor = saved_zoom_factor
+        self.horizontalScrollBar().setValue(saved_h_scroll)
+        self.verticalScrollBar().setValue(saved_v_scroll)
+        
+        if hasattr(main_window, 'blocks_tree_manager'):
+            main_window.blocks_tree_manager.update_blocks_tree()
+        if hasattr(main_window, '_auto_save_annotation'):
+            main_window._auto_save_annotation()
+        
+        # Уведомление
+        from app.gui.toast import show_toast
+        if created_count == 1:
+            show_toast(main_window, "Создан связанный блок")
+        else:
+            show_toast(main_window, f"Создано связанных блоков: {created_count}")
+    
     def _create_linked_block(self, source_block: Block, target_type: BlockType):
-        """Создать связанный блок другого типа"""
+        """Создать связанный блок другого типа (legacy метод для обратной совместимости)"""
         main_window = self.parent().window()
         if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:
             return
