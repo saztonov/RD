@@ -237,19 +237,32 @@ INHERITABLE_STAMP_FIELDS = ("document_code", "project_name", "stage", "organizat
 
 def _collect_inheritable_stamp_data(pages: List) -> Optional[Dict]:
     """
-    Собрать общие поля штампа с любой страницы, где есть штамп.
-    Возвращает dict с полями document_code, project_name, stage, organization.
+    Собрать общие поля штампа со всех страниц.
+    Для каждого поля выбирается наиболее часто встречающееся значение (мода).
     """
+    from collections import Counter
+    
+    # Собираем все значения для каждого поля
+    field_values: Dict[str, List] = {field: [] for field in INHERITABLE_STAMP_FIELDS}
+    
     for page in pages:
         stamp_data = _find_page_stamp(page.blocks)
         if stamp_data:
-            inherited = {}
             for field in INHERITABLE_STAMP_FIELDS:
-                if stamp_data.get(field):
-                    inherited[field] = stamp_data[field]
-            if inherited:
-                return inherited
-    return None
+                val = stamp_data.get(field)
+                if val:  # непустое значение
+                    field_values[field].append(val)
+    
+    # Выбираем моду для каждого поля
+    inherited = {}
+    for field in INHERITABLE_STAMP_FIELDS:
+        values = field_values[field]
+        if values:
+            counter = Counter(values)
+            most_common = counter.most_common(1)[0][0]
+            inherited[field] = most_common
+    
+    return inherited if inherited else None
 
 
 def _format_inherited_stamp_html(inherited_data: Dict) -> str:
@@ -353,10 +366,18 @@ def generate_html_from_pages(
             # Находим данные штампа для этой страницы
             page_stamp = _find_page_stamp(page.blocks)
             if page_stamp:
-                stamp_html = _format_stamp_html(page_stamp)
-            else:
-                # Наследуем общие поля с других страниц
+                # Мержим с inherited: заполняем пустые поля из унаследованных
+                merged_stamp = dict(page_stamp)
+                if inherited_stamp_data:
+                    for field in INHERITABLE_STAMP_FIELDS:
+                        if not merged_stamp.get(field):
+                            if inherited_stamp_data.get(field):
+                                merged_stamp[field] = inherited_stamp_data[field]
+                stamp_html = _format_stamp_html(merged_stamp)
+            elif inherited_stamp_data:
                 stamp_html = inherited_stamp_html
+            else:
+                stamp_html = ""
             
             for idx, block in enumerate(page.blocks):
                 if not block.ocr_text:

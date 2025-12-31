@@ -60,24 +60,40 @@ def _find_page_stamp_json(page: dict) -> Optional[dict]:
 
 
 def _collect_inheritable_stamp_data(pages: list) -> Optional[dict]:
-    """Собрать общие поля штампа с любой страницы где есть штамп."""
+    """
+    Собрать общие поля штампа со всех страниц.
+    Для каждого поля выбирается наиболее часто встречающееся значение (мода).
+    """
+    from collections import Counter
+    
+    # Собираем все значения для каждого поля
+    field_values: dict = {field: [] for field in INHERITABLE_STAMP_FIELDS}
+    
     for page in pages:
         stamp_json = _find_page_stamp_json(page)
         if stamp_json:
-            inherited = {}
             for field in INHERITABLE_STAMP_FIELDS:
-                if stamp_json.get(field):
-                    inherited[field] = stamp_json[field]
-            if inherited:
-                return inherited
-    return None
+                val = stamp_json.get(field)
+                if val:  # непустое значение
+                    field_values[field].append(val)
+    
+    # Выбираем моду для каждого поля
+    inherited = {}
+    for field in INHERITABLE_STAMP_FIELDS:
+        values = field_values[field]
+        if values:
+            counter = Counter(values)
+            most_common = counter.most_common(1)[0][0]
+            inherited[field] = most_common
+    
+    return inherited if inherited else None
 
 
 def _propagate_stamp_data(page: dict, inherited_data: Optional[dict] = None) -> None:
     """
     Распространить данные штампа на все блоки страницы.
-    Если на странице есть штамп - используем его ocr_json.
-    Если штампа нет - используем inherited_data (общие поля с других страниц).
+    Если на странице есть штамп - мержим его с inherited_data (заполняем пустые поля).
+    Если штампа нет - используем inherited_data.
     """
     blocks = page.get("blocks", [])
     
@@ -85,11 +101,16 @@ def _propagate_stamp_data(page: dict, inherited_data: Optional[dict] = None) -> 
     stamp_json = _find_page_stamp_json(page)
     
     if stamp_json:
-        # Копируем stamp_data во все блоки страницы
+        # Мержим: если в штампе поле пустое - берём из inherited_data
+        merged = dict(stamp_json)
+        if inherited_data:
+            for field in INHERITABLE_STAMP_FIELDS:
+                if not merged.get(field):
+                    if inherited_data.get(field):
+                        merged[field] = inherited_data[field]
         for blk in blocks:
-            blk["stamp_data"] = stamp_json
+            blk["stamp_data"] = merged
     elif inherited_data:
-        # Наследуем общие поля с других страниц
         for blk in blocks:
             blk["stamp_data"] = inherited_data
 
