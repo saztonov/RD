@@ -76,6 +76,9 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
     
     def _load_annotation_if_exists(self, pdf_path: str, r2_key: str = ""):
         """Загрузить annotation.json если существует (локально или в R2)"""
+        from app.gui.toast import show_toast
+        from rd_core.annotation_io import MigrationResult
+        
         ann_path = get_annotation_path(pdf_path)
         
         # Попробовать скачать из R2 если нет локально
@@ -88,19 +91,58 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             except Exception as e:
                 logger.debug(f"No annotation in R2 or error: {e}")
         
-        # Загрузить локальный файл
+        # Загрузить и мигрировать локальный файл
         if ann_path.exists():
-            loaded, was_migrated = AnnotationIO.load_annotation(str(ann_path))
+            loaded, result = AnnotationIO.load_and_migrate(str(ann_path))
+            
+            # Ошибка загрузки - предлагаем создать заново
+            if not result.success:
+                error_msg = "; ".join(result.errors)
+                logger.error(f"Annotation load failed: {error_msg}")
+                
+                from PySide6.QtWidgets import QMessageBox
+                reply = QMessageBox.warning(
+                    self,
+                    "Ошибка аннотации",
+                    f"Не удалось загрузить файл разметки:\n{error_msg}\n\n"
+                    "Создать новый файл разметки?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+                
+                if reply == QMessageBox.Yes:
+                    # Удаляем битый файл и создаём пустую аннотацию
+                    try:
+                        ann_path.unlink()
+                    except Exception:
+                        pass
+                    show_toast(self, "Создана новая разметка", success=True)
+                    return False  # Будет создана пустая аннотация
+                else:
+                    return False
+            
             if loaded:
                 self.annotation_document = loaded
                 logger.info(f"Annotation loaded: {ann_path}")
                 
-                # Если ID были мигрированы - сохраняем обратно
-                if was_migrated:
-                    logger.info(f"Block IDs migrated, saving annotation")
+                # Миграция формата выполнена - сохраняем и уведомляем
+                if result.migrated:
+                    logger.info(f"Annotation format migrated, saving")
                     AnnotationIO.save_annotation(loaded, str(ann_path))
                     # Синхронизируем с R2
                     self._sync_annotation_to_r2()
+                    
+                    # Уведомление пользователю
+                    warn_count = len(result.warnings)
+                    if warn_count > 0:
+                        show_toast(
+                            self, 
+                            f"Разметка обновлена до актуального формата ({warn_count} изм.)",
+                            duration=3000,
+                            success=True
+                        )
+                    else:
+                        show_toast(self, "Формат разметки обновлён", success=True)
                 
                 # Аннотация уже есть - значит синхронизирована
                 self._annotation_synced = True
@@ -198,13 +240,24 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
     
     def _load_annotation(self):
         """Загрузить разметку из JSON"""
+        from app.gui.toast import show_toast
+        
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Загрузить разметку", "", "JSON Files (*.json)"
         )
         if not file_path:
             return
         
-        loaded_doc, _ = AnnotationIO.load_annotation(file_path)
+        loaded_doc, result = AnnotationIO.load_and_migrate(file_path)
+        
+        if not result.success:
+            error_msg = "; ".join(result.errors)
+            QMessageBox.warning(
+                self, "Ошибка",
+                f"Не удалось загрузить разметку:\n{error_msg}"
+            )
+            return
+        
         if loaded_doc:
             # Поддержка относительного пути
             try:
@@ -223,12 +276,19 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
                 self.annotation_document = loaded_doc
                 self._render_current_page()
             
+            # Сохранить если была миграция
+            if result.migrated:
+                AnnotationIO.save_annotation(loaded_doc, file_path)
+                show_toast(self, "Разметка загружена и обновлена", success=True)
+            else:
+                show_toast(self, "Разметка загружена", success=True)
+            
             self.blocks_tree_manager.update_blocks_tree()
-            from app.gui.toast import show_toast
-            show_toast(self, "Разметка загружена")
     
     def _on_annotation_replaced(self, r2_key: str):
         """Обработчик замены аннотации в дереве проектов"""
+        from app.gui.toast import show_toast
+        
         # Проверяем совпадает ли r2_key с текущим открытым документом
         if not hasattr(self, '_current_r2_key') or self._current_r2_key != r2_key:
             return
@@ -247,14 +307,20 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
                 logger.warning(f"Не удалось скачать аннотацию из R2: {ann_r2_key}")
                 return
             
-            # Загружаем аннотацию
-            loaded_doc, _ = AnnotationIO.load_annotation(str(ann_path))
-            if not loaded_doc:
+            # Загружаем с миграцией
+            loaded_doc, result = AnnotationIO.load_and_migrate(str(ann_path))
+            if not result.success or not loaded_doc:
+                logger.warning(f"Не удалось загрузить аннотацию: {result.errors}")
                 return
             
             # Заменяем текущую аннотацию
             self.annotation_document = loaded_doc
             self._annotation_synced = True
+            
+            # Если была миграция - сохраняем и синхронизируем
+            if result.migrated:
+                AnnotationIO.save_annotation(loaded_doc, str(ann_path))
+                self._sync_annotation_to_r2()
             
             # Обновляем отображение
             self._render_current_page()
@@ -264,8 +330,7 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
                 self._update_groups_tree()
             
             logger.info(f"Аннотация обновлена из R2: {ann_r2_key}")
-            from app.gui.toast import show_toast
-            show_toast(self, "Аннотация обновлена")
+            show_toast(self, "Аннотация обновлена", success=True)
             
         except Exception as e:
             logger.error(f"Ошибка обновления аннотации: {e}")

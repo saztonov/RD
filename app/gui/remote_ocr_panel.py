@@ -413,9 +413,10 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
                 return
             
             from rd_core.annotation_io import AnnotationIO
-            loaded_doc, _ = AnnotationIO.load_annotation(str(ann_path), migrate_ids=False)
+            loaded_doc, result = AnnotationIO.load_and_migrate(str(ann_path))
             
-            if not loaded_doc:
+            if not result.success or not loaded_doc:
+                logger.warning(f"Не удалось загрузить OCR результат: {result.errors}")
                 return
             
             current_doc = self.main_window.annotation_document
