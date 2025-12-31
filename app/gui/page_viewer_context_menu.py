@@ -210,6 +210,8 @@ class ContextMenuMixin:
     
     def _apply_category_to_blocks(self, blocks_data: list, category_id: str, category_code: str):
         """Применить категорию к IMAGE блокам"""
+        from PySide6.QtWidgets import QMessageBox
+        
         main_window = self.parent().window()
         if not hasattr(main_window, 'annotation_document') or not main_window.annotation_document:
             return
@@ -219,6 +221,17 @@ class ContextMenuMixin:
             return
         
         page = main_window.annotation_document.pages[current_page]
+        
+        # Проверка: на странице может быть только один штамп
+        if category_code == 'stamp':
+            selected_block_ids = {page.blocks[d["idx"]].id for d in blocks_data if d["idx"] < len(page.blocks)}
+            existing_stamps = [b for b in page.blocks if getattr(b, 'category_code', None) == 'stamp' and b.id not in selected_block_ids]
+            if existing_stamps:
+                QMessageBox.warning(main_window, "Ошибка", "На листе может быть только один штамп")
+                return
+            if len(blocks_data) > 1:
+                QMessageBox.warning(main_window, "Ошибка", "Нельзя назначить категорию 'Штамп' нескольким блокам")
+                return
         
         # Сохраняем состояние для undo
         if hasattr(main_window, '_save_undo_state'):

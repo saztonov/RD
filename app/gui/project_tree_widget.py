@@ -551,6 +551,11 @@ class ProjectTreeWidget(
                 if not page.blocks:
                     continue
                 
+                # Пропускаем страницы, где уже есть штамп
+                has_stamp = any(getattr(b, 'category_code', None) == 'stamp' for b in page.blocks)
+                if has_stamp:
+                    continue
+                
                 # Найти блок в правом нижнем углу
                 # Критерий: центр блока в правом нижнем квадранте (x > 0.5, y > 0.7)
                 # и максимально близок к углу (1, 1)

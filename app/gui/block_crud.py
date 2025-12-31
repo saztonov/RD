@@ -14,6 +14,17 @@ class BlockCRUDMixin:
     
     _categories_cache = None
     
+    def _has_stamp_on_page(self, page_data, exclude_block_id: str = None) -> bool:
+        """Проверить, есть ли уже штамп на странице"""
+        if not page_data or not page_data.blocks:
+            return False
+        for block in page_data.blocks:
+            if exclude_block_id and block.id == exclude_block_id:
+                continue
+            if getattr(block, 'category_code', None) == 'stamp':
+                return True
+        return False
+    
     def _get_category_name(self, category_id: str) -> str:
         """Получить название категории по ID"""
         if not category_id:
@@ -75,6 +86,11 @@ class BlockCRUDMixin:
         if not current_page_data:
             return
         
+        # Проверка: на странице может быть только один штамп
+        if category_code == 'stamp' and self._has_stamp_on_page(current_page_data):
+            QMessageBox.warning(self, "Ошибка", "На листе может быть только один штамп")
+            return
+        
         block = Block.create(
             page_index=self.current_page,
             coords_px=(x1, y1, x2, y2),
@@ -114,6 +130,11 @@ class BlockCRUDMixin:
         
         current_page_data = self._get_or_create_page(self.current_page)
         if not current_page_data:
+            return
+        
+        # Проверка: на странице может быть только один штамп
+        if category_code == 'stamp' and self._has_stamp_on_page(current_page_data):
+            QMessageBox.warning(self, "Ошибка", "На листе может быть только один штамп")
             return
         
         # Вычисляем bounding box для coords_px
