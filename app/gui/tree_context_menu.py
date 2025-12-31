@@ -85,6 +85,11 @@ class TreeContextMenuMixin:
                         action = menu.addAction("🔖 Определить и назначить штамп")
                         action.setData(("detect_stamps", node))
                 
+                # Посмотреть на R2
+                menu.addSeparator()
+                action = menu.addAction("☁️ Посмотреть на R2")
+                action.setData(("view_on_r2", node))
+                
                 menu.addSeparator()
                 menu.addAction("✏️ Переименовать").setData(("rename", node))
                 menu.addSeparator()
@@ -149,5 +154,8 @@ class TreeContextMenuMixin:
         elif action == "detect_stamps":
             node = data[1]
             self._detect_and_assign_stamps(node)
+        elif action == "view_on_r2":
+            node = data[1]
+            self._view_on_r2(node)
 
 
