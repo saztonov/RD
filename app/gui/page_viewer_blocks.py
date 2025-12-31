@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List, Dict, Union, Optional
 
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsPolygonItem, QGraphicsTextItem
-from PySide6.QtCore import QRectF, QPointF
+from PySide6.QtCore import QRectF, QPointF, QTimer
 from PySide6.QtGui import QPen, QColor, QBrush, QFont, QPolygonF
 
 from rd_core.models import Block, BlockType, BlockSource, ShapeType
@@ -12,6 +12,10 @@ from rd_core.models import Block, BlockType, BlockSource, ShapeType
 
 class BlockRenderingMixin:
     """Миксин для отрисовки блоков"""
+    
+    _redraw_pending: bool = False
+    _last_redraw_time: float = 0
+    _redraw_timer: QTimer = None
     
     def set_blocks(self, blocks: List[Block]):
         """Установить список блоков для отображения"""
@@ -123,6 +127,55 @@ class BlockRenderingMixin:
         """Перерисовать все блоки"""
         self._clear_block_items()
         self._draw_all_blocks()
+    
+    def _redraw_blocks_throttled(self, delay_ms: int = 16):
+        """Перерисовать блоки с throttle (для анимаций)"""
+        if self._redraw_pending:
+            return
+        self._redraw_pending = True
+        
+        if self._redraw_timer is None:
+            self._redraw_timer = QTimer()
+            self._redraw_timer.setSingleShot(True)
+            self._redraw_timer.timeout.connect(self._do_throttled_redraw)
+        
+        self._redraw_timer.start(delay_ms)
+    
+    def _do_throttled_redraw(self):
+        """Выполнить отложенную перерисовку"""
+        self._redraw_pending = False
+        self._redraw_blocks()
+    
+    def _update_single_block_visual(self, block_idx: int):
+        """Обновить визуал только одного блока (для перетаскивания)"""
+        if block_idx >= len(self.current_blocks):
+            return
+        
+        block = self.current_blocks[block_idx]
+        
+        # Удаляем старый item этого блока
+        if block.id in self.block_items:
+            old_item = self.block_items[block.id]
+            self.scene.removeItem(old_item)
+            del self.block_items[block.id]
+        
+        # Удаляем старую метку
+        if block.id in self.block_labels:
+            old_label = self.block_labels[block.id]
+            self.scene.removeItem(old_label)
+            del self.block_labels[block.id]
+        
+        # Удаляем метку галочки если была
+        check_key = block.id + "_check"
+        if check_key in self.block_labels:
+            self.scene.removeItem(self.block_labels[check_key])
+            del self.block_labels[check_key]
+        
+        # Очищаем и перерисовываем resize handles для выбранного блока
+        self._clear_resize_handles()
+        
+        # Рисуем блок заново
+        self._draw_block(block, block_idx)
     
     def _find_block_at_position(self, scene_pos: QPointF) -> Optional[int]:
         """Найти блок в заданной позиции"""

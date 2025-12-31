@@ -152,7 +152,8 @@ class PolygonMixin:
         ys = [p[1] for p in new_points]
         block.coords_px = (min(xs), min(ys), max(xs), max(ys))
         
-        self._redraw_blocks()
+        # Оптимизация: обновляем только один блок
+        self._update_single_block_visual(block_idx)
     
     def _move_polygon(self, block_idx: int, delta: QPointF):
         """Переместить весь полигон"""
@@ -176,7 +177,8 @@ class PolygonMixin:
         ys = [p[1] for p in new_points]
         block.coords_px = (min(xs), min(ys), max(xs), max(ys))
         
-        self._redraw_blocks()
+        # Оптимизация: обновляем только один блок
+        self._update_single_block_visual(block_idx)
     
     def _update_polygon_edge(self, block_idx: int, edge_idx: int, delta: QPointF):
         """Переместить ребро полигона (две смежные вершины)"""
@@ -206,5 +208,6 @@ class PolygonMixin:
         ys = [p[1] for p in new_points]
         block.coords_px = (min(xs), min(ys), max(xs), max(ys))
         
-        self._redraw_blocks()
+        # Оптимизация: обновляем только один блок
+        self._update_single_block_visual(block_idx)
 

@@ -145,5 +145,6 @@ class ResizeHandlesMixin:
             int(new_rect.y() + new_rect.height())
         )
         block.coords_px = new_coords
-        self._redraw_blocks()
+        # Оптимизация: обновляем только один блок вместо перерисовки всех
+        self._update_single_block_visual(block_idx)
 

@@ -30,8 +30,9 @@ class MouseEventsMixin:
         # Центрируем вид на нужной точке
         self.centerOn(center_point)
         
+        # Используем throttled redraw для плавного зума
         if self.current_blocks:
-            self._redraw_blocks()
+            self._redraw_blocks_throttled(32)
     
     def mousePressEvent(self, event):
         """Обработка нажатия мыши"""
