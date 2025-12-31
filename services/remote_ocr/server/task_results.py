@@ -5,7 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from .storage import Job, get_node_pdf_r2_key
+from .storage import Job, get_node_pdf_r2_key, get_node_full_path
 from .ocr_result_merger import merge_ocr_results
 
 logger = logging.getLogger(__name__)
@@ -75,19 +75,27 @@ def generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> 
     else:
         project_name = job.node_id if job.node_id else job.id
     
+    # Получаем полный путь из дерева проектов (используется в HTML и JSON)
+    if job.node_id:
+        full_path = get_node_full_path(job.node_id)
+        doc_name = full_path if full_path else pdf_path.name
+    else:
+        doc_name = pdf_path.name
+    
     # annotation.json (для хранения разметки блоков)
     annotation_path = work_dir / "annotation.json"
-    doc = Document(pdf_path=pdf_path.name, pages=pages)
+    doc = Document(pdf_path=doc_name, pages=pages)
     with open(annotation_path, "w", encoding="utf-8") as f:
         json.dump(doc.to_dict(), f, ensure_ascii=False, indent=2)
     
     # Генерация итогового HTML файла
     html_path = work_dir / "ocr_result.html"
     try:
+        
         generate_html_from_pages(
             pages,
             str(html_path),
-            doc_name=pdf_path.name,
+            doc_name=doc_name,
             project_name=project_name
         )
         logger.info(f"HTML файл сгенерирован: {html_path}")
@@ -97,7 +105,7 @@ def generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> 
     # Генерация result.json (annotation + ocr_html + crop_url для каждого блока)
     result_path = work_dir / "result.json"
     try:
-        merge_ocr_results(annotation_path, html_path, result_path, project_name=project_name)
+        merge_ocr_results(annotation_path, html_path, result_path, project_name=project_name, doc_name=doc_name)
     except Exception as e:
         logger.warning(f"Ошибка генерации result.json: {e}")
     

@@ -56,6 +56,74 @@ def _get_block_armor_id(block_id: str) -> str:
     return f"{full_code[:4]}-{full_code[4:8]}-{full_code[8:]}"
 
 
+def _format_image_ocr_json(data: dict) -> str:
+    """
+    Форматировать JSON блока изображения в человекочитаемый HTML.
+    
+    Обрабатывает структуры с полями:
+    - location, content_summary, detailed_description, clean_ocr_text, key_entities
+    или с обёрткой "analysis"
+    """
+    # Если есть обёртка "analysis", извлекаем её
+    if "analysis" in data and isinstance(data["analysis"], dict):
+        data = data["analysis"]
+    
+    parts = []
+    
+    # Локация
+    location = data.get("location")
+    if location:
+        parts.append("<h3>Расположение на чертеже</h3>")
+        if isinstance(location, dict):
+            if location.get("zone_name") and location["zone_name"] != "Не определено":
+                parts.append(f"<p><b>Тип элемента:</b> {location['zone_name']}</p>")
+            if location.get("grid_lines") and location["grid_lines"] != "Не определены":
+                parts.append(f"<p><b>Координатные оси:</b> {location['grid_lines']}</p>")
+        else:
+            parts.append(f"<p>{location}</p>")
+    
+    # Краткое описание
+    content_summary = data.get("content_summary")
+    if content_summary:
+        parts.append("<h3>Краткая характеристика</h3>")
+        parts.append(f"<p>{content_summary}</p>")
+    
+    # Детальное описание
+    detailed_desc = data.get("detailed_description")
+    if detailed_desc:
+        parts.append("<h3>Детальное описание графики</h3>")
+        parts.append(f"<p>{detailed_desc}</p>")
+    
+    # Распознанный текст
+    clean_ocr = data.get("clean_ocr_text")
+    if clean_ocr:
+        parts.append("<h3>Распознанный текст (clean_ocr_text)</h3>")
+        # Форматируем текст с переносами строк
+        formatted_text = clean_ocr.replace(" - ", "<br/>• ")
+        if not formatted_text.startswith("<br/>"):
+            formatted_text = "• " + formatted_text
+        else:
+            formatted_text = formatted_text[5:]  # убираем первый <br/>
+        parts.append(f"<p style='line-height: 1.8;'>{formatted_text}</p>")
+    
+    # Ключевые сущности
+    key_entities = data.get("key_entities")
+    if key_entities and isinstance(key_entities, list):
+        parts.append("<h3>Ключевые сущности (key_entities)</h3>")
+        parts.append("<p style='line-height: 1.6;'>")
+        # Группируем по 5 элементов в строку
+        for i in range(0, len(key_entities), 5):
+            batch = key_entities[i:i+5]
+            parts.append("<code style='background: #e8f4f8; padding: 0.2rem 0.4rem; margin: 0.2rem; border-radius: 3px; display: inline-block;'>" + 
+                        "</code> <code style='background: #e8f4f8; padding: 0.2rem 0.4rem; margin: 0.2rem; border-radius: 3px; display: inline-block;'>".join(batch) + 
+                        "</code>")
+            if i + 5 < len(key_entities):
+                parts.append("<br/>")
+        parts.append("</p>")
+    
+    return "\n".join(parts) if parts else ""
+
+
 def _extract_html_from_ocr_text(ocr_text: str) -> str:
     """
     Извлечь HTML из ocr_text.
@@ -63,6 +131,7 @@ def _extract_html_from_ocr_text(ocr_text: str) -> str:
     ocr_text может содержать:
     - Чистый HTML от Datalab
     - JSON с полем html или children[].html
+    - JSON блока изображения (location, content_summary, etc.)
     - Просто текст (fallback)
     """
     if not ocr_text:
@@ -79,9 +148,22 @@ def _extract_html_from_ocr_text(ocr_text: str) -> str:
     # Пробуем распарсить как JSON
     try:
         parsed = json_module.loads(text)
-        html = _extract_html_from_parsed(parsed)
-        if html:
-            return html
+        
+        # Проверяем, это JSON блока изображения?
+        if isinstance(parsed, dict):
+            # Проверяем наличие характерных полей image OCR
+            has_image_fields = any(key in parsed or (parsed.get("analysis") and key in parsed["analysis"]) 
+                                  for key in ["content_summary", "detailed_description", "clean_ocr_text"])
+            
+            if has_image_fields:
+                formatted = _format_image_ocr_json(parsed)
+                if formatted:
+                    return formatted
+            
+            # Иначе пробуем извлечь HTML из структуры
+            html = _extract_html_from_parsed(parsed)
+            if html:
+                return html
     except json_module.JSONDecodeError:
         pass
     
@@ -330,6 +412,9 @@ def generate_html_from_pages(
         .block-type-text {{ border-left-color: #2ecc71; }}
         .block-type-table {{ border-left-color: #e74c3c; }}
         .block-type-image {{ border-left-color: #9b59b6; }}
+        .block-content h3 {{ color: #555; font-size: 1rem; margin: 1rem 0 0.5rem 0; padding-bottom: 0.3rem; border-bottom: 1px solid #ddd; }}
+        .block-content p {{ margin: 0.5rem 0; }}
+        .block-content code {{ background: #e8f4f8; padding: 0.2rem 0.4rem; margin: 0.2rem; border-radius: 3px; display: inline-block; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9em; }}
         .stamp-info {{ font-size: 0.75rem; color: #2980b9; background: #eef6fc; padding: 0.4rem 0.6rem; margin-top: 0.5rem; border-radius: 3px; border: 1px solid #bde0f7; }}
         .stamp-inherited {{ color: #7f8c8d; background: #f5f5f5; border-color: #ddd; font-style: italic; }}
         table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
@@ -421,16 +506,16 @@ def generate_html_from_pages(
                 if stamp_html:
                     html_parts.append(stamp_html)
                 
-                # Извлекаем HTML из ocr_text
-                block_html = _extract_html_from_ocr_text(block.ocr_text)
-                html_parts.append(block_html)
-                
-                # Для IMAGE блоков добавляем ссылку на изображение
+                # Для IMAGE блоков добавляем ссылку на изображение в начале
                 if block.block_type == BlockType.IMAGE and block.image_file:
                     crop_filename = Path(block.image_file).name
                     if project_name:
                         image_uri = f"{r2_public_url}/tree_docs/{project_name}/crops/{crop_filename}"
-                        html_parts.append(f'<p><a href="{image_uri}" target="_blank">Открыть изображение</a></p>')
+                        html_parts.append(f'<p><a href="{image_uri}" target="_blank"><b>🖼️ Открыть кроп изображения</b></a></p>')
+                
+                # Извлекаем HTML из ocr_text
+                block_html = _extract_html_from_ocr_text(block.ocr_text)
+                html_parts.append(block_html)
                 
                 html_parts.append('</div></div>')
         

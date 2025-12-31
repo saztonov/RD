@@ -121,7 +121,8 @@ def merge_ocr_results(
     output_path: Path,
     project_name: Optional[str] = None,
     r2_public_url: Optional[str] = None,
-    score_cutoff: int = 90
+    score_cutoff: int = 90,
+    doc_name: Optional[str] = None
 ) -> bool:
     """
     Объединить annotation.json и ocr_result.html в result.json.
@@ -220,7 +221,7 @@ def merge_ocr_results(
         logger.info(f"result.json сохранён: {output_path} ({matched}/{len(expected_ids)} блоков сопоставлено)")
         
         # Регенерируем HTML из разделённых ocr_html
-        regenerate_html_from_result(result, ocr_html_path)
+        regenerate_html_from_result(result, ocr_html_path, doc_name=doc_name)
         
         return True
         
@@ -229,7 +230,7 @@ def merge_ocr_results(
         return False
 
 
-def regenerate_html_from_result(result: dict, output_path: Path) -> None:
+def regenerate_html_from_result(result: dict, output_path: Path, doc_name: Optional[str] = None) -> None:
     """
     Регенерировать HTML файл из result.json с правильно разделёнными блоками.
     
@@ -237,7 +238,8 @@ def regenerate_html_from_result(result: dict, output_path: Path) -> None:
     """
     from datetime import datetime
     
-    doc_name = result.get("pdf_path", "OCR Result")
+    if not doc_name:
+        doc_name = result.get("pdf_path", "OCR Result")
     
     html_parts = [f"""<!DOCTYPE html>
 <html lang="ru">
@@ -253,6 +255,9 @@ def regenerate_html_from_result(result: dict, output_path: Path) -> None:
         .block-type-text {{ border-left-color: #2ecc71; }}
         .block-type-table {{ border-left-color: #e74c3c; }}
         .block-type-image {{ border-left-color: #9b59b6; }}
+        .block-content h3 {{ color: #555; font-size: 1rem; margin: 1rem 0 0.5rem 0; padding-bottom: 0.3rem; border-bottom: 1px solid #ddd; }}
+        .block-content p {{ margin: 0.5rem 0; }}
+        .block-content code {{ background: #e8f4f8; padding: 0.2rem 0.4rem; margin: 0.2rem; border-radius: 3px; display: inline-block; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9em; }}
         .stamp-info {{ font-size: 0.75rem; color: #2980b9; background: #eef6fc; padding: 0.4rem 0.6rem; margin-top: 0.5rem; border-radius: 3px; border: 1px solid #bde0f7; }}
         .stamp-inherited {{ color: #7f8c8d; background: #f5f5f5; border-color: #ddd; font-style: italic; }}
         table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
@@ -293,6 +298,12 @@ def regenerate_html_from_result(result: dict, output_path: Path) -> None:
             
             # Добавляем маркер блока
             html_parts.append(f'<p>BLOCK: {block_id}</p>')
+            
+            # Для IMAGE блоков добавляем ссылку на кроп (если её ещё нет в ocr_html)
+            if block_type == "image" and blk.get("crop_url"):
+                if "Открыть кроп изображения" not in ocr_html:
+                    crop_url = blk["crop_url"]
+                    html_parts.append(f'<p><a href="{crop_url}" target="_blank"><b>🖼️ Открыть кроп изображения</b></a></p>')
             
             # Добавляем ocr_html (уже содержит stamp_info, grouped/linked info и контент)
             html_parts.append(ocr_html)

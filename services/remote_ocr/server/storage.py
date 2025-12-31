@@ -50,6 +50,7 @@ from .storage_nodes import (
     get_node_file_by_type,
     get_node_pdf_r2_key,
     get_node_info,
+    get_node_full_path,
     update_node_r2_key,
     add_node_file,
     register_ocr_results_to_node,

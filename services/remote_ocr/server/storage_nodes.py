@@ -43,6 +43,38 @@ def get_node_info(node_id: str) -> Optional[Dict]:
     return result.data[0] if result.data else None
 
 
+def get_node_full_path(node_id: str, max_depth: int = 20) -> str:
+    """
+    Получить полный путь узла в дереве проектов (от корня до узла).
+    
+    Args:
+        node_id: ID узла
+        max_depth: максимальная глубина (защита от циклов)
+    
+    Returns:
+        Полный путь вида "Проект/Папка1/Папка2/Документ.pdf"
+    """
+    path_parts = []
+    current_id = node_id
+    depth = 0
+    
+    while current_id and depth < max_depth:
+        node_info = get_node_info(current_id)
+        if not node_info:
+            break
+        
+        # Добавляем имя узла в начало пути
+        name = node_info.get("name", "")
+        if name:
+            path_parts.insert(0, name)
+        
+        # Переходим к родителю
+        current_id = node_info.get("parent_id")
+        depth += 1
+    
+    return "/".join(path_parts) if path_parts else ""
+
+
 def update_node_r2_key(node_id: str, r2_key: str) -> bool:
     """Обновить r2_key в attributes узла"""
     client = get_client()
