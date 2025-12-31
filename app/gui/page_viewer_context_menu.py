@@ -180,37 +180,42 @@ class ContextMenuMixin:
         saved_h_scroll = self.horizontalScrollBar().value()
         saved_v_scroll = self.verticalScrollBar().value()
         
-        # Создаём связанные блоки для каждого выбранного блока
-        created_count = 0
+        # ВАЖНО: Сначала получаем ссылки на все выбранные блоки
+        # Это нужно потому что при вставке новых блоков индексы сдвигаются
+        source_blocks = []
         for data in blocks_data:
             block_idx = data["idx"]
             if 0 <= block_idx < len(page.blocks):
-                source_block = page.blocks[block_idx]
-                
-                # Определяем противоположный тип
-                target_type = BlockType.IMAGE if source_block.block_type == BlockType.TEXT else BlockType.TEXT
-                
-                # Создаём новый блок с теми же координатами
-                new_block = Block.create(
-                    page_index=source_block.page_index,
-                    coords_px=source_block.coords_px,
-                    page_width=page.width,
-                    page_height=page.height,
-                    block_type=target_type,
-                    source=BlockSource.USER,
-                    shape_type=source_block.shape_type,
-                    polygon_points=source_block.polygon_points,
-                    linked_block_id=source_block.id
-                )
-                
-                # Связываем исходный блок с новым
-                source_block.linked_block_id = new_block.id
-                
-                # Добавляем новый блок сразу после исходного
-                # Важно: используем актуальный индекс, так как массив меняется
-                current_idx = page.blocks.index(source_block)
-                page.blocks.insert(current_idx + 1, new_block)
-                created_count += 1
+                source_blocks.append(page.blocks[block_idx])
+        
+        # Теперь создаём связанные блоки для каждого сохранённого блока
+        created_count = 0
+        for source_block in source_blocks:
+            # Определяем противоположный тип
+            target_type = BlockType.IMAGE if source_block.block_type == BlockType.TEXT else BlockType.TEXT
+            
+            # Создаём новый блок с теми же координатами
+            new_block = Block.create(
+                page_index=source_block.page_index,
+                coords_px=source_block.coords_px,
+                page_width=page.width,
+                page_height=page.height,
+                block_type=target_type,
+                source=BlockSource.USER,
+                shape_type=source_block.shape_type,
+                polygon_points=source_block.polygon_points,
+                linked_block_id=source_block.id
+            )
+            
+            # Связываем исходный блок с новым
+            source_block.linked_block_id = new_block.id
+            
+            # Находим актуальный индекс исходного блока в массиве
+            # (он мог измениться из-за предыдущих вставок)
+            current_idx = page.blocks.index(source_block)
+            # Добавляем новый блок сразу после исходного
+            page.blocks.insert(current_idx + 1, new_block)
+            created_count += 1
         
         # Обновляем UI
         main_window._render_current_page()
