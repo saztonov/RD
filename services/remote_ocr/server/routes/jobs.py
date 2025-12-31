@@ -8,12 +8,14 @@ from fastapi import APIRouter, File, Form, HTTPException, Header, UploadFile
 
 from services.remote_ocr.server.storage import (
     add_job_file,
+    add_node_file,
     create_job,
     delete_job,
     delete_job_files,
     get_job,
     get_job_file_by_type,
     get_job_files,
+    get_node_info,
     get_node_pdf_r2_key,
     job_to_dict,
     list_jobs,
@@ -23,6 +25,7 @@ from services.remote_ocr.server.storage import (
     save_job_settings,
     update_job_engine,
     update_job_task_name,
+    update_node_r2_key,
 )
 from services.remote_ocr.server.tasks import run_ocr_task
 from services.remote_ocr.server.routes.common import check_api_key, get_r2_storage, get_r2_sync_client, get_file_icon
@@ -69,13 +72,30 @@ async def create_job_endpoint(
     # Определяем r2_prefix - папку для файлов задачи
     # Для node_id берём папку где лежит PDF (из node_files/attributes)
     # Для остальных - ocr_jobs/{job_id}
+    pdf_needs_upload = False  # Флаг: нужно ли загрузить PDF в R2
+    
     if node_id:
         pdf_r2_key = get_node_pdf_r2_key(node_id)
         if pdf_r2_key:
             from pathlib import PurePosixPath
+            # Проверяем существование PDF в R2
+            try:
+                s3_check, bucket_check = get_r2_sync_client()
+                s3_check.head_object(Bucket=bucket_check, Key=pdf_r2_key)
+            except Exception:
+                # PDF не существует в R2 - нужно загрузить
+                _logger.warning(f"PDF not found in R2, will upload: {pdf_r2_key}")
+                pdf_needs_upload = True
             r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
         else:
-            r2_prefix = f"tree_docs/{node_id}"
+            # Нет r2_key - формируем на основе parent_id
+            node_info = get_node_info(node_id)
+            if node_info and node_info.get("parent_id"):
+                r2_prefix = f"tree_docs/{node_info['parent_id']}"
+            else:
+                r2_prefix = f"tree_docs/{node_id}"
+            pdf_r2_key = f"{r2_prefix}/{document_name}"
+            pdf_needs_upload = True
     else:
         r2_prefix = f"ocr_jobs/{job_id}"
     
@@ -104,10 +124,29 @@ async def create_job_endpoint(
         s3_client, bucket_name = get_r2_sync_client()
         
         if node_id:
-            # Файлы уже в r2_prefix (папка где лежит PDF)
-            # Формируем annotation.json с именем документа: {doc_stem}_annotation.json
             from pathlib import PurePosixPath
             doc_stem = PurePosixPath(document_name).stem
+            
+            # Если PDF нет в R2 - загружаем и регистрируем
+            if pdf_needs_upload:
+                pdf_content = await pdf.read()
+                pdf_key = pdf_r2_key or f"{r2_prefix}/{document_name}"
+                s3_client.put_object(
+                    Bucket=bucket_name,
+                    Key=pdf_key,
+                    Body=pdf_content,
+                    ContentType="application/pdf"
+                )
+                _logger.info(f"Uploaded PDF to R2: {pdf_key} ({len(pdf_content)} bytes)")
+                
+                # Регистрируем в node_files
+                add_node_file(node_id, "pdf", pdf_key, document_name, len(pdf_content), "application/pdf")
+                # Обновляем attributes.r2_key в tree_nodes
+                update_node_r2_key(node_id, pdf_key)
+            else:
+                pdf_key = pdf_r2_key
+            
+            # Формируем annotation.json с именем документа: {doc_stem}_annotation.json
             blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode("utf-8")
             blocks_key = f"{r2_prefix}/{doc_stem}_annotation.json"
             s3_client.put_object(
@@ -117,8 +156,6 @@ async def create_job_endpoint(
                 ContentType="application/json"
             )
             add_job_file(job.id, "blocks", blocks_key, f"{doc_stem}_annotation.json", len(blocks_bytes))
-            # PDF уже есть, регистрируем правильный ключ
-            pdf_key = get_node_pdf_r2_key(node_id) or f"{r2_prefix}/{document_name}"
             add_job_file(job.id, "pdf", pdf_key, document_name, 0)
         else:
             # Загружаем файлы в ocr_jobs (обратная совместимость)

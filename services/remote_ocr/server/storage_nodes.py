@@ -36,6 +36,33 @@ def get_node_pdf_r2_key(node_id: str) -> Optional[str]:
     return None
 
 
+def get_node_info(node_id: str) -> Optional[Dict]:
+    """Получить информацию о узле (parent_id, name, attributes)"""
+    client = get_client()
+    result = client.table("tree_nodes").select("id,parent_id,name,attributes").eq("id", node_id).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
+def update_node_r2_key(node_id: str, r2_key: str) -> bool:
+    """Обновить r2_key в attributes узла"""
+    client = get_client()
+    try:
+        # Получаем текущие attributes
+        result = client.table("tree_nodes").select("attributes").eq("id", node_id).limit(1).execute()
+        if not result.data:
+            return False
+        
+        attrs = result.data[0].get("attributes") or {}
+        attrs["r2_key"] = r2_key
+        
+        client.table("tree_nodes").update({"attributes": attrs}).eq("id", node_id).execute()
+        logger.info(f"Updated r2_key for node {node_id}: {r2_key}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update node r2_key: {e}")
+        return False
+
+
 def add_node_file(
     node_id: str,
     file_type: str,
