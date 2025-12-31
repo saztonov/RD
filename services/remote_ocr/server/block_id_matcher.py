@@ -1,4 +1,4 @@
-"""UUID matching для OCR результатов"""
+"""Matching block ID для OCR результатов (UUID legacy + ARMOR коды)"""
 from __future__ import annotations
 
 import re

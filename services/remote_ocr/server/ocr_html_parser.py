@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Optional
 
-from .ocr_uuid_matcher import (
+from .block_id_matcher import (
     ARMOR_BLOCK_MARKER_RE, BLOCK_MARKER_RE,
     match_armor_code, match_uuid
 )

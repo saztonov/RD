@@ -309,6 +309,10 @@ def generate_html_from_pages(
                 armor_code = _get_block_armor_id(block.id)
                 html_parts.append(f'<p>BLOCK: {armor_code}</p>')
                 
+                # Добавляем информацию о штампе сразу после маркера блока (в метаинформацию)
+                if stamp_html:
+                    html_parts.append(stamp_html)
+                
                 # Извлекаем HTML из ocr_text
                 block_html = _extract_html_from_ocr_text(block.ocr_text)
                 html_parts.append(block_html)
@@ -319,10 +323,6 @@ def generate_html_from_pages(
                     if project_name:
                         image_uri = f"{r2_public_url}/tree_docs/{project_name}/crops/{crop_filename}"
                         html_parts.append(f'<p><a href="{image_uri}" target="_blank">Открыть изображение</a></p>')
-                
-                # Добавляем информацию о штампе под каждым блоком
-                if stamp_html:
-                    html_parts.append(stamp_html)
                 
                 html_parts.append('</div></div>')
         
