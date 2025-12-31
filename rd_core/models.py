@@ -5,9 +5,17 @@
 
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Tuple, Optional
 from enum import Enum
+
+# Московский часовой пояс (UTC+3)
+_MSK_TZ = timezone(timedelta(hours=3))
+
+
+def get_moscow_time_str() -> str:
+    """Получить текущее московское время в формате 'YYYY-MM-DD HH:MM:SS'."""
+    return datetime.now(_MSK_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # ArmorID алфавит (26 OCR-устойчивых символов)
@@ -258,7 +266,7 @@ class Block:
             hint=hint,
             pdfplumber_text=pdfplumber_text,
             linked_block_id=linked_block_id,
-            created_at=datetime.utcnow().isoformat()
+            created_at=get_moscow_time_str()
         )
     
     def get_width_height_px(self) -> Tuple[int, int]:
@@ -390,7 +398,7 @@ class Block:
             group_name=data.get("group_name"),
             category_id=data.get("category_id"),
             category_code=data.get("category_code"),
-            created_at=data.get("created_at")
+            created_at=data.get("created_at") or get_moscow_time_str()
         )
         return block, was_migrated
 
