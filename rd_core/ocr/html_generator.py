@@ -297,6 +297,10 @@ def generate_html_from_pages(
                 if not block.ocr_text:
                     continue
                 
+                # Пропускаем блоки штампа - их данные уже добавлены в stamp_html каждого блока
+                if getattr(block, 'category_code', None) == 'stamp':
+                    continue
+                
                 block_count += 1
                 block_type = block.block_type.value
                 page_num = page.page_number + 1 if page.page_number is not None else ""
