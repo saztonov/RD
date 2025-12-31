@@ -258,6 +258,10 @@ class BlocksTreeManager:
         
         hint = hint.strip() if hint else None
         
+        # Сохраняем текущий зум
+        saved_transform = self.parent.page_viewer.transform()
+        saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        
         # Применяем подсказку ко всем выбранным IMAGE блокам
         for data in blocks_data:
             page_num = data["page"]
@@ -272,6 +276,10 @@ class BlocksTreeManager:
         self.update_blocks_tree()
         self.parent._render_current_page(update_tree=False)
         
+        # Восстанавливаем зум
+        self.parent.page_viewer.setTransform(saved_transform)
+        self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        
         # Уведомление
         count = len(blocks_data)
         if hint:
@@ -284,6 +292,10 @@ class BlocksTreeManager:
         if not self.parent.annotation_document:
             return
         
+        # Сохраняем текущий зум
+        saved_transform = self.parent.page_viewer.transform()
+        saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        
         for data in blocks_data:
             page_num = data["page"]
             block_idx = data["idx"]
@@ -295,12 +307,21 @@ class BlocksTreeManager:
         
         self.update_blocks_tree()
         self.parent._render_current_page(update_tree=False)
+        
+        # Восстанавливаем зум
+        self.parent.page_viewer.setTransform(saved_transform)
+        self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        
         logger.info(f"Подсказка очищена для {len(blocks_data)} IMAGE блоков")
     
     def apply_type_to_blocks(self, blocks_data: list, block_type: BlockType):
         """Применить тип к нескольким блокам"""
         if not self.parent.annotation_document:
             return
+        
+        # Сохраняем текущий зум
+        saved_transform = self.parent.page_viewer.transform()
+        saved_zoom_factor = self.parent.page_viewer.zoom_factor
         
         for data in blocks_data:
             page_num = data["page"]
@@ -312,6 +333,11 @@ class BlocksTreeManager:
                     page.blocks[block_idx].block_type = block_type
         
         self.parent._render_current_page()
+        
+        # Восстанавливаем зум
+        self.parent.page_viewer.setTransform(saved_transform)
+        self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        
         self.update_blocks_tree()
     
     def create_linked_block(self, block_data: dict, target_type: BlockType):
@@ -335,6 +361,10 @@ class BlocksTreeManager:
         if hasattr(self.parent, '_save_undo_state'):
             self.parent._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.parent.page_viewer.transform()
+        saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        
         # Создаём новый блок с теми же координатами
         new_block = Block.create(
             page_index=source_block.page_index,
@@ -356,6 +386,11 @@ class BlocksTreeManager:
         
         # Обновляем UI
         self.parent._render_current_page()
+        
+        # Восстанавливаем зум
+        self.parent.page_viewer.setTransform(saved_transform)
+        self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        
         self.update_blocks_tree()
         if hasattr(self.parent, '_auto_save_annotation'):
             self.parent._auto_save_annotation()
@@ -400,6 +435,10 @@ class BlocksTreeManager:
         if hasattr(self.parent, '_save_undo_state'):
             self.parent._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.parent.page_viewer.transform()
+        saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        
         # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
             page_num = data["page"]
@@ -413,6 +452,11 @@ class BlocksTreeManager:
         
         # Обновляем UI
         self.parent._render_current_page()
+        
+        # Восстанавливаем зум
+        self.parent.page_viewer.setTransform(saved_transform)
+        self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        
         self.update_blocks_tree()
         if hasattr(self.parent, '_update_groups_tree'):
             self.parent._update_groups_tree()
@@ -442,6 +486,10 @@ class BlocksTreeManager:
         if hasattr(self.parent, '_save_undo_state'):
             self.parent._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.parent.page_viewer.transform()
+        saved_zoom_factor = self.parent.page_viewer.zoom_factor
+        
         # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
             page_num = data["page"]
@@ -455,6 +503,11 @@ class BlocksTreeManager:
         
         # Обновляем UI
         self.parent._render_current_page()
+        
+        # Восстанавливаем зум
+        self.parent.page_viewer.setTransform(saved_transform)
+        self.parent.page_viewer.zoom_factor = saved_zoom_factor
+        
         self.update_blocks_tree()
         if hasattr(self.parent, '_update_groups_tree'):
             self.parent._update_groups_tree()

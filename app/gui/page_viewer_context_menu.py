@@ -158,6 +158,10 @@ class ContextMenuMixin:
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.transform()
+        saved_zoom_factor = self.zoom_factor
+        
         # Создаём новый блок с теми же координатами
         new_block = Block.create(
             page_index=source_block.page_index,
@@ -180,6 +184,11 @@ class ContextMenuMixin:
         
         # Обновляем UI
         main_window._render_current_page()
+        
+        # Восстанавливаем зум
+        self.setTransform(saved_transform)
+        self.zoom_factor = saved_zoom_factor
+        
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
         if hasattr(main_window, '_auto_save_annotation'):
@@ -209,12 +218,21 @@ class ContextMenuMixin:
         
         page = main_window.annotation_document.pages[current_page]
         
+        # Сохраняем текущий зум
+        saved_transform = self.transform()
+        saved_zoom_factor = self.zoom_factor
+        
         for data in blocks_data:
             block_idx = data["idx"]
             if block_idx < len(page.blocks):
                 page.blocks[block_idx].block_type = block_type
         
         main_window._render_current_page()
+        
+        # Восстанавливаем зум
+        self.setTransform(saved_transform)
+        self.zoom_factor = saved_zoom_factor
+        
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
     
@@ -247,6 +265,10 @@ class ContextMenuMixin:
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.transform()
+        saved_zoom_factor = self.zoom_factor
+        
         count = 0
         for data in blocks_data:
             block_idx = data["idx"]
@@ -258,6 +280,11 @@ class ContextMenuMixin:
                     count += 1
         
         main_window._render_current_page()
+        
+        # Восстанавливаем зум
+        self.setTransform(saved_transform)
+        self.zoom_factor = saved_zoom_factor
+        
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
         if hasattr(main_window, '_auto_save_annotation'):
@@ -319,6 +346,10 @@ class ContextMenuMixin:
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.transform()
+        saved_zoom_factor = self.zoom_factor
+        
         # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
             block_idx = data["idx"]
@@ -328,6 +359,11 @@ class ContextMenuMixin:
         
         # Обновляем UI
         main_window._render_current_page()
+        
+        # Восстанавливаем зум
+        self.setTransform(saved_transform)
+        self.zoom_factor = saved_zoom_factor
+        
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
         if hasattr(main_window, '_update_groups_tree'):
@@ -365,6 +401,10 @@ class ContextMenuMixin:
         if hasattr(main_window, '_save_undo_state'):
             main_window._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.transform()
+        saved_zoom_factor = self.zoom_factor
+        
         # Применяем group_id и group_name ко всем выбранным блокам
         for data in blocks_data:
             block_idx = data["idx"]
@@ -374,6 +414,11 @@ class ContextMenuMixin:
         
         # Обновляем UI
         main_window._render_current_page()
+        
+        # Восстанавливаем зум
+        self.setTransform(saved_transform)
+        self.zoom_factor = saved_zoom_factor
+        
         if hasattr(main_window, 'blocks_tree_manager'):
             main_window.blocks_tree_manager.update_blocks_tree()
         if hasattr(main_window, '_update_groups_tree'):

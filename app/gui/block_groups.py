@@ -253,6 +253,10 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.page_viewer.transform()
+        saved_zoom_factor = self.page_viewer.zoom_factor
+        
         # Применяем group_id и group_name ко всем выбранным блокам
         for block_idx in selected_indices:
             if 0 <= block_idx < len(current_page_data.blocks):
@@ -261,6 +265,11 @@ class BlockGroupsMixin:
         
         # Обновляем UI
         self._render_current_page()
+        
+        # Восстанавливаем зум
+        self.page_viewer.setTransform(saved_transform)
+        self.page_viewer.zoom_factor = saved_zoom_factor
+        
         self._update_groups_tree()
         self._auto_save_annotation()
         
@@ -275,6 +284,10 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.page_viewer.transform()
+        saved_zoom_factor = self.page_viewer.zoom_factor
+        
         count = 0
         for page in self.annotation_document.pages:
             for block in page.blocks:
@@ -283,6 +296,11 @@ class BlockGroupsMixin:
                     count += 1
         
         self._render_current_page()
+        
+        # Восстанавливаем зум
+        self.page_viewer.setTransform(saved_transform)
+        self.page_viewer.zoom_factor = saved_zoom_factor
+        
         self._update_groups_tree()
         self._auto_save_annotation()
         
@@ -309,10 +327,19 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.page_viewer.transform()
+        saved_zoom_factor = self.page_viewer.zoom_factor
+        
         for page in self.annotation_document.pages:
             page.blocks = [b for b in page.blocks if b.group_id != group_id]
         
         self._render_current_page()
+        
+        # Восстанавливаем зум
+        self.page_viewer.setTransform(saved_transform)
+        self.page_viewer.zoom_factor = saved_zoom_factor
+        
         self._update_groups_tree()
         self._auto_save_annotation()
         
@@ -333,10 +360,19 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.page_viewer.transform()
+        saved_zoom_factor = self.page_viewer.zoom_factor
+        
         page.blocks[block_idx].group_id = None
         page.blocks[block_idx].group_name = None
         
         self._render_current_page()
+        
+        # Восстанавливаем зум
+        self.page_viewer.setTransform(saved_transform)
+        self.page_viewer.zoom_factor = saved_zoom_factor
+        
         self._update_groups_tree()
         self._auto_save_annotation()
         
@@ -360,6 +396,10 @@ class BlockGroupsMixin:
         
         self._save_undo_state()
         
+        # Сохраняем текущий зум
+        saved_transform = self.page_viewer.transform()
+        saved_zoom_factor = self.page_viewer.zoom_factor
+        
         # Обновляем название у всех блоков группы
         for page in self.annotation_document.pages:
             for block in page.blocks:
@@ -367,6 +407,11 @@ class BlockGroupsMixin:
                     block.group_name = new_name
         
         self._render_current_page()
+        
+        # Восстанавливаем зум
+        self.page_viewer.setTransform(saved_transform)
+        self.page_viewer.zoom_factor = saved_zoom_factor
+        
         self._update_groups_tree()
         self.blocks_tree_manager.update_blocks_tree()
         self._auto_save_annotation()
