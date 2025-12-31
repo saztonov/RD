@@ -98,7 +98,7 @@ class R2DeleteWorker(QThread):
                 
                 self.progress.emit(i + 1, total, filename)
                 
-                if r2.delete_file(r2_key):
+                if r2.delete_object(r2_key):
                     deleted_keys.append(r2_key)
             
             self.finished.emit(True, f"Удалено {len(deleted_keys)}/{total} файлов", deleted_keys)
