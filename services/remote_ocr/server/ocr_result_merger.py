@@ -190,13 +190,14 @@ def merge_ocr_results(
                     if parsed_json:
                         blk["ocr_json"] = parsed_json
                     
-                    # Добавляем ссылку на кроп
-                    if project_name:
-                        blk["crop_url"] = _build_crop_url(bid, r2_public_url, project_name)
-                    elif blk.get("image_file"):
-                        # Fallback: используем image_file если есть
-                        crop_name = Path(blk["image_file"]).name
-                        blk["crop_url"] = f"{r2_public_url}/crops/{crop_name}"
+                    # Добавляем ссылку на кроп (кроме штампов - они не сохраняются на R2)
+                    if blk.get("category_code") != "stamp":
+                        if project_name:
+                            blk["crop_url"] = _build_crop_url(bid, r2_public_url, project_name)
+                        elif blk.get("image_file"):
+                            # Fallback: используем image_file если есть
+                            crop_name = Path(blk["image_file"]).name
+                            blk["crop_url"] = f"{r2_public_url}/crops/{crop_name}"
                 
                 if blk["ocr_html"]:
                     matched += 1

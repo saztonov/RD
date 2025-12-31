@@ -229,6 +229,45 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         
         self.jobs_table.setSortingEnabled(True)
     
+    def _add_job_to_table(self, job, at_top: bool = False):
+        """Добавить одну задачу в таблицу (для оптимистичного обновления)"""
+        self.jobs_table.setSortingEnabled(False)
+        
+        row = 0 if at_top else self.jobs_table.rowCount()
+        self.jobs_table.insertRow(row)
+        
+        num_item = QTableWidgetItem("1" if at_top else str(self.jobs_table.rowCount()))
+        num_item.setData(Qt.UserRole, job.id)
+        self.jobs_table.setItem(row, 0, num_item)
+        
+        display_name = job.task_name if job.task_name else job.document_name
+        self.jobs_table.setItem(row, 1, QTableWidgetItem(display_name))
+        
+        created_at_str = format_datetime_utc3(job.created_at) if job.created_at else "Только что"
+        created_item = QTableWidgetItem(created_at_str)
+        created_item.setData(Qt.UserRole, job.created_at)
+        self.jobs_table.setItem(row, 2, created_item)
+        
+        status_text = {
+            "draft": "📝 Черновик",
+            "queued": "⏳ В очереди",
+            "processing": "🔄 Обработка",
+            "done": "✅ Готово",
+            "error": "❌ Ошибка",
+            "paused": "⏸️ Пауза"
+        }.get(job.status, job.status)
+        self.jobs_table.setItem(row, 3, QTableWidgetItem(status_text))
+        
+        progress_text = f"{int(job.progress * 100)}%"
+        progress_item = QTableWidgetItem(progress_text)
+        progress_item.setData(Qt.UserRole, job.progress)
+        self.jobs_table.setItem(row, 4, progress_item)
+        
+        actions_widget = self._create_actions_widget(job)
+        self.jobs_table.setCellWidget(row, 5, actions_widget)
+        
+        self.jobs_table.setSortingEnabled(True)
+    
     def _create_actions_widget(self, job) -> QWidget:
         """Создать виджет с кнопками действий для задачи"""
         actions_widget = QWidget()
@@ -273,10 +312,15 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         return actions_widget
 
     def _on_job_created(self, job_info):
-        """Слот: задача создана"""
+        """Слот: задача создана — оптимистичное добавление в таблицу"""
         from app.gui.toast import show_toast
         show_toast(self, f"Задача создана: {job_info.id[:8]}...", duration=2500)
-        self._refresh_jobs(manual=True)
+        
+        # Оптимистично добавляем задачу в начало таблицы
+        self._add_job_to_table(job_info, at_top=True)
+        
+        # Фоновый refresh для синхронизации с сервером
+        self._refresh_jobs(manual=False)
     
     def _on_job_create_error(self, error_type: str, message: str):
         """Слот: ошибка создания задачи"""
