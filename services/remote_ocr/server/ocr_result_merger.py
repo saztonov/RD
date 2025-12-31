@@ -46,32 +46,52 @@ def _build_crop_url(block_id: str, r2_public_url: str, project_name: str) -> str
     return f"{r2_public_url}/tree_docs/{project_name}/crops/{block_id}.pdf"
 
 
-def _propagate_stamp_data(page: dict) -> None:
+# Поля штампа, наследуемые на страницы без штампа
+INHERITABLE_STAMP_FIELDS = ("document_code", "project_name", "stage", "organization")
+
+
+def _find_page_stamp_json(page: dict) -> Optional[dict]:
+    """Найти JSON штампа на странице."""
+    for blk in page.get("blocks", []):
+        if (blk.get("block_type") == "image" and 
+            blk.get("category_code") == "stamp"):
+            return blk.get("ocr_json")
+    return None
+
+
+def _collect_inheritable_stamp_data(pages: list) -> Optional[dict]:
+    """Собрать общие поля штампа с любой страницы где есть штамп."""
+    for page in pages:
+        stamp_json = _find_page_stamp_json(page)
+        if stamp_json:
+            inherited = {}
+            for field in INHERITABLE_STAMP_FIELDS:
+                if stamp_json.get(field):
+                    inherited[field] = stamp_json[field]
+            if inherited:
+                return inherited
+    return None
+
+
+def _propagate_stamp_data(page: dict, inherited_data: Optional[dict] = None) -> None:
     """
     Распространить данные штампа на все блоки страницы.
-    Если на странице есть image блок с category_code='stamp',
-    его ocr_json копируется в stamp_data всех блоков.
+    Если на странице есть штамп - используем его ocr_json.
+    Если штампа нет - используем inherited_data (общие поля с других страниц).
     """
     blocks = page.get("blocks", [])
     
-    # Ищем блок штампа
-    stamp_block = None
-    for blk in blocks:
-        if (blk.get("block_type") == "image" and 
-            blk.get("category_code") == "stamp"):
-            stamp_block = blk
-            break
+    # Ищем блок штампа на этой странице
+    stamp_json = _find_page_stamp_json(page)
     
-    if not stamp_block:
-        return
-    
-    stamp_json = stamp_block.get("ocr_json")
-    if not stamp_json:
-        return
-    
-    # Копируем stamp_data во все блоки страницы
-    for blk in blocks:
-        blk["stamp_data"] = stamp_json
+    if stamp_json:
+        # Копируем stamp_data во все блоки страницы
+        for blk in blocks:
+            blk["stamp_data"] = stamp_json
+    elif inherited_data:
+        # Наследуем общие поля с других страниц
+        for blk in blocks:
+            blk["stamp_data"] = inherited_data
 
 
 def merge_ocr_results(
@@ -161,9 +181,13 @@ def merge_ocr_results(
                     matched += 1
                 else:
                     missing.append(bid)
-            
-            # Распространение данных штампа на все блоки страницы
-            _propagate_stamp_data(page)
+        
+        # Собираем общие данные штампа для страниц без штампа
+        inherited_stamp = _collect_inheritable_stamp_data(result.get("pages", []))
+        
+        # Распространение данных штампа на все блоки всех страниц
+        for page in result.get("pages", []):
+            _propagate_stamp_data(page, inherited_stamp)
         
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)

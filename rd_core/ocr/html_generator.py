@@ -231,6 +231,50 @@ def _find_page_stamp(blocks: List) -> Optional[Dict]:
     return None
 
 
+# Поля штампа, наследуемые на страницы без штампа
+INHERITABLE_STAMP_FIELDS = ("document_code", "project_name", "stage", "organization")
+
+
+def _collect_inheritable_stamp_data(pages: List) -> Optional[Dict]:
+    """
+    Собрать общие поля штампа с любой страницы, где есть штамп.
+    Возвращает dict с полями document_code, project_name, stage, organization.
+    """
+    for page in pages:
+        stamp_data = _find_page_stamp(page.blocks)
+        if stamp_data:
+            inherited = {}
+            for field in INHERITABLE_STAMP_FIELDS:
+                if stamp_data.get(field):
+                    inherited[field] = stamp_data[field]
+            if inherited:
+                return inherited
+    return None
+
+
+def _format_inherited_stamp_html(inherited_data: Dict) -> str:
+    """Форматировать унаследованные данные штампа в компактный HTML блок."""
+    parts = []
+    
+    if inherited_data.get("document_code"):
+        parts.append(f"<b>Шифр:</b> {inherited_data['document_code']}")
+    if inherited_data.get("stage"):
+        parts.append(f"<b>Стадия:</b> {inherited_data['stage']}")
+    if inherited_data.get("project_name"):
+        parts.append(f"<b>Объект:</b> {inherited_data['project_name']}")
+    if inherited_data.get("organization"):
+        parts.append(f"<b>Организация:</b> {inherited_data['organization']}")
+    
+    if not parts:
+        return ""
+    
+    return (
+        '<div class="stamp-info stamp-inherited">'
+        + " | ".join(parts)
+        + '</div>'
+    )
+
+
 def generate_html_from_pages(
     pages: List,
     output_path: str,
@@ -274,6 +318,7 @@ def generate_html_from_pages(
         .block-type-table {{ border-left-color: #e74c3c; }}
         .block-type-image {{ border-left-color: #9b59b6; }}
         .stamp-info {{ font-size: 0.75rem; color: #2980b9; background: #eef6fc; padding: 0.4rem 0.6rem; margin-top: 0.5rem; border-radius: 3px; border: 1px solid #bde0f7; }}
+        .stamp-inherited {{ color: #7f8c8d; background: #f5f5f5; border-color: #ddd; font-style: italic; }}
         table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
         th, td {{ border: 1px solid #ddd; padding: 0.5rem; text-align: left; }}
         th {{ background: #f0f0f0; }}
@@ -299,11 +344,19 @@ def generate_html_from_pages(
                         groups[group_id] = []
                     groups[group_id].append(block)
         
+        # Собираем общие данные штампа для страниц без штампа
+        inherited_stamp_data = _collect_inheritable_stamp_data(pages)
+        inherited_stamp_html = _format_inherited_stamp_html(inherited_stamp_data) if inherited_stamp_data else ""
+        
         block_count = 0
         for page in pages:
             # Находим данные штампа для этой страницы
             page_stamp = _find_page_stamp(page.blocks)
-            stamp_html = _format_stamp_html(page_stamp) if page_stamp else ""
+            if page_stamp:
+                stamp_html = _format_stamp_html(page_stamp)
+            else:
+                # Наследуем общие поля с других страниц
+                stamp_html = inherited_stamp_html
             
             for idx, block in enumerate(page.blocks):
                 if not block.ocr_text:
