@@ -150,10 +150,10 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
     
     doc_stem = Path(doc_name).stem
     
-    # result.json (переименован по имени документа)
+    # result.json -> {doc_stem}_result.json
     result_json = work_path / "result.json"
     if result_json.exists():
-        json_filename = f"{doc_stem}.json"
+        json_filename = f"{doc_stem}_result.json"
         add_node_file(
             node_id, "result_json", f"{tree_prefix}/{json_filename}",
             json_filename, result_json.stat().st_size, "application/json"
@@ -167,6 +167,16 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
         add_node_file(
             node_id, "annotation", f"{tree_prefix}/{annotation_filename}",
             annotation_filename, annotation.stat().st_size, "application/json"
+        )
+        registered += 1
+    
+    # ocr_result.html -> {doc_stem}_ocr.html
+    ocr_html = work_path / "ocr_result.html"
+    if ocr_html.exists():
+        html_filename = f"{doc_stem}_ocr.html"
+        add_node_file(
+            node_id, "ocr_html", f"{tree_prefix}/{html_filename}",
+            html_filename, ocr_html.stat().st_size, "text/html"
         )
         registered += 1
     
