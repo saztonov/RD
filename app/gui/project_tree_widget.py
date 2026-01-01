@@ -454,6 +454,9 @@ class ProjectTreeWidget(
         try:
             node_files = self.client.get_node_files(node.id)
             
+            # Исключаем PDF (он уже отображается как родительский узел)
+            node_files = [f for f in node_files if f.file_type != FileType.PDF]
+            
             if not node_files:
                 no_files_item = QTreeWidgetItem(["(нет файлов)"])
                 no_files_item.setData(0, Qt.UserRole, "no_files")

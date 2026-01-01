@@ -180,16 +180,18 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
         )
         registered += 1
     
-    # crops/
-    crops_dir = work_path / "crops"
-    if crops_dir.exists():
-        for crop_file in crops_dir.iterdir():
-            if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
-                add_node_file(
-                    node_id, "crop", f"{tree_prefix}/crops/{crop_file.name}",
-                    crop_file.name, crop_file.stat().st_size, "application/pdf"
-                )
-                registered += 1
+    # crops/ и crops_final/ (двухпроходный OCR сохраняет в crops_final)
+    for crops_subdir in ["crops", "crops_final"]:
+        crops_dir = work_path / crops_subdir
+        if crops_dir.exists():
+            for crop_file in crops_dir.iterdir():
+                if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
+                    add_node_file(
+                        node_id, "crop", f"{tree_prefix}/crops/{crop_file.name}",
+                        crop_file.name, crop_file.stat().st_size, "application/pdf"
+                    )
+                    registered += 1
+            break  # Используем только одну папку
     
     logger.info(f"Registered {registered} OCR result files for node {node_id}")
     return registered
