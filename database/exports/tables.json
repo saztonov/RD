@@ -2526,7 +2526,7 @@
       },
       {
         "name": "file_type",
-        "comment": "Тип файла: pdf, annotation, result_md, result_zip, crop, image",
+        "comment": "Тип файла: pdf, annotation, result_md, result_zip, crop, image, ocr_html, result_json",
         "default": null,
         "data_type": "text",
         "is_nullable": false
@@ -2600,6 +2600,630 @@
       },
       {
         "name": "node_files_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.qa_artifacts": {
+    "schema": "public",
+    "name": "qa_artifacts",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "conversation_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "artifact_type",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "r2_key",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "file_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "mime_type",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "file_size",
+        "comment": null,
+        "default": null,
+        "data_type": "bigint",
+        "is_nullable": true
+      },
+      {
+        "name": "metadata",
+        "comment": null,
+        "default": "'{}'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_artifacts_artifact_type_check",
+        "type": "CHECK",
+        "column": "artifact_type",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_artifacts_conversation_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "conversation_id",
+        "foreign_table": "qa_conversations",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_artifacts_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.qa_conversation_gemini_files": {
+    "schema": "public",
+    "name": "qa_conversation_gemini_files",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "conversation_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "gemini_file_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "added_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_conversation_gemini_files_conversation_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "conversation_id",
+        "foreign_table": "qa_conversations",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_conversation_gemini_files_conversation_id_gemini_file_id_key",
+        "type": "UNIQUE",
+        "column": "conversation_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_conversation_gemini_files_conversation_id_gemini_file_id_key",
+        "type": "UNIQUE",
+        "column": "gemini_file_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_conversation_gemini_files_gemini_file_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "gemini_file_id",
+        "foreign_table": "qa_gemini_files",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_conversation_gemini_files_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.qa_conversation_nodes": {
+    "schema": "public",
+    "name": "qa_conversation_nodes",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "conversation_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "node_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "added_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_conversation_nodes_conversation_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "conversation_id",
+        "foreign_table": "qa_conversations",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_conversation_nodes_conversation_id_node_id_key",
+        "type": "UNIQUE",
+        "column": "conversation_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_conversation_nodes_conversation_id_node_id_key",
+        "type": "UNIQUE",
+        "column": "node_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_conversation_nodes_node_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "node_id",
+        "foreign_table": "tree_nodes",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_conversation_nodes_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.qa_conversations": {
+    "schema": "public",
+    "name": "qa_conversations",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "title",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "model_default",
+        "comment": null,
+        "default": "'gemini-3-flash-preview'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_conversations_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.qa_gemini_files": {
+    "schema": "public",
+    "name": "qa_gemini_files",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "gemini_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "gemini_uri",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "display_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "mime_type",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "size_bytes",
+        "comment": null,
+        "default": null,
+        "data_type": "bigint",
+        "is_nullable": true
+      },
+      {
+        "name": "sha256",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "source_node_file_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "source_r2_key",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "expires_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_gemini_files_gemini_name_key",
+        "type": "UNIQUE",
+        "column": "gemini_name",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_gemini_files_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_gemini_files_source_node_file_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "source_node_file_id",
+        "foreign_table": "node_files",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      }
+    ]
+  },
+  "public.qa_messages": {
+    "schema": "public",
+    "name": "qa_messages",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "conversation_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "role",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "content",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "meta",
+        "comment": null,
+        "default": "'{}'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_messages_conversation_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "conversation_id",
+        "foreign_table": "qa_conversations",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_messages_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_messages_role_check",
+        "type": "CHECK",
+        "column": "role",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.qa_settings": {
+    "schema": "public",
+    "name": "qa_settings",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "gemini_api_key",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "supabase_url",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "supabase_anon_key",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "r2_account_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "r2_access_key_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "r2_secret_access_key",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "r2_bucket_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "default_model",
+        "comment": null,
+        "default": "'gemini-3-flash-preview'::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "settings",
+        "comment": null,
+        "default": "'{}'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_settings_client_id_key",
+        "type": "UNIQUE",
+        "column": "client_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_settings_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
         "foreign_table": null,

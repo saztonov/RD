@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2025-12-28T18:47:41.412751
+-- Generated: 2026-01-01T14:52:28.292913
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -471,9 +471,112 @@ CREATE TABLE IF NOT EXISTS public.node_files (
     CONSTRAINT node_files_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.node_files IS 'Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)';
-COMMENT ON COLUMN public.node_files.file_type IS 'Тип файла: pdf, annotation, result_md, result_zip, crop, image';
+COMMENT ON COLUMN public.node_files.file_type IS 'Тип файла: pdf, annotation, result_md, result_zip, crop, image, ocr_html, result_json';
 COMMENT ON COLUMN public.node_files.r2_key IS 'Ключ объекта в R2 storage';
 COMMENT ON COLUMN public.node_files.metadata IS 'Метаданные: version, page_index для кропов и т.д.';
+
+-- Table: public.qa_artifacts
+CREATE TABLE IF NOT EXISTS public.qa_artifacts (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL,
+    artifact_type text NOT NULL,
+    r2_key text NOT NULL,
+    file_name text NOT NULL,
+    mime_type text NOT NULL,
+    file_size bigint,
+    metadata jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_artifacts_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
+    CONSTRAINT qa_artifacts_pkey PRIMARY KEY (id)
+);
+
+-- Table: public.qa_conversation_gemini_files
+CREATE TABLE IF NOT EXISTS public.qa_conversation_gemini_files (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL,
+    gemini_file_id uuid NOT NULL,
+    added_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_conversation_gemini_files_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
+    CONSTRAINT qa_conversation_gemini_files_conversation_id_gemini_file_id_key UNIQUE (conversation_id),
+    CONSTRAINT qa_conversation_gemini_files_conversation_id_gemini_file_id_key UNIQUE (gemini_file_id),
+    CONSTRAINT qa_conversation_gemini_files_gemini_file_id_fkey FOREIGN KEY (gemini_file_id) REFERENCES public.qa_gemini_files(id),
+    CONSTRAINT qa_conversation_gemini_files_pkey PRIMARY KEY (id)
+);
+
+-- Table: public.qa_conversation_nodes
+CREATE TABLE IF NOT EXISTS public.qa_conversation_nodes (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL,
+    node_id uuid NOT NULL,
+    added_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_conversation_nodes_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
+    CONSTRAINT qa_conversation_nodes_conversation_id_node_id_key UNIQUE (conversation_id),
+    CONSTRAINT qa_conversation_nodes_conversation_id_node_id_key UNIQUE (node_id),
+    CONSTRAINT qa_conversation_nodes_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
+    CONSTRAINT qa_conversation_nodes_pkey PRIMARY KEY (id)
+);
+
+-- Table: public.qa_conversations
+CREATE TABLE IF NOT EXISTS public.qa_conversations (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    client_id text NOT NULL,
+    title text NOT NULL DEFAULT ''::text,
+    model_default text NOT NULL DEFAULT 'gemini-3-flash-preview'::text,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_conversations_pkey PRIMARY KEY (id)
+);
+
+-- Table: public.qa_gemini_files
+CREATE TABLE IF NOT EXISTS public.qa_gemini_files (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    client_id text NOT NULL,
+    gemini_name text NOT NULL,
+    gemini_uri text NOT NULL,
+    display_name text,
+    mime_type text NOT NULL,
+    size_bytes bigint,
+    sha256 text,
+    source_node_file_id uuid,
+    source_r2_key text,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    expires_at timestamp with time zone,
+    CONSTRAINT qa_gemini_files_gemini_name_key UNIQUE (gemini_name),
+    CONSTRAINT qa_gemini_files_pkey PRIMARY KEY (id),
+    CONSTRAINT qa_gemini_files_source_node_file_id_fkey FOREIGN KEY (source_node_file_id) REFERENCES public.node_files(id)
+);
+
+-- Table: public.qa_messages
+CREATE TABLE IF NOT EXISTS public.qa_messages (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL,
+    role text NOT NULL,
+    content text NOT NULL,
+    meta jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
+    CONSTRAINT qa_messages_pkey PRIMARY KEY (id)
+);
+
+-- Table: public.qa_settings
+CREATE TABLE IF NOT EXISTS public.qa_settings (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    client_id text NOT NULL,
+    gemini_api_key text,
+    supabase_url text,
+    supabase_anon_key text,
+    r2_account_id text,
+    r2_access_key_id text,
+    r2_secret_access_key text,
+    r2_bucket_name text,
+    default_model text DEFAULT 'gemini-3-flash-preview'::text,
+    settings jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_settings_client_id_key UNIQUE (client_id),
+    CONSTRAINT qa_settings_pkey PRIMARY KEY (id)
+);
 
 -- Table: public.section_types
 CREATE TABLE IF NOT EXISTS public.section_types (
@@ -850,7 +953,7 @@ $function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea)
+CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -858,7 +961,7 @@ AS '$libdir/pgcrypto', $function$pg_armor$function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
+CREATE OR REPLACE FUNCTION extensions.armor(bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1161,6 +1264,14 @@ AS '$libdir/pgcrypto', $function$pgp_key_id_w$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
+ RETURNS text
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
+
+
+-- Function: extensions.pgp_pub_decrypt
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)
  RETURNS text
  LANGUAGE c
@@ -1176,16 +1287,8 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
--- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
- RETURNS text
- LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
-
-
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1201,19 +1304,11 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
-
-
--- Function: extensions.pgp_pub_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
- RETURNS bytea
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_encrypt
@@ -1224,8 +1319,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
+-- Function: extensions.pgp_pub_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
+
+
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1233,7 +1336,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1623,6 +1726,67 @@ AS $function$
       WHERE rolname=$1 and rolcanlogin;
   END;
   $function$
+
+
+-- Function: public.qa_get_descendants
+CREATE OR REPLACE FUNCTION public.qa_get_descendants(p_client_id text, p_root_ids uuid[], p_node_types text[] DEFAULT NULL::text[])
+ RETURNS TABLE(id uuid, parent_id uuid, node_type text, name text, code text, version integer, status text, attributes jsonb, sort_order integer, depth integer)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+BEGIN
+    RETURN QUERY
+    WITH RECURSIVE descendants AS (
+        -- Base: root nodes
+        SELECT 
+            t.id,
+            t.parent_id,
+            t.node_type,
+            t.name,
+            t.code,
+            t.version,
+            t.status,
+            t.attributes,
+            t.sort_order,
+            0 AS depth
+        FROM public.tree_nodes t
+        WHERE t.client_id = p_client_id
+          AND t.id = ANY(p_root_ids)
+        
+        UNION ALL
+        
+        -- Recursive: children
+        SELECT 
+            t.id,
+            t.parent_id,
+            t.node_type,
+            t.name,
+            t.code,
+            t.version,
+            t.status,
+            t.attributes,
+            t.sort_order,
+            d.depth + 1
+        FROM public.tree_nodes t
+        INNER JOIN descendants d ON t.parent_id = d.id
+        WHERE t.client_id = p_client_id
+    )
+    SELECT 
+        d.id,
+        d.parent_id,
+        d.node_type,
+        d.name,
+        d.code,
+        d.version,
+        d.status,
+        d.attributes,
+        d.sort_order,
+        d.depth
+    FROM descendants d
+    WHERE (p_node_types IS NULL OR d.node_type = ANY(p_node_types))
+    ORDER BY d.depth, d.sort_order, d.name;
+END;
+$function$
 
 
 -- Function: public.update_app_settings_timestamp
@@ -3337,6 +3501,15 @@ CREATE TRIGGER update_jobs_updated_at BEFORE UPDATE ON public.jobs FOR EACH ROW 
 -- Trigger: update_node_files_updated_at on public.node_files
 CREATE TRIGGER update_node_files_updated_at BEFORE UPDATE ON public.node_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
+-- Trigger: qa_conversations_updated_at on public.qa_conversations
+CREATE TRIGGER qa_conversations_updated_at BEFORE UPDATE ON public.qa_conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+
+-- Trigger: qa_gemini_files_updated_at on public.qa_gemini_files
+CREATE TRIGGER qa_gemini_files_updated_at BEFORE UPDATE ON public.qa_gemini_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+
+-- Trigger: qa_settings_updated_at on public.qa_settings
+CREATE TRIGGER qa_settings_updated_at BEFORE UPDATE ON public.qa_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+
 -- Trigger: update_tree_nodes_updated_at on public.tree_nodes
 CREATE TRIGGER update_tree_nodes_updated_at BEFORE UPDATE ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
@@ -3574,6 +3747,9 @@ CREATE INDEX idx_jobs_status ON public.jobs USING btree (status);
 CREATE INDEX idx_node_files_node_id ON public.node_files USING btree (node_id);
 
 -- Index on public.node_files
+CREATE INDEX idx_node_files_node_type ON public.node_files USING btree (node_id, file_type);
+
+-- Index on public.node_files
 CREATE INDEX idx_node_files_r2_key ON public.node_files USING btree (r2_key);
 
 -- Index on public.node_files
@@ -3581,6 +3757,45 @@ CREATE INDEX idx_node_files_type ON public.node_files USING btree (file_type);
 
 -- Index on public.node_files
 CREATE UNIQUE INDEX idx_node_files_unique_r2 ON public.node_files USING btree (node_id, r2_key);
+
+-- Index on public.qa_artifacts
+CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC);
+
+-- Index on public.qa_conversation_gemini_files
+CREATE INDEX idx_qa_conv_gemini_files_conv ON public.qa_conversation_gemini_files USING btree (conversation_id);
+
+-- Index on public.qa_conversation_gemini_files
+CREATE INDEX idx_qa_conv_gemini_files_file ON public.qa_conversation_gemini_files USING btree (gemini_file_id);
+
+-- Index on public.qa_conversation_gemini_files
+CREATE UNIQUE INDEX qa_conversation_gemini_files_conversation_id_gemini_file_id_key ON public.qa_conversation_gemini_files USING btree (conversation_id, gemini_file_id);
+
+-- Index on public.qa_conversation_nodes
+CREATE INDEX idx_qa_conversation_nodes_conv ON public.qa_conversation_nodes USING btree (conversation_id);
+
+-- Index on public.qa_conversation_nodes
+CREATE INDEX idx_qa_conversation_nodes_node ON public.qa_conversation_nodes USING btree (node_id);
+
+-- Index on public.qa_conversation_nodes
+CREATE UNIQUE INDEX qa_conversation_nodes_conversation_id_node_id_key ON public.qa_conversation_nodes USING btree (conversation_id, node_id);
+
+-- Index on public.qa_conversations
+CREATE INDEX idx_qa_conversations_client_updated ON public.qa_conversations USING btree (client_id, updated_at DESC);
+
+-- Index on public.qa_gemini_files
+CREATE INDEX idx_qa_gemini_files_client_expires ON public.qa_gemini_files USING btree (client_id, expires_at);
+
+-- Index on public.qa_gemini_files
+CREATE UNIQUE INDEX qa_gemini_files_gemini_name_key ON public.qa_gemini_files USING btree (gemini_name);
+
+-- Index on public.qa_messages
+CREATE INDEX idx_qa_messages_conversation_created ON public.qa_messages USING btree (conversation_id, created_at);
+
+-- Index on public.qa_settings
+CREATE INDEX idx_qa_settings_client ON public.qa_settings USING btree (client_id);
+
+-- Index on public.qa_settings
+CREATE UNIQUE INDEX qa_settings_client_id_key ON public.qa_settings USING btree (client_id);
 
 -- Index on public.section_types
 CREATE UNIQUE INDEX section_types_code_key ON public.section_types USING btree (code);
@@ -3590,6 +3805,9 @@ CREATE UNIQUE INDEX stage_types_code_key ON public.stage_types USING btree (code
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_client_id ON public.tree_nodes USING btree (client_id);
+
+-- Index on public.tree_nodes
+CREATE INDEX idx_tree_nodes_client_parent ON public.tree_nodes USING btree (client_id, parent_id);
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_parent_id ON public.tree_nodes USING btree (parent_id);

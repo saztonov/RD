@@ -44,6 +44,33 @@
     "comment": null,
     "sql": "CREATE TRIGGER update_node_files_updated_at BEFORE UPDATE ON public.node_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
   },
+  "public.qa_conversations.qa_conversations_updated_at": {
+    "schema": "public",
+    "name": "qa_conversations_updated_at",
+    "table_name": "qa_conversations",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER qa_conversations_updated_at BEFORE UPDATE ON public.qa_conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+  },
+  "public.qa_gemini_files.qa_gemini_files_updated_at": {
+    "schema": "public",
+    "name": "qa_gemini_files_updated_at",
+    "table_name": "qa_gemini_files",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER qa_gemini_files_updated_at BEFORE UPDATE ON public.qa_gemini_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+  },
+  "public.qa_settings.qa_settings_updated_at": {
+    "schema": "public",
+    "name": "qa_settings_updated_at",
+    "table_name": "qa_settings",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER qa_settings_updated_at BEFORE UPDATE ON public.qa_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+  },
   "public.tree_nodes.update_tree_nodes_updated_at": {
     "schema": "public",
     "name": "update_tree_nodes_updated_at",

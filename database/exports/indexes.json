@@ -543,6 +543,14 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_node_files_node_id ON public.node_files USING btree (node_id)"
   },
+  "public.node_files.idx_node_files_node_type": {
+    "schema": "public",
+    "name": "idx_node_files_node_type",
+    "table_name": "node_files",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_node_files_node_type ON public.node_files USING btree (node_id, file_type)"
+  },
   "public.node_files.idx_node_files_r2_key": {
     "schema": "public",
     "name": "idx_node_files_r2_key",
@@ -567,6 +575,110 @@
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX idx_node_files_unique_r2 ON public.node_files USING btree (node_id, r2_key)"
   },
+  "public.qa_artifacts.idx_qa_artifacts_conversation_created": {
+    "schema": "public",
+    "name": "idx_qa_artifacts_conversation_created",
+    "table_name": "qa_artifacts",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC)"
+  },
+  "public.qa_conversation_gemini_files.idx_qa_conv_gemini_files_conv": {
+    "schema": "public",
+    "name": "idx_qa_conv_gemini_files_conv",
+    "table_name": "qa_conversation_gemini_files",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_conv_gemini_files_conv ON public.qa_conversation_gemini_files USING btree (conversation_id)"
+  },
+  "public.qa_conversation_gemini_files.idx_qa_conv_gemini_files_file": {
+    "schema": "public",
+    "name": "idx_qa_conv_gemini_files_file",
+    "table_name": "qa_conversation_gemini_files",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_conv_gemini_files_file ON public.qa_conversation_gemini_files USING btree (gemini_file_id)"
+  },
+  "public.qa_conversation_gemini_files.qa_conversation_gemini_files_conversation_id_gemini_file_id_key": {
+    "schema": "public",
+    "name": "qa_conversation_gemini_files_conversation_id_gemini_file_id_key",
+    "table_name": "qa_conversation_gemini_files",
+    "is_unique": true,
+    "is_primary": false,
+    "sql": "CREATE UNIQUE INDEX qa_conversation_gemini_files_conversation_id_gemini_file_id_key ON public.qa_conversation_gemini_files USING btree (conversation_id, gemini_file_id)"
+  },
+  "public.qa_conversation_nodes.idx_qa_conversation_nodes_conv": {
+    "schema": "public",
+    "name": "idx_qa_conversation_nodes_conv",
+    "table_name": "qa_conversation_nodes",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_conversation_nodes_conv ON public.qa_conversation_nodes USING btree (conversation_id)"
+  },
+  "public.qa_conversation_nodes.idx_qa_conversation_nodes_node": {
+    "schema": "public",
+    "name": "idx_qa_conversation_nodes_node",
+    "table_name": "qa_conversation_nodes",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_conversation_nodes_node ON public.qa_conversation_nodes USING btree (node_id)"
+  },
+  "public.qa_conversation_nodes.qa_conversation_nodes_conversation_id_node_id_key": {
+    "schema": "public",
+    "name": "qa_conversation_nodes_conversation_id_node_id_key",
+    "table_name": "qa_conversation_nodes",
+    "is_unique": true,
+    "is_primary": false,
+    "sql": "CREATE UNIQUE INDEX qa_conversation_nodes_conversation_id_node_id_key ON public.qa_conversation_nodes USING btree (conversation_id, node_id)"
+  },
+  "public.qa_conversations.idx_qa_conversations_client_updated": {
+    "schema": "public",
+    "name": "idx_qa_conversations_client_updated",
+    "table_name": "qa_conversations",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_conversations_client_updated ON public.qa_conversations USING btree (client_id, updated_at DESC)"
+  },
+  "public.qa_gemini_files.idx_qa_gemini_files_client_expires": {
+    "schema": "public",
+    "name": "idx_qa_gemini_files_client_expires",
+    "table_name": "qa_gemini_files",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_gemini_files_client_expires ON public.qa_gemini_files USING btree (client_id, expires_at)"
+  },
+  "public.qa_gemini_files.qa_gemini_files_gemini_name_key": {
+    "schema": "public",
+    "name": "qa_gemini_files_gemini_name_key",
+    "table_name": "qa_gemini_files",
+    "is_unique": true,
+    "is_primary": false,
+    "sql": "CREATE UNIQUE INDEX qa_gemini_files_gemini_name_key ON public.qa_gemini_files USING btree (gemini_name)"
+  },
+  "public.qa_messages.idx_qa_messages_conversation_created": {
+    "schema": "public",
+    "name": "idx_qa_messages_conversation_created",
+    "table_name": "qa_messages",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_messages_conversation_created ON public.qa_messages USING btree (conversation_id, created_at)"
+  },
+  "public.qa_settings.idx_qa_settings_client": {
+    "schema": "public",
+    "name": "idx_qa_settings_client",
+    "table_name": "qa_settings",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_settings_client ON public.qa_settings USING btree (client_id)"
+  },
+  "public.qa_settings.qa_settings_client_id_key": {
+    "schema": "public",
+    "name": "qa_settings_client_id_key",
+    "table_name": "qa_settings",
+    "is_unique": true,
+    "is_primary": false,
+    "sql": "CREATE UNIQUE INDEX qa_settings_client_id_key ON public.qa_settings USING btree (client_id)"
+  },
   "public.section_types.section_types_code_key": {
     "schema": "public",
     "name": "section_types_code_key",
@@ -590,6 +702,14 @@
     "is_unique": false,
     "is_primary": false,
     "sql": "CREATE INDEX idx_tree_nodes_client_id ON public.tree_nodes USING btree (client_id)"
+  },
+  "public.tree_nodes.idx_tree_nodes_client_parent": {
+    "schema": "public",
+    "name": "idx_tree_nodes_client_parent",
+    "table_name": "tree_nodes",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_tree_nodes_client_parent ON public.tree_nodes USING btree (client_id, parent_id)"
   },
   "public.tree_nodes.idx_tree_nodes_parent_id": {
     "schema": "public",
