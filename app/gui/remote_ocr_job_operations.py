@@ -124,6 +124,15 @@ class JobOperationsMixin:
             QMessageBox.warning(self, "Ошибка", "Откройте PDF документ")
             return
         
+        # Проверка блокировки документа
+        if hasattr(self.main_window, '_current_node_locked') and self.main_window._current_node_locked:
+            QMessageBox.warning(
+                self, 
+                "Документ заблокирован", 
+                "Этот документ заблокирован от изменений.\nСначала снимите блокировку."
+            )
+            return
+        
         pdf_path = self.main_window.annotation_document.pdf_path
         if not pdf_path or not Path(pdf_path).exists():
             if hasattr(self.main_window, '_current_pdf_path') and self.main_window._current_pdf_path:
@@ -277,6 +286,15 @@ class JobOperationsMixin:
     
     def _rerun_job(self, job_id: str):
         """Повторное распознавание с сохранёнными настройками и проверкой изменений"""
+        # Проверка блокировки документа
+        if hasattr(self.main_window, '_current_node_locked') and self.main_window._current_node_locked:
+            QMessageBox.warning(
+                self, 
+                "Документ заблокирован", 
+                "Этот документ заблокирован от изменений.\nСначала снимите блокировку."
+            )
+            return
+        
         from app.gui.toast import show_toast
         show_toast(self, "Проверка изменений...", duration=1500)
         

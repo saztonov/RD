@@ -15,6 +15,26 @@ class FileDownloadMixin:
     
     _active_downloads: set = None
     
+    def _update_lock_status(self, node_id: str):
+        """Обновить статус блокировки документа"""
+        if not node_id:
+            self._current_node_locked = False
+            return
+        
+        try:
+            from app.tree_client import TreeClient
+            client = TreeClient()
+            if client.is_available():
+                node = client.get_node(node_id)
+                if node:
+                    self._current_node_locked = node.is_locked
+                    logger.info(f"Document lock status: {self._current_node_locked}")
+                    return
+        except Exception as e:
+            logger.error(f"Failed to get lock status: {e}")
+        
+        self._current_node_locked = False
+    
     def _on_tree_file_uploaded_r2(self, node_id: str, r2_key: str):
         """Открыть загруженный файл из R2 в редакторе"""
         self._on_tree_document_selected(node_id, r2_key)
@@ -53,6 +73,8 @@ class FileDownloadMixin:
         if local_path.exists():
             self._current_r2_key = r2_key
             self._current_node_id = node_id
+            # Проверяем блокировку документа
+            self._update_lock_status(node_id)
             self._open_pdf_file(str(local_path), r2_key=r2_key)
             if node_id and hasattr(self, 'project_tree_widget'):
                 self.project_tree_widget.highlight_document(node_id)
@@ -226,6 +248,8 @@ class FileDownloadMixin:
         if hasattr(self, '_pending_download_local_path') and Path(self._pending_download_local_path).exists():
             self._current_r2_key = self._pending_download_r2_key
             self._current_node_id = self._pending_download_node_id
+            # Проверяем блокировку документа
+            self._update_lock_status(self._pending_download_node_id)
             self._open_pdf_file(self._pending_download_local_path, r2_key=self._pending_download_r2_key)
             
             # Подсветить документ в дереве

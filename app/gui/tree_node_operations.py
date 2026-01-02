@@ -274,6 +274,10 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
     
     def _rename_node(self, node: TreeNode):
         """Переименовать узел (для документов также переименовывает в R2)"""
+        # Проверка блокировки документа
+        if self._check_document_locked(node):
+            return
+        
         new_name, ok = QInputDialog.getText(
             self, "Переименовать", "Новое название:", text=node.name
         )
@@ -368,6 +372,10 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
     
     def _delete_node(self, node: TreeNode):
         """Удалить узел и все вложенные (из R2, кэша и Supabase)"""
+        # Проверка блокировки документа
+        if self._check_document_locked(node):
+            return
+        
         reply = QMessageBox.question(
             self, "Подтверждение",
             f"Удалить '{node.name}' и все вложенные элементы?",

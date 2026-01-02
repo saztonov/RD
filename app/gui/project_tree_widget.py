@@ -344,7 +344,9 @@ class ProjectTreeWidget(
             version_tag = f"[v{node.version}]" if node.version else "[v1]"
             # Иконка статуса PDF из БД
             status_icon = self._get_pdf_status_icon(node.pdf_status or "unknown")
-            display_name = f"{icon} {node.name} {status_icon}".strip()
+            # Иконка замка для заблокированных документов
+            lock_icon = "🔒" if node.is_locked else ""
+            display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
             # Сохраняем версию отдельно для отображения красным
             version_display = version_tag
         elif node.node_type == NodeType.TASK_FOLDER:
@@ -560,6 +562,7 @@ class ProjectTreeWidget(
     
     def _copy_annotation(self, node: TreeNode):
         """Скопировать аннотацию документа в буфер"""
+        # Копирование разрешено для заблокированных документов
         from rd_core.r2_storage import R2Storage
         from app.gui.file_operations import get_annotation_r2_key
         
@@ -587,6 +590,10 @@ class ProjectTreeWidget(
     
     def _paste_annotation(self, node: TreeNode):
         """Вставить аннотацию из буфера в документ"""
+        # Проверка блокировки документа
+        if self._check_document_locked(node):
+            return
+        
         from rd_core.r2_storage import R2Storage
         from app.gui.file_operations import get_annotation_r2_key
         
@@ -630,6 +637,10 @@ class ProjectTreeWidget(
     
     def _detect_and_assign_stamps(self, node: TreeNode):
         """Определить и назначить штамп на всех страницах PDF"""
+        # Проверка блокировки документа
+        if self._check_document_locked(node):
+            return
+        
         from rd_core.r2_storage import R2Storage
         from rd_core.models import Document, BlockType
         from rd_core.annotation_io import AnnotationIO
@@ -722,6 +733,10 @@ class ProjectTreeWidget(
     
     def _upload_annotation_dialog(self, node: TreeNode):
         """Диалог загрузки аннотации блоков из файла"""
+        # Проверка блокировки документа
+        if self._check_document_locked(node):
+            return
+        
         from rd_core.r2_storage import R2Storage
         from app.gui.file_operations import get_annotation_r2_key
         
@@ -962,3 +977,46 @@ class ProjectTreeWidget(
         # Проходим по всем корневым элементам
         for i in range(self.tree.topLevelItemCount()):
             expand_recursive(self.tree.topLevelItem(i))
+    
+    def _lock_document(self, node: TreeNode):
+        """Заблокировать документ от изменений"""
+        try:
+            if self.client.lock_document(node.id):
+                node.is_locked = True
+                self.status_label.setText("🔒 Документ заблокирован")
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(100, self._refresh_tree)
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось заблокировать документ")
+        except Exception as e:
+            logger.error(f"Lock document failed: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка блокировки: {e}")
+    
+    def _unlock_document(self, node: TreeNode):
+        """Разблокировать документ"""
+        try:
+            if self.client.unlock_document(node.id):
+                node.is_locked = False
+                self.status_label.setText("🔓 Документ разблокирован")
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(100, self._refresh_tree)
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось разблокировать документ")
+        except Exception as e:
+            logger.error(f"Unlock document failed: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка разблокировки: {e}")
+    
+    def _check_document_locked(self, node: TreeNode) -> bool:
+        """
+        Проверить заблокирован ли документ.
+        Если заблокирован - показать предупреждение и вернуть True.
+        Если не заблокирован - вернуть False.
+        """
+        if node.node_type == NodeType.DOCUMENT and node.is_locked:
+            QMessageBox.warning(
+                self, 
+                "Документ заблокирован", 
+                "Этот документ заблокирован от изменений.\nСначала снимите блокировку."
+            )
+            return True
+        return False

@@ -146,6 +146,34 @@ class TreeClient:
         except Exception as e:
             logger.error(f"Failed to update PDF status: {e}")
     
+    def lock_document(self, node_id: str) -> bool:
+        """Заблокировать документ от изменений"""
+        try:
+            self._request("patch", f"/tree_nodes?id=eq.{node_id}", json={"is_locked": True})
+            return True
+        except Exception as e:
+            logger.error(f"Failed to lock document {node_id}: {e}")
+            return False
+    
+    def unlock_document(self, node_id: str) -> bool:
+        """Разблокировать документ"""
+        try:
+            self._request("patch", f"/tree_nodes?id=eq.{node_id}", json={"is_locked": False})
+            return True
+        except Exception as e:
+            logger.error(f"Failed to unlock document {node_id}: {e}")
+            return False
+    
+    def is_document_locked(self, node_id: str) -> bool:
+        """Проверить заблокирован ли документ"""
+        try:
+            resp = self._request("get", f"/tree_nodes?id=eq.{node_id}&select=is_locked")
+            data = resp.json()
+            return data[0].get("is_locked", False) if data else False
+        except Exception as e:
+            logger.error(f"Failed to check lock status {node_id}: {e}")
+            return False
+    
     def create_node(
         self,
         node_type,

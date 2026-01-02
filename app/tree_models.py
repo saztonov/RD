@@ -91,6 +91,7 @@ class TreeNode:
     children: List["TreeNode"] = field(default_factory=list)
     pdf_status: Optional[str] = None
     pdf_status_message: Optional[str] = None
+    is_locked: bool = False
     
     @classmethod
     def from_dict(cls, data: dict) -> "TreeNode":
@@ -109,6 +110,7 @@ class TreeNode:
             updated_at=datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")) if data.get("updated_at") else None,
             pdf_status=data.get("pdf_status"),
             pdf_status_message=data.get("pdf_status_message"),
+            is_locked=data.get("is_locked", False),
         )
     
     def to_dict(self) -> dict:

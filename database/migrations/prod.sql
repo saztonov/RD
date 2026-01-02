@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-02T16:54:14.123527
+-- Generated: 2026-01-02T17:06:45.743291
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -638,12 +638,14 @@ CREATE TABLE IF NOT EXISTS public.tree_nodes (
     pdf_status text DEFAULT 'unknown'::text,
     pdf_status_message text,
     pdf_status_updated_at timestamp with time zone,
+    is_locked boolean DEFAULT false,
     CONSTRAINT tree_nodes_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT tree_nodes_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.tree_nodes IS 'Дерево проектов - иерархическая структура узлов';
 COMMENT ON COLUMN public.tree_nodes.node_type IS 'Тип узла: client, project, section, stage, task, document';
 COMMENT ON COLUMN public.tree_nodes.attributes IS 'Дополнительные атрибуты узла (JSON)';
+COMMENT ON COLUMN public.tree_nodes.is_locked IS 'Флаг блокировки документа от изменений (удаление, переименование, изменение блоков, запуск OCR)';
 
 -- Table: realtime.schema_migrations
 CREATE TABLE IF NOT EXISTS realtime.schema_migrations (
@@ -3947,6 +3949,9 @@ CREATE INDEX idx_tree_nodes_client_id ON public.tree_nodes USING btree (client_i
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_client_parent ON public.tree_nodes USING btree (client_id, parent_id);
+
+-- Index on public.tree_nodes
+CREATE INDEX idx_tree_nodes_is_locked ON public.tree_nodes USING btree (is_locked) WHERE ((node_type = 'document'::text) AND (is_locked = true));
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_parent_id ON public.tree_nodes USING btree (parent_id);

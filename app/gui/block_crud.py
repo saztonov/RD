@@ -14,6 +14,21 @@ class BlockCRUDMixin:
     
     _categories_cache = None
     
+    def _check_document_locked_for_editing(self) -> bool:
+        """
+        Проверить заблокирован ли текущий документ.
+        Если заблокирован - показать предупреждение и вернуть True.
+        Если не заблокирован - вернуть False.
+        """
+        if hasattr(self, '_current_node_locked') and self._current_node_locked:
+            QMessageBox.warning(
+                self, 
+                "Документ заблокирован", 
+                "Этот документ заблокирован от изменений.\nСначала снимите блокировку."
+            )
+            return True
+        return False
+    
     def _has_stamp_on_page(self, page_data, exclude_block_id: str = None) -> bool:
         """Проверить, есть ли уже штамп на странице"""
         if not page_data or not page_data.blocks:
@@ -75,6 +90,10 @@ class BlockCRUDMixin:
         if not self.annotation_document:
             return
         
+        # Проверка блокировки документа
+        if self._check_document_locked_for_editing():
+            return
+        
         self._save_undo_state()
         
         checked_action = self.block_type_group.checkedAction()
@@ -119,6 +138,10 @@ class BlockCRUDMixin:
     def _on_polygon_drawn(self, points: list):
         """Обработка завершения рисования полигона"""
         if not self.annotation_document or not points or len(points) < 3:
+            return
+        
+        # Проверка блокировки документа
+        if self._check_document_locked_for_editing():
             return
         
         self._save_undo_state()
@@ -243,6 +266,10 @@ class BlockCRUDMixin:
         if not self.annotation_document:
             return
         
+        # Проверка блокировки документа
+        if self._check_document_locked_for_editing():
+            return
+        
         current_page_data = self._get_or_create_page(self.current_page)
         if not current_page_data:
             return
@@ -272,6 +299,10 @@ class BlockCRUDMixin:
     def _on_blocks_deleted(self, block_indices: list):
         """Обработка удаления множественных блоков"""
         if not self.annotation_document or not block_indices:
+            return
+        
+        # Проверка блокировки документа
+        if self._check_document_locked_for_editing():
             return
         
         current_page_data = self._get_or_create_page(self.current_page)
@@ -312,6 +343,10 @@ class BlockCRUDMixin:
     def _on_block_moved(self, block_idx: int, x1: int, y1: int, x2: int, y2: int):
         """Обработка перемещения/изменения размера блока"""
         if not self.annotation_document:
+            return
+        
+        # Проверка блокировки документа
+        if self._check_document_locked_for_editing():
             return
         
         current_page_data = self._get_or_create_page(self.current_page)
@@ -413,6 +448,10 @@ class BlockCRUDMixin:
     def _clear_current_page(self):
         """Очистить все блоки с текущей страницы"""
         if not self.annotation_document:
+            return
+        
+        # Проверка блокировки документа
+        if self._check_document_locked_for_editing():
             return
         
         current_page_data = self._get_or_create_page(self.current_page)

@@ -743,6 +743,14 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_tree_nodes_client_parent ON public.tree_nodes USING btree (client_id, parent_id)"
   },
+  "public.tree_nodes.idx_tree_nodes_is_locked": {
+    "schema": "public",
+    "name": "idx_tree_nodes_is_locked",
+    "table_name": "tree_nodes",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_tree_nodes_is_locked ON public.tree_nodes USING btree (is_locked) WHERE ((node_type = 'document'::text) AND (is_locked = true))"
+  },
   "public.tree_nodes.idx_tree_nodes_parent_id": {
     "schema": "public",
     "name": "idx_tree_nodes_parent_id",

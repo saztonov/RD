@@ -85,6 +85,10 @@ class TreeFolderOperationsMixin:
     
     def _remove_stamps_from_document(self, node: TreeNode):
         """Удалить рамки и QR-коды из PDF документа (скачать из R2, обработать, загрузить обратно)"""
+        # Проверка блокировки документа
+        if self._check_document_locked(node):
+            return
+        
         from rd_core.r2_storage import R2Storage
         from rd_core.pdf_stamp_remover import remove_stamps_from_pdf
         from app.gui.folder_settings_dialog import get_projects_dir

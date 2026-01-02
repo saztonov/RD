@@ -3552,6 +3552,13 @@
         "default": null,
         "data_type": "timestamp with time zone",
         "is_nullable": true
+      },
+      {
+        "name": "is_locked",
+        "comment": "Флаг блокировки документа от изменений (удаление, переименование, изменение блоков, запуск OCR)",
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
       }
     ],
     "constraints": [

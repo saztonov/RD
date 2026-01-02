@@ -32,6 +32,8 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.page_images: dict = {}
         self.page_zoom_states: dict = {}
         self._current_pdf_path: Optional[str] = None
+        self._current_node_id: Optional[str] = None
+        self._current_node_locked: bool = False
         
         # Undo/Redo стек
         self.undo_stack: list = []  # [(page_num, blocks_copy), ...]

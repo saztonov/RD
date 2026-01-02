@@ -50,6 +50,16 @@ class TreeContextMenuMixin:
                     action = menu.addAction("📂 Открыть папку")
                     action.setData(("open_folder", node))
                     
+                    # Блокировка/разблокировка
+                    menu.addSeparator()
+                    if node.is_locked:
+                        action = menu.addAction("🔓 Снять блокировку")
+                        action.setData(("unlock_document", node))
+                    else:
+                        action = menu.addAction("🔒 Заблокировать документ")
+                        action.setData(("lock_document", node))
+                    menu.addSeparator()
+                    
                     # Подменю выбора версии
                     max_versions = get_max_versions()
                     version_menu = menu.addMenu(f"📌 Версия [v{node.version or 1}]")
@@ -157,5 +167,11 @@ class TreeContextMenuMixin:
         elif action == "view_on_r2":
             node = data[1]
             self._view_on_r2(node)
+        elif action == "lock_document":
+            node = data[1]
+            self._lock_document(node)
+        elif action == "unlock_document":
+            node = data[1]
+            self._unlock_document(node)
 
 
