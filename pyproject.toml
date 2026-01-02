@@ -1,0 +1,44 @@
+[project]
+name = "core-structure"
+version = "0.1"
+description = "Система структурного анализа и обработки документов с поддержкой удалённого OCR, иерархического управления проектами и интеллектуальной разметки блоков"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Core Structure Team"}
+]
+keywords = [
+    "pdf",
+    "ocr",
+    "annotation",
+    "document-processing",
+    "computer-vision",
+    "structure-analysis"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Multimedia :: Graphics",
+]
+
+dependencies = [
+    # Будут читаться из requirements.txt
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/core-structure"
+Documentation = "https://github.com/your-org/core-structure/docs"
+Repository = "https://github.com/your-org/core-structure"
+
+[tool.setuptools]
+packages = ["app", "rd_core", "services"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

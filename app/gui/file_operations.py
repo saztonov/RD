@@ -16,6 +16,12 @@ from app.gui.file_download import FileDownloadMixin
 
 logger = logging.getLogger(__name__)
 
+# Импорт метаданных продукта
+try:
+    from _metadata import __product__
+except ImportError:
+    __product__ = "Core Structure"
+
 # Re-export для обратной совместимости
 __all__ = ['FileOperationsMixin', 'get_annotation_path', 'get_annotation_r2_key']
 
@@ -233,7 +239,7 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             self._load_ocr_result_file()
         
         # Обновляем заголовок
-        self.setWindowTitle(f"PDF Annotation Tool - {Path(pdf_path).name}")
+        self.setWindowTitle(f"{__product__} - {Path(pdf_path).name}")
     
     def _save_annotation(self):
         """Сохранить разметку в JSON"""

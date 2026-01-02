@@ -17,6 +17,14 @@ from app.gui.remote_ocr_panel import RemoteOCRPanel
 from app.gui.file_operations import FileOperationsMixin
 from app.gui.block_handlers import BlockHandlersMixin
 
+# Импорт метаданных продукта
+try:
+    from _metadata import __product__, get_version_info
+except ImportError:
+    __product__ = "Core Structure"
+    def get_version_info():
+        return "Core Structure v0.1"
+
 
 class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin, 
                  BlockHandlersMixin, QMainWindow):
@@ -61,7 +69,7 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree)
         self.navigation_manager = NavigationManager(self)
         
-        self.setWindowTitle("PDF Annotation Tool")
+        self.setWindowTitle(__product__)
         self.resize(1200, 800)
         
         # Статус-бар для отображения прогресса загрузки

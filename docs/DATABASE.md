@@ -92,7 +92,7 @@ CREATE TABLE jobs (
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `id` | uuid | Первичный ключ |
-| `client_id` | text | Идентификатор клиента (из `~/.config/RD/client_id.txt`) |
+| `client_id` | text | Идентификатор клиента (из `~/.config/CoreStructure/client_id.txt`) |
 | `document_id` | text | SHA256 хеш PDF файла |
 | `document_name` | text | Имя PDF файла |
 | `task_name` | text | Название задачи (пользовательское) |

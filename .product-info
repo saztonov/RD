@@ -1,0 +1,49 @@
+# Core Structure Product Information
+# This file contains essential product metadata in a machine-readable format
+
+PRODUCT_NAME=Core Structure
+PRODUCT_VERSION=0.1
+PRODUCT_STATUS=Alpha
+PRODUCT_LICENSE=MIT
+PRODUCT_RELEASE_DATE=2026-01-02
+
+# Build Information
+BUILD_NAME=CoreStructure
+BUILD_DISPLAY_NAME=Core Structure
+BUILD_EXE_NAME=CoreStructure.exe
+
+# Technical Requirements
+PYTHON_VERSION_MIN=3.11
+GUI_FRAMEWORK=PySide6
+
+# Components
+HAS_DESKTOP_CLIENT=true
+HAS_REMOTE_OCR_SERVER=true
+HAS_CELERY_WORKERS=true
+
+# Storage
+USES_SUPABASE=true
+USES_R2_STORAGE=true
+USES_REDIS=true
+
+# OCR Engines
+OCR_ENGINE_OPENROUTER=true
+OCR_ENGINE_DATALAB=true
+
+# Features
+FEATURE_POLYGON_ANNOTATION=true
+FEATURE_TREE_PROJECTS=true
+FEATURE_TWO_PASS_OCR=true
+FEATURE_VERSION_CONTROL=true
+FEATURE_MARKDOWN_EXPORT=true
+FEATURE_PDF_CROPS=true
+
+# Configuration Paths
+CONFIG_DIR_WINDOWS=%USERPROFILE%\.config\CoreStructure
+CONFIG_DIR_LINUX=~/.config/CoreStructure
+CONFIG_DIR_MACOS=~/.config/CoreStructure
+
+# URLs (update when available)
+REPOSITORY_URL=https://github.com/your-org/core-structure
+DOCUMENTATION_URL=https://github.com/your-org/core-structure/docs
+ISSUES_URL=https://github.com/your-org/core-structure/issues

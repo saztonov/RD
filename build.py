@@ -1,4 +1,9 @@
-"""Сборка exe с внедрением ключей из .env"""
+"""
+Core Structure - Сборка в исполняемый файл
+
+Скрипт для сборки приложения Core Structure в .exe файл
+с внедрением переменных окружения из .env файла.
+"""
 import os
 import sys
 from pathlib import Path
@@ -55,7 +60,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='PDFAnnotationTool',
+    name='CoreStructure',
     debug=False,
     bootloader_ignore_signals=False,
     strip=True,
@@ -71,7 +76,7 @@ exe = EXE(
 )
 """
 
-spec_file = Path("PDFAnnotationTool.spec")
+spec_file = Path("CoreStructure.spec")
 with open(spec_file, 'w', encoding='utf-8') as f:
     f.write(spec_content)
 
@@ -79,10 +84,10 @@ print(f"[OK] Spec updated with {len(env_vars)} vars")
 print(f"[OK] Runtime hook: {hook_file}")
 print("\nRunning PyInstaller...")
 
-os.system("pyinstaller PDFAnnotationTool.spec")
+os.system("pyinstaller CoreStructure.spec")
 
 # Очистка
 if hook_file.exists():
     hook_file.unlink()
-print("\n[OK] Build complete: dist\\PDFAnnotationTool.exe")
+print("\n[OK] Build complete: dist\\CoreStructure.exe")
 
