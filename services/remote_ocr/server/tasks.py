@@ -134,6 +134,14 @@ def run_ocr_task(self, job_id: str) -> dict:
         # Регистрация OCR результатов в node_files
         if job.node_id:
             register_ocr_results_to_node(job.node_id, job.document_name, work_dir)
+            
+            # Обновляем статус PDF документа
+            try:
+                from .storage_nodes import update_node_pdf_status
+                update_node_pdf_status(job.node_id)
+                logger.info(f"PDF status updated for node {job.node_id}")
+            except Exception as e:
+                logger.warning(f"Failed to update PDF status: {e}")
         
         update_job_status(job.id, "done", progress=1.0)
         logger.info(f"Задача {job.id} завершена успешно")

@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-01T16:42:22.155705
+-- Generated: 2026-01-02T16:54:14.123527
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -635,6 +635,9 @@ CREATE TABLE IF NOT EXISTS public.tree_nodes (
     sort_order integer DEFAULT 0,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    pdf_status text DEFAULT 'unknown'::text,
+    pdf_status_message text,
+    pdf_status_updated_at timestamp with time zone,
     CONSTRAINT tree_nodes_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT tree_nodes_pkey PRIMARY KEY (id)
 );
@@ -975,7 +978,7 @@ $function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
+CREATE OR REPLACE FUNCTION extensions.armor(bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -983,7 +986,7 @@ AS '$libdir/pgcrypto', $function$pg_armor$function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea)
+CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1230,7 +1233,7 @@ $function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1238,7 +1241,7 @@ AS '$libdir/pgcrypto', $function$pg_hmac$function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1286,6 +1289,14 @@ AS '$libdir/pgcrypto', $function$pgp_key_id_w$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
+ RETURNS text
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
+
+
+-- Function: extensions.pgp_pub_decrypt
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
  RETURNS text
  LANGUAGE c
@@ -1301,14 +1312,6 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
--- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
- RETURNS text
- LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
-
-
 -- Function: extensions.pgp_pub_decrypt_bytea
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
  RETURNS bytea
@@ -1318,7 +1321,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1326,7 +1329,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1382,7 +1385,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1390,7 +1393,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1414,7 +1417,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1422,7 +1425,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1811,6 +1814,91 @@ END;
 $function$
 
 
+-- Function: public.recalculate_all_pdf_statuses
+-- Description: Пересчитывает статусы всех PDF документов на основе данных node_files
+CREATE OR REPLACE FUNCTION public.recalculate_all_pdf_statuses()
+ RETURNS TABLE(node_id uuid, old_status text, new_status text, status_message text)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    doc RECORD;
+    v_status TEXT;
+    v_message TEXT;
+    v_has_ann_r2 BOOLEAN;
+    v_has_ocr_r2 BOOLEAN;
+    v_has_res_r2 BOOLEAN;
+    v_has_ann_db BOOLEAN;
+    v_has_ocr_db BOOLEAN;
+    v_has_res_db BOOLEAN;
+    v_r2_key TEXT;
+    v_ann_key TEXT;
+    v_ocr_key TEXT;
+    v_res_key TEXT;
+BEGIN
+    -- Обходим все документы
+    FOR doc IN 
+        SELECT id, attributes->>'r2_key' as r2_key, pdf_status
+        FROM tree_nodes 
+        WHERE node_type = 'document'
+    LOOP
+        v_r2_key := doc.r2_key;
+        
+        IF v_r2_key IS NULL OR v_r2_key = '' THEN
+            v_status := 'unknown';
+            v_message := 'Нет R2 ключа';
+        ELSE
+            -- Формируем ключи для связанных файлов
+            v_ann_key := regexp_replace(v_r2_key, '\.pdf$', '_annotation.json', 'i');
+            v_ocr_key := regexp_replace(v_r2_key, '\.pdf$', '_ocr.html', 'i');
+            v_res_key := regexp_replace(v_r2_key, '\.pdf$', '_result.json', 'i');
+            
+            -- Проверяем наличие в node_files
+            SELECT 
+                bool_or(file_type = 'annotation') AS has_ann,
+                bool_or(file_type = 'ocr_html') AS has_ocr,
+                bool_or(file_type = 'result_json') AS has_res
+            INTO v_has_ann_db, v_has_ocr_db, v_has_res_db
+            FROM node_files
+            WHERE node_id = doc.id;
+            
+            -- Определяем статус на основе наличия файлов в БД
+            IF v_has_ann_db AND v_has_ocr_db AND v_has_res_db THEN
+                v_status := 'complete';
+                v_message := 'Все файлы на месте';
+            ELSIF NOT v_has_ann_db THEN
+                v_status := 'missing_blocks';
+                v_message := 'Отсутствует annotation.json';
+            ELSE
+                v_status := 'missing_files';
+                v_message := '';
+                IF NOT v_has_ocr_db THEN
+                    v_message := v_message || 'ocr.html не в Supabase; ';
+                END IF;
+                IF NOT v_has_res_db THEN
+                    v_message := v_message || 'result.json не в Supabase; ';
+                END IF;
+            END IF;
+        END IF;
+        
+        -- Обновляем статус
+        UPDATE tree_nodes
+        SET 
+            pdf_status = v_status,
+            pdf_status_message = v_message,
+            pdf_status_updated_at = NOW()
+        WHERE id = doc.id;
+        
+        -- Возвращаем результат
+        node_id := doc.id;
+        old_status := doc.pdf_status;
+        new_status := v_status;
+        status_message := v_message;
+        RETURN NEXT;
+    END LOOP;
+END;
+$function$
+
+
 -- Function: public.update_app_settings_timestamp
 CREATE OR REPLACE FUNCTION public.update_app_settings_timestamp()
  RETURNS trigger
@@ -1831,6 +1919,23 @@ AS $function$
 BEGIN
     NEW.updated_at = now();
     RETURN NEW;
+END;
+$function$
+
+
+-- Function: public.update_pdf_status
+CREATE OR REPLACE FUNCTION public.update_pdf_status(p_node_id uuid, p_status text, p_message text DEFAULT NULL::text)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    UPDATE tree_nodes
+    SET 
+        pdf_status = p_status,
+        pdf_status_message = p_message,
+        pdf_status_updated_at = NOW(),
+        updated_at = NOW()
+    WHERE id = p_node_id AND node_type = 'document';
 END;
 $function$
 
@@ -3845,6 +3950,9 @@ CREATE INDEX idx_tree_nodes_client_parent ON public.tree_nodes USING btree (clie
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_parent_id ON public.tree_nodes USING btree (parent_id);
+
+-- Index on public.tree_nodes
+CREATE INDEX idx_tree_nodes_pdf_status ON public.tree_nodes USING btree (pdf_status) WHERE (node_type = 'document'::text);
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_sort ON public.tree_nodes USING btree (parent_id, sort_order);

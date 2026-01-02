@@ -118,6 +118,34 @@ class TreeClient:
         data = resp.json()
         return TreeNode.from_dict(data[0]) if data else None
     
+    def get_pdf_status(self, node_id: str) -> tuple[str, str]:
+        """
+        Получить статус PDF документа из БД
+        
+        Returns:
+            Кортеж (статус, сообщение)
+        """
+        resp = self._request("get", f"/tree_nodes?id=eq.{node_id}&select=pdf_status,pdf_status_message")
+        data = resp.json()
+        if data:
+            return data[0].get("pdf_status", "unknown"), data[0].get("pdf_status_message", "")
+        return "unknown", ""
+    
+    def update_pdf_status(self, node_id: str, status: str, message: str = None):
+        """Обновить статус PDF документа"""
+        try:
+            self._request(
+                "post",
+                "/rpc/update_pdf_status",
+                json={
+                    "p_node_id": node_id,
+                    "p_status": status,
+                    "p_message": message
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to update PDF status: {e}")
+    
     def create_node(
         self,
         node_type,

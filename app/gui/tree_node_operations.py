@@ -331,20 +331,9 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                     self.client.update_node(node.id, name=new_name_clean)
                 
                 # Обновляем UI
-                item = self._node_map.get(node.id)
-                if item:
-                    icon = NODE_ICONS.get(node.node_type, "📄")
-                    if node.node_type == NodeType.DOCUMENT:
-                        version_tag = f"[v{node.version}]" if node.version else "[v1]"
-                        has_annotation = node.attributes.get("has_annotation", False)
-                        ann_icon = " 📋" if has_annotation else ""
-                        display_name = f"{icon} {version_tag} {new_name_clean}{ann_icon}"
-                    elif node.code:
-                        display_name = f"{icon} [{node.code}] {new_name_clean}"
-                    else:
-                        display_name = f"{icon} {new_name_clean}"
-                    item.setText(0, display_name)
-                    node.name = new_name_clean
+                node.name = new_name_clean
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(100, self._refresh_tree)
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
     

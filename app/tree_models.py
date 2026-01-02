@@ -89,6 +89,8 @@ class TreeNode:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     children: List["TreeNode"] = field(default_factory=list)
+    pdf_status: Optional[str] = None
+    pdf_status_message: Optional[str] = None
     
     @classmethod
     def from_dict(cls, data: dict) -> "TreeNode":
@@ -105,6 +107,8 @@ class TreeNode:
             sort_order=data.get("sort_order", 0),
             created_at=datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")) if data.get("created_at") else None,
             updated_at=datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")) if data.get("updated_at") else None,
+            pdf_status=data.get("pdf_status"),
+            pdf_status_message=data.get("pdf_status_message"),
         )
     
     def to_dict(self) -> dict:

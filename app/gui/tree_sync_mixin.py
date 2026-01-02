@@ -108,12 +108,11 @@ class TreeSyncMixin:
         sync_icon = SYNC_ICONS.get(status, "")
         
         if node.node_type == NodeType.DOCUMENT:
-            version_tag = f"[v{node.version}]" if node.version else "[v1]"
-            has_annotation = node.attributes.get("has_annotation", False)
-            ann_icon = "📋" if has_annotation else ""
-            display_name = f"{icon} {node.name} {ann_icon} {sync_icon}".strip()
-            item.setText(0, display_name)
-            item.setData(0, Qt.UserRole + 1, version_tag)
+            # Для документов используем PDF status вместо sync status
+            # Запускаем проверку PDF статуса если миксин доступен
+            if hasattr(self, '_start_pdf_status_check'):
+                # Проверка будет выполнена асинхронно
+                pass
         elif node.node_type == NodeType.TASK_FOLDER:
             if node.code:
                 display_name = f"{icon} [{node.code}] {node.name} {sync_icon}".strip()

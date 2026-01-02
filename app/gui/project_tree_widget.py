@@ -20,6 +20,7 @@ from app.gui.tree_sync_mixin import TreeSyncMixin, SYNC_ICONS
 from app.gui.tree_filter_mixin import TreeFilterMixin
 from app.gui.tree_context_menu import TreeContextMenuMixin
 from app.gui.sync_check_worker import SyncCheckWorker, SyncStatus
+from rd_core.pdf_status import PDFStatus
 
 logger = logging.getLogger(__name__)
 
@@ -338,15 +339,12 @@ class ProjectTreeWidget(
         """Создать элемент дерева"""
         icon = NODE_ICONS.get(node.node_type, "📄")
         
-        # Для документов показываем версию и иконку аннотации
+        # Для документов показываем версию и иконку статуса PDF из БД
         if node.node_type == NodeType.DOCUMENT:
             version_tag = f"[v{node.version}]" if node.version else "[v1]"
-            has_annotation = node.attributes.get("has_annotation", False)
-            ann_icon = "📋" if has_annotation else ""
-            # Иконка синхронизации для документов
-            sync_status = self._sync_statuses.get(node.id, SyncStatus.UNKNOWN)
-            sync_icon = SYNC_ICONS.get(sync_status, "")
-            display_name = f"{icon} {node.name} {ann_icon} {sync_icon}".strip()
+            # Иконка статуса PDF из БД
+            status_icon = self._get_pdf_status_icon(node.pdf_status or "unknown")
+            display_name = f"{icon} {node.name} {status_icon}".strip()
             # Сохраняем версию отдельно для отображения красным
             version_display = version_tag
         elif node.node_type == NodeType.TASK_FOLDER:
@@ -370,8 +368,22 @@ class ProjectTreeWidget(
         item.setData(0, Qt.UserRole + 1, version_display)  # Версия для делегата
         item.setForeground(0, QColor(STATUS_COLORS.get(node.status, "#e0e0e0")))
         
+        # Устанавливаем tooltip для PDF документов
+        if node.node_type == NodeType.DOCUMENT and node.pdf_status_message:
+            item.setToolTip(0, node.pdf_status_message)
+        
         self._node_map[node.id] = item
         return item
+    
+    def _get_pdf_status_icon(self, status: str) -> str:
+        """Получить иконку для статуса PDF"""
+        icons = {
+            "complete": "✅",
+            "missing_files": "⚠️",
+            "missing_blocks": "❌",
+            "unknown": "",
+        }
+        return icons.get(status, "")
     
     def _add_placeholder(self, item: QTreeWidgetItem, node: TreeNode):
         """Добавить placeholder для lazy loading"""
@@ -596,18 +608,16 @@ class ProjectTreeWidget(
                 attrs["has_annotation"] = True
                 self.client.update_node(node.id, attributes=attrs)
                 
-                # Обновляем отображение
-                item = self._node_map.get(node.id)
-                if item:
-                    node.attributes = attrs
-                    item.setData(0, Qt.UserRole, node)  # Обновляем данные узла
-                    icon = NODE_ICONS.get(node.node_type, "📄")
-                    version_tag = f"[v{node.version}]" if node.version else "[v1]"
-                    display_name = f"{icon} {node.name} 📋".strip()
-                    item.setText(0, display_name)
-                    item.setData(0, Qt.UserRole + 1, version_tag)
+                # Обновляем статус PDF и дерево
+                from rd_core.pdf_status import calculate_pdf_status, PDFStatus
+                from rd_core.r2_storage import R2Storage
+                
+                r2 = R2Storage()
+                status, message = calculate_pdf_status(r2, node.id, r2_key)
+                self.client.update_pdf_status(node.id, status.value, message)
                 
                 self.status_label.setText(f"📥 Аннотация вставлена")
+                QTimer.singleShot(100, self._refresh_tree)
                 logger.info(f"Annotation pasted to {ann_r2_key}")
                 
                 # Сигнал для обновления открытого документа
@@ -767,20 +777,14 @@ class ProjectTreeWidget(
             
             logger.info(f"Annotation registered in Supabase: node_id={node.id}")
             
-            # Обновляем отображение в дереве
-            item = self._node_map.get(node.id)
-            if item:
-                node.attributes = attrs
-                item.setData(0, Qt.UserRole, node)
-                icon = NODE_ICONS.get(node.node_type, "📄")
-                version_tag = f"[v{node.version}]" if node.version else "[v1]"
-                sync_status = self._sync_statuses.get(node.id, SyncStatus.UNKNOWN)
-                sync_icon = SYNC_ICONS.get(sync_status, "")
-                display_name = f"{icon} {node.name} 📋 {sync_icon}".strip()
-                item.setText(0, display_name)
-                item.setData(0, Qt.UserRole + 1, version_tag)
+            # Обновляем статус PDF и дерево
+            from rd_core.pdf_status import calculate_pdf_status, PDFStatus
+            
+            status, message = calculate_pdf_status(r2, node.id, r2_key)
+            self.client.update_pdf_status(node.id, status.value, message)
             
             self.status_label.setText("📤 Аннотация загружена")
+            QTimer.singleShot(100, self._refresh_tree)
             
             # Сигнал для обновления открытого документа
             self.annotation_replaced.emit(r2_key)

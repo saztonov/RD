@@ -50,9 +50,9 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
         
         try:
             from app.tree_client import TreeClient
-            from app.gui.tree_node_operations import NODE_ICONS
-            from app.tree_client import NodeType
-            from PySide6.QtCore import Qt
+            from rd_core.pdf_status import calculate_pdf_status, PDFStatus
+            from rd_core.r2_storage import R2Storage
+            from PySide6.QtCore import QTimer
             
             client = TreeClient()
             node = client.get_node(self._current_node_id)
@@ -61,16 +61,15 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
                 attrs["has_annotation"] = has_annotation
                 client.update_node(self._current_node_id, attributes=attrs)
                 
-                # Обновить отображение в дереве
-                if hasattr(self, 'project_tree') and self.project_tree:
-                    item = self.project_tree._node_map.get(self._current_node_id)
-                    if item:
-                        node.attributes = attrs
-                        icon = NODE_ICONS.get(node.node_type, "📄")
-                        version_tag = f"[v{node.version}]" if node.version else "[v1]"
-                        ann_icon = "📋" if has_annotation else ""
-                        display_name = f"{icon} {version_tag} {node.name} {ann_icon}".strip()
-                        item.setText(0, display_name)
+                # Обновляем статус PDF в БД
+                if node.node_type.value == "document" and self._current_r2_key:
+                    r2 = R2Storage()
+                    status, message = calculate_pdf_status(r2, self._current_node_id, self._current_r2_key)
+                    client.update_pdf_status(self._current_node_id, status.value, message)
+                    
+                    # Обновляем дерево
+                    if hasattr(self, 'project_tree') and self.project_tree:
+                        QTimer.singleShot(100, self.project_tree._refresh_tree)
         except Exception as e:
             logger.debug(f"Update has_annotation failed: {e}")
     
