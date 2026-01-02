@@ -42,7 +42,7 @@ class BlockRenderingMixin:
         """Отрисовать один блок"""
         from PySide6.QtCore import Qt
         
-        color = self._get_block_color(block.block_type)
+        color = self._get_block_color(block)
         pen = QPen(color, 2)
         
         # Блоки в группе имеют красную рамку, но заливка по типу блока
@@ -115,13 +115,18 @@ class BlockRenderingMixin:
             elif block.shape_type == ShapeType.POLYGON and block.polygon_points:
                 self._draw_polygon_handles(block.polygon_points)
     
-    def _get_block_color(self, block_type: BlockType) -> QColor:
-        """Получить цвет для типа блока"""
+    def _get_block_color(self, block: Block) -> QColor:
+        """Получить цвет для блока с учетом типа и категории"""
+        # Если у блока категория "stamp" - синий цвет
+        if hasattr(block, 'category_code') and block.category_code == 'stamp':
+            return QColor(30, 144, 255)  # Dodger Blue
+        
+        # Иначе цвет по типу блока
         colors = {
             BlockType.TEXT: QColor(0, 255, 0),
             BlockType.IMAGE: QColor(255, 140, 0),
         }
-        return colors.get(block_type, QColor(128, 128, 128))
+        return colors.get(block.block_type, QColor(128, 128, 128))
     
     def _redraw_blocks(self):
         """Перерисовать все блоки"""

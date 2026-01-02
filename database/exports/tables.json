@@ -2704,6 +2704,111 @@
       }
     ]
   },
+  "public.qa_conversation_context_files": {
+    "schema": "public",
+    "name": "qa_conversation_context_files",
+    "comment": "Хранит файлы контекста диалога и их статус загрузки в Gemini Files API",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "conversation_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "node_file_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "gemini_name",
+        "comment": "Имя файла в Gemini Files API (например: files/xyz123)",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "gemini_uri",
+        "comment": "URI файла в Gemini Files API",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "status",
+        "comment": "Статус: local, downloaded, uploaded",
+        "default": "'local'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "uploaded_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_conversation_context_files_conversation_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "conversation_id",
+        "foreign_table": "qa_conversations",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_conversation_context_files_conversation_id_node_file_id_key",
+        "type": "UNIQUE",
+        "column": "conversation_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_conversation_context_files_conversation_id_node_file_id_key",
+        "type": "UNIQUE",
+        "column": "node_file_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_conversation_context_files_node_file_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "node_file_id",
+        "foreign_table": "node_files",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_conversation_context_files_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
   "public.qa_conversation_gemini_files": {
     "schema": "public",
     "name": "qa_conversation_gemini_files",

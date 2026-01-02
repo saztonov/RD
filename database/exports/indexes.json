@@ -583,6 +583,38 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC)"
   },
+  "public.qa_conversation_context_files.idx_qa_context_files_conversation": {
+    "schema": "public",
+    "name": "idx_qa_context_files_conversation",
+    "table_name": "qa_conversation_context_files",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_context_files_conversation ON public.qa_conversation_context_files USING btree (conversation_id)"
+  },
+  "public.qa_conversation_context_files.idx_qa_context_files_node_file": {
+    "schema": "public",
+    "name": "idx_qa_context_files_node_file",
+    "table_name": "qa_conversation_context_files",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_context_files_node_file ON public.qa_conversation_context_files USING btree (node_file_id)"
+  },
+  "public.qa_conversation_context_files.idx_qa_context_files_status": {
+    "schema": "public",
+    "name": "idx_qa_context_files_status",
+    "table_name": "qa_conversation_context_files",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_context_files_status ON public.qa_conversation_context_files USING btree (status)"
+  },
+  "public.qa_conversation_context_files.qa_conversation_context_files_conversation_id_node_file_id_key": {
+    "schema": "public",
+    "name": "qa_conversation_context_files_conversation_id_node_file_id_key",
+    "table_name": "qa_conversation_context_files",
+    "is_unique": true,
+    "is_primary": false,
+    "sql": "CREATE UNIQUE INDEX qa_conversation_context_files_conversation_id_node_file_id_key ON public.qa_conversation_context_files USING btree (conversation_id, node_file_id)"
+  },
   "public.qa_conversation_gemini_files.idx_qa_conv_gemini_files_conv": {
     "schema": "public",
     "name": "idx_qa_conv_gemini_files_conv",

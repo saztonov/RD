@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-01T14:52:28.292913
+-- Generated: 2026-01-01T16:42:22.155705
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -489,6 +489,28 @@ CREATE TABLE IF NOT EXISTS public.qa_artifacts (
     CONSTRAINT qa_artifacts_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
     CONSTRAINT qa_artifacts_pkey PRIMARY KEY (id)
 );
+
+-- Table: public.qa_conversation_context_files
+-- Description: Хранит файлы контекста диалога и их статус загрузки в Gemini Files API
+CREATE TABLE IF NOT EXISTS public.qa_conversation_context_files (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL,
+    node_file_id uuid NOT NULL,
+    gemini_name text,
+    gemini_uri text,
+    status text NOT NULL DEFAULT 'local'::text,
+    uploaded_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_conversation_context_files_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
+    CONSTRAINT qa_conversation_context_files_conversation_id_node_file_id_key UNIQUE (conversation_id),
+    CONSTRAINT qa_conversation_context_files_conversation_id_node_file_id_key UNIQUE (node_file_id),
+    CONSTRAINT qa_conversation_context_files_node_file_id_fkey FOREIGN KEY (node_file_id) REFERENCES public.node_files(id),
+    CONSTRAINT qa_conversation_context_files_pkey PRIMARY KEY (id)
+);
+COMMENT ON TABLE public.qa_conversation_context_files IS 'Хранит файлы контекста диалога и их статус загрузки в Gemini Files API';
+COMMENT ON COLUMN public.qa_conversation_context_files.gemini_name IS 'Имя файла в Gemini Files API (например: files/xyz123)';
+COMMENT ON COLUMN public.qa_conversation_context_files.gemini_uri IS 'URI файла в Gemini Files API';
+COMMENT ON COLUMN public.qa_conversation_context_files.status IS 'Статус: local, downloaded, uploaded';
 
 -- Table: public.qa_conversation_gemini_files
 CREATE TABLE IF NOT EXISTS public.qa_conversation_gemini_files (
@@ -3760,6 +3782,18 @@ CREATE UNIQUE INDEX idx_node_files_unique_r2 ON public.node_files USING btree (n
 
 -- Index on public.qa_artifacts
 CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC);
+
+-- Index on public.qa_conversation_context_files
+CREATE INDEX idx_qa_context_files_conversation ON public.qa_conversation_context_files USING btree (conversation_id);
+
+-- Index on public.qa_conversation_context_files
+CREATE INDEX idx_qa_context_files_node_file ON public.qa_conversation_context_files USING btree (node_file_id);
+
+-- Index on public.qa_conversation_context_files
+CREATE INDEX idx_qa_context_files_status ON public.qa_conversation_context_files USING btree (status);
+
+-- Index on public.qa_conversation_context_files
+CREATE UNIQUE INDEX qa_conversation_context_files_conversation_id_node_file_id_key ON public.qa_conversation_context_files USING btree (conversation_id, node_file_id);
 
 -- Index on public.qa_conversation_gemini_files
 CREATE INDEX idx_qa_conv_gemini_files_conv ON public.qa_conversation_gemini_files USING btree (conversation_id);
