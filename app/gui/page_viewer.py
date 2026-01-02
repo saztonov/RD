@@ -131,10 +131,20 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
             self._set_close_button_visible(False)
             return
         
-        img_bytes = pil_image.tobytes("raw", "RGB")
-        qimage = QImage(img_bytes, pil_image.width, pil_image.height, 
-                       pil_image.width * 3, QImage.Format_RGB888)
-        self.page_image = QPixmap.fromImage(qimage)
+        # Конвертируем в RGB если нужно (RGBA -> RGB)
+        if pil_image.mode == "RGBA":
+            rgb_image = Image.new("RGB", pil_image.size, (255, 255, 255))
+            rgb_image.paste(pil_image, mask=pil_image.split()[3])
+            pil_image = rgb_image
+        elif pil_image.mode != "RGB":
+            pil_image = pil_image.convert("RGB")
+        
+        # Прямая конвертация PIL → QPixmap без промежуточного копирования
+        img_data = pil_image.tobytes("raw", "RGB")
+        qimage = QImage(img_data, pil_image.width, pil_image.height,
+                        pil_image.width * 3, QImage.Format_RGB888)
+        # Важно: делаем copy() чтобы QImage владел данными
+        self.page_image = QPixmap.fromImage(qimage.copy())
         self.current_page = page_number
         
         self.scene.clear()

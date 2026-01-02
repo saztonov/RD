@@ -81,11 +81,24 @@ class NavigationManager:
                 ]
     
     def load_page_image(self, page_num: int, reset_zoom: bool = False):
-        """Загрузить изображение страницы"""
+        """Загрузить изображение страницы с LRU-кешем"""
+        # Рендерим если нет в кеше
         if page_num not in self.parent.page_images:
             img = self.parent.pdf_document.render_page(page_num)
             if img:
                 self.parent.page_images[page_num] = img
+                self.parent._page_images_order.append(page_num)
+                
+                # Удаляем старые страницы если превышен лимит
+                while len(self.parent._page_images_order) > self.parent._page_images_max:
+                    oldest = self.parent._page_images_order.pop(0)
+                    if oldest in self.parent.page_images and oldest != page_num:
+                        del self.parent.page_images[oldest]
+        else:
+            # Обновляем LRU порядок
+            if page_num in self.parent._page_images_order:
+                self.parent._page_images_order.remove(page_num)
+            self.parent._page_images_order.append(page_num)
         
         if page_num in self.parent.page_images:
             img = self.parent.page_images[page_num]

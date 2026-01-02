@@ -23,6 +23,10 @@ Image.MAX_IMAGE_PIXELS = 500_000_000
 PDF_RENDER_DPI = 300
 PDF_RENDER_ZOOM = PDF_RENDER_DPI / 72.0  # ≈ 4.167
 
+# DPI для предпросмотра (быстрый рендеринг)
+PDF_PREVIEW_DPI = 150
+PDF_PREVIEW_ZOOM = PDF_PREVIEW_DPI / 72.0  # ≈ 2.08
+
 
 def open_pdf(path: str) -> fitz.Document:
     """
@@ -99,9 +103,9 @@ def render_page_to_image(
         # Получаем страницу
         page = doc[page_index]
         
-        # Адаптивный zoom для больших страниц (лимит ~400 млн пикселей)
+        # Адаптивный zoom для больших страниц (лимит ~100 млн пикселей для скорости)
         rect = page.rect
-        max_pixels = 400_000_000
+        max_pixels = 100_000_000
         estimated_pixels = (rect.width * zoom) * (rect.height * zoom)
         effective_zoom = zoom
         if estimated_pixels > max_pixels:
@@ -116,10 +120,11 @@ def render_page_to_image(
         
         logger.debug(f"Страница {page_index} отрендерена: {pix.width}x{pix.height}px, zoom={effective_zoom}")
         
-        # Конвертация в PIL Image
-        # Используем tobytes() для получения сырых данных изображения
-        img_data = pix.tobytes("png")
-        img = Image.open(io.BytesIO(img_data))
+        # Прямая конвертация в PIL Image без PNG encoding/decoding
+        if pix.alpha:
+            img = Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
+        else:
+            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
         
         return img
         
@@ -172,13 +177,13 @@ class PDFDocument:
             self.doc = None
             logger.debug(f"PDF документ закрыт: {self.pdf_path}")
     
-    def render_page(self, page_number: int, zoom: float = PDF_RENDER_ZOOM) -> Optional[Image.Image]:
+    def render_page(self, page_number: int, zoom: float = PDF_PREVIEW_ZOOM) -> Optional[Image.Image]:
         """
         Рендеринг страницы в изображение PIL
         
         Args:
             page_number: номер страницы (начиная с 0)
-            zoom: коэффициент масштабирования (2.0 = 200% = 144 DPI)
+            zoom: коэффициент масштабирования (по умолчанию preview 150 DPI)
         
         Returns:
             PIL.Image или None в случае ошибки
@@ -193,7 +198,7 @@ class PDFDocument:
             logger.error(f"Ошибка рендеринга страницы {page_number}: {e}")
             return None
     
-    def get_page_dimensions(self, page_number: int, zoom: float = PDF_RENDER_ZOOM) -> Optional[tuple]:
+    def get_page_dimensions(self, page_number: int, zoom: float = PDF_PREVIEW_ZOOM) -> Optional[tuple]:
         """
         Получить размеры страницы после рендеринга
         

@@ -30,6 +30,8 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.annotation_document: Optional[Document] = None
         self.current_page: int = 0
         self.page_images: dict = {}
+        self._page_images_order: list = []  # LRU порядок страниц
+        self._page_images_max: int = 5  # Максимум страниц в кеше
         self.page_zoom_states: dict = {}
         self._current_pdf_path: Optional[str] = None
         self._current_node_id: Optional[str] = None
@@ -221,6 +223,7 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self.annotation_document = None
         self._current_pdf_path = None
         self.page_images.clear()
+        self._page_images_order.clear()
         self.page_viewer.set_page_image(None, 0)
         self.page_viewer.set_blocks([])
         if self.blocks_tree_manager:

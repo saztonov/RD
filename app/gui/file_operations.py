@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtCore import Qt
 
 from rd_core.models import Document, Page
 from rd_core.pdf_utils import PDFDocument
@@ -198,6 +199,7 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             self.pdf_document.close()
         
         self.page_images.clear()
+        self._page_images_order.clear()
         self.undo_stack.clear()
         self.redo_stack.clear()
         
