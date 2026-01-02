@@ -47,11 +47,10 @@ class TreeFolderOperationsMixin:
             r2_prefix = str(PurePosixPath(r2_key).parent)
             pdf_stem = Path(r2_key).stem
             
-            # Список файлов для скачивания: PDF, annotation, MD
+            # Список файлов для скачивания: PDF, annotation
             files_to_download = [
                 (r2_key, local_file),  # PDF
                 (f"{r2_prefix}/{pdf_stem}_annotation.json", local_folder / f"{pdf_stem}_annotation.json"),
-                (f"{r2_prefix}/{pdf_stem}.md", local_folder / f"{pdf_stem}.md"),
             ]
             
             downloaded = 0

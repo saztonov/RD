@@ -54,26 +54,14 @@ class JobOperationsMixin:
                 if crops_folder.exists():
                     shutil.rmtree(crops_folder, ignore_errors=True)
             
-            # 2. Удаляем MD файл из R2 и кэша
-            md_key = f"{r2_prefix}/{pdf_stem}.md"
-            if r2.exists(md_key):
-                r2.delete_object(md_key)
-                logger.debug(f"Deleted MD from R2: {md_key}")
-            
-            if projects_dir:
-                rel_md = md_key[len("tree_docs/"):] if md_key.startswith("tree_docs/") else md_key
-                md_local = Path(projects_dir) / "cache" / rel_md
-                if md_local.exists():
-                    md_local.unlink()
-            
-            # 3. Удаляем записи из node_files (RESULT_MD, CROP, RESULT_ZIP)
+            # 2. Удаляем записи из node_files (CROP)
             client = TreeClient()
             node_files = client.get_node_files(node_id)
             for nf in node_files:
-                if nf.file_type in (FileType.RESULT_MD, FileType.CROP, FileType.RESULT_ZIP):
+                if nf.file_type == FileType.CROP:
                     client.delete_node_file(nf.id)
             
-            # 4. Очищаем ocr_text в блоках текущего документа и сохраняем на диск
+            # 3. Очищаем ocr_text в блоках текущего документа и сохраняем на диск
             if self.main_window.annotation_document:
                 cleared = 0
                 for page in self.main_window.annotation_document.pages:
@@ -98,16 +86,11 @@ class JobOperationsMixin:
                         r2.upload_file(str(ann_path), ann_r2_key)
                         logger.debug(f"Synced cleared annotation to R2: {ann_r2_key}")
             
-            # 5. Обновляем дерево проектов (убираем markdown из дочерних)
+            # 4. Обновляем дерево проектов
             if hasattr(self.main_window, 'project_tree_widget'):
                 tree = self.main_window.project_tree_widget
-                item = tree._node_map.get(node_id)
-                if item:
-                    while item.childCount() > 0:
-                        item.removeChild(item.child(0))
-                    node = item.data(0, 0x0100)  # Qt.UserRole
-                    if node:
-                        tree._add_placeholder(item, node)
+                # Обновляем только статус узла, дочерних элементов у документов нет
+                pass
             
             logger.info(f"Cleaned old OCR results for node: {node_id}")
             

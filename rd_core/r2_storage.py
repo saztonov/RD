@@ -88,12 +88,14 @@ class R2Storage(R2UploadMixin, R2DownloadMixin, R2UtilsMixin):
         )
         
         # Transfer config для multipart upload/download
+        # Оптимизировано для массовой параллельной загрузки
         from boto3.s3.transfer import TransferConfig
         self.transfer_config = TransferConfig(
-            multipart_threshold=8 * 1024 * 1024,  # 8 MB
-            max_concurrency=10,
-            multipart_chunksize=8 * 1024 * 1024,
-            use_threads=True
+            multipart_threshold=8 * 1024 * 1024,  # 8 MB - начинаем multipart для файлов > 8MB
+            max_concurrency=20,  # Увеличено для параллельных операций
+            multipart_chunksize=8 * 1024 * 1024,  # 8 MB чанки
+            use_threads=True,
+            max_io_queue=1000  # Буфер для IO операций
         )
         
         logger.info("✅ R2Storage инициализирован")

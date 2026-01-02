@@ -143,7 +143,7 @@ class FileDownloadMixin:
             node_id=node_id,
         ))
         
-        # Проверяем есть ли дополнительные файлы (аннотации, markdown, кропы)
+        # Проверяем есть ли дополнительные файлы (аннотации, кропы)
         try:
             client = TreeClient()
             node_files = client.get_node_files(node_id)

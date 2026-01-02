@@ -370,14 +370,14 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         # Перезагружаем аннотацию из скачанного файла
         self._reload_annotation_from_result(extract_dir)
         
-        # Обновляем дерево проектов для отображения markdown файла
+        # Обновляем дерево проектов
         self._refresh_document_in_tree()
         
         from app.gui.toast import show_toast
         show_toast(self.main_window, f"OCR завершён, аннотация обновлена")
     
     def _refresh_document_in_tree(self):
-        """Обновить узел документа в дереве проектов (показать markdown)"""
+        """Обновить узел документа в дереве проектов"""
         node_id = getattr(self.main_window, '_current_node_id', None)
         if not node_id:
             return

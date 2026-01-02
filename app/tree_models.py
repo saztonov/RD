@@ -35,8 +35,6 @@ ALLOWED_CHILDREN: Dict[Optional[NodeType], List[NodeType]] = {
 class FileType(str, Enum):
     PDF = "pdf"
     ANNOTATION = "annotation"
-    RESULT_MD = "result_md"
-    RESULT_ZIP = "result_zip"
     CROP = "crop"
     IMAGE = "image"
     OCR_HTML = "ocr_html"

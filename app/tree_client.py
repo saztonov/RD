@@ -396,7 +396,7 @@ class TreeClient:
         mime_type: str = "application/octet-stream",
         metadata: Optional[Dict] = None,
     ) -> NodeFile:
-        """Добавить файл к узлу (PDF, аннотация, markdown, кроп и т.д.)"""
+        """Добавить файл к узлу (PDF, аннотация, кроп и т.д.)"""
         file_id = str(uuid.uuid4())
         payload = {
             "id": file_id,

@@ -461,12 +461,8 @@ class ProjectTreeWidget(
     def _add_placeholder(self, item: QTreeWidgetItem, node: TreeNode):
         """Добавить placeholder для lazy loading"""
         allowed = node.get_allowed_child_types()
-        # Для документов добавляем placeholder для файлов (crops, annotation, etc.)
-        if node.node_type == NodeType.DOCUMENT:
-            placeholder = QTreeWidgetItem(["📎 Файлы..."])
-            placeholder.setData(0, Qt.UserRole, "files_placeholder")
-            item.addChild(placeholder)
-        elif allowed:
+        # Для документов не добавляем placeholder - они не имеют дочерних элементов в дереве
+        if allowed:
             placeholder = QTreeWidgetItem(["..."])
             placeholder.setData(0, Qt.UserRole, "placeholder")
             item.addChild(placeholder)
@@ -488,10 +484,6 @@ class ProjectTreeWidget(
                     self._load_children(item, node)
                     # Запускаем проверку синхронизации для загруженных дочерних
                     QTimer.singleShot(100, self._start_sync_check)
-            elif child_data == "files_placeholder":
-                if isinstance(node, TreeNode):
-                    item.removeChild(child)
-                    self._load_node_files(item, node)
     
     def _on_item_collapsed(self, item: QTreeWidgetItem):
         """Обработчик сворачивания узла"""
@@ -512,81 +504,6 @@ class ProjectTreeWidget(
         except Exception as e:
             logger.error(f"Failed to load children: {e}")
     
-    def _load_node_files(self, parent_item: QTreeWidgetItem, node: TreeNode):
-        """Загрузить список файлов документа из node_files"""
-        FILE_TYPE_ICONS = {
-            FileType.PDF: "📕",
-            FileType.ANNOTATION: "📋",
-            FileType.OCR_HTML: "🌐",
-            FileType.RESULT_JSON: "📊",
-            FileType.RESULT_MD: "📝",
-            FileType.RESULT_ZIP: "📦",
-            FileType.CROP: "✂️",
-            FileType.IMAGE: "🖼️",
-        }
-        
-        FILE_TYPE_NAMES = {
-            FileType.PDF: "PDF",
-            FileType.ANNOTATION: "Аннотация",
-            FileType.OCR_HTML: "OCR HTML",
-            FileType.RESULT_JSON: "Результат JSON",
-            FileType.RESULT_MD: "Markdown",
-            FileType.RESULT_ZIP: "ZIP-архив",
-            FileType.CROP: "Кроп",
-            FileType.IMAGE: "Изображение",
-        }
-        
-        try:
-            node_files = self.client.get_node_files(node.id)
-            
-            # Исключаем PDF (он уже отображается как родительский узел)
-            node_files = [f for f in node_files if f.file_type != FileType.PDF]
-            
-            if not node_files:
-                no_files_item = QTreeWidgetItem(["(нет файлов)"])
-                no_files_item.setData(0, Qt.UserRole, "no_files")
-                no_files_item.setForeground(0, QColor("#666666"))
-                parent_item.addChild(no_files_item)
-                return
-            
-            # Группируем кропы
-            crops = [f for f in node_files if f.file_type == FileType.CROP]
-            other_files = [f for f in node_files if f.file_type != FileType.CROP]
-            
-            # Добавляем основные файлы
-            for nf in other_files:
-                icon = FILE_TYPE_ICONS.get(nf.file_type, "📄")
-                type_name = FILE_TYPE_NAMES.get(nf.file_type, nf.file_type.value)
-                size_kb = nf.file_size // 1024 if nf.file_size else 0
-                display = f"{icon} {type_name}: {nf.file_name} ({size_kb} KB)"
-                
-                file_item = QTreeWidgetItem([display])
-                file_item.setData(0, Qt.UserRole, ("node_file", nf))
-                file_item.setForeground(0, QColor("#aaaaaa"))
-                parent_item.addChild(file_item)
-            
-            # Добавляем кропы как группу
-            if crops:
-                crops_display = f"✂️ Кропы ({len(crops)})"
-                crops_item = QTreeWidgetItem([crops_display])
-                crops_item.setData(0, Qt.UserRole, "crops_group")
-                crops_item.setForeground(0, QColor("#aaaaaa"))
-                parent_item.addChild(crops_item)
-                
-                # Добавляем каждый кроп как дочерний
-                for crop in crops:
-                    size_kb = crop.file_size // 1024 if crop.file_size else 0
-                    crop_display = f"📄 {crop.file_name} ({size_kb} KB)"
-                    crop_item = QTreeWidgetItem([crop_display])
-                    crop_item.setData(0, Qt.UserRole, ("node_file", crop))
-                    crop_item.setForeground(0, QColor("#888888"))
-                    crops_item.addChild(crop_item)
-                    
-        except Exception as e:
-            logger.error(f"Failed to load node files: {e}")
-            error_item = QTreeWidgetItem([f"Ошибка загрузки: {e}"])
-            error_item.setForeground(0, QColor("#ff4444"))
-            parent_item.addChild(error_item)
     
     
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
