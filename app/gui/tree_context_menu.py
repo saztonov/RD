@@ -94,6 +94,11 @@ class TreeContextMenuMixin:
                     if r2_key and r2_key.lower().endswith(".pdf"):
                         action = menu.addAction("🔖 Определить и назначить штамп")
                         action.setData(("detect_stamps", node))
+                    
+                    # Верификация блоков
+                    if r2_key and r2_key.lower().endswith(".pdf"):
+                        action = menu.addAction("🔍 Верификация блоков")
+                        action.setData(("verify_blocks", node))
                 
                 # Посмотреть на R2
                 menu.addSeparator()
@@ -173,5 +178,8 @@ class TreeContextMenuMixin:
         elif action == "unlock_document":
             node = data[1]
             self._unlock_document(node)
+        elif action == "verify_blocks":
+            node = data[1]
+            self._verify_blocks(node)
 
 

@@ -1067,3 +1067,15 @@ class ProjectTreeWidget(
             )
             return True
         return False
+    
+    def _verify_blocks(self, node: TreeNode):
+        """Верификация блоков документа"""
+        from app.gui.block_verification_dialog import BlockVerificationDialog
+        
+        r2_key = node.attributes.get("r2_key", "")
+        if not r2_key:
+            QMessageBox.warning(self, "Ошибка", "Документ не имеет привязки к R2")
+            return
+        
+        dialog = BlockVerificationDialog(node.name, r2_key, self)
+        dialog.exec()
