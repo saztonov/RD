@@ -115,10 +115,7 @@ class Settings:
         default_factory=lambda: _get_setting(_db_settings, "datalab_max_concurrent", "DATALAB_MAX_CONCURRENT", 5, int)
     )
     
-    # ===== ДВУХПРОХОДНЫЙ АЛГОРИТМ =====
-    use_two_pass_ocr: bool = field(
-        default_factory=lambda: _get_setting(_db_settings, "use_two_pass_ocr", "USE_TWO_PASS_OCR", True, lambda x: x if isinstance(x, bool) else str(x).lower() in ("true", "1", "yes"))
-    )
+    # ===== НАСТРОЙКИ OCR =====
     crop_png_compress: int = field(
         default_factory=lambda: _get_setting(_db_settings, "crop_png_compress", "CROP_PNG_COMPRESS", 6, int)
     )

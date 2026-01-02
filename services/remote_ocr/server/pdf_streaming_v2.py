@@ -189,6 +189,13 @@ def _group_and_merge_strips(
     strip_counter = 0
     gap = 20
     
+    # Собираем ID блоков которые связаны с IMAGE блоками
+    # Такие IMAGE блоки не должны прерывать strip
+    linked_image_ids = set()
+    for block in blocks:
+        if block.block_type == BlockType.IMAGE and getattr(block, 'linked_block_id', None):
+            linked_image_ids.add(block.id)
+    
     def _save_current_strip():
         nonlocal strip_counter, current_strip_blocks, current_strip_height
         
@@ -240,8 +247,10 @@ def _group_and_merge_strips(
     
     for block in blocks:
         if block.block_type == BlockType.IMAGE:
-            # IMAGE прерывает текущий strip
-            _save_current_strip()
+            # IMAGE прерывает strip только если у него нет связанного TEXT блока
+            # Если есть linked_block_id - значит связанный TEXT блок будет в этом же strip
+            if block.id not in linked_image_ids:
+                _save_current_strip()
             continue
         
         if block.id not in block_crop_paths:

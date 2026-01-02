@@ -6,15 +6,12 @@ from __future__ import annotations
 
 import gc
 import logging
-import os
-from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import fitz
 from PIL import Image, ImageDraw
 
-from .memory_utils import log_memory, get_pil_image_size_mb
+from .memory_utils import get_pil_image_size_mb
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -28,26 +25,6 @@ MAX_IMAGE_PIXELS = 400_000_000
 
 # Увеличиваем лимит PIL
 Image.MAX_IMAGE_PIXELS = 500_000_000
-
-
-@dataclass
-class BlockPart:
-    """Часть блока (для блоков >9000px)"""
-    block: object  # Block
-    crop: Image.Image
-    part_idx: int
-    total_parts: int
-
-
-@dataclass
-class MergedStrip:
-    """Объединённая полоса блоков TEXT/TABLE"""
-    blocks: List = field(default_factory=list)
-    crops: List[Image.Image] = field(default_factory=list)
-    block_parts: List[BlockPart] = field(default_factory=list)
-    total_height: int = 0
-    max_width: int = 0
-    strip_id: str = ""
 
 
 class StreamingPDFProcessor:
@@ -358,161 +335,6 @@ def merge_crops_vertically(
         y_offset += crop.height
     
     return merged
-
-
-def streaming_crop_and_merge(
-    pdf_path: str,
-    blocks: List,
-    output_dir: str,
-    padding: int = 5,
-    save_image_crops_as_pdf: bool = False
-) -> Tuple[Dict[str, str], Dict[str, Image.Image], List[MergedStrip], List[Tuple], Dict[str, str]]:
-    """
-    Streaming версия crop_and_merge_blocks_from_pdf.
-    Обрабатывает страницы последовательно, освобождая память.
-    """
-    from rd_core.models import BlockType
-    
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Логируем размер PDF
-    pdf_size_mb = os.path.getsize(pdf_path) / (1024 * 1024)
-    start_mem = log_memory(f"streaming_crop_and_merge start (PDF: {pdf_size_mb:.1f} MB)")
-    
-    # Группируем по страницам
-    blocks_by_page: Dict[int, List] = {}
-    for block in blocks:
-        blocks_by_page.setdefault(block.page_index, []).append(block)
-    
-    block_crops: Dict[str, Image.Image] = {}
-    image_pdf_paths: Dict[str, str] = {}
-    total_crops_mb = 0.0
-    
-    with StreamingPDFProcessor(pdf_path) as processor:
-        logger.info(f"PDF pages: {processor.page_count}, blocks pages: {len(blocks_by_page)}")
-        
-        # Обрабатываем страницы последовательно
-        for page_idx in sorted(blocks_by_page.keys()):
-            page_blocks = blocks_by_page[page_idx]
-            page_crops_mb = 0.0
-            
-            for block in page_blocks:
-                try:
-                    crop = processor.crop_block_image(block, padding)
-                    if crop:
-                        block_crops[block.id] = crop
-                        page_crops_mb += get_pil_image_size_mb(crop)
-                    
-                    if save_image_crops_as_pdf and block.block_type == BlockType.IMAGE:
-                        pdf_crop_path = os.path.join(output_dir, f"image_{block.id}.pdf")
-                        result = processor.crop_block_to_pdf(block, pdf_crop_path, padding_pt=2)
-                        if result:
-                            image_pdf_paths[block.id] = result
-                            block.image_file = result
-                            
-                except Exception as e:
-                    logger.error(f"Error processing block {block.id}: {e}")
-            
-            total_crops_mb += page_crops_mb
-            logger.debug(f"Page {page_idx}: {len(page_blocks)} blocks, crops: {page_crops_mb:.1f} MB")
-        
-        # Группируем в полосы
-        strips, image_blocks = _group_blocks_streaming(blocks, block_crops)
-    
-    log_memory(f"После обработки страниц (block_crops: ~{total_crops_mb:.1f} MB)")
-    
-    # Создаём merged images для полос
-    strip_paths: Dict[str, str] = {}
-    strip_images: Dict[str, Image.Image] = {}
-    
-    for strip in strips:
-        if strip.crops:
-            try:
-                # Извлекаем block_ids из block_parts для разделителей
-                block_ids = [bp.block.id for bp in strip.block_parts]
-                strip_images[strip.strip_id] = merge_crops_vertically(strip.crops, block_ids=block_ids)
-                # Освобождаем исходные кропы полосы (они скопированы в merged)
-                for crop in strip.crops:
-                    try:
-                        crop.close()
-                    except:
-                        pass
-            except Exception as e:
-                logger.error(f"Error creating strip {strip.strip_id}: {e}")
-        strip.crops.clear()  # Очищаем список
-    
-    # Очищаем block_crops - они больше не нужны (скопированы в strips/image_blocks)
-    for block_id, crop in list(block_crops.items()):
-        # Не закрываем - они уже закрыты или используются в image_blocks
-        pass
-    block_crops.clear()
-    
-    gc.collect()
-    
-    strips_mb = sum(get_pil_image_size_mb(img) for img in strip_images.values())
-    images_mb = sum(get_pil_image_size_mb(crop) for _, crop, _, _ in image_blocks)
-    log_memory(f"После merge (strips: ~{strips_mb:.1f} MB, images: ~{images_mb:.1f} MB)")
-    
-    logger.info(f"Streaming done: {len(strip_images)} strips, {len(image_blocks)} images, {len(image_pdf_paths)} PDF crops")
-    return strip_paths, strip_images, strips, image_blocks, image_pdf_paths
-
-
-def _group_blocks_streaming(
-    blocks: List,
-    block_crops: Dict[str, Image.Image]
-) -> Tuple[List[MergedStrip], List[Tuple]]:
-    """Группировка блоков в полосы (streaming-safe)"""
-    from rd_core.models import BlockType
-    
-    strips: List[MergedStrip] = []
-    image_blocks: List[Tuple] = []
-    current_strip = MergedStrip()
-    strip_counter = 0
-    
-    for block in blocks:
-        crop = block_crops.get(block.id)
-        if not crop:
-            continue
-        
-        if block.block_type == BlockType.IMAGE:
-            if current_strip.blocks:
-                strip_counter += 1
-                current_strip.strip_id = f"strip_{strip_counter:04d}"
-                strips.append(current_strip)
-                current_strip = MergedStrip()
-            
-            crop_parts = split_large_crop(crop)
-            for part_idx, part in enumerate(crop_parts):
-                image_blocks.append((block, part, part_idx, len(crop_parts)))
-            continue
-        
-        # TEXT/TABLE
-        crop_parts = split_large_crop(crop)
-        for part_idx, crop_part in enumerate(crop_parts):
-            # gap добавляется только между блоками (не перед первым)
-            gap = 20 if current_strip.blocks else 0
-            new_height = crop_part.height + gap
-            
-            if current_strip.total_height + new_height > MAX_STRIP_HEIGHT and current_strip.blocks:
-                strip_counter += 1
-                current_strip.strip_id = f"strip_{strip_counter:04d}"
-                strips.append(current_strip)
-                current_strip = MergedStrip()
-                gap = 0  # первый блок в новой полосе без gap
-                new_height = crop_part.height
-            
-            current_strip.blocks.append(block)
-            current_strip.crops.append(crop_part)
-            current_strip.block_parts.append(BlockPart(block, crop_part, part_idx, len(crop_parts)))
-            current_strip.total_height += new_height
-            current_strip.max_width = max(current_strip.max_width, crop_part.width)
-    
-    if current_strip.blocks:
-        strip_counter += 1
-        current_strip.strip_id = f"strip_{strip_counter:04d}"
-        strips.append(current_strip)
-    
-    return strips, image_blocks
 
 
 def get_page_dimensions_streaming(pdf_path: str) -> Dict[int, Tuple[int, int]]:

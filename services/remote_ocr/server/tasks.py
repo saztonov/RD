@@ -22,7 +22,6 @@ from .memory_utils import log_memory, log_memory_delta, force_gc
 from .task_helpers import check_paused, download_job_files, create_empty_result
 from .task_upload import upload_results_to_r2
 from .task_ocr_twopass import run_two_pass_ocr
-from .task_ocr_legacy import run_legacy_ocr
 from .task_results import generate_results
 
 logger = logging.getLogger(__name__)
@@ -116,17 +115,11 @@ def run_ocr_task(self, job_id: str) -> dict:
             image_backend = create_ocr_engine("dummy")
             stamp_backend = create_ocr_engine("dummy")
         
-        # Выбор алгоритма обработки
-        if settings.use_two_pass_ocr:
-            run_two_pass_ocr(
-                job, pdf_path, blocks, crops_dir, work_dir,
-                strip_backend, image_backend, stamp_backend, start_mem
-            )
-        else:
-            run_legacy_ocr(
-                job, pdf_path, blocks, crops_dir,
-                strip_backend, image_backend, stamp_backend, start_mem
-            )
+        # OCR обработка (двухпроходный алгоритм)
+        run_two_pass_ocr(
+            job, pdf_path, blocks, crops_dir, work_dir,
+            strip_backend, image_backend, stamp_backend, start_mem
+        )
         
         force_gc("после OCR обработки")
         
