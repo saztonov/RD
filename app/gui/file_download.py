@@ -75,6 +75,9 @@ class FileDownloadMixin:
             self._current_node_id = node_id
             # Проверяем блокировку документа
             self._update_lock_status(node_id)
+            # Устанавливаем режим read_only в page_viewer
+            if hasattr(self, 'page_viewer'):
+                self.page_viewer.read_only = self._current_node_locked
             self._open_pdf_file(str(local_path), r2_key=r2_key)
             if node_id and hasattr(self, 'project_tree_widget'):
                 self.project_tree_widget.highlight_document(node_id)
@@ -250,6 +253,9 @@ class FileDownloadMixin:
             self._current_node_id = self._pending_download_node_id
             # Проверяем блокировку документа
             self._update_lock_status(self._pending_download_node_id)
+            # Устанавливаем режим read_only в page_viewer
+            if hasattr(self, 'page_viewer'):
+                self.page_viewer.read_only = self._current_node_locked
             self._open_pdf_file(self._pending_download_local_path, r2_key=self._pending_download_r2_key)
             
             # Подсветить документ в дереве

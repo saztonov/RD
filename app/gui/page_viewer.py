@@ -44,6 +44,7 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
         self.resize_handles: List[QGraphicsRectItem] = []
         self.current_page: int = 0
         
+        self.read_only = False  # Режим "только чтение" для заблокированных документов
         self.drawing = False
         self.drawing_polygon = False
         self.polygon_points: List[QPointF] = []

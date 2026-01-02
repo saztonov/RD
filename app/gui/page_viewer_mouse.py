@@ -39,7 +39,10 @@ class MouseEventsMixin:
         if event.button() == Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
             
+            # В режиме read_only не разрешаем рисование полигонов
             if self.drawing_polygon:
+                if self.read_only:
+                    return
                 self._add_polygon_point(scene_pos)
                 return
             
@@ -67,31 +70,33 @@ class MouseEventsMixin:
                     x1, y1, x2, y2 = block.coords_px
                     block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
                     
-                    if block.shape_type == ShapeType.POLYGON and block.polygon_points:
-                        vertex_idx = self._get_polygon_vertex_handle(scene_pos, block.polygon_points)
-                        if vertex_idx is not None:
-                            self.parent().window()._save_undo_state()
-                            self.dragging_polygon_vertex = vertex_idx
-                            self.move_start_pos = self._clamp_to_page(scene_pos)
-                            self.original_polygon_points = list(block.polygon_points)
-                            return
+                    # В режиме read_only не разрешаем изменение блоков
+                    if not self.read_only:
+                        if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+                            vertex_idx = self._get_polygon_vertex_handle(scene_pos, block.polygon_points)
+                            if vertex_idx is not None:
+                                self.parent().window()._save_undo_state()
+                                self.dragging_polygon_vertex = vertex_idx
+                                self.move_start_pos = self._clamp_to_page(scene_pos)
+                                self.original_polygon_points = list(block.polygon_points)
+                                return
+                            
+                            edge_idx = self._get_polygon_edge_handle(scene_pos, block.polygon_points)
+                            if edge_idx is not None:
+                                self.parent().window()._save_undo_state()
+                                self.dragging_polygon_edge = edge_idx
+                                self.move_start_pos = self._clamp_to_page(scene_pos)
+                                self.original_polygon_points = list(block.polygon_points)
+                                return
                         
-                        edge_idx = self._get_polygon_edge_handle(scene_pos, block.polygon_points)
-                        if edge_idx is not None:
+                        resize_handle = self._get_resize_handle(scene_pos, block_rect)
+                        if resize_handle:
                             self.parent().window()._save_undo_state()
-                            self.dragging_polygon_edge = edge_idx
+                            self.resizing_block = True
+                            self.resize_handle = resize_handle
                             self.move_start_pos = self._clamp_to_page(scene_pos)
-                            self.original_polygon_points = list(block.polygon_points)
+                            self.original_block_rect = block_rect
                             return
-                    
-                    resize_handle = self._get_resize_handle(scene_pos, block_rect)
-                    if resize_handle:
-                        self.parent().window()._save_undo_state()
-                        self.resizing_block = True
-                        self.resize_handle = resize_handle
-                        self.move_start_pos = self._clamp_to_page(scene_pos)
-                        self.original_block_rect = block_rect
-                        return
             
             if clicked_block is not None:
                 block = self.current_blocks[clicked_block]
@@ -101,8 +106,8 @@ class MouseEventsMixin:
                 # Проверяем, был ли этот блок уже выбран
                 block_already_selected = (self.selected_block_idx == clicked_block)
                 
-                if block_already_selected:
-                    # Блок уже выбран - проверяем клик на handles для редактирования
+                if block_already_selected and not self.read_only:
+                    # Блок уже выбран - проверяем клик на handles для редактирования (только если не read_only)
                     if block.shape_type == ShapeType.POLYGON and block.polygon_points:
                         vertex_idx = self._get_polygon_vertex_handle(scene_pos, block.polygon_points)
                         if vertex_idx is not None:
@@ -144,24 +149,26 @@ class MouseEventsMixin:
                     self.block_selected.emit(clicked_block)
                     self._redraw_blocks()
             else:
-                shape_type = self.get_current_shape_type()
-                
-                if shape_type == ShapeType.POLYGON:
-                    self.drawing_polygon = True
-                    self.polygon_points = []
-                    self._add_polygon_point(scene_pos)
-                else:
-                    clamped_start = self._clamp_to_page(scene_pos)
-                    self.drawing = True
-                    self.start_point = clamped_start
-                    self.selected_block_indices = []
+                # Клик на пустое место - начинаем рисовать новый блок или полигон (только если не read_only)
+                if not self.read_only:
+                    shape_type = self.get_current_shape_type()
                     
-                    self.rubber_band_item = QGraphicsRectItem(QRectF(clamped_start, clamped_start))
-                    pen = QPen(QColor(255, 0, 0), 2, Qt.DashLine)
-                    brush = QBrush(QColor(255, 0, 0, 30))
-                    self.rubber_band_item.setPen(pen)
-                    self.rubber_band_item.setBrush(brush)
-                    self.scene.addItem(self.rubber_band_item)
+                    if shape_type == ShapeType.POLYGON:
+                        self.drawing_polygon = True
+                        self.polygon_points = []
+                        self._add_polygon_point(scene_pos)
+                    else:
+                        clamped_start = self._clamp_to_page(scene_pos)
+                        self.drawing = True
+                        self.start_point = clamped_start
+                        self.selected_block_indices = []
+                        
+                        self.rubber_band_item = QGraphicsRectItem(QRectF(clamped_start, clamped_start))
+                        pen = QPen(QColor(255, 0, 0), 2, Qt.DashLine)
+                        brush = QBrush(QColor(255, 0, 0, 30))
+                        self.rubber_band_item.setPen(pen)
+                        self.rubber_band_item.setBrush(brush)
+                        self.scene.addItem(self.rubber_band_item)
         
         elif event.button() == Qt.RightButton:
             scene_pos = self.mapToScene(event.pos())

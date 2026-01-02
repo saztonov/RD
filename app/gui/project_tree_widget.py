@@ -984,6 +984,14 @@ class ProjectTreeWidget(
             if self.client.lock_document(node.id):
                 node.is_locked = True
                 self.status_label.setText("🔒 Документ заблокирован")
+                
+                # Обновляем режим read_only в главном окне если это текущий документ
+                main_window = self.window()
+                if hasattr(main_window, '_current_node_id') and main_window._current_node_id == node.id:
+                    main_window._current_node_locked = True
+                    if hasattr(main_window, 'page_viewer'):
+                        main_window.page_viewer.read_only = True
+                
                 from PySide6.QtCore import QTimer
                 QTimer.singleShot(100, self._refresh_tree)
             else:
@@ -998,6 +1006,14 @@ class ProjectTreeWidget(
             if self.client.unlock_document(node.id):
                 node.is_locked = False
                 self.status_label.setText("🔓 Документ разблокирован")
+                
+                # Обновляем режим read_only в главном окне если это текущий документ
+                main_window = self.window()
+                if hasattr(main_window, '_current_node_id') and main_window._current_node_id == node.id:
+                    main_window._current_node_locked = False
+                    if hasattr(main_window, 'page_viewer'):
+                        main_window.page_viewer.read_only = False
+                
                 from PySide6.QtCore import QTimer
                 QTimer.singleShot(100, self._refresh_tree)
             else:
