@@ -61,15 +61,30 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
                 attrs["has_annotation"] = has_annotation
                 client.update_node(self._current_node_id, attributes=attrs)
                 
-                # Обновляем статус PDF в БД
+                # Обновляем статус PDF в БД (кеш будет инвалидирован)
                 if node.node_type.value == "document" and self._current_r2_key:
                     r2 = R2Storage()
                     status, message = calculate_pdf_status(r2, self._current_node_id, self._current_r2_key)
                     client.update_pdf_status(self._current_node_id, status.value, message)
                     
-                    # Обновляем дерево
+                    # Обновляем только конкретный узел в дереве (без полного refresh)
                     if hasattr(self, 'project_tree') and self.project_tree:
-                        QTimer.singleShot(100, self.project_tree._refresh_tree)
+                        item = self.project_tree._node_map.get(self._current_node_id)
+                        if item:
+                            node.pdf_status = status.value
+                            node.pdf_status_message = message
+                            
+                            from app.gui.tree_node_operations import NODE_ICONS
+                            icon = NODE_ICONS.get(node.node_type, "📄")
+                            status_icon = self.project_tree._get_pdf_status_icon(status.value)
+                            lock_icon = "🔒" if node.is_locked else ""
+                            version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                            
+                            display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+                            item.setText(0, display_name)
+                            item.setData(0, Qt.UserRole + 1, version_tag)
+                            if message:
+                                item.setToolTip(0, message)
         except Exception as e:
             logger.debug(f"Update has_annotation failed: {e}")
     

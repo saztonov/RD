@@ -118,21 +118,87 @@ class TreeClient:
         data = resp.json()
         return TreeNode.from_dict(data[0]) if data else None
     
-    def get_pdf_status(self, node_id: str) -> tuple[str, str]:
+    def get_pdf_status(self, node_id: str, use_cache: bool = True) -> tuple[str, str]:
         """
-        Получить статус PDF документа из БД
+        Получить статус PDF документа (с кешем)
+        
+        Args:
+            node_id: ID узла
+            use_cache: Использовать кеш (по умолчанию True)
         
         Returns:
             Кортеж (статус, сообщение)
         """
+        # Проверяем кеш
+        if use_cache:
+            from app.gui.pdf_status_cache import get_pdf_status_cache
+            cache = get_pdf_status_cache()
+            cached = cache.get(node_id)
+            if cached:
+                return cached
+        
+        # Загружаем из БД
         resp = self._request("get", f"/tree_nodes?id=eq.{node_id}&select=pdf_status,pdf_status_message")
         data = resp.json()
         if data:
-            return data[0].get("pdf_status", "unknown"), data[0].get("pdf_status_message", "")
+            status = data[0].get("pdf_status", "unknown")
+            message = data[0].get("pdf_status_message", "")
+            
+            # Сохраняем в кеш
+            if use_cache:
+                from app.gui.pdf_status_cache import get_pdf_status_cache
+                cache = get_pdf_status_cache()
+                cache.set(node_id, status, message)
+            
+            return status, message
+        
         return "unknown", ""
     
+    def get_pdf_statuses_batch(self, node_ids: list[str]) -> dict[str, tuple[str, str]]:
+        """
+        Получить статусы для нескольких документов одним запросом
+        
+        Returns:
+            Словарь {node_id: (status, message)}
+        """
+        if not node_ids:
+            return {}
+        
+        from app.gui.pdf_status_cache import get_pdf_status_cache
+        cache = get_pdf_status_cache()
+        result = {}
+        uncached_ids = []
+        
+        # Проверяем кеш
+        for node_id in node_ids:
+            cached = cache.get(node_id)
+            if cached:
+                result[node_id] = cached
+            else:
+                uncached_ids.append(node_id)
+        
+        # Загружаем некешированные батчем
+        if uncached_ids:
+            # Формируем запрос с IN clause
+            ids_str = ",".join(f'"{nid}"' for nid in uncached_ids)
+            resp = self._request(
+                "get", 
+                f"/tree_nodes?id=in.({ids_str})&select=id,pdf_status,pdf_status_message"
+            )
+            data = resp.json()
+            
+            for row in data:
+                node_id = row["id"]
+                status = row.get("pdf_status", "unknown")
+                message = row.get("pdf_status_message", "")
+                
+                result[node_id] = (status, message)
+                cache.set(node_id, status, message)
+        
+        return result
+    
     def update_pdf_status(self, node_id: str, status: str, message: str = None):
-        """Обновить статус PDF документа"""
+        """Обновить статус PDF документа и инвалидировать кеш"""
         try:
             self._request(
                 "post",
@@ -143,6 +209,12 @@ class TreeClient:
                     "p_message": message
                 }
             )
+            
+            # Инвалидируем кеш для этого узла
+            from app.gui.pdf_status_cache import get_pdf_status_cache
+            cache = get_pdf_status_cache()
+            cache.invalidate(node_id)
+            
         except Exception as e:
             logger.error(f"Failed to update PDF status: {e}")
     

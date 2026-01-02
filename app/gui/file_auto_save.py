@@ -194,8 +194,23 @@ class FileAutoSaveMixin:
                         status, message = calculate_pdf_status(r2, node_id, r2_key)
                         client.update_pdf_status(node_id, status.value, message)
                         
-                        # Обновляем дерево
-                        QTimer.singleShot(100, self.project_tree._refresh_tree)
+                        # Обновляем только конкретный узел (без refresh всего дерева)
+                        item = self.project_tree._node_map.get(node_id)
+                        if item:
+                            node.pdf_status = status.value
+                            node.pdf_status_message = message
+                            
+                            from app.gui.tree_node_operations import NODE_ICONS
+                            icon = NODE_ICONS.get(node.node_type, "📄")
+                            status_icon = self.project_tree._get_pdf_status_icon(status.value)
+                            lock_icon = "🔒" if node.is_locked else ""
+                            version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                            
+                            display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+                            item.setText(0, display_name)
+                            item.setData(0, Qt.UserRole + 1, version_tag)
+                            if message:
+                                item.setToolTip(0, message)
         except Exception as e:
             logger.debug(f"Update tree annotation icon failed: {e}")
 

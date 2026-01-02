@@ -49,6 +49,10 @@ class ContextMenuMixin:
     
     def _show_context_menu(self, global_pos):
         """Показать контекстное меню"""
+        # В режиме read_only не показываем контекстное меню редактирования
+        if self.read_only:
+            return
+        
         menu = QMenu(self)
         
         selected_blocks = []

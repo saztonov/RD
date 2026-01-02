@@ -137,6 +137,10 @@ class BlocksTreeManager:
     
     def on_tree_context_menu(self, position):
         """Контекстное меню для дерева блоков"""
+        # В режиме read_only не показываем контекстное меню редактирования
+        if hasattr(self.parent, 'page_viewer') and self.parent.page_viewer.read_only:
+            return
+        
         tree = self.parent.sender()
         if tree is None:
             tree = self.blocks_tree

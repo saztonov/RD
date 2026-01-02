@@ -12,17 +12,23 @@ class BlockEventsMixin:
     
     def keyPressEvent(self, event):
         """Обработка нажатия клавиш"""
+        # В режиме read_only блокируем все команды редактирования
+        is_read_only = hasattr(self, 'page_viewer') and self.page_viewer.read_only
+        
         # Ctrl+Z для отмены
         if event.key() == Qt.Key_Z and event.modifiers() & Qt.ControlModifier:
-            self._undo()
+            if not is_read_only:
+                self._undo()
             return
         # Ctrl+Y для повтора
         elif event.key() == Qt.Key_Y and event.modifiers() & Qt.ControlModifier:
-            self._redo()
+            if not is_read_only:
+                self._redo()
             return
         # Ctrl+G для группировки
         elif event.key() == Qt.Key_G and event.modifiers() & Qt.ControlModifier:
-            self._group_selected_blocks()
+            if not is_read_only:
+                self._group_selected_blocks()
             return
         elif event.key() == Qt.Key_Left:
             self._prev_page()
@@ -37,6 +43,10 @@ class BlockEventsMixin:
         if hasattr(self, 'blocks_tree') and obj is self.blocks_tree:
             if event.type() == QEvent.KeyPress and isinstance(event, QKeyEvent):
                 if event.key() == Qt.Key_Delete:
+                    # В режиме read_only не разрешаем удаление
+                    if hasattr(self, 'page_viewer') and self.page_viewer.read_only:
+                        return True
+                    
                     current_item = obj.currentItem()
                     if current_item:
                         data = current_item.data(0, Qt.UserRole)

@@ -63,6 +63,7 @@ class ProjectTreeWidget(
         self._sync_statuses: Dict[str, SyncStatus] = {}  # node_id -> SyncStatus
         self._sync_worker: SyncCheckWorker = None
         self._expanded_nodes: set = set()  # Множество ID раскрытых узлов
+        self._pdf_statuses_loaded: bool = False  # Флаг загрузки статусов
         self._setup_ui()
         self._setup_auto_refresh()
         
@@ -73,6 +74,11 @@ class ProjectTreeWidget(
         self._auto_refresh_timer = QTimer(self)
         self._auto_refresh_timer.timeout.connect(self._auto_refresh_tree)
         self._auto_refresh_timer.start(10000)  # Каждые 10 секунд
+        
+        # Таймер для очистки истёкших записей кеша
+        self._cache_cleanup_timer = QTimer(self)
+        self._cache_cleanup_timer.timeout.connect(self._cleanup_pdf_cache)
+        self._cache_cleanup_timer.start(60000)  # Каждую минуту
     
     def _auto_refresh_tree(self):
         """Автоматическое обновление дерева (проверка изменений)"""
@@ -309,6 +315,7 @@ class ProjectTreeWidget(
             return
         
         self._loading = True
+        self._pdf_statuses_loaded = False  # Сбрасываем флаг при обновлении
         self.status_label.setText("Загрузка...")
         self.tree.clear()
         self._node_map.clear()
@@ -329,6 +336,10 @@ class ProjectTreeWidget(
             
             # Запускаем проверку синхронизации с задержкой
             QTimer.singleShot(500, self._start_sync_check)
+            
+            # Загружаем статусы PDF батчем (один раз)
+            if not self._pdf_statuses_loaded:
+                QTimer.singleShot(200, self._load_pdf_statuses_batch)
         except Exception as e:
             logger.error(f"Failed to refresh tree: {e}")
             self.status_label.setText(f"Ошибка: {e}")
@@ -386,6 +397,66 @@ class ProjectTreeWidget(
             "unknown": "",
         }
         return icons.get(status, "")
+    
+    def _load_pdf_statuses_batch(self):
+        """Загрузить статусы всех PDF документов батчем"""
+        try:
+            # Собираем ID всех документов
+            doc_ids = []
+            for node_id, item in self._node_map.items():
+                node = item.data(0, Qt.UserRole)
+                if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
+                    doc_ids.append(node_id)
+            
+            if not doc_ids:
+                self._pdf_statuses_loaded = True
+                return
+            
+            logger.debug(f"Loading PDF statuses for {len(doc_ids)} documents")
+            
+            # Загружаем батчем
+            statuses = self.client.get_pdf_statuses_batch(doc_ids)
+            
+            # Обновляем отображение
+            for node_id, (status, message) in statuses.items():
+                item = self._node_map.get(node_id)
+                if item:
+                    node = item.data(0, Qt.UserRole)
+                    if isinstance(node, TreeNode):
+                        # Обновляем кешированные значения в узле
+                        node.pdf_status = status
+                        node.pdf_status_message = message
+                        
+                        # Обновляем отображение
+                        icon = NODE_ICONS.get(node.node_type, "📄")
+                        status_icon = self._get_pdf_status_icon(status)
+                        lock_icon = "🔒" if node.is_locked else ""
+                        version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                        
+                        display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+                        item.setText(0, display_name)
+                        item.setData(0, Qt.UserRole + 1, version_tag)
+                        
+                        if message:
+                            item.setToolTip(0, message)
+            
+            self._pdf_statuses_loaded = True
+            logger.info(f"Loaded PDF statuses: {len(statuses)} documents")
+            
+        except Exception as e:
+            logger.error(f"Failed to load PDF statuses batch: {e}")
+            self._pdf_statuses_loaded = True  # Помечаем как загруженные чтобы не повторять
+    
+    def _cleanup_pdf_cache(self):
+        """Периодическая очистка истёкших записей из кеша PDF статусов"""
+        try:
+            from app.gui.pdf_status_cache import get_pdf_status_cache
+            cache = get_pdf_status_cache()
+            cleaned = cache.cleanup_expired()
+            if cleaned > 0:
+                logger.debug(f"Cleaned {cleaned} expired PDF status cache entries")
+        except Exception as e:
+            logger.error(f"PDF cache cleanup failed: {e}")
     
     def _add_placeholder(self, item: QTreeWidgetItem, node: TreeNode):
         """Добавить placeholder для lazy loading"""
@@ -623,8 +694,24 @@ class ProjectTreeWidget(
                 status, message = calculate_pdf_status(r2, node.id, r2_key)
                 self.client.update_pdf_status(node.id, status.value, message)
                 
+                # Обновляем только этот узел
+                item = self._node_map.get(node.id)
+                if item:
+                    node.pdf_status = status.value
+                    node.pdf_status_message = message
+                    
+                    icon = NODE_ICONS.get(node.node_type, "📄")
+                    status_icon = self._get_pdf_status_icon(status.value)
+                    lock_icon = "🔒" if node.is_locked else ""
+                    version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                    
+                    display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+                    item.setText(0, display_name)
+                    item.setData(0, Qt.UserRole + 1, version_tag)
+                    if message:
+                        item.setToolTip(0, message)
+                
                 self.status_label.setText(f"📥 Аннотация вставлена")
-                QTimer.singleShot(100, self._refresh_tree)
                 logger.info(f"Annotation pasted to {ann_r2_key}")
                 
                 # Сигнал для обновления открытого документа
@@ -798,8 +885,24 @@ class ProjectTreeWidget(
             status, message = calculate_pdf_status(r2, node.id, r2_key)
             self.client.update_pdf_status(node.id, status.value, message)
             
+            # Обновляем только этот узел
+            item = self._node_map.get(node.id)
+            if item:
+                node.pdf_status = status.value
+                node.pdf_status_message = message
+                
+                icon = NODE_ICONS.get(node.node_type, "📄")
+                status_icon = self._get_pdf_status_icon(status.value)
+                lock_icon = "🔒" if node.is_locked else ""
+                version_tag = f"[v{node.version}]" if node.version else "[v1]"
+                
+                display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+                item.setText(0, display_name)
+                item.setData(0, Qt.UserRole + 1, version_tag)
+                if message:
+                    item.setToolTip(0, message)
+            
             self.status_label.setText("📤 Аннотация загружена")
-            QTimer.singleShot(100, self._refresh_tree)
             
             # Сигнал для обновления открытого документа
             self.annotation_replaced.emit(r2_key)
@@ -991,6 +1094,11 @@ class ProjectTreeWidget(
                     main_window._current_node_locked = True
                     if hasattr(main_window, 'page_viewer'):
                         main_window.page_viewer.read_only = True
+                    # Отключаем кнопки перемещения блоков
+                    if hasattr(main_window, 'move_block_up_btn'):
+                        main_window.move_block_up_btn.setEnabled(False)
+                    if hasattr(main_window, 'move_block_down_btn'):
+                        main_window.move_block_down_btn.setEnabled(False)
                 
                 from PySide6.QtCore import QTimer
                 QTimer.singleShot(100, self._refresh_tree)
@@ -1013,6 +1121,11 @@ class ProjectTreeWidget(
                     main_window._current_node_locked = False
                     if hasattr(main_window, 'page_viewer'):
                         main_window.page_viewer.read_only = False
+                    # Включаем кнопки перемещения блоков
+                    if hasattr(main_window, 'move_block_up_btn'):
+                        main_window.move_block_up_btn.setEnabled(True)
+                    if hasattr(main_window, 'move_block_down_btn'):
+                        main_window.move_block_down_btn.setEnabled(True)
                 
                 from PySide6.QtCore import QTimer
                 QTimer.singleShot(100, self._refresh_tree)

@@ -224,6 +224,9 @@ class BlockCRUDMixin:
             self.hint_edit.blockSignals(True)
             self.hint_edit.setPlainText(block.hint or "")
             self.hint_edit.blockSignals(False)
+            # В режиме read_only панель подсказки активна, но только для чтения
+            is_read_only = self.page_viewer.read_only if hasattr(self, 'page_viewer') else False
+            self.hint_edit.setReadOnly(is_read_only)
             self.hint_group.setEnabled(True)
     
     def _hide_hint_panel(self):
@@ -486,6 +489,10 @@ class BlockCRUDMixin:
     
     def _move_block_up(self):
         """Переместить выбранный блок вверх"""
+        # Проверка блокировки документа
+        if self._check_document_locked_for_editing():
+            return
+        
         tree = self.blocks_tabs.currentWidget()
         if tree is None:
             return
@@ -528,6 +535,10 @@ class BlockCRUDMixin:
     
     def _move_block_down(self):
         """Переместить выбранный блок вниз"""
+        # Проверка блокировки документа
+        if self._check_document_locked_for_editing():
+            return
+        
         tree = self.blocks_tabs.currentWidget()
         if tree is None:
             return
