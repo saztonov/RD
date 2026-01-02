@@ -465,9 +465,6 @@ def generate_html_from_pages(
                 stamp_html = ""
             
             for idx, block in enumerate(page.blocks):
-                if not block.ocr_text:
-                    continue
-                
                 # Пропускаем блоки штампа - их данные уже добавлены в stamp_html каждого блока
                 if getattr(block, 'category_code', None) == 'stamp':
                     continue

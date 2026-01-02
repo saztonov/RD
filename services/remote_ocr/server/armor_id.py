@@ -182,41 +182,95 @@ class ArmorID:
         return False, None, "Не удалось восстановить"
 
     @classmethod
+    def _levenshtein_ratio(cls, s1: str, s2: str) -> float:
+        """
+        Вычислить схожесть двух строк (0-100%) на основе расстояния Левенштейна.
+        """
+        if not s1 or not s2:
+            return 0.0
+        if s1 == s2:
+            return 100.0
+        
+        len1, len2 = len(s1), len(s2)
+        
+        # Матрица расстояний (оптимизация памяти - только 2 строки)
+        prev = list(range(len2 + 1))
+        curr = [0] * (len2 + 1)
+        
+        for i in range(1, len1 + 1):
+            curr[0] = i
+            for j in range(1, len2 + 1):
+                cost = 0 if s1[i-1] == s2[j-1] else 1
+                curr[j] = min(
+                    prev[j] + 1,      # удаление
+                    curr[j-1] + 1,    # вставка
+                    prev[j-1] + cost  # замена
+                )
+            prev, curr = curr, prev
+        
+        distance = prev[len2]
+        max_len = max(len1, len2)
+        return ((max_len - distance) / max_len) * 100
+
+    @classmethod
     def match_to_uuid(
         cls, 
         armor_code: str, 
-        expected_uuids: List[str]
+        expected_uuids: List[str],
+        score_cutoff: float = 70.0
     ) -> Tuple[Optional[str], float]:
         """
         Сопоставить armor код с ожидаемыми ID (UUID или armor ID).
+        Использует нечёткий поиск если точное/восстановленное совпадение не найдено.
         Returns: (matched_id, score)
         """
-        # Пробуем восстановить код
+        input_clean = armor_code.replace("-", "").replace(" ", "").upper()
+        
+        # 1. Пробуем восстановить код через repair()
         success, fixed, _ = cls.repair(armor_code)
         
-        if not success:
-            return None, 0.0
+        if success and fixed:
+            fixed_clean = fixed.replace("-", "").upper()
+            
+            # Прямое совпадение с armor ID
+            for expected in expected_uuids:
+                expected_clean = expected.replace("-", "").upper()
+                if len(expected_clean) == 11 and all(c in cls.ALPHABET for c in expected_clean):
+                    if expected_clean == fixed_clean:
+                        return expected, 100.0
+            
+            # Legacy: декодируем в hex prefix и ищем UUID
+            hex_prefix = cls.decode(fixed)
+            if hex_prefix:
+                for uuid in expected_uuids:
+                    clean_uuid = uuid.replace("-", "").lower()
+                    if len(clean_uuid) == 32 and all(c in '0123456789abcdef' for c in clean_uuid):
+                        if clean_uuid.startswith(hex_prefix):
+                            return uuid, 100.0
         
-        # Сначала: прямое совпадение с armor ID
-        fixed_clean = fixed.replace("-", "").upper()
+        # 2. Если repair не помог - используем нечёткий поиск (Левенштейн)
+        # Это критично для сильно искажённых кодов (OCR-ошибки вставки/удаления)
+        best_match = None
+        best_score = 0.0
+        
         for expected in expected_uuids:
             expected_clean = expected.replace("-", "").upper()
-            # Проверяем armor ID формат (11 символов из нашего алфавита)
-            if len(expected_clean) == 11 and all(c in cls.ALPHABET for c in expected_clean):
-                if expected_clean == fixed_clean:
-                    return expected, 100.0
+            
+            # Только armor ID (11 символов)
+            if len(expected_clean) != 11:
+                continue
+            if not all(c in cls.ALPHABET for c in expected_clean):
+                continue
+            
+            # Сравниваем очищенные коды
+            score = cls._levenshtein_ratio(input_clean, expected_clean)
+            
+            if score > best_score:
+                best_score = score
+                best_match = expected
         
-        # Legacy: декодируем в hex prefix и ищем UUID
-        hex_prefix = cls.decode(fixed)
-        if not hex_prefix:
-            return None, 0.0
-        
-        for uuid in expected_uuids:
-            clean_uuid = uuid.replace("-", "").lower()
-            # Проверяем что это UUID (32 hex символа)
-            if len(clean_uuid) == 32 and all(c in '0123456789abcdef' for c in clean_uuid):
-                if clean_uuid.startswith(hex_prefix):
-                    return uuid, 100.0
+        if best_match and best_score >= score_cutoff:
+            return best_match, best_score
         
         return None, 0.0
 
@@ -297,8 +351,9 @@ def decode_armor_code(armor_code: str) -> Optional[str]:
 
 def match_armor_to_uuid(
     armor_code: str, 
-    expected_uuids: List[str]
+    expected_uuids: List[str],
+    score_cutoff: float = 70.0
 ) -> Tuple[Optional[str], float]:
-    """Сопоставить armor код с uuid."""
-    return ArmorID.match_to_uuid(armor_code, expected_uuids)
+    """Сопоставить armor код с uuid. Использует нечёткий поиск для сильно искажённых кодов."""
+    return ArmorID.match_to_uuid(armor_code, expected_uuids, score_cutoff)
 
