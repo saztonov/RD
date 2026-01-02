@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-02T20:53:27.765505
+-- Generated: 2026-01-02T22:33:07.656205
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -1762,59 +1762,59 @@ CREATE OR REPLACE FUNCTION public.qa_get_descendants(p_client_id text, p_root_id
  RETURNS TABLE(id uuid, parent_id uuid, node_type text, name text, code text, version integer, status text, attributes jsonb, sort_order integer, depth integer)
  LANGUAGE plpgsql
  STABLE
-AS $function$
-BEGIN
-    RETURN QUERY
-    WITH RECURSIVE descendants AS (
-        -- Base: root nodes
-        SELECT 
-            t.id,
-            t.parent_id,
-            t.node_type,
-            t.name,
-            t.code,
-            t.version,
-            t.status,
-            t.attributes,
-            t.sort_order,
-            0 AS depth
-        FROM public.tree_nodes t
-        WHERE t.client_id = p_client_id
-          AND t.id = ANY(p_root_ids)
-        
-        UNION ALL
-        
-        -- Recursive: children
-        SELECT 
-            t.id,
-            t.parent_id,
-            t.node_type,
-            t.name,
-            t.code,
-            t.version,
-            t.status,
-            t.attributes,
-            t.sort_order,
-            d.depth + 1
-        FROM public.tree_nodes t
-        INNER JOIN descendants d ON t.parent_id = d.id
-        WHERE t.client_id = p_client_id
-    )
-    SELECT 
-        d.id,
-        d.parent_id,
-        d.node_type,
-        d.name,
-        d.code,
-        d.version,
-        d.status,
-        d.attributes,
-        d.sort_order,
-        d.depth
-    FROM descendants d
-    WHERE (p_node_types IS NULL OR d.node_type = ANY(p_node_types))
-    ORDER BY d.depth, d.sort_order, d.name;
-END;
+AS $function$
+BEGIN
+    RETURN QUERY
+    WITH RECURSIVE descendants AS (
+        -- Base: root nodes
+        SELECT 
+            t.id,
+            t.parent_id,
+            t.node_type,
+            t.name,
+            t.code,
+            t.version,
+            t.status,
+            t.attributes,
+            t.sort_order,
+            0 AS depth
+        FROM public.tree_nodes t
+        WHERE t.client_id = p_client_id
+          AND t.id = ANY(p_root_ids)
+        
+        UNION ALL
+        
+        -- Recursive: children
+        SELECT 
+            t.id,
+            t.parent_id,
+            t.node_type,
+            t.name,
+            t.code,
+            t.version,
+            t.status,
+            t.attributes,
+            t.sort_order,
+            d.depth + 1
+        FROM public.tree_nodes t
+        INNER JOIN descendants d ON t.parent_id = d.id
+        WHERE t.client_id = p_client_id
+    )
+    SELECT 
+        d.id,
+        d.parent_id,
+        d.node_type,
+        d.name,
+        d.code,
+        d.version,
+        d.status,
+        d.attributes,
+        d.sort_order,
+        d.depth
+    FROM descendants d
+    WHERE (p_node_types IS NULL OR d.node_type = ANY(p_node_types))
+    ORDER BY d.depth, d.sort_order, d.name;
+END;
 $function$
 
 
@@ -1823,83 +1823,83 @@ $function$
 CREATE OR REPLACE FUNCTION public.recalculate_all_pdf_statuses()
  RETURNS TABLE(node_id uuid, old_status text, new_status text, status_message text)
  LANGUAGE plpgsql
-AS $function$
-DECLARE
-    doc RECORD;
-    v_status TEXT;
-    v_message TEXT;
-    v_has_ann_r2 BOOLEAN;
-    v_has_ocr_r2 BOOLEAN;
-    v_has_res_r2 BOOLEAN;
-    v_has_ann_db BOOLEAN;
-    v_has_ocr_db BOOLEAN;
-    v_has_res_db BOOLEAN;
-    v_r2_key TEXT;
-    v_ann_key TEXT;
-    v_ocr_key TEXT;
-    v_res_key TEXT;
-BEGIN
-    -- Обходим все документы
-    FOR doc IN 
-        SELECT id, attributes->>'r2_key' as r2_key, pdf_status
-        FROM tree_nodes 
-        WHERE node_type = 'document'
-    LOOP
-        v_r2_key := doc.r2_key;
-        
-        IF v_r2_key IS NULL OR v_r2_key = '' THEN
-            v_status := 'unknown';
-            v_message := 'Нет R2 ключа';
-        ELSE
-            -- Формируем ключи для связанных файлов
-            v_ann_key := regexp_replace(v_r2_key, '\.pdf$', '_annotation.json', 'i');
-            v_ocr_key := regexp_replace(v_r2_key, '\.pdf$', '_ocr.html', 'i');
-            v_res_key := regexp_replace(v_r2_key, '\.pdf$', '_result.json', 'i');
-            
-            -- Проверяем наличие в node_files
-            SELECT 
-                bool_or(file_type = 'annotation') AS has_ann,
-                bool_or(file_type = 'ocr_html') AS has_ocr,
-                bool_or(file_type = 'result_json') AS has_res
-            INTO v_has_ann_db, v_has_ocr_db, v_has_res_db
-            FROM node_files
-            WHERE node_id = doc.id;
-            
-            -- Определяем статус на основе наличия файлов в БД
-            IF v_has_ann_db AND v_has_ocr_db AND v_has_res_db THEN
-                v_status := 'complete';
-                v_message := 'Все файлы на месте';
-            ELSIF NOT v_has_ann_db THEN
-                v_status := 'missing_blocks';
-                v_message := 'Отсутствует annotation.json';
-            ELSE
-                v_status := 'missing_files';
-                v_message := '';
-                IF NOT v_has_ocr_db THEN
-                    v_message := v_message || 'ocr.html не в Supabase; ';
-                END IF;
-                IF NOT v_has_res_db THEN
-                    v_message := v_message || 'result.json не в Supabase; ';
-                END IF;
-            END IF;
-        END IF;
-        
-        -- Обновляем статус
-        UPDATE tree_nodes
-        SET 
-            pdf_status = v_status,
-            pdf_status_message = v_message,
-            pdf_status_updated_at = NOW()
-        WHERE id = doc.id;
-        
-        -- Возвращаем результат
-        node_id := doc.id;
-        old_status := doc.pdf_status;
-        new_status := v_status;
-        status_message := v_message;
-        RETURN NEXT;
-    END LOOP;
-END;
+AS $function$
+DECLARE
+    doc RECORD;
+    v_status TEXT;
+    v_message TEXT;
+    v_has_ann_r2 BOOLEAN;
+    v_has_ocr_r2 BOOLEAN;
+    v_has_res_r2 BOOLEAN;
+    v_has_ann_db BOOLEAN;
+    v_has_ocr_db BOOLEAN;
+    v_has_res_db BOOLEAN;
+    v_r2_key TEXT;
+    v_ann_key TEXT;
+    v_ocr_key TEXT;
+    v_res_key TEXT;
+BEGIN
+    -- Обходим все документы
+    FOR doc IN 
+        SELECT id, attributes->>'r2_key' as r2_key, pdf_status
+        FROM tree_nodes 
+        WHERE node_type = 'document'
+    LOOP
+        v_r2_key := doc.r2_key;
+        
+        IF v_r2_key IS NULL OR v_r2_key = '' THEN
+            v_status := 'unknown';
+            v_message := 'Нет R2 ключа';
+        ELSE
+            -- Формируем ключи для связанных файлов
+            v_ann_key := regexp_replace(v_r2_key, '\.pdf$', '_annotation.json', 'i');
+            v_ocr_key := regexp_replace(v_r2_key, '\.pdf$', '_ocr.html', 'i');
+            v_res_key := regexp_replace(v_r2_key, '\.pdf$', '_result.json', 'i');
+            
+            -- Проверяем наличие в node_files
+            SELECT 
+                bool_or(file_type = 'annotation') AS has_ann,
+                bool_or(file_type = 'ocr_html') AS has_ocr,
+                bool_or(file_type = 'result_json') AS has_res
+            INTO v_has_ann_db, v_has_ocr_db, v_has_res_db
+            FROM node_files
+            WHERE node_id = doc.id;
+            
+            -- Определяем статус на основе наличия файлов в БД
+            IF v_has_ann_db AND v_has_ocr_db AND v_has_res_db THEN
+                v_status := 'complete';
+                v_message := 'Все файлы на месте';
+            ELSIF NOT v_has_ann_db THEN
+                v_status := 'missing_blocks';
+                v_message := 'Отсутствует annotation.json';
+            ELSE
+                v_status := 'missing_files';
+                v_message := '';
+                IF NOT v_has_ocr_db THEN
+                    v_message := v_message || 'ocr.html не в Supabase; ';
+                END IF;
+                IF NOT v_has_res_db THEN
+                    v_message := v_message || 'result.json не в Supabase; ';
+                END IF;
+            END IF;
+        END IF;
+        
+        -- Обновляем статус
+        UPDATE tree_nodes
+        SET 
+            pdf_status = v_status,
+            pdf_status_message = v_message,
+            pdf_status_updated_at = NOW()
+        WHERE id = doc.id;
+        
+        -- Возвращаем результат
+        node_id := doc.id;
+        old_status := doc.pdf_status;
+        new_status := v_status;
+        status_message := v_message;
+        RETURN NEXT;
+    END LOOP;
+END;
 $function$
 
 
@@ -1907,11 +1907,11 @@ $function$
 CREATE OR REPLACE FUNCTION public.update_app_settings_timestamp()
  RETURNS trigger
  LANGUAGE plpgsql
-AS $function$
-BEGIN
-    NEW.updated_at = now();
-    RETURN NEW;
-END;
+AS $function$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
 $function$
 
 
@@ -1919,11 +1919,11 @@ $function$
 CREATE OR REPLACE FUNCTION public.update_image_categories_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
-AS $function$
-BEGIN
-    NEW.updated_at = now();
-    RETURN NEW;
-END;
+AS $function$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
 $function$
 
 
@@ -1931,16 +1931,16 @@ $function$
 CREATE OR REPLACE FUNCTION public.update_pdf_status(p_node_id uuid, p_status text, p_message text DEFAULT NULL::text)
  RETURNS void
  LANGUAGE plpgsql
-AS $function$
-BEGIN
-    UPDATE tree_nodes
-    SET 
-        pdf_status = p_status,
-        pdf_status_message = p_message,
-        pdf_status_updated_at = NOW(),
-        updated_at = NOW()
-    WHERE id = p_node_id AND node_type = 'document';
-END;
+AS $function$
+BEGIN
+    UPDATE tree_nodes
+    SET 
+        pdf_status = p_status,
+        pdf_status_message = p_message,
+        pdf_status_updated_at = NOW(),
+        updated_at = NOW()
+    WHERE id = p_node_id AND node_type = 'document';
+END;
 $function$
 
 
@@ -1948,11 +1948,11 @@ $function$
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
  RETURNS trigger
  LANGUAGE plpgsql
-AS $function$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
+AS $function$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
 $function$
 
 
