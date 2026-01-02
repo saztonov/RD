@@ -32,7 +32,7 @@ class OCRDialog(QDialog):
         
         # Модели для разных типов блоков
         self.image_model = "google/gemini-3-flash-preview"
-        self.stamp_model = "google/gemini-3-flash-preview"
+        self.stamp_model = "xiaomi/mimo-v2-flash:free"
         
         # Datalab настройки
         self.use_datalab = True
@@ -89,6 +89,10 @@ class OCRDialog(QDialog):
         stamp_layout.addWidget(QLabel("Модель для штампов:"))
         self.stamp_model_combo = QComboBox()
         self._populate_model_combo(self.stamp_model_combo)
+        # Установка xiaomi/mimo-v2-flash:free по умолчанию для штампов
+        index = self.stamp_model_combo.findData("xiaomi/mimo-v2-flash:free")
+        if index >= 0:
+            self.stamp_model_combo.setCurrentIndex(index)
         stamp_layout.addWidget(self.stamp_model_combo)
         models_layout.addLayout(stamp_layout)
         
