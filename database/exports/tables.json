@@ -2360,6 +2360,13 @@
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
+      },
+      {
+        "name": "stamp_model",
+        "comment": "Модель для распознавания штампов (IMAGE блоки с code=stamp)",
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
       }
     ],
     "constraints": [

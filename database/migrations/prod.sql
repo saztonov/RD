@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-02T17:41:47.951427
+-- Generated: 2026-01-02T20:53:27.765505
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -425,11 +425,13 @@ CREATE TABLE IF NOT EXISTS public.job_settings (
     image_model text DEFAULT ''::text,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    stamp_model text DEFAULT ''::text,
     CONSTRAINT job_settings_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id),
     CONSTRAINT job_settings_job_id_key UNIQUE (job_id),
     CONSTRAINT job_settings_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.job_settings IS 'Настройки моделей для OCR задач';
+COMMENT ON COLUMN public.job_settings.stamp_model IS 'Модель для распознавания штампов (IMAGE блоки с code=stamp)';
 
 -- Table: public.jobs
 -- Description: OCR задачи обработки документов
