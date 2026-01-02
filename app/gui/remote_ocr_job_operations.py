@@ -185,11 +185,12 @@ class JobOperationsMixin:
             getattr(dialog, "text_model", None),
             getattr(dialog, "table_model", None),
             getattr(dialog, "image_model", None),
+            getattr(dialog, "stamp_model", None),
             node_id,
         )
-        logger.info(f"OCR задача: image_model={getattr(dialog, 'image_model', None)}, node_id={node_id}")
+        logger.info(f"OCR задача: image_model={getattr(dialog, 'image_model', None)}, stamp_model={getattr(dialog, 'stamp_model', None)}, node_id={node_id}")
     
-    def _create_job_bg(self, client, pdf_path, blocks, task_name, engine, text_model, table_model, image_model, node_id=None):
+    def _create_job_bg(self, client, pdf_path, blocks, task_name, engine, text_model, table_model, image_model, stamp_model, node_id=None):
         """Фоновое создание задачи"""
         try:
             from app.remote_ocr_client import AuthenticationError, PayloadTooLargeError, ServerError
@@ -197,7 +198,7 @@ class JobOperationsMixin:
             job_info = client.create_job(
                 pdf_path, blocks, task_name=task_name, engine=engine,
                 text_model=text_model, table_model=table_model, image_model=image_model,
-                node_id=node_id
+                stamp_model=stamp_model, node_id=node_id
             )
             self._signals.job_created.emit(job_info)
         except AuthenticationError:

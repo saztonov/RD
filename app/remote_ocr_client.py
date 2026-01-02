@@ -233,6 +233,7 @@ class RemoteOCRClient:
         text_model: Optional[str] = None,
         table_model: Optional[str] = None,
         image_model: Optional[str] = None,
+        stamp_model: Optional[str] = None,
         reuse_existing: bool = True,
         node_id: Optional[str] = None,
     ) -> JobInfo:
@@ -244,6 +245,10 @@ class RemoteOCRClient:
             selected_blocks: список выбранных блоков
             task_name: название задания
             engine: движок OCR
+            text_model: модель для текста
+            table_model: модель для таблиц
+            image_model: модель для изображений
+            stamp_model: модель для штампов
             reuse_existing: переиспользовать существующую задачу если есть
             node_id: ID узла дерева для связи результатов
         
@@ -281,6 +286,8 @@ class RemoteOCRClient:
                 form_data["table_model"] = table_model
             if image_model:
                 form_data["image_model"] = image_model
+            if stamp_model:
+                form_data["stamp_model"] = stamp_model
             if node_id:
                 form_data["node_id"] = node_id
 
@@ -496,6 +503,7 @@ class RemoteOCRClient:
         text_model: Optional[str] = None,
         table_model: Optional[str] = None,
         image_model: Optional[str] = None,
+        stamp_model: Optional[str] = None,
     ) -> bool:
         """
         Запустить черновик на распознавание
@@ -506,6 +514,7 @@ class RemoteOCRClient:
             text_model: модель для текста
             table_model: модель для таблиц
             image_model: модель для изображений
+            stamp_model: модель для штампов
         
         Returns:
             True если успешно
@@ -515,6 +524,7 @@ class RemoteOCRClient:
             "text_model": text_model or "",
             "table_model": table_model or "",
             "image_model": image_model or "",
+            "stamp_model": stamp_model or "",
         }
         resp = self._request_with_retry("post", f"/jobs/{job_id}/start", data=data)
         return resp.json().get("ok", False)

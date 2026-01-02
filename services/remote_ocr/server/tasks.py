@@ -91,6 +91,7 @@ def run_ocr_task(self, job_id: str) -> dict:
         text_model = (job_settings.text_model if job_settings else "") or ""
         table_model = (job_settings.table_model if job_settings else "") or ""
         image_model = (job_settings.image_model if job_settings else "") or ""
+        stamp_model = (job_settings.stamp_model if job_settings else "") or ""
         
         engine = job.engine or "openrouter"
         datalab_limiter = get_datalab_limiter() if engine == "datalab" else None
@@ -107,19 +108,24 @@ def run_ocr_task(self, job_id: str) -> dict:
             img_model = image_model or text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
             logger.info(f"IMAGE модель: {img_model}")
             image_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key, model_name=img_model)
+            
+            stmp_model = stamp_model or image_model or text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
+            logger.info(f"STAMP модель: {stmp_model}")
+            stamp_backend = create_ocr_engine("openrouter", api_key=settings.openrouter_api_key, model_name=stmp_model)
         else:
             image_backend = create_ocr_engine("dummy")
+            stamp_backend = create_ocr_engine("dummy")
         
         # Выбор алгоритма обработки
         if settings.use_two_pass_ocr:
             run_two_pass_ocr(
                 job, pdf_path, blocks, crops_dir, work_dir,
-                strip_backend, image_backend, start_mem
+                strip_backend, image_backend, stamp_backend, start_mem
             )
         else:
             run_legacy_ocr(
                 job, pdf_path, blocks, crops_dir,
-                strip_backend, image_backend, start_mem
+                strip_backend, image_backend, stamp_backend, start_mem
             )
         
         force_gc("после OCR обработки")

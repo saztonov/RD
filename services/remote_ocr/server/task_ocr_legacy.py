@@ -28,6 +28,7 @@ def run_legacy_ocr(
     crops_dir: Path,
     strip_backend,
     image_backend,
+    stamp_backend,
     start_mem: float,
 ):
     """Старый алгоритм OCR (все в памяти)"""
@@ -159,9 +160,13 @@ def run_legacy_ocr(
                 category_code=category_code
             )
             
+            # Выбираем backend в зависимости от кода блока
+            block_code = getattr(block, 'code', None)
+            backend = stamp_backend if block_code == 'stamp' else image_backend
+            
             global_sem.acquire()
             try:
-                text = image_backend.recognize(crop, prompt=prompt_data)
+                text = backend.recognize(crop, prompt=prompt_data)
             finally:
                 global_sem.release()
             text = inject_pdfplumber_to_ocr_text(text, pdfplumber_text)

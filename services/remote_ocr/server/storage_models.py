@@ -20,6 +20,7 @@ class JobSettings:
     text_model: str = ""
     table_model: str = ""
     image_model: str = ""
+    stamp_model: str = ""
 
 
 @dataclass

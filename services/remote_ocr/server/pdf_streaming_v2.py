@@ -275,6 +275,7 @@ def pass2_ocr_from_manifest(
     blocks: List,
     strip_backend,
     image_backend,
+    stamp_backend,
     pdf_path: str,
     on_progress: Optional[Callable[[int, int], None]] = None,
     check_paused: Optional[Callable[[], bool]] = None,
@@ -427,9 +428,13 @@ def pass2_ocr_from_manifest(
                     category_code=category_code
                 )
                 
+                # Выбираем backend в зависимости от кода блока
+                block_code = getattr(block, 'code', None)
+                backend = stamp_backend if block_code == 'stamp' else image_backend
+                
                 global_sem.acquire()
                 try:
-                    text = image_backend.recognize(crop, prompt=prompt_data)
+                    text = backend.recognize(crop, prompt=prompt_data)
                 finally:
                     global_sem.release()
                 

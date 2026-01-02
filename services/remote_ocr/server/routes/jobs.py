@@ -47,6 +47,7 @@ async def create_job_endpoint(
     text_model: str = Form(""),
     table_model: str = Form(""),
     image_model: str = Form(""),
+    stamp_model: str = Form(""),
     node_id: Optional[str] = Form(None),
     blocks_file: UploadFile = File(..., alias="blocks_file"),
     pdf: UploadFile = File(...),
@@ -110,7 +111,7 @@ async def create_job_endpoint(
         node_id=node_id
     )
     
-    save_job_settings(job.id, text_model, table_model, image_model)
+    save_job_settings(job.id, text_model, table_model, image_model, stamp_model)
     
     # Backpressure: проверяем размер очереди
     can_accept, queue_size, max_size = check_queue_capacity()
@@ -278,7 +279,8 @@ def get_job_details_endpoint(
         result["job_settings"] = {
             "text_model": job.settings.text_model,
             "table_model": job.settings.table_model,
-            "image_model": job.settings.image_model
+            "image_model": job.settings.image_model,
+            "stamp_model": job.settings.stamp_model
         }
     else:
         result["job_settings"] = {}
@@ -432,6 +434,7 @@ def start_job_endpoint(
     text_model: str = Form(""),
     table_model: str = Form(""),
     image_model: str = Form(""),
+    stamp_model: str = Form(""),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
     """Запустить черновик на распознавание"""
@@ -444,7 +447,7 @@ def start_job_endpoint(
     if job.status != "draft":
         raise HTTPException(status_code=400, detail=f"Job is not a draft, status: {job.status}")
     
-    save_job_settings(job_id, text_model, table_model, image_model)
+    save_job_settings(job_id, text_model, table_model, image_model, stamp_model)
     update_job_engine(job_id, engine)
     
     # Backpressure

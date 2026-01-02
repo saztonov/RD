@@ -21,6 +21,7 @@ def run_two_pass_ocr(
     work_dir: Path,
     strip_backend,
     image_backend,
+    stamp_backend,
     start_mem: float,
 ):
     """Двухпроходный алгоритм OCR (экономия памяти)"""
@@ -60,6 +61,7 @@ def run_two_pass_ocr(
             blocks,
             strip_backend,
             image_backend,
+            stamp_backend,
             str(pdf_path),
             on_progress=on_pass2_progress,
             check_paused=lambda: is_job_paused(job.id),
