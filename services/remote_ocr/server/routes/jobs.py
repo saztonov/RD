@@ -363,9 +363,17 @@ async def restart_job_endpoint(
     
     try:
         s3_client, bucket_name = get_r2_sync_client()
-        for f in result_files:
-            if f.file_type in result_types:
-                s3_client.delete_object(Bucket=bucket_name, Key=f.r2_key)
+        
+        # Собираем ключи для пакетного удаления
+        keys_to_delete = [f.r2_key for f in result_files if f.file_type in result_types]
+        
+        if keys_to_delete:
+            # Пакетное удаление (до 1000 файлов за раз)
+            for i in range(0, len(keys_to_delete), 1000):
+                batch = keys_to_delete[i:i+1000]
+                delete_dict = {'Objects': [{'Key': key} for key in batch]}
+                s3_client.delete_objects(Bucket=bucket_name, Delete=delete_dict)
+            _logger.info(f"Deleted {len(keys_to_delete)} result files from R2 for job {job_id}")
         
         delete_job_files(job_id, result_types)
     except Exception as e:

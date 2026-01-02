@@ -98,7 +98,8 @@ class PolygonMixin:
     
     def _get_polygon_vertex_handle(self, pos: QPointF, points: List[tuple]) -> Optional[int]:
         """Определить, попал ли клик на вершину полигона"""
-        handle_size = 10 / self.zoom_factor
+        # Увеличиваем область клика для более удобного попадания
+        handle_size = 15 / self.zoom_factor
         
         for idx, (px, py) in enumerate(points):
             if abs(pos.x() - px) <= handle_size and abs(pos.y() - py) <= handle_size:
@@ -107,7 +108,8 @@ class PolygonMixin:
     
     def _get_polygon_edge_handle(self, pos: QPointF, points: List[tuple]) -> Optional[int]:
         """Определить, попал ли клик на ребро полигона"""
-        edge_threshold = 8 / self.zoom_factor
+        # Увеличиваем область клика для более удобного попадания
+        edge_threshold = 12 / self.zoom_factor
         
         for i in range(len(points)):
             p1 = points[i]

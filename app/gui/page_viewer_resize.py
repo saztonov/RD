@@ -58,7 +58,8 @@ class ResizeHandlesMixin:
     
     def _get_resize_handle(self, pos: QPointF, rect: QRectF) -> Optional[str]:
         """Определить, попал ли клик на хэндл изменения размера"""
-        handle_size = 10 / self.zoom_factor
+        # Увеличиваем область клика для более удобного попадания
+        handle_size = 15 / self.zoom_factor
         
         x, y = pos.x(), pos.y()
         left, top = rect.left(), rect.top()

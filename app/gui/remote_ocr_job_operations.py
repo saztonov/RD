@@ -28,19 +28,24 @@ class JobOperationsMixin:
             r2_prefix = str(PurePosixPath(r2_key).parent)
             projects_dir = get_projects_dir()
             
-            # 1. Удаляем кропы из R2 и локального кэша
+            # 1. Удаляем кропы из R2 и локального кэша (пакетное удаление)
             crops_prefix = f"{r2_prefix}/crops/{pdf_stem}/"
             crop_keys = r2.list_files(crops_prefix)
             
-            for crop_key in crop_keys:
-                r2.delete_object(crop_key)
-                logger.debug(f"Deleted crop from R2: {crop_key}")
+            if crop_keys:
+                # Пакетное удаление из R2
+                deleted_keys, errors = r2.delete_objects_batch(crop_keys)
+                logger.debug(f"Deleted {len(deleted_keys)} crops from R2")
+                if errors:
+                    logger.warning(f"Failed to delete {len(errors)} crops from R2")
                 
+                # Удаляем локальные копии
                 if projects_dir:
-                    rel = crop_key[len("tree_docs/"):] if crop_key.startswith("tree_docs/") else crop_key
-                    crop_local = Path(projects_dir) / "cache" / rel
-                    if crop_local.exists():
-                        crop_local.unlink()
+                    for crop_key in deleted_keys:
+                        rel = crop_key[len("tree_docs/"):] if crop_key.startswith("tree_docs/") else crop_key
+                        crop_local = Path(projects_dir) / "cache" / rel
+                        if crop_local.exists():
+                            crop_local.unlink()
             
             # Удаляем папку crops из кэша
             if projects_dir:

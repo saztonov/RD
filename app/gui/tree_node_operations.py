@@ -229,6 +229,49 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
         main_window.hide_transfer_progress()
         self._upload_worker = None
     
+    def _rename_related_files(self, old_r2_key: str, new_r2_key: str, node_id: str):
+        """Переименовать связанные файлы (annotation.json, ocr.html, result.json)"""
+        from pathlib import PurePosixPath
+        from rd_core.r2_storage import R2Storage
+        
+        old_stem = PurePosixPath(old_r2_key).stem
+        new_stem = PurePosixPath(new_r2_key).stem
+        r2_prefix = str(PurePosixPath(old_r2_key).parent)
+        
+        r2 = R2Storage()
+        
+        # Список связанных файлов для переименования
+        related_files = [
+            (f"{r2_prefix}/{old_stem}_annotation.json", f"{r2_prefix}/{new_stem}_annotation.json"),
+            (f"{r2_prefix}/{old_stem}_ocr.html", f"{r2_prefix}/{new_stem}_ocr.html"),
+            (f"{r2_prefix}/{old_stem}_result.json", f"{r2_prefix}/{new_stem}_result.json"),
+        ]
+        
+        # Переименовываем файлы в R2
+        for old_key, new_key in related_files:
+            if r2.exists(old_key):
+                try:
+                    if r2.rename_object(old_key, new_key):
+                        logger.info(f"Renamed in R2: {old_key} → {new_key}")
+                        # Переименовываем в локальном кэше
+                        self._rename_cache_file(old_key, new_key)
+                        # Обновляем запись в node_files если существует
+                        self._update_node_file_r2_key(node_id, old_key, new_key)
+                except Exception as e:
+                    logger.error(f"Failed to rename {old_key}: {e}")
+    
+    def _update_node_file_r2_key(self, node_id: str, old_r2_key: str, new_r2_key: str):
+        """Обновить r2_key в таблице node_files"""
+        try:
+            node_file = self.client.get_node_file_by_r2_key(node_id, old_r2_key)
+            if node_file:
+                # Обновляем r2_key и file_name
+                new_file_name = Path(new_r2_key).name
+                self.client.update_node_file(node_file.id, r2_key=new_r2_key, file_name=new_file_name)
+                logger.info(f"Updated node_file: {old_r2_key} → {new_r2_key}")
+        except Exception as e:
+            logger.error(f"Failed to update node_file: {e}")
+    
     def _rename_node(self, node: TreeNode):
         """Переименовать узел (для документов также переименовывает в R2)"""
         new_name, ok = QInputDialog.getText(
@@ -262,13 +305,19 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                         try:
                             r2 = R2Storage()
                             if r2.rename_object(old_r2_key, new_r2_key):
+                                # Переименовываем связанные файлы
+                                self._rename_related_files(old_r2_key, new_r2_key, node.id)
+                                
                                 # Обновляем r2_key в attributes
                                 node.attributes["r2_key"] = new_r2_key
                                 node.attributes["original_name"] = new_name_clean
                                 self.client.update_node(node.id, name=new_name_clean, attributes=node.attributes)
                                 
-                                # Переименовываем в локальном кэше
+                                # Переименовываем PDF в локальном кэше
                                 self._rename_cache_file(old_r2_key, new_r2_key)
+                                
+                                # Обновляем запись PDF в node_files
+                                self._update_node_file_r2_key(node.id, old_r2_key, new_r2_key)
                             else:
                                 QMessageBox.warning(self, "Внимание", "Не удалось переименовать файл в R2")
                                 return

@@ -126,7 +126,7 @@ class R2UtilsMixin:
 
     def delete_by_prefix(self, prefix: str) -> int:
         """
-        Удалить все объекты с заданным префиксом
+        Удалить все объекты с заданным префиксом (использует пакетное удаление)
 
         Args:
             prefix: Префикс для удаления
@@ -138,13 +138,14 @@ class R2UtilsMixin:
         if not keys:
             return 0
 
-        deleted = 0
-        for key in keys:
-            if self.delete_object(key):
-                deleted += 1
+        # Используем пакетное удаление вместо цикла
+        deleted_keys, errors = self.delete_objects_batch(keys)
         
-        logger.info(f"✅ Удалено {deleted}/{len(keys)} объектов по префиксу: {prefix}")
-        return deleted
+        logger.info(f"✅ Удалено {len(deleted_keys)}/{len(keys)} объектов по префиксу: {prefix}")
+        if errors:
+            logger.warning(f"⚠️ Ошибок при удалении по префиксу: {len(errors)}")
+        
+        return len(deleted_keys)
 
     def list_objects_with_metadata(self, prefix: str) -> list[dict]:
         """
@@ -194,6 +195,76 @@ class R2UtilsMixin:
                 return False
             logger.error(f"❌ Ошибка проверки существования объекта: {e}")
             return False
+
+    def delete_objects_batch(self, keys: list[str]) -> tuple[list[str], list[dict]]:
+        """
+        Пакетное удаление объектов из R2 (до 1000 за раз)
+        
+        Args:
+            keys: Список ключей для удаления
+            
+        Returns:
+            Кортеж: (список успешно удаленных ключей, список ошибок)
+            Ошибка - dict с полями: Key, Code, Message
+        """
+        if not keys:
+            return [], []
+        
+        deleted = []
+        errors = []
+        
+        # AWS S3 API позволяет удалить до 1000 объектов за раз
+        batch_size = 1000
+        
+        for i in range(0, len(keys), batch_size):
+            batch = keys[i:i + batch_size]
+            
+            try:
+                delete_dict = {
+                    'Objects': [{'Key': key} for key in batch],
+                    'Quiet': False  # Получать информацию об удалённых объектах
+                }
+                
+                response = self.s3_client.delete_objects(
+                    Bucket=self.bucket_name,
+                    Delete=delete_dict
+                )
+                
+                # Обрабатываем успешно удалённые
+                if 'Deleted' in response:
+                    for obj in response['Deleted']:
+                        deleted.append(obj['Key'])
+                
+                # Обрабатываем ошибки
+                if 'Errors' in response:
+                    for error in response['Errors']:
+                        errors.append({
+                            'Key': error.get('Key', ''),
+                            'Code': error.get('Code', ''),
+                            'Message': error.get('Message', '')
+                        })
+                        logger.warning(
+                            f"❌ Ошибка удаления {error.get('Key')}: "
+                            f"{error.get('Code')} - {error.get('Message')}"
+                        )
+                
+                logger.info(f"✅ Пакет {i//batch_size + 1}: удалено {len(response.get('Deleted', []))} объектов")
+                
+            except ClientError as e:
+                logger.error(f"❌ Ошибка пакетного удаления: {e}")
+                # Добавляем все ключи из этого батча в ошибки
+                for key in batch:
+                    errors.append({
+                        'Key': key,
+                        'Code': 'ClientError',
+                        'Message': str(e)
+                    })
+        
+        logger.info(f"✅ Всего удалено {len(deleted)}/{len(keys)} объектов")
+        if errors:
+            logger.warning(f"⚠️ Ошибок при удалении: {len(errors)}")
+        
+        return deleted, errors
 
 
 

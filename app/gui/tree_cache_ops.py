@@ -119,26 +119,37 @@ class TreeCacheOperationsMixin:
             try:
                 r2 = R2Storage()
                 node_files = self.client.get_node_files(node.id)
+                
+                # Собираем все ключи для пакетного удаления
+                r2_keys_to_delete = []
                 for nf in node_files:
-                    # Удаляем файл из R2
                     if nf.r2_key:
-                        r2.delete_object(nf.r2_key)
-                        logger.info(f"Deleted node_file from R2: {nf.r2_key}")
-                        
-                        # Удаляем из локального кэша
-                        if projects_dir:
-                            if nf.r2_key.startswith("tree_docs/"):
-                                rel = nf.r2_key[len("tree_docs/"):]
+                        r2_keys_to_delete.append(nf.r2_key)
+                
+                # Пакетное удаление из R2
+                if r2_keys_to_delete:
+                    deleted_keys, errors = r2.delete_objects_batch(r2_keys_to_delete)
+                    logger.info(f"Deleted {len(deleted_keys)} node_files from R2")
+                    if errors:
+                        logger.warning(f"Failed to delete {len(errors)} files from R2")
+                    
+                    # Удаляем из локального кэша
+                    if projects_dir:
+                        for r2_key in deleted_keys:
+                            if r2_key.startswith("tree_docs/"):
+                                rel = r2_key[len("tree_docs/"):]
                             else:
-                                rel = nf.r2_key
+                                rel = r2_key
                             cache_path = Path(projects_dir) / "cache" / rel
                             if cache_path.exists():
                                 cache_path.unlink()
                                 logger.debug(f"Deleted from cache: {cache_path}")
-                    
-                    # Удаляем запись из БД
+                
+                # Удаляем записи из БД
+                for nf in node_files:
                     self.client.delete_node_file(nf.id)
                     logger.info(f"Deleted node_file from DB: {nf.id}")
+                    
             except Exception as e:
                 logger.error(f"Failed to delete node_files: {e}")
         
@@ -146,35 +157,29 @@ class TreeCacheOperationsMixin:
         if r2_key:
             try:
                 r2 = R2Storage()
-                
-                # Удаляем PDF
-                r2.delete_object(r2_key)
-                logger.info(f"Deleted from R2: {r2_key}")
-                
-                # Удаляем аннотацию
-                ann_r2_key = get_annotation_r2_key(r2_key)
-                r2.delete_object(ann_r2_key)
-                logger.info(f"Deleted annotation from R2: {ann_r2_key}")
-                
-                # Удаляем папку crops по префиксу (кропы лежат как {node_id}/crops/{block_id}.pdf)
                 r2_prefix = str(PurePosixPath(r2_key).parent)
                 pdf_stem = Path(r2_key).stem
+                
+                # Собираем все файлы для пакетного удаления
+                files_to_delete = [
+                    r2_key,  # PDF
+                    get_annotation_r2_key(r2_key),  # аннотация
+                    f"{r2_prefix}/{pdf_stem}.md",  # MD файл
+                    f"{r2_prefix}/{pdf_stem}_ocr.html",  # OCR HTML
+                    f"{r2_prefix}/{pdf_stem}_result.json",  # result JSON
+                ]
+                
+                # Удаляем папку crops по префиксу (кропы лежат как {node_id}/crops/{block_id}.pdf)
                 crops_prefix = f"{r2_prefix}/crops/"
                 deleted_crops = r2.delete_by_prefix(crops_prefix)
                 if deleted_crops:
                     logger.info(f"Deleted {deleted_crops} crops from R2")
                 
-                # Удаляем MD файл
-                md_key = f"{r2_prefix}/{pdf_stem}.md"
-                r2.delete_object(md_key)
-                
-                # Удаляем _ocr.html
-                ocr_html_key = f"{r2_prefix}/{pdf_stem}_ocr.html"
-                r2.delete_object(ocr_html_key)
-                
-                # Удаляем _result.json
-                result_json_key = f"{r2_prefix}/{pdf_stem}_result.json"
-                r2.delete_object(result_json_key)
+                # Пакетное удаление основных файлов
+                deleted_keys, errors = r2.delete_objects_batch(files_to_delete)
+                logger.info(f"Deleted {len(deleted_keys)} files from R2: {r2_key}")
+                if errors:
+                    logger.warning(f"Failed to delete {len(errors)} files from R2")
                 
             except Exception as e:
                 logger.error(f"Failed to delete from R2: {e}")

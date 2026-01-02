@@ -171,6 +171,20 @@ def delete_object(self, remote_key: str) -> bool
 
 Удалить объект.
 
+#### delete_objects_batch
+
+```python
+def delete_objects_batch(self, keys: list[str]) -> tuple[list[str], list[dict]]
+```
+
+Пакетное удаление объектов (до 1000 файлов за один запрос).
+
+Возвращает кортеж:
+- `deleted`: список успешно удалённых ключей
+- `errors`: список dict с полями `Key`, `Code`, `Message` для ошибок
+
+Значительно эффективнее при удалении большого количества файлов.
+
 #### generate_presigned_url
 
 ```python

@@ -86,22 +86,49 @@ class R2DeleteWorker(QThread):
         try:
             r2 = R2Storage()
             total = len(self.files_to_delete)
-            deleted_keys = []
             
-            for i, file_info in enumerate(self.files_to_delete):
+            # Собираем все ключи для пакетного удаления
+            keys_to_delete = []
+            for file_info in self.files_to_delete:
+                r2_key = file_info.get("path", "")
+                if r2_key:
+                    keys_to_delete.append(r2_key)
+            
+            if not keys_to_delete:
+                self.finished.emit(False, "Нет файлов для удаления", [])
+                return
+            
+            # Пакетное удаление (до 1000 файлов за раз)
+            # Показываем прогресс для каждого батча
+            batch_size = 1000
+            all_deleted = []
+            all_errors = []
+            
+            for i in range(0, len(keys_to_delete), batch_size):
                 if self._cancelled:
-                    self.finished.emit(False, "Отменено", deleted_keys)
+                    self.finished.emit(False, "Отменено", all_deleted)
                     return
                 
-                r2_key = file_info.get("path", "")
-                filename = file_info.get("name", "")
+                batch = keys_to_delete[i:i + batch_size]
+                batch_num = i // batch_size + 1
+                total_batches = (len(keys_to_delete) + batch_size - 1) // batch_size
                 
-                self.progress.emit(i + 1, total, filename)
+                # Обновляем прогресс
+                progress_msg = f"Пакет {batch_num}/{total_batches} ({len(batch)} файлов)"
+                self.progress.emit(i + len(batch), total, progress_msg)
                 
-                if r2.delete_object(r2_key):
-                    deleted_keys.append(r2_key)
+                # Удаляем батч
+                deleted, errors = r2.delete_objects_batch(batch)
+                all_deleted.extend(deleted)
+                all_errors.extend(errors)
             
-            self.finished.emit(True, f"Удалено {len(deleted_keys)}/{total} файлов", deleted_keys)
+            # Формируем итоговое сообщение
+            if all_errors:
+                error_msg = f"Удалено {len(all_deleted)}/{total} файлов. Ошибок: {len(all_errors)}"
+                self.finished.emit(False, error_msg, all_deleted)
+            else:
+                self.finished.emit(True, f"Удалено {len(all_deleted)}/{total} файлов", all_deleted)
+                
         except Exception as e:
             logger.error(f"Delete failed: {e}")
             self.finished.emit(False, str(e), [])

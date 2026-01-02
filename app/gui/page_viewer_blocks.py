@@ -91,7 +91,10 @@ class BlockRenderingMixin:
         label.setFont(font)
         label.setDefaultTextColor(QColor(255, 0, 0))
         label.setFlag(label.GraphicsItemFlag.ItemIgnoresTransformations, True)
-        label.setPos(x2 - 20, y1 + 2)
+        # Позиционируем метку в правом верхнем углу блока с учетом масштаба
+        offset_x = 5 / self.zoom_factor  # Небольшой отступ внутрь блока
+        offset_y = 5 / self.zoom_factor
+        label.setPos(x2 - offset_x, y1 + offset_y)
         self.scene.addItem(label)
         self.block_labels[block.id] = label
         
@@ -104,7 +107,10 @@ class BlockRenderingMixin:
             check_label.setFont(check_font)
             check_label.setDefaultTextColor(QColor(220, 20, 60))  # Crimson
             check_label.setFlag(check_label.GraphicsItemFlag.ItemIgnoresTransformations, True)
-            check_label.setPos(center_x - 8, center_y - 12)
+            # Корректируем позицию с учетом масштаба (центрируем относительно размера символа)
+            check_offset_x = 8 / self.zoom_factor
+            check_offset_y = 12 / self.zoom_factor
+            check_label.setPos(center_x - check_offset_x, center_y - check_offset_y)
             self.scene.addItem(check_label)
             self.block_labels[block.id + "_check"] = check_label
         

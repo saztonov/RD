@@ -94,50 +94,55 @@ class MouseEventsMixin:
                         return
             
             if clicked_block is not None:
-                self.selected_block_idx = clicked_block
-                self.selected_block_indices = []
-                self.block_selected.emit(clicked_block)
-                
                 block = self.current_blocks[clicked_block]
                 x1, y1, x2, y2 = block.coords_px
                 block_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
                 
-                if block.shape_type == ShapeType.POLYGON and block.polygon_points:
-                    vertex_idx = self._get_polygon_vertex_handle(scene_pos, block.polygon_points)
-                    if vertex_idx is not None:
-                        self.parent().window()._save_undo_state()
-                        self.dragging_polygon_vertex = vertex_idx
-                        self.move_start_pos = self._clamp_to_page(scene_pos)
-                        self.original_polygon_points = list(block.polygon_points)
-                        self._redraw_blocks()
-                        return
-                    
-                    edge_idx = self._get_polygon_edge_handle(scene_pos, block.polygon_points)
-                    if edge_idx is not None:
-                        self.parent().window()._save_undo_state()
-                        self.dragging_polygon_edge = edge_idx
-                        self.move_start_pos = self._clamp_to_page(scene_pos)
-                        self.original_polygon_points = list(block.polygon_points)
-                        self._redraw_blocks()
-                        return
+                # Проверяем, был ли этот блок уже выбран
+                block_already_selected = (self.selected_block_idx == clicked_block)
                 
-                resize_handle = self._get_resize_handle(scene_pos, block_rect)
-                
-                if resize_handle:
-                    self.parent().window()._save_undo_state()
-                    self.resizing_block = True
-                    self.resize_handle = resize_handle
-                    self.move_start_pos = self._clamp_to_page(scene_pos)
-                    self.original_block_rect = block_rect
-                else:
-                    self.parent().window()._save_undo_state()
-                    self.moving_block = True
-                    self.move_start_pos = self._clamp_to_page(scene_pos)
-                    self.original_block_rect = block_rect
+                if block_already_selected:
+                    # Блок уже выбран - проверяем клик на handles для редактирования
                     if block.shape_type == ShapeType.POLYGON and block.polygon_points:
-                        self.original_polygon_points = list(block.polygon_points)
-                
-                self._redraw_blocks()
+                        vertex_idx = self._get_polygon_vertex_handle(scene_pos, block.polygon_points)
+                        if vertex_idx is not None:
+                            self.parent().window()._save_undo_state()
+                            self.dragging_polygon_vertex = vertex_idx
+                            self.move_start_pos = self._clamp_to_page(scene_pos)
+                            self.original_polygon_points = list(block.polygon_points)
+                            return
+                        
+                        edge_idx = self._get_polygon_edge_handle(scene_pos, block.polygon_points)
+                        if edge_idx is not None:
+                            self.parent().window()._save_undo_state()
+                            self.dragging_polygon_edge = edge_idx
+                            self.move_start_pos = self._clamp_to_page(scene_pos)
+                            self.original_polygon_points = list(block.polygon_points)
+                            return
+                    
+                    resize_handle = self._get_resize_handle(scene_pos, block_rect)
+                    
+                    if resize_handle:
+                        self.parent().window()._save_undo_state()
+                        self.resizing_block = True
+                        self.resize_handle = resize_handle
+                        self.move_start_pos = self._clamp_to_page(scene_pos)
+                        self.original_block_rect = block_rect
+                        return
+                    else:
+                        # Клик не на handle - начинаем перемещение
+                        self.parent().window()._save_undo_state()
+                        self.moving_block = True
+                        self.move_start_pos = self._clamp_to_page(scene_pos)
+                        self.original_block_rect = block_rect
+                        if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+                            self.original_polygon_points = list(block.polygon_points)
+                else:
+                    # Блок не был выбран - просто выделяем его, не начинаем перемещение
+                    self.selected_block_idx = clicked_block
+                    self.selected_block_indices = []
+                    self.block_selected.emit(clicked_block)
+                    self._redraw_blocks()
             else:
                 shape_type = self.get_current_shape_type()
                 
