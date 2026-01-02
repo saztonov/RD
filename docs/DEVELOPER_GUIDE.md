@@ -204,36 +204,61 @@ client.delete_node(folder.id)  # Каскадное удаление
 
 ### R2 Storage
 
+**Cloudflare R2** — S3-совместимое хранилище для файлов.
+
+**Настройка (.env):**
+```env
+R2_ACCOUNT_ID=your_account_id
+R2_ACCESS_KEY_ID=your_access_key
+R2_SECRET_ACCESS_KEY=your_secret_key
+R2_BUCKET_NAME=rd1
+R2_PUBLIC_URL=https://pub-xxxxx.r2.dev
+```
+
+**Использование:**
 ```python
 from rd_core.r2_storage import R2Storage
 
 r2 = R2Storage()
 
-# Загрузка файла
+# Загрузка/скачивание файлов
 r2.upload_file("local/file.pdf", "remote/path/file.pdf")
-
-# Загрузка текста
-r2.upload_text("Hello, World!", "prompts/test.txt")
-
-# Скачивание
 r2.download_file("remote/path/file.pdf", "local/downloaded.pdf")
+
+# Работа с текстом
+r2.upload_text("Hello!", "prompts/test.txt")
 content = r2.download_text("prompts/test.txt")
 
 # Список объектов
 keys = r2.list_objects(prefix="prompts/")
 
-# Presigned URL (для скачивания без авторизации)
+# Presigned URL (временная ссылка для скачивания)
 url = r2.generate_presigned_url("results/file.zip", expiration=3600)
 
 # Удаление
 r2.delete_object("remote/path/file.pdf")
 
 # Загрузка директории
-success, errors = r2.upload_directory(
-    local_dir="output/results",
-    remote_prefix="ocr_results/project1"
-)
+r2.upload_directory("output/results", "ocr_results/project1")
 ```
+
+**Структура bucket:**
+```
+rd1/
+├── prompts/           # Промпты OCR (text.json, table.json, image.json)
+├── ocr_jobs/          # Временные файлы задач
+│   └── {job_id}/
+│       ├── document.pdf
+│       ├── blocks.json
+│       ├── result.md
+│       └── crops/
+└── tree_docs/         # Документы из Tree Projects
+    └── {node_id}/
+```
+
+**Промпты OCR:**
+Промты хранятся в `prompts/` и редактируются через GUI (`Settings → Edit Prompts`).
+Формат: `{"system": "...", "user": "..."}`
 
 ### OCR движки
 
