@@ -16,7 +16,7 @@ from PySide6.QtGui import QColor
 from app.tree_client import TreeClient, TreeNode, NodeType, NodeStatus, StageType, SectionType, FileType, FileType
 from app.gui.tree_node_operations import TreeNodeOperationsMixin, NODE_ICONS, STATUS_COLORS
 from app.gui.tree_delegates import VersionHighlightDelegate
-from app.gui.tree_sync_mixin import TreeSyncMixin, SYNC_ICONS
+from app.gui.tree_sync_mixin import TreeSyncMixin
 from app.gui.tree_filter_mixin import TreeFilterMixin
 from app.gui.tree_context_menu import TreeContextMenuMixin
 from app.gui.sync_check_worker import SyncCheckWorker, SyncStatus
@@ -361,13 +361,11 @@ class ProjectTreeWidget(
             # Сохраняем версию отдельно для отображения красным
             version_display = version_tag
         elif node.node_type == NodeType.TASK_FOLDER:
-            # Иконка синхронизации для папок заданий
-            sync_status = self._sync_statuses.get(node.id, SyncStatus.UNKNOWN)
-            sync_icon = SYNC_ICONS.get(sync_status, "")
+            # Убираем иконки синхронизации для папок заданий
             if node.code:
-                display_name = f"{icon} [{node.code}] {node.name} {sync_icon}".strip()
+                display_name = f"{icon} [{node.code}] {node.name}".strip()
             else:
-                display_name = f"{icon} {node.name} {sync_icon}".strip()
+                display_name = f"{icon} {node.name}".strip()
             version_display = None
         elif node.code:
             display_name = f"{icon} [{node.code}] {node.name}"
@@ -417,12 +415,15 @@ class ProjectTreeWidget(
             # Загружаем батчем
             statuses = self.client.get_pdf_statuses_batch(doc_ids)
             
-            # Обновляем отображение
-            for node_id, (status, message) in statuses.items():
+            # Обновляем отображение для ВСЕХ документов (не только тех, что в statuses)
+            for node_id in doc_ids:
                 item = self._node_map.get(node_id)
                 if item:
                     node = item.data(0, Qt.UserRole)
-                    if isinstance(node, TreeNode):
+                    if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
+                        # Получаем статус или используем "unknown" если нет в БД
+                        status, message = statuses.get(node_id, ("unknown", ""))
+                        
                         # Обновляем кешированные значения в узле
                         node.pdf_status = status
                         node.pdf_status_message = message
@@ -441,7 +442,7 @@ class ProjectTreeWidget(
                             item.setToolTip(0, message)
             
             self._pdf_statuses_loaded = True
-            logger.info(f"Loaded PDF statuses: {len(statuses)} documents")
+            logger.info(f"Loaded PDF statuses: {len(statuses)}/{len(doc_ids)} documents")
             
         except Exception as e:
             logger.error(f"Failed to load PDF statuses batch: {e}")
@@ -613,7 +614,7 @@ class ProjectTreeWidget(
                 
                 # Обновляем только этот узел
                 item = self._node_map.get(node.id)
-                if item:
+                if item and node.node_type == NodeType.DOCUMENT:
                     node.pdf_status = status.value
                     node.pdf_status_message = message
                     
@@ -804,7 +805,7 @@ class ProjectTreeWidget(
             
             # Обновляем только этот узел
             item = self._node_map.get(node.id)
-            if item:
+            if item and node.node_type == NodeType.DOCUMENT:
                 node.pdf_status = status.value
                 node.pdf_status_message = message
                 

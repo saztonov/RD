@@ -105,7 +105,10 @@ class TreeSyncMixin:
         from app.gui.tree_node_operations import NODE_ICONS
         
         icon = NODE_ICONS.get(node.node_type, "📄")
-        sync_icon = SYNC_ICONS.get(status, "")
+        
+        # НЕ ПОКАЗЫВАЕМ иконки синхронизации - ни для документов, ни для папок
+        # Для документов используем только PDF status icons
+        # Для папок - никаких иконок статуса
         
         if node.node_type == NodeType.DOCUMENT:
             # Для документов используем PDF status вместо sync status
@@ -114,10 +117,11 @@ class TreeSyncMixin:
                 # Проверка будет выполнена асинхронно
                 pass
         elif node.node_type == NodeType.TASK_FOLDER:
+            # Убираем иконки синхронизации для папок
             if node.code:
-                display_name = f"{icon} [{node.code}] {node.name} {sync_icon}".strip()
+                display_name = f"{icon} [{node.code}] {node.name}".strip()
             else:
-                display_name = f"{icon} {node.name} {sync_icon}".strip()
+                display_name = f"{icon} {node.name}".strip()
             item.setText(0, display_name)
     
     def _on_sync_check_finished(self):

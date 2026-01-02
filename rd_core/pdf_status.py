@@ -82,30 +82,36 @@ def calculate_pdf_status(
                 logger.error(f"Failed to parse annotation.json: {e}")
         
         # Определяем статус и сообщение
-        missing_parts = []
+        missing_r2 = []
+        missing_db = []
         
         if not has_annotation_r2:
-            missing_parts.append("annotation.json не на R2")
+            missing_r2.append("annotation.json")
         if not has_annotation_db:
-            missing_parts.append("annotation.json не в Supabase")
+            missing_db.append("annotation.json")
         if not has_ocr_html_r2:
-            missing_parts.append("ocr.html не на R2")
+            missing_r2.append("ocr.html")
         if not has_ocr_html_db:
-            missing_parts.append("ocr.html не в Supabase")
+            missing_db.append("ocr.html")
         if not has_result_json_r2:
-            missing_parts.append("result.json не на R2")
+            missing_r2.append("result.json")
         if not has_result_json_db:
-            missing_parts.append("result.json не в Supabase")
+            missing_db.append("result.json")
         
         # Приоритет 3: Нет annotation.json или есть страницы без блоков
         if not has_annotation_r2:
-            return PDFStatus.MISSING_BLOCKS, "Файл annotation.json не найден на R2"
+            return PDFStatus.MISSING_BLOCKS, "Нет annotation.json на R2"
         elif pages_without_blocks:
             pages_str = ", ".join(str(p) for p in sorted(pages_without_blocks))
             return PDFStatus.MISSING_BLOCKS, f"Страницы без блоков: {pages_str}"
         # Приоритет 2: Не хватает файлов
-        elif missing_parts:
-            message = "Отсутствует:\n" + "\n".join(f"• {part}" for part in missing_parts)
+        elif missing_r2 or missing_db:
+            parts = []
+            if missing_r2:
+                parts.append(f"R2: {', '.join(missing_r2)}")
+            if missing_db:
+                parts.append(f"БД: {', '.join(missing_db)}")
+            message = "Отсутствует:\n" + "\n".join(parts)
             return PDFStatus.MISSING_FILES, message
         # Приоритет 1: Всё в порядке
         else:

@@ -196,7 +196,7 @@ class FileAutoSaveMixin:
                         
                         # Обновляем только конкретный узел (без refresh всего дерева)
                         item = self.project_tree._node_map.get(node_id)
-                        if item:
+                        if item and node.node_type.value == "document":
                             node.pdf_status = status.value
                             node.pdf_status_message = message
                             
