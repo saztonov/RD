@@ -367,14 +367,16 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
 
     def _on_download_progress(self, job_id: str, current: int, filename: str):
         """Слот: прогресс скачивания"""
-        if self._download_dialog:
-            self._download_dialog.setValue(current)
-            self._download_dialog.setLabelText(f"Скачивание: {filename}")
+        dialog = self._download_dialog  # Локальная ссылка для thread safety
+        if dialog:
+            dialog.setValue(current)
+            dialog.setLabelText(f"Скачивание: {filename}")
 
     def _on_download_finished(self, job_id: str, extract_dir: str):
         """Слот: скачивание завершено - перезагрузить аннотацию в GUI"""
-        if self._download_dialog:
-            self._download_dialog.close()
+        dialog = self._download_dialog  # Локальная ссылка для thread safety
+        if dialog:
+            dialog.close()
             self._download_dialog = None
         
         # Помечаем задачу как скачанную
@@ -469,8 +471,9 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
 
     def _on_download_error(self, job_id: str, error_msg: str):
         """Слот: ошибка скачивания"""
-        if self._download_dialog:
-            self._download_dialog.close()
+        dialog = self._download_dialog  # Локальная ссылка для thread safety
+        if dialog:
+            dialog.close()
             self._download_dialog = None
         
         QMessageBox.critical(self, "Ошибка загрузки", f"Не удалось скачать файлы:\n{error_msg}")

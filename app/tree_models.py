@@ -39,6 +39,9 @@ class FileType(str, Enum):
     IMAGE = "image"
     OCR_HTML = "ocr_html"
     RESULT_JSON = "result_json"
+    RESULT_MD = "result_md"
+    RESULT_ZIP = "result_zip"
+    CROPS_FOLDER = "crops_folder"
 
 
 @dataclass
