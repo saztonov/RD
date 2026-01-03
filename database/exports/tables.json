@@ -3587,6 +3587,79 @@
       }
     ]
   },
+  "public.user_prompts": {
+    "schema": "public",
+    "name": "user_prompts",
+    "comment": "User custom prompts for AI conversations",
+    "columns": [
+      {
+        "name": "id",
+        "comment": "Unique prompt identifier",
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": "Client identifier",
+        "default": "'default'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "title",
+        "comment": "Prompt title",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "system_prompt",
+        "comment": "System prompt text",
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "user_text",
+        "comment": "User prompt text",
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "r2_key",
+        "comment": "R2 storage key for full content",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "user_prompts_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
   "realtime.schema_migrations": {
     "schema": "realtime",
     "name": "schema_migrations",

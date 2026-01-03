@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-03T16:33:17.885923
+-- Generated: 2026-01-03T17:31:53.834801
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -648,6 +648,27 @@ COMMENT ON TABLE public.tree_nodes IS 'Дерево проектов - иера�
 COMMENT ON COLUMN public.tree_nodes.node_type IS 'Тип узла: client, project, section, stage, task, document';
 COMMENT ON COLUMN public.tree_nodes.attributes IS 'Дополнительные атрибуты узла (JSON)';
 COMMENT ON COLUMN public.tree_nodes.is_locked IS 'Флаг блокировки документа от изменений (удаление, переименование, изменение блоков, запуск OCR)';
+
+-- Table: public.user_prompts
+-- Description: User custom prompts for AI conversations
+CREATE TABLE IF NOT EXISTS public.user_prompts (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    client_id text NOT NULL DEFAULT 'default'::text,
+    title text NOT NULL,
+    system_prompt text NOT NULL DEFAULT ''::text,
+    user_text text NOT NULL DEFAULT ''::text,
+    r2_key text,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT user_prompts_pkey PRIMARY KEY (id)
+);
+COMMENT ON TABLE public.user_prompts IS 'User custom prompts for AI conversations';
+COMMENT ON COLUMN public.user_prompts.id IS 'Unique prompt identifier';
+COMMENT ON COLUMN public.user_prompts.client_id IS 'Client identifier';
+COMMENT ON COLUMN public.user_prompts.title IS 'Prompt title';
+COMMENT ON COLUMN public.user_prompts.system_prompt IS 'System prompt text';
+COMMENT ON COLUMN public.user_prompts.user_text IS 'User prompt text';
+COMMENT ON COLUMN public.user_prompts.r2_key IS 'R2 storage key for full content';
 
 -- Table: realtime.schema_migrations
 CREATE TABLE IF NOT EXISTS realtime.schema_migrations (
@@ -3992,6 +4013,9 @@ CREATE INDEX idx_tree_nodes_sort ON public.tree_nodes USING btree (parent_id, so
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_type ON public.tree_nodes USING btree (node_type);
+
+-- Index on public.user_prompts
+CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (client_id);
 
 -- Index on realtime.messages
 CREATE INDEX messages_inserted_at_topic_index ON ONLY realtime.messages USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));

@@ -8,7 +8,11 @@ import os
 import sys
 from pathlib import Path
 
-# Читаем .env
+# Читаем .env (ТОЛЬКО безопасные переменные для внедрения)
+SAFE_ENV_VARS = {
+    'REMOTE_OCR_BASE_URL',  # Публичный URL сервера
+}
+
 env_vars = {}
 env_file = Path(".env")
 if env_file.exists():
@@ -17,10 +21,16 @@ if env_file.exists():
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:
                 key, value = line.split('=', 1)
-                env_vars[key.strip()] = value.strip().strip('"').strip("'")
+                key = key.strip()
+                # Внедряем ТОЛЬКО безопасные переменные
+                if key in SAFE_ENV_VARS:
+                    env_vars[key] = value.strip().strip('"').strip("'")
 
 # Генерируем код внедрения переменных
 env_code = "import os\n"
+env_code += "# ВНИМАНИЕ: Секретные ключи НЕ внедрены в exe!\n"
+env_code += "# Создайте .env файл рядом с CoreStructure.exe:\n"
+env_code += "# REMOTE_OCR_API_KEY=your_key\n\n"
 for key, value in env_vars.items():
     env_code += f'os.environ["{key}"] = """{value}"""\n'
 
@@ -80,8 +90,11 @@ spec_file = Path("CoreStructure.spec")
 with open(spec_file, 'w', encoding='utf-8') as f:
     f.write(spec_content)
 
-print(f"[OK] Spec updated with {len(env_vars)} vars")
+print(f"[OK] Spec updated with {len(env_vars)} safe vars (secrets excluded)")
 print(f"[OK] Runtime hook: {hook_file}")
+print("\n⚠️  ВАЖНО: Секретные ключи НЕ внедрены в exe!")
+print("Создайте .env файл рядом с CoreStructure.exe с содержимым:")
+print("  REMOTE_OCR_API_KEY=your_key_here")
 print("\nRunning PyInstaller...")
 
 os.system("pyinstaller CoreStructure.spec")

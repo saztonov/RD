@@ -783,6 +783,14 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_tree_nodes_type ON public.tree_nodes USING btree (node_type)"
   },
+  "public.user_prompts.idx_user_prompts_client_id": {
+    "schema": "public",
+    "name": "idx_user_prompts_client_id",
+    "table_name": "user_prompts",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (client_id)"
+  },
   "realtime.messages.messages_inserted_at_topic_index": {
     "schema": "realtime",
     "name": "messages_inserted_at_topic_index",

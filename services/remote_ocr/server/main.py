@@ -11,6 +11,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .settings import settings
 from .storage import init_db
 from .routes.jobs import router as jobs_router
+from .routes.tree import router as tree_router
+from .routes.storage import router as storage_router
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -66,6 +68,8 @@ def queue_status() -> dict:
 
 # Подключаем роутеры
 app.include_router(jobs_router)
+app.include_router(tree_router)
+app.include_router(storage_router)
 
 
 if __name__ == "__main__":
