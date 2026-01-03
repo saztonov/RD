@@ -11,7 +11,7 @@ class DatalabOCRBackend:
     
     API_URL = "https://www.datalab.to/api/v1/marker"
     POLL_INTERVAL = 3
-    MAX_POLL_ATTEMPTS = 180
+    MAX_POLL_ATTEMPTS = 60  # Уменьшено с 180 до 60 (3 минуты вместо 9)
     MAX_RETRIES = 3
     MAX_WIDTH = 4000
     
@@ -166,7 +166,9 @@ RULES:
                         logger.warning(f"Datalab: неизвестный статус '{status}'. Полный ответ: {poll_result}")
                 
                 logger.error(f"Datalab: превышено время ожидания после {self.MAX_POLL_ATTEMPTS} попыток")
-                return "[Ошибка Datalab: превышено время ожидания]"
+                # Возвращаем пустую строку вместо ошибки, чтобы продолжить обработку
+                logger.warning(f"Datalab: пропускаем блок из-за таймаута, продолжаем обработку")
+                return ""
                 
             finally:
                 if os.path.exists(tmp_path):

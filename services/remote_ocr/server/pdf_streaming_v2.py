@@ -338,11 +338,15 @@ def pass2_ocr_from_manifest(
                 
                 prompt_data = build_strip_prompt(strip_blocks)
                 
+                logger.info(f"PASS2: начало обработки strip {strip.strip_id} ({len(strip.block_parts)} блоков)")
+                
                 global_sem.acquire()
                 try:
                     response_text = strip_backend.recognize(merged_image, prompt=prompt_data)
                 finally:
                     global_sem.release()
+                
+                logger.info(f"PASS2: завершена обработка strip {strip.strip_id}")
             
             # Парсим результат
             index_results = parse_batch_response_by_index(len(strip.block_parts), response_text)
@@ -432,11 +436,15 @@ def pass2_ocr_from_manifest(
                 block_code = getattr(block, 'code', None)
                 backend = stamp_backend if block_code == 'stamp' else image_backend
                 
+                logger.info(f"PASS2: начало обработки IMAGE блока {entry.block_id}")
+                
                 global_sem.acquire()
                 try:
                     text = backend.recognize(crop, prompt=prompt_data)
                 finally:
                     global_sem.release()
+                
+                logger.info(f"PASS2: завершена обработка IMAGE блока {entry.block_id}")
                 
                 text = inject_pdfplumber_to_ocr_text(text, pdfplumber_text)
                 block.pdfplumber_text = pdfplumber_text

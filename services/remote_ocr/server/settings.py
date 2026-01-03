@@ -84,10 +84,10 @@ class Settings:
         default_factory=lambda: _get_setting(_db_settings, "worker_max_tasks", "WORKER_MAX_TASKS", 100, int)
     )
     task_soft_timeout: int = field(
-        default_factory=lambda: _get_setting(_db_settings, "task_soft_timeout", "TASK_SOFT_TIMEOUT", 1800, int)
+        default_factory=lambda: _get_setting(_db_settings, "task_soft_timeout", "TASK_SOFT_TIMEOUT", 3000, int)
     )
     task_hard_timeout: int = field(
-        default_factory=lambda: _get_setting(_db_settings, "task_hard_timeout", "TASK_HARD_TIMEOUT", 2100, int)
+        default_factory=lambda: _get_setting(_db_settings, "task_hard_timeout", "TASK_HARD_TIMEOUT", 3600, int)
     )
     task_max_retries: int = field(
         default_factory=lambda: _get_setting(_db_settings, "task_max_retries", "TASK_MAX_RETRIES", 3, int)
