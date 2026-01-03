@@ -12,6 +12,10 @@ def check_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) ->
         raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")
 
 
+# Алиас для обратной совместимости
+verify_api_key = check_api_key
+
+
 def get_r2_storage():
     """Получить R2 Storage клиент (async-обёртка)"""
     from services.remote_ocr.server.task_helpers import (
