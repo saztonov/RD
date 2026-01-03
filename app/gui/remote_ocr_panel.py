@@ -110,6 +110,11 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         """Настроить таймер для автообновления"""
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self._refresh_jobs)
+        # Запускаем таймер сразу с idle интервалом
+        self.refresh_timer.start(self.POLL_INTERVAL_IDLE)
+        logger.info(f"Таймер автообновления Remote OCR запущен: {self.POLL_INTERVAL_IDLE}ms")
+        # Делаем первое обновление сразу
+        self._refresh_jobs(manual=False)
     
     def _get_client(self):
         """Получить или создать клиент"""
@@ -231,6 +236,8 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
     
     def _add_job_to_table(self, job, at_top: bool = False):
         """Добавить одну задачу в таблицу (для оптимистичного обновления)"""
+        logger.info(f"_add_job_to_table: job_id={job.id}, at_top={at_top}, current_rows={self.jobs_table.rowCount()}")
+        
         self.jobs_table.setSortingEnabled(False)
         
         row = 0 if at_top else self.jobs_table.rowCount()
@@ -267,6 +274,8 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self.jobs_table.setCellWidget(row, 5, actions_widget)
         
         self.jobs_table.setSortingEnabled(True)
+        
+        logger.info(f"Задача добавлена в таблицу: row={row}, name={display_name}, status={job.status}, total_rows={self.jobs_table.rowCount()}")
     
     def _create_actions_widget(self, job) -> QWidget:
         """Создать виджет с кнопками действий для задачи"""
@@ -313,13 +322,17 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
 
     def _on_job_created(self, job_info):
         """Слот: задача создана — оптимистичное добавление в таблицу"""
+        logger.info(f"Обработка job_created signal: job_id={job_info.id}, status={job_info.status}")
         from app.gui.toast import show_toast
         show_toast(self, f"Задача создана: {job_info.id[:8]}...", duration=2500)
         
         # Оптимистично добавляем задачу в начало таблицы
+        logger.info(f"Добавление задачи в таблицу (оптимистично)")
         self._add_job_to_table(job_info, at_top=True)
+        logger.info(f"Задача добавлена в таблицу, строк={self.jobs_table.rowCount()}")
         
         # Фоновый refresh для синхронизации с сервером
+        logger.info("Запуск фонового обновления списка задач")
         self._refresh_jobs(manual=False)
     
     def _on_job_create_error(self, error_type: str, message: str):

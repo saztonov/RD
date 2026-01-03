@@ -195,12 +195,12 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_key_id(bytea)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_key_id_w$function$\n"
   },
-  "extensions.pgp_pub_decrypt(bytea, bytea, text)": {
+  "extensions.pgp_pub_decrypt(bytea, bytea, text, text)": {
     "schema": "extensions",
     "name": "pgp_pub_decrypt",
-    "arguments": "bytea, bytea, text",
+    "arguments": "bytea, bytea, text, text",
     "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$\n"
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$\n"
   },
   "extensions.pgp_pub_decrypt(bytea, bytea)": {
     "schema": "extensions",
@@ -209,12 +209,12 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$\n"
   },
-  "extensions.pgp_pub_decrypt(bytea, bytea, text, text)": {
+  "extensions.pgp_pub_decrypt(bytea, bytea, text)": {
     "schema": "extensions",
     "name": "pgp_pub_decrypt",
-    "arguments": "bytea, bytea, text, text",
+    "arguments": "bytea, bytea, text",
     "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$\n"
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$\n"
   },
   "extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)": {
     "schema": "extensions",
@@ -237,13 +237,6 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$\n"
   },
-  "extensions.pgp_pub_encrypt(text, bytea)": {
-    "schema": "extensions",
-    "name": "pgp_pub_encrypt",
-    "arguments": "text, bytea",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$\n"
-  },
   "extensions.pgp_pub_encrypt(text, bytea, text)": {
     "schema": "extensions",
     "name": "pgp_pub_encrypt",
@@ -251,12 +244,12 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$\n"
   },
-  "extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)": {
+  "extensions.pgp_pub_encrypt(text, bytea)": {
     "schema": "extensions",
-    "name": "pgp_pub_encrypt_bytea",
-    "arguments": "bytea, bytea, text",
+    "name": "pgp_pub_encrypt",
+    "arguments": "text, bytea",
     "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$\n"
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$\n"
   },
   "extensions.pgp_pub_encrypt_bytea(bytea, bytea)": {
     "schema": "extensions",
@@ -264,6 +257,13 @@
     "arguments": "bytea, bytea",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$\n"
+  },
+  "extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)": {
+    "schema": "extensions",
+    "name": "pgp_pub_encrypt_bytea",
+    "arguments": "bytea, bytea, text",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$\n"
   },
   "extensions.pgp_sym_decrypt(bytea, text)": {
     "schema": "extensions",
@@ -474,6 +474,13 @@
     "arguments": "p_client_id text, p_root_ids uuid[], p_node_types text[]",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION public.qa_get_descendants(p_client_id text, p_root_ids uuid[], p_node_types text[] DEFAULT NULL::text[])\n RETURNS TABLE(id uuid, parent_id uuid, node_type text, name text, code text, version integer, status text, attributes jsonb, sort_order integer, depth integer)\n LANGUAGE plpgsql\n STABLE\nAS $function$\r\nBEGIN\r\n    RETURN QUERY\r\n    WITH RECURSIVE descendants AS (\r\n        -- Base: root nodes\r\n        SELECT \r\n            t.id,\r\n            t.parent_id,\r\n            t.node_type,\r\n            t.name,\r\n            t.code,\r\n            t.version,\r\n            t.status,\r\n            t.attributes,\r\n            t.sort_order,\r\n            0 AS depth\r\n        FROM public.tree_nodes t\r\n        WHERE t.client_id = p_client_id\r\n          AND t.id = ANY(p_root_ids)\r\n        \r\n        UNION ALL\r\n        \r\n        -- Recursive: children\r\n        SELECT \r\n            t.id,\r\n            t.parent_id,\r\n            t.node_type,\r\n            t.name,\r\n            t.code,\r\n            t.version,\r\n            t.status,\r\n            t.attributes,\r\n            t.sort_order,\r\n            d.depth + 1\r\n        FROM public.tree_nodes t\r\n        INNER JOIN descendants d ON t.parent_id = d.id\r\n        WHERE t.client_id = p_client_id\r\n    )\r\n    SELECT \r\n        d.id,\r\n        d.parent_id,\r\n        d.node_type,\r\n        d.name,\r\n        d.code,\r\n        d.version,\r\n        d.status,\r\n        d.attributes,\r\n        d.sort_order,\r\n        d.depth\r\n    FROM descendants d\r\n    WHERE (p_node_types IS NULL OR d.node_type = ANY(p_node_types))\r\n    ORDER BY d.depth, d.sort_order, d.name;\r\nEND;\r\n$function$\n"
+  },
+  "public.qa_list_conversations_with_stats(p_client_id text, p_limit integer)": {
+    "schema": "public",
+    "name": "qa_list_conversations_with_stats",
+    "arguments": "p_client_id text, p_limit integer",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.qa_list_conversations_with_stats(p_client_id text DEFAULT 'default'::text, p_limit integer DEFAULT 50)\n RETURNS TABLE(id uuid, client_id text, title text, model_default text, created_at timestamp with time zone, updated_at timestamp with time zone, message_count bigint, file_count bigint, last_message_at timestamp with time zone)\n LANGUAGE sql\n STABLE\nAS $function$\r\n    SELECT \r\n        c.id,\r\n        c.client_id,\r\n        c.title,\r\n        c.model_default,\r\n        c.created_at,\r\n        c.updated_at,\r\n        COALESCE(COUNT(DISTINCT m.id), 0) AS message_count,\r\n        COALESCE(COUNT(DISTINCT cgf.id), 0) AS file_count,\r\n        MAX(m.created_at) AS last_message_at\r\n    FROM qa_conversations c\r\n    LEFT JOIN qa_messages m ON m.conversation_id = c.id\r\n    LEFT JOIN qa_conversation_gemini_files cgf ON cgf.conversation_id = c.id\r\n    WHERE c.client_id = p_client_id\r\n    GROUP BY c.id, c.client_id, c.title, c.model_default, c.created_at, c.updated_at\r\n    ORDER BY c.updated_at DESC\r\n    LIMIT p_limit;\r\n$function$\n"
   },
   "public.recalculate_all_pdf_statuses()": {
     "schema": "public",

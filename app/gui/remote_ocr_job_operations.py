@@ -180,6 +180,8 @@ class JobOperationsMixin:
         from app.gui.toast import show_toast
         show_toast(self, "Отправка задачи...", duration=1500)
         
+        logger.info(f"Отправка задачи на сервер: engine={engine}, blocks={len(selected_blocks)}, image_model={getattr(dialog, 'image_model', None)}, stamp_model={getattr(dialog, 'stamp_model', None)}, node_id={node_id}")
+        
         self._executor.submit(
             self._create_job_bg, client, pdf_path, selected_blocks, task_name, engine,
             getattr(dialog, "text_model", None),
@@ -188,26 +190,31 @@ class JobOperationsMixin:
             getattr(dialog, "stamp_model", None),
             node_id,
         )
-        logger.info(f"OCR задача: image_model={getattr(dialog, 'image_model', None)}, stamp_model={getattr(dialog, 'stamp_model', None)}, node_id={node_id}")
     
     def _create_job_bg(self, client, pdf_path, blocks, task_name, engine, text_model, table_model, image_model, stamp_model, node_id=None):
         """Фоновое создание задачи"""
         try:
             from app.remote_ocr_client import AuthenticationError, PayloadTooLargeError, ServerError
             
+            logger.info(f"Начало создания задачи: engine={engine}, blocks={len(blocks)}")
             job_info = client.create_job(
                 pdf_path, blocks, task_name=task_name, engine=engine,
                 text_model=text_model, table_model=table_model, image_model=image_model,
                 stamp_model=stamp_model, node_id=node_id
             )
+            logger.info(f"Задача создана: id={job_info.id}, status={job_info.status}")
             self._signals.job_created.emit(job_info)
         except AuthenticationError:
+            logger.error("Ошибка авторизации при создании задачи")
             self._signals.job_create_error.emit("auth", "Неверный API ключ.")
         except PayloadTooLargeError:
+            logger.error("PDF файл слишком большой")
             self._signals.job_create_error.emit("size", "PDF файл превышает лимит сервера.")
         except ServerError as e:
+            logger.error(f"Ошибка сервера: {e}")
             self._signals.job_create_error.emit("server", f"Сервер недоступен.\n{e}")
         except Exception as e:
+            logger.error(f"Ошибка создания задачи: {e}", exc_info=True)
             self._signals.job_create_error.emit("generic", str(e))
     
     def _delete_job(self, job_id: str):

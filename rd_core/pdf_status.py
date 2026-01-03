@@ -71,13 +71,21 @@ def calculate_pdf_status(
                 ann_content = r2_storage.download_text(ann_r2_key)
                 if ann_content:
                     ann_data = json.loads(ann_content)
-                    pages = ann_data.get("pages", [])
+                    
+                    # Поддержка двух форматов: {"pages": [...]} или просто [...]
+                    if isinstance(ann_data, dict):
+                        pages = ann_data.get("pages", [])
+                    elif isinstance(ann_data, list):
+                        pages = ann_data
+                    else:
+                        pages = []
                     
                     for page in pages:
-                        page_num = page.get("page_number", -1)
-                        blocks = page.get("blocks", [])
-                        if not blocks:
-                            pages_without_blocks.append(page_num)
+                        if isinstance(page, dict):
+                            page_num = page.get("page_number", -1)
+                            blocks = page.get("blocks", [])
+                            if not blocks:
+                                pages_without_blocks.append(page_num)
             except Exception as e:
                 logger.error(f"Failed to parse annotation.json: {e}")
         

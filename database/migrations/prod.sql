@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-02T22:33:07.656205
+-- Generated: 2026-01-03T14:35:57.580048
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -1293,7 +1293,7 @@ AS '$libdir/pgcrypto', $function$pgp_key_id_w$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1309,7 +1309,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1341,14 +1341,6 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
- RETURNS bytea
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
-
-
--- Function: extensions.pgp_pub_encrypt
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
  RETURNS bytea
  LANGUAGE c
@@ -1356,8 +1348,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
+-- Function: extensions.pgp_pub_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
+
+
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1365,7 +1365,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1815,6 +1815,32 @@ BEGIN
     WHERE (p_node_types IS NULL OR d.node_type = ANY(p_node_types))
     ORDER BY d.depth, d.sort_order, d.name;
 END;
+$function$
+
+
+-- Function: public.qa_list_conversations_with_stats
+CREATE OR REPLACE FUNCTION public.qa_list_conversations_with_stats(p_client_id text DEFAULT 'default'::text, p_limit integer DEFAULT 50)
+ RETURNS TABLE(id uuid, client_id text, title text, model_default text, created_at timestamp with time zone, updated_at timestamp with time zone, message_count bigint, file_count bigint, last_message_at timestamp with time zone)
+ LANGUAGE sql
+ STABLE
+AS $function$
+    SELECT 
+        c.id,
+        c.client_id,
+        c.title,
+        c.model_default,
+        c.created_at,
+        c.updated_at,
+        COALESCE(COUNT(DISTINCT m.id), 0) AS message_count,
+        COALESCE(COUNT(DISTINCT cgf.id), 0) AS file_count,
+        MAX(m.created_at) AS last_message_at
+    FROM qa_conversations c
+    LEFT JOIN qa_messages m ON m.conversation_id = c.id
+    LEFT JOIN qa_conversation_gemini_files cgf ON cgf.conversation_id = c.id
+    WHERE c.client_id = p_client_id
+    GROUP BY c.id, c.client_id, c.title, c.model_default, c.created_at, c.updated_at
+    ORDER BY c.updated_at DESC
+    LIMIT p_limit;
 $function$
 
 
