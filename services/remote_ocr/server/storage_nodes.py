@@ -1,4 +1,4 @@
-"""Операции с node_files (связь с деревом проектов)"""
+"""Операции с node_files и tree_nodes (связь с деревом проектов)"""
 from __future__ import annotations
 
 import json
@@ -6,11 +6,145 @@ import logging
 import uuid
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .storage_client import get_client
 
 logger = logging.getLogger(__name__)
+
+
+# ===== CRUD операции с узлами дерева =====
+
+
+def get_root_nodes() -> List[Any]:
+    """Получить корневые узлы (проекты)"""
+    client = get_client()
+    result = (
+        client.table("tree_nodes")
+        .select("*")
+        .is_("parent_id", "null")
+        .order("sort_order,name")
+        .execute()
+    )
+    return result.data
+
+
+def get_node(node_id: str) -> Optional[Any]:
+    """Получить узел по ID"""
+    client = get_client()
+    result = client.table("tree_nodes").select("*").eq("id", node_id).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
+def get_children(parent_id: str) -> List[Any]:
+    """Получить дочерние узлы"""
+    client = get_client()
+    result = (
+        client.table("tree_nodes")
+        .select("*")
+        .eq("parent_id", parent_id)
+        .order("sort_order,name")
+        .execute()
+    )
+    return result.data
+
+
+def create_node(
+    node_type: str,
+    name: str,
+    parent_id: Optional[str] = None,
+    code: Optional[str] = None,
+    attributes: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """Создать новый узел"""
+    node_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+
+    client = get_client()
+    result = (
+        client.table("tree_nodes")
+        .insert(
+            {
+                "id": node_id,
+                "parent_id": parent_id,
+                "node_type": node_type,
+                "name": name,
+                "code": code,
+                "status": "active",
+                "attributes": attributes or {},
+                "sort_order": 0,
+                "version": 1,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def update_node(node_id: str, **fields) -> Optional[Any]:
+    """Обновить узел"""
+    if not fields:
+        return get_node(node_id)
+
+    # Добавляем updated_at
+    fields["updated_at"] = datetime.utcnow().isoformat()
+
+    client = get_client()
+    result = client.table("tree_nodes").update(fields).eq("id", node_id).execute()
+    return result.data[0] if result.data else None
+
+
+def delete_node(node_id: str) -> bool:
+    """Удалить узел"""
+    try:
+        client = get_client()
+        client.table("tree_nodes").delete().eq("id", node_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to delete node {node_id}: {e}")
+        return False
+
+
+def update_pdf_status(node_id: str, status: str, message: Optional[str] = None) -> bool:
+    """Обновить статус PDF документа"""
+    try:
+        client = get_client()
+        client.rpc(
+            "update_pdf_status",
+            {"p_node_id": node_id, "p_status": status, "p_message": message or ""},
+        ).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update PDF status for {node_id}: {e}")
+        return False
+
+
+def get_node_files(node_id: str, file_type: Optional[str] = None) -> List[Dict]:
+    """Получить файлы узла"""
+    client = get_client()
+    query = client.table("node_files").select("*").eq("node_id", node_id)
+
+    if file_type:
+        query = query.eq("file_type", file_type)
+
+    result = query.order("created_at").execute()
+    return result.data
+
+
+def delete_node_file(file_id: str) -> bool:
+    """Удалить файл узла"""
+    try:
+        client = get_client()
+        client.table("node_files").delete().eq("id", file_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to delete node file {file_id}: {e}")
+        return False
+
+
+# ===== Вспомогательные функции =====
 
 
 def get_node_file_by_type(node_id: str, file_type: str) -> Optional[Dict]:
@@ -129,33 +263,39 @@ def add_node_file(
     file_size: int = 0,
     mime_type: str = "application/octet-stream",
     metadata: Optional[Dict] = None,
-) -> str:
+) -> Dict:
     """Добавить файл к узлу дерева (upsert по node_id + r2_key)"""
     file_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
 
+    file_data = {
+        "id": file_id,
+        "node_id": node_id,
+        "file_type": file_type,
+        "r2_key": r2_key,
+        "file_name": file_name,
+        "file_size": file_size,
+        "mime_type": mime_type,
+        "metadata": metadata or {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
     client = get_client()
     try:
-        client.table("node_files").upsert(
-            {
-                "id": file_id,
-                "node_id": node_id,
-                "file_type": file_type,
-                "r2_key": r2_key,
-                "file_name": file_name,
-                "file_size": file_size,
-                "mime_type": mime_type,
-                "metadata": metadata or {},
-                "created_at": now,
-                "updated_at": now,
-            },
-            on_conflict="node_id,r2_key",
-        ).execute()
+        result = (
+            client.table("node_files")
+            .upsert(
+                file_data,
+                on_conflict="node_id,r2_key",
+            )
+            .execute()
+        )
         logger.debug(f"Node file registered: {file_type} -> {r2_key}")
-        return file_id
+        return result.data[0] if result.data else file_data
     except Exception as e:
         logger.warning(f"Failed to add node file: {e}")
-        return ""
+        return file_data
 
 
 def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
