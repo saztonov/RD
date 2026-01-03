@@ -1,14 +1,17 @@
 """Диалог настроек OCR сервера"""
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field, asdict
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
     QFormLayout, QSpinBox, QCheckBox, QLabel, QPushButton,
-    QGroupBox, QMessageBox, QDoubleSpinBox
+    QGroupBox, QMessageBox, QDoubleSpinBox, QFileDialog
 )
 from PySide6.QtCore import Qt
 
@@ -104,6 +107,11 @@ class OCRSettingsDialog(QDialog):
         reset_btn = QPushButton("🔄 Сбросить")
         reset_btn.clicked.connect(self._reset_defaults)
         btns.addWidget(reset_btn)
+        
+        export_btn = QPushButton("📤 Экспорт всех настроек")
+        export_btn.clicked.connect(self._export_all_settings)
+        export_btn.setToolTip("Выгрузить все настройки из БД в JSON файл")
+        btns.addWidget(export_btn)
         
         btns.addStretch()
         
@@ -441,4 +449,50 @@ class OCRSettingsDialog(QDialog):
         if reply == QMessageBox.Yes:
             self.settings = OCRSettings()
             self._update_ui_from_settings()
+    
+    def _export_all_settings(self):
+        """Экспортировать все настройки из БД в JSON файл"""
+        try:
+            # Запрашиваем путь для сохранения
+            default_filename = f"ocr_settings_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Сохранить настройки",
+                default_filename,
+                "JSON файлы (*.json);;Все файлы (*)"
+            )
+            
+            if not file_path:
+                return  # Пользователь отменил
+            
+            # Получаем все настройки из таблицы app_settings
+            url = f"{self.client.supabase_url}/rest/v1/app_settings?select=*"
+            headers = {
+                "apikey": self.client.supabase_key,
+                "Authorization": f"Bearer {self.client.supabase_key}",
+            }
+            client = _get_tree_client()
+            resp = client.get(url, headers=headers, timeout=30.0)
+            resp.raise_for_status()
+            
+            all_settings = resp.json()
+            
+            # Сохраняем в файл с красивым форматированием
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(all_settings, f, ensure_ascii=False, indent=2)
+            
+            QMessageBox.information(
+                self, "Успешно",
+                f"Настройки успешно экспортированы.\n\n"
+                f"Файл: {file_path}\n"
+                f"Экспортировано записей: {len(all_settings)}"
+            )
+            logger.info(f"Exported {len(all_settings)} settings to {file_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to export settings: {e}")
+            QMessageBox.critical(
+                self, "Ошибка",
+                f"Не удалось экспортировать настройки:\n{e}"
+            )
 
