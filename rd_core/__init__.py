@@ -21,12 +21,8 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 try:
-    from _metadata import __version__, __product__
+    from _metadata import __product__, __version__
 except ImportError:
     # Fallback на случай, если _metadata.py недоступен
     __version__ = "0.1"
     __product__ = "Core Structure"
-
-
-
-

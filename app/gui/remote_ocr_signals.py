@@ -1,10 +1,11 @@
 """Сигналы для Remote OCR панели"""
 
-from PySide6.QtCore import Signal, QObject
+from PySide6.QtCore import QObject, Signal
 
 
 class WorkerSignals(QObject):
     """Сигналы для фоновых задач"""
+
     jobs_loaded = Signal(list)
     jobs_error = Signal(str)
     job_created = Signal(object)
@@ -19,4 +20,3 @@ class WorkerSignals(QObject):
     rerun_created = Signal(str, object)  # old_job_id, new_job_info
     rerun_error = Signal(str, str)  # old_job_id, error_message
     rerun_no_changes = Signal(str)  # job_id - блоки не изменились
-

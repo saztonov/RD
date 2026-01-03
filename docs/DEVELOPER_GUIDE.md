@@ -74,10 +74,10 @@ from rd_core.pdf_utils import PDFDocument
 with PDFDocument("document.pdf") as pdf:
     # Рендеринг страницы в изображение
     image = pdf.render_page(0)  # PIL.Image
-    
+
     # Размеры страницы
     width, height = pdf.get_page_dimensions(0)
-    
+
     # Количество страниц
     print(f"Страниц: {pdf.page_count}")
 
@@ -304,7 +304,7 @@ class MyFeatureMixin:
     def _setup_my_feature(self):
         """Вызывается в MainWindow.__init__"""
         pass
-    
+
     def my_action(self):
         """Действие"""
         if not self.pdf_document:
@@ -327,7 +327,7 @@ class MainWindow(MyFeatureMixin, MenuSetupMixin, ..., QMainWindow):
 def _setup_menu(self):
     # ...
     tools_menu = menubar.addMenu("&Инструменты")
-    
+
     my_action = QAction("Моя функция", self)
     my_action.setShortcut("Ctrl+M")
     my_action.triggered.connect(self._my_action_handler)
@@ -344,16 +344,16 @@ class MyDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Мой диалог")
-        
+
         layout = QVBoxLayout(self)
-        
+
         self.input = QLineEdit()
         layout.addWidget(self.input)
-        
+
         btn = QPushButton("OK")
         btn.clicked.connect(self.accept)
         layout.addWidget(btn)
-    
+
     def get_value(self) -> str:
         return self.input.text()
 
@@ -370,7 +370,7 @@ if dialog.exec() == QDialog.Accepted:
 class PageViewer(QGraphicsView):
     # Добавить сигнал
     my_signal = Signal(str, int)
-    
+
     def some_method(self):
         # Эмитировать сигнал
         self.my_signal.emit("data", 42)
@@ -414,7 +414,7 @@ def test_block_create():
         block_type=BlockType.TEXT,
         source=BlockSource.USER
     )
-    
+
     assert block.page_index == 0
     assert block.coords_norm == (0.1, 0.1, 0.2, 0.2)
     assert block.block_type == BlockType.TEXT
@@ -423,7 +423,7 @@ def test_block_serialization():
     block = Block.create(...)
     data = block.to_dict()
     restored = Block.from_dict(data)
-    
+
     assert restored.id == block.id
     assert restored.coords_px == block.coords_px
 ```
@@ -525,14 +525,14 @@ flake8 app/ rd_core/
 def my_function(arg1: str, arg2: int = 10) -> bool:
     """
     Краткое описание функции.
-    
+
     Args:
         arg1: Описание первого аргумента
         arg2: Описание второго аргумента (по умолчанию 10)
-    
+
     Returns:
         True если успешно, False при ошибке
-    
+
     Raises:
         ValueError: если arg1 пустой
     """
@@ -612,4 +612,3 @@ curl http://localhost:8000/jobs
 # Сборка
 python build.py
 ```
-

@@ -205,7 +205,7 @@ CREATE TABLE tree_nodes (
     sort_order integer DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    
+
     CHECK (node_type IN ('project', 'stage', 'section', 'task_folder', 'document')),
     CHECK (status IN ('active', 'completed', 'archived'))
 );
@@ -423,9 +423,9 @@ WITH RECURSIVE tree AS (
     SELECT *, 0 as level
     FROM tree_nodes
     WHERE parent_id IS NULL AND client_id = 'xxx-xxx-xxx'
-    
+
     UNION ALL
-    
+
     SELECT tn.*, t.level + 1
     FROM tree_nodes tn
     JOIN tree t ON tn.parent_id = t.id
@@ -522,4 +522,3 @@ FROM pg_stat_statements
 ORDER BY mean_exec_time DESC
 LIMIT 10;
 ```
-

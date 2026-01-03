@@ -1,0 +1,48 @@
+# =============================================================================
+# Git Attributes - дополнительная защита от утечки секретов
+# =============================================================================
+
+# Блокировка файлов с секретами (если случайно попытаются добавить)
+.env filter=git-secrets
+.env.* filter=git-secrets
+*secret* filter=git-secrets
+*credential* filter=git-secrets
+*.key filter=git-secrets
+*.pem filter=git-secrets
+
+# Нормализация переносов строк
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+*.sh text eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Бинарные файлы
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+
+# Архивы
+*.zip binary
+*.rar binary
+*.tar.gz binary
+
+# Экспорт diff для SQL и JSON (читабельные диффы)
+*.sql diff=sql
+*.json diff=json
+
+# Merge стратегия для специфичных файлов
+package-lock.json merge=ours
+yarn.lock merge=ours

@@ -2,22 +2,33 @@
 Tree API Routes - прокси для операций с деревом проектов
 Все запросы требуют X-API-Key аутентификацию
 """
-from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..storage_nodes import (
-    get_node, update_node, create_node, delete_node,
-    get_children, get_root_nodes, add_node_file, get_node_files,
-    delete_node_file, update_pdf_status
-)
-from ..storage_client import get_client
 from ..routes.common import verify_api_key
+from ..storage_client import get_client
+from ..storage_nodes import (
+    add_node_file,
+    create_node,
+    delete_node,
+    delete_node_file,
+    get_children,
+    get_node,
+    get_node_files,
+    get_root_nodes,
+    update_node,
+    update_pdf_status,
+)
 
-router = APIRouter(prefix="/api/tree", tags=["tree"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(
+    prefix="/api/tree", tags=["tree"], dependencies=[Depends(verify_api_key)]
+)
 
 
 # === Request/Response Models ===
+
 
 class NodeResponse(BaseModel):
     id: str
@@ -103,6 +114,7 @@ class ImageCategoryResponse(BaseModel):
 
 # === Endpoints ===
 
+
 @router.get("/nodes/root", response_model=List[NodeResponse])
 def get_root_nodes_endpoint():
     """Получить корневые узлы (проекты)"""
@@ -146,7 +158,7 @@ def create_node_endpoint(req: CreateNodeRequest):
             name=req.name,
             parent_id=req.parent_id,
             code=req.code,
-            attributes=req.attributes or {}
+            attributes=req.attributes or {},
         )
         return _node_to_dict(node)
     except Exception as e:
@@ -213,7 +225,7 @@ def add_node_file_endpoint(node_id: str, req: AddNodeFileRequest):
             file_name=req.file_name,
             file_size=req.file_size,
             mime_type=req.mime_type,
-            metadata=req.metadata or {}
+            metadata=req.metadata or {},
         )
         return file
     except Exception as e:
@@ -261,7 +273,12 @@ def get_image_categories_endpoint():
     """Получить категории изображений"""
     try:
         client = get_client()
-        result = client.table("image_categories").select("*").order("sort_order,name").execute()
+        result = (
+            client.table("image_categories")
+            .select("*")
+            .order("sort_order,name")
+            .execute()
+        )
         return result.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -284,18 +301,21 @@ def get_image_category_by_code_endpoint(code: str):
 
 # === Helper Functions ===
 
+
 def _node_to_dict(node) -> Dict[str, Any]:
     """Конвертировать TreeNode в словарь"""
     return {
         "id": node.id,
         "parent_id": node.parent_id,
-        "node_type": node.node_type.value if hasattr(node.node_type, 'value') else node.node_type,
+        "node_type": node.node_type.value
+        if hasattr(node.node_type, "value")
+        else node.node_type,
         "name": node.name,
         "code": node.code,
-        "status": node.status.value if hasattr(node.status, 'value') else node.status,
+        "status": node.status.value if hasattr(node.status, "value") else node.status,
         "attributes": node.attributes,
         "sort_order": node.sort_order,
         "version": node.version,
         "created_at": node.created_at,
-        "updated_at": node.updated_at
+        "updated_at": node.updated_at,
     }

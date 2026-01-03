@@ -5,10 +5,10 @@
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from typing import Optional
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import QThread, Signal
 
@@ -23,6 +23,7 @@ class TransferType(Enum):
 @dataclass
 class TransferTask:
     """Задача на передачу файла"""
+
     transfer_type: TransferType
     local_path: str
     r2_key: str
@@ -34,12 +35,12 @@ class TransferTask:
 
 class FileTransferWorker(QThread):
     """Worker для параллельной загрузки/скачивания файлов"""
-    
+
     # Сигналы
     progress = Signal(str, int, int)  # message, current, total
     finished_task = Signal(TransferTask, bool, str)  # task, success, error_message
     all_finished = Signal()
-    
+
     def __init__(self, parent=None, max_workers: int = 8):
         super().__init__(parent)
         self._tasks: list[TransferTask] = []
@@ -47,16 +48,18 @@ class FileTransferWorker(QThread):
         self.max_workers = max_workers
         self._completed = 0
         self._lock = threading.Lock()
-    
+
     def add_task(self, task: TransferTask):
         """Добавить задачу в очередь"""
         self._tasks.append(task)
-    
-    def _process_single_task(self, task: TransferTask, r2: 'R2Storage') -> tuple[bool, str]:
+
+    def _process_single_task(
+        self, task: TransferTask, r2: "R2Storage"
+    ) -> tuple[bool, str]:
         """Обработать одну задачу (вызывается в отдельном потоке)"""
         if not self._running:
             return False, "Отменено"
-        
+
         try:
             if task.transfer_type == TransferType.UPLOAD:
                 display_name = task.filename or Path(task.local_path).name
@@ -66,27 +69,31 @@ class FileTransferWorker(QThread):
                 display_name = Path(task.r2_key).name
                 success = r2.download_file(task.r2_key, task.local_path)
                 error = "" if success else "Ошибка скачивания из R2"
-            
+
             # Обновляем счётчик завершённых задач
             with self._lock:
                 self._completed += 1
                 current = self._completed
-            
+
             # Отправляем прогресс
             total = len(self._tasks)
-            action = "Загрузка" if task.transfer_type == TransferType.UPLOAD else "Скачивание"
+            action = (
+                "Загрузка"
+                if task.transfer_type == TransferType.UPLOAD
+                else "Скачивание"
+            )
             self.progress.emit(f"{action}: {display_name}", current, total)
-            
+
             return success, error
-            
+
         except Exception as e:
             logger.exception(f"Transfer error: {e}")
             return False, str(e)
-    
+
     def run(self):
         """Выполнить все задачи параллельно"""
         from rd_core.r2_storage import R2Storage
-        
+
         try:
             r2 = R2Storage()
         except Exception as e:
@@ -94,10 +101,10 @@ class FileTransferWorker(QThread):
                 self.finished_task.emit(task, False, f"R2 ошибка: {e}")
             self.all_finished.emit()
             return
-        
+
         self._completed = 0
         total = len(self._tasks)
-        
+
         # Параллельная обработка задач
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Отправляем все задачи
@@ -105,7 +112,7 @@ class FileTransferWorker(QThread):
                 executor.submit(self._process_single_task, task, r2): task
                 for task in self._tasks
             }
-            
+
             # Ждём завершения
             for future in as_completed(futures):
                 if not self._running:
@@ -113,7 +120,7 @@ class FileTransferWorker(QThread):
                     for f in futures:
                         f.cancel()
                     break
-                
+
                 task = futures[future]
                 try:
                     success, error = future.result()
@@ -121,12 +128,9 @@ class FileTransferWorker(QThread):
                 except Exception as e:
                     logger.exception(f"Task execution failed: {e}")
                     self.finished_task.emit(task, False, str(e))
-        
+
         self.all_finished.emit()
-    
+
     def stop(self):
         """Остановить обработку"""
         self._running = False
-
-
-

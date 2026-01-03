@@ -1,6 +1,7 @@
 """Общие утилиты для routes"""
 from typing import Optional
-from fastapi import HTTPException, Header
+
+from fastapi import Header, HTTPException
 
 from services.remote_ocr.server.settings import settings
 
@@ -13,20 +14,28 @@ def check_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) ->
 
 def get_r2_storage():
     """Получить R2 Storage клиент (async-обёртка)"""
-    from services.remote_ocr.server.task_helpers import get_r2_storage as _get_r2_storage
+    from services.remote_ocr.server.task_helpers import (
+        get_r2_storage as _get_r2_storage,
+    )
+
     return _get_r2_storage()
 
 
 def get_r2_sync_client():
     """Получить синхронный boto3 клиент для прямых операций (put_object и т.д.)"""
     import os
+
     import boto3
     from botocore.config import Config
-    
+
     account_id = os.getenv("R2_ACCOUNT_ID")
-    endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com" if account_id else os.getenv("R2_ENDPOINT_URL")
+    endpoint_url = (
+        f"https://{account_id}.r2.cloudflarestorage.com"
+        if account_id
+        else os.getenv("R2_ENDPOINT_URL")
+    )
     bucket_name = os.getenv("R2_BUCKET_NAME", "rd1")
-    
+
     client = boto3.client(
         "s3",
         endpoint_url=endpoint_url,
@@ -46,7 +55,6 @@ def get_file_icon(file_type: str) -> str:
         "annotation": "📋",
         "result_md": "📝",
         "result_zip": "📦",
-        "crop": "🖼️"
+        "crop": "🖼️",
     }
     return icons.get(file_type, "📄")
-

@@ -1,0 +1,101 @@
+# =============================================================================
+# Pre-commit hooks - автоматическая проверка перед коммитом
+# Установка: pip install pre-commit && pre-commit install
+# =============================================================================
+
+repos:
+  # Базовые проверки файлов
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # Не коммитим большие файлы (>500KB)
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
+      # Проверка YAML синтаксиса
+      - id: check-yaml
+        exclude: ^\.github/workflows/
+
+      # Проверка JSON синтаксиса
+      - id: check-json
+
+      # Не коммитим файлы с merge конфликтами
+      - id: check-merge-conflict
+
+      # Проверка что приватные ключи не попали в коммит
+      - id: detect-private-key
+
+      # Удаляем trailing whitespace
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+      # Пустая строка в конце файла
+      - id: end-of-file-fixer
+
+      # Проверка Python синтаксиса
+      - id: check-ast
+
+      # Не коммитим в main/master напрямую
+      - id: no-commit-to-branch
+        args: ['--branch', 'main', '--branch', 'master']
+
+  # GitLeaks - поиск секретов
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.1
+    hooks:
+      - id: gitleaks
+
+  # Detect-secrets отключен (можно включить после: pip install detect-secrets)
+  # - repo: https://github.com/Yelp/detect-secrets
+  #   rev: v1.4.0
+  #   hooks:
+  #     - id: detect-secrets
+  #       args: ['--baseline', '.secrets.baseline']
+
+  # Python форматирование (опционально, закомментировать если не нужно)
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        language_version: python3.11
+        exclude: ^(build/|dist/)
+
+  # Проверка импортов Python
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  # Flake8 отключен (много warnings, можно включить для строгой проверки)
+  # - repo: https://github.com/PyCQA/flake8
+  #   rev: 7.0.0
+  #   hooks:
+  #     - id: flake8
+  #       args: ['--max-line-length=120', '--extend-ignore=E203,W503,F401,F841']
+  #       exclude: ^(build/|dist/|__pycache__)
+
+
+# Конфигурация исключений
+exclude: |
+  (?x)^(
+      \.git/|
+      \.github/|
+      build/|
+      dist/|
+      __pycache__/|
+      \.pytest_cache/|
+      \.mypy_cache/|
+      \.ruff_cache/|
+      \.venv/|
+      venv/|
+      ENV/|
+      \.eggs/|
+      \.tox/|
+      logs/|
+      database/exports/|
+      database/migrations/
+  )
+
+# Конфигурация для конкретных файлов
+files: ''

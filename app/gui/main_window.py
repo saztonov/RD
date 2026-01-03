@@ -5,34 +5,42 @@
 
 import copy
 from typing import Optional
-from PySide6.QtWidgets import QMainWindow, QStatusBar, QLabel, QProgressBar
+
 from PySide6.QtCore import Qt
-from rd_core.models import Document, BlockType
-from rd_core.pdf_utils import PDFDocument
+from PySide6.QtWidgets import QLabel, QMainWindow, QProgressBar, QStatusBar
+
+from app.gui.block_handlers import BlockHandlersMixin
 from app.gui.blocks_tree_manager import BlocksTreeManager
-from app.gui.navigation_manager import NavigationManager
+from app.gui.file_operations import FileOperationsMixin
 from app.gui.menu_setup import MenuSetupMixin
+from app.gui.navigation_manager import NavigationManager
 from app.gui.panels_setup import PanelsSetupMixin
 from app.gui.remote_ocr_panel import RemoteOCRPanel
-from app.gui.file_operations import FileOperationsMixin
-from app.gui.block_handlers import BlockHandlersMixin
+from rd_core.models import BlockType, Document
+from rd_core.pdf_utils import PDFDocument
 
 # Импорт метаданных продукта
 try:
     from _metadata import __product__, get_version_info
 except ImportError:
     __product__ = "Core Structure"
+
     def get_version_info():
         return "Core Structure v0.1"
 
 
-class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin, 
-                 BlockHandlersMixin, QMainWindow):
+class MainWindow(
+    MenuSetupMixin,
+    PanelsSetupMixin,
+    FileOperationsMixin,
+    BlockHandlersMixin,
+    QMainWindow,
+):
     """Главное окно приложения для аннотирования PDF"""
-    
+
     def __init__(self):
         super().__init__()
-        
+
         # Данные приложения
         self.pdf_document: Optional[PDFDocument] = None
         self.annotation_document: Optional[Document] = None
@@ -44,56 +52,58 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self._current_pdf_path: Optional[str] = None
         self._current_node_id: Optional[str] = None
         self._current_node_locked: bool = False
-        
+
         # Undo/Redo стек
         self.undo_stack: list = []  # [(page_num, blocks_copy), ...]
         self.redo_stack: list = []
-        
+
         # Менеджеры (инициализируются после setup_ui)
         self.blocks_tree_manager = None
         self.navigation_manager = None
         self.remote_ocr_panel = None
-        
+
         # Настройка UI
         self._setup_menu()
         self._setup_toolbar()
         self._setup_ui()
-        
+
         # Remote OCR панель
         self._setup_remote_ocr_panel()
-        
+
         # Добавляем действия панелей в меню
         self._setup_panels_menu()
-        
+
         # Инициализация менеджеров после создания UI
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree)
         self.navigation_manager = NavigationManager(self)
-        
+
         self.setWindowTitle(__product__)
         self.resize(1200, 800)
-        
+
         # Статус-бар для отображения прогресса загрузки
         self._setup_status_bar()
-        
+
         # Восстановить настройки окна
         self._restore_settings()
-    
+
     def _render_current_page(self, update_tree: bool = True):
         """Отрендерить текущую страницу"""
         if not self.pdf_document:
             return
-        
+
         self.navigation_manager.load_page_image(self.current_page)
-        
+
         if self.current_page in self.page_images:
             self.navigation_manager.restore_zoom()
-            
+
             current_page_data = self._get_or_create_page(self.current_page)
-            self.page_viewer.set_blocks(current_page_data.blocks if current_page_data else [])
-            
+            self.page_viewer.set_blocks(
+                current_page_data.blocks if current_page_data else []
+            )
+
             if update_tree:
                 self.blocks_tree_manager.update_blocks_tree()
-    
+
     def _update_ui(self):
         """Обновить UI элементы"""
         if self.pdf_document:
@@ -107,82 +117,82 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self.page_label.setText("/ 0")
             self.page_input.setEnabled(False)
             self.page_input.setMaximum(1)
-    
+
     def _prev_page(self):
         """Предыдущая страница"""
         self.navigation_manager.prev_page()
-    
+
     def _next_page(self):
         """Следующая страница"""
         self.navigation_manager.next_page()
-    
+
     def _goto_page_from_input(self, page_num: int):
         """Перейти на страницу из поля ввода (нумерация с 1)"""
         if self.pdf_document:
             self.navigation_manager.go_to_page(page_num - 1)
-    
+
     def _zoom_in(self):
         """Увеличить масштаб"""
         self.navigation_manager.zoom_in()
-    
+
     def _zoom_out(self):
         """Уменьшить масштаб"""
         self.navigation_manager.zoom_out()
-    
+
     def _zoom_reset(self):
         """Сбросить масштаб"""
         self.navigation_manager.zoom_reset()
-    
+
     def _fit_to_view(self):
         """Подогнать к окну"""
         self.navigation_manager.fit_to_view()
-    
+
     def _save_undo_state(self):
         """Сохранить текущее состояние блоков для отмены"""
         if not self.annotation_document:
             return
-        
+
         current_page_data = self._get_or_create_page(self.current_page)
         if not current_page_data:
             return
-        
+
         # Делаем глубокую копию блоков
         blocks_copy = copy.deepcopy(current_page_data.blocks)
-        
+
         # Добавляем в стек undo
         self.undo_stack.append((self.current_page, blocks_copy))
-        
+
         # Ограничиваем размер стека (последние 50 операций)
         if len(self.undo_stack) > 50:
             self.undo_stack.pop(0)
-        
+
         # Очищаем стек redo при новом действии
         self.redo_stack.clear()
-    
+
     def _undo(self):
         """Отменить последнее действие"""
         if not self.undo_stack:
             return
-        
+
         if not self.annotation_document:
             return
-        
+
         # Сохраняем текущее состояние в redo
         current_page_data = self._get_or_create_page(self.current_page)
         if current_page_data:
             blocks_copy = copy.deepcopy(current_page_data.blocks)
             self.redo_stack.append((self.current_page, blocks_copy))
-        
+
         # Восстанавливаем состояние из undo
         page_num, blocks_copy = self.undo_stack.pop()
-        
+
         # Переключаемся на нужную страницу если надо
         if page_num != self.current_page:
             self.navigation_manager.save_current_zoom()
             self.current_page = page_num
             self.navigation_manager.load_page_image(self.current_page)
             self.navigation_manager.restore_zoom()
-        
+
         # Восстанавливаем блоки
         page_data = self._get_or_create_page(page_num)
         if page_data:
@@ -190,31 +200,31 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self.page_viewer.set_blocks(page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()
             self._update_ui()
-    
+
     def _redo(self):
         """Повторить отменённое действие"""
         if not self.redo_stack:
             return
-        
+
         if not self.annotation_document:
             return
-        
+
         # Сохраняем текущее состояние в undo
         current_page_data = self._get_or_create_page(self.current_page)
         if current_page_data:
             blocks_copy = copy.deepcopy(current_page_data.blocks)
             self.undo_stack.append((self.current_page, blocks_copy))
-        
+
         # Восстанавливаем состояние из redo
         page_num, blocks_copy = self.redo_stack.pop()
-        
+
         # Переключаемся на нужную страницу если надо
         if page_num != self.current_page:
             self.navigation_manager.save_current_zoom()
             self.current_page = page_num
             self.navigation_manager.load_page_image(self.current_page)
             self.navigation_manager.restore_zoom()
-        
+
         # Восстанавливаем блоки
         page_data = self._get_or_create_page(page_num)
         if page_data:
@@ -222,7 +232,7 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self.page_viewer.set_blocks(page_data.blocks)
             self.blocks_tree_manager.update_blocks_tree()
             self._update_ui()
-    
+
     def _clear_interface(self):
         """Очистить интерфейс при отсутствии файлов"""
         if self.pdf_document:
@@ -237,41 +247,41 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         if self.blocks_tree_manager:
             self.blocks_tree_manager.update_blocks_tree()
         # Сбросить подсветку документа в дереве
-        if hasattr(self, 'project_tree_widget'):
+        if hasattr(self, "project_tree_widget"):
             self.project_tree_widget.highlight_document("")
         # Очистить OCR preview
-        if hasattr(self, 'ocr_preview') and self.ocr_preview:
+        if hasattr(self, "ocr_preview") and self.ocr_preview:
             self.ocr_preview.clear()
         self._update_ui()
-    
+
     def _save_settings(self):
         """Сохранить настройки окна"""
         from PySide6.QtCore import QSettings
-        
+
         settings = QSettings("PDFAnnotationTool", "MainWindow")
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState())
-    
+
     def _restore_settings(self):
         """Восстановить настройки окна"""
         from PySide6.QtCore import QSettings
-        
+
         settings = QSettings("PDFAnnotationTool", "MainWindow")
-        
+
         geometry = settings.value("geometry")
         if geometry:
             self.restoreGeometry(geometry)
-        
+
         window_state = settings.value("windowState")
         if window_state:
             self.restoreState(window_state)
-    
+
     def closeEvent(self, event):
         """Обработка закрытия окна"""
         self._flush_pending_save()
         self._save_settings()
         event.accept()
-    
+
     def _setup_panels_menu(self):
         """Добавить действия панелей в меню Вид → Панели"""
         menubar = self.menuBar()
@@ -287,16 +297,17 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
                         panels_menu.addAction(self.remote_ocr_panel.toggleViewAction())
                         break
                 break
-    
+
     # === Remote OCR ===
     def _setup_remote_ocr_panel(self):
         """Инициализировать панель Remote OCR"""
         from PySide6.QtCore import Qt
+
         self.remote_ocr_panel = RemoteOCRPanel(self, self)
         self.addDockWidget(Qt.RightDockWidgetArea, self.remote_ocr_panel)
         self.resizeDocks([self.remote_ocr_panel], [520], Qt.Horizontal)
         self.remote_ocr_panel.show()  # Всегда показывать при загрузке
-    
+
     def _toggle_remote_ocr_panel(self):
         """Показать/скрыть панель Remote OCR"""
         if self.remote_ocr_panel:
@@ -304,59 +315,64 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
                 self.remote_ocr_panel.hide()
             else:
                 self.remote_ocr_panel.show()
-    
+
     def _show_folder_settings(self):
         """Показать диалог настройки папок"""
         from app.gui.folder_settings_dialog import FolderSettingsDialog
+
         dialog = FolderSettingsDialog(self)
         dialog.exec()
-    
+
     def _show_tree_settings(self):
         """Показать диалог настройки дерева проектов"""
         from PySide6.QtWidgets import QDialog, QVBoxLayout
+
         from app.gui.tree_settings_widget import TreeSettingsWidget
-        
+
         dialog = QDialog(self)
         dialog.setWindowTitle("Настройка дерева проектов")
         dialog.resize(600, 500)
         layout = QVBoxLayout(dialog)
         layout.addWidget(TreeSettingsWidget(dialog))
         dialog.exec()
-        
+
         # Обновляем справочники в дереве проектов после закрытия диалога
-        if hasattr(self, 'project_tree_widget'):
+        if hasattr(self, "project_tree_widget"):
             self.project_tree_widget.refresh_types()
-    
+
     def _show_version_settings(self):
         """Показать диалог настройки версионности"""
         from app.gui.folder_settings_dialog import VersionSettingsDialog
+
         dialog = VersionSettingsDialog(self)
         dialog.exec()
-    
+
     def _show_ocr_settings(self):
         """Показать диалог настроек OCR сервера"""
         from app.gui.ocr_settings_dialog import OCRSettingsDialog
+
         dialog = OCRSettingsDialog(self)
         dialog.exec()
-    
+
     def _show_image_categories(self):
         """Показать диалог настройки категорий изображений"""
         from app.gui.image_categories_dialog import ImageCategoriesDialog
+
         dialog = ImageCategoriesDialog(self)
         dialog.exec()
-    
+
     def _send_to_remote_ocr(self):
         """Отправить выделенные блоки на Remote OCR"""
         if self.remote_ocr_panel:
             self.remote_ocr_panel.show()
             self.remote_ocr_panel._create_job()
-    
+
     # === Status Bar ===
     def _setup_status_bar(self):
         """Создать статус-бар с прогрессом"""
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
-        
+
         # Виджеты для отображения прогресса
         self._status_label = QLabel("")
         self._status_progress = QProgressBar()
@@ -364,10 +380,10 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
         self._status_progress.setMaximumHeight(16)
         self._status_progress.setTextVisible(True)
         self._status_progress.hide()
-        
+
         self._status_bar.addPermanentWidget(self._status_label)
         self._status_bar.addPermanentWidget(self._status_progress)
-    
+
     def show_transfer_progress(self, message: str, current: int = 0, total: int = 0):
         """Показать прогресс загрузки/скачивания"""
         self._status_label.setText(message)
@@ -377,7 +393,7 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin, FileOperationsMixin,
             self._status_progress.show()
         else:
             self._status_progress.hide()
-    
+
     def hide_transfer_progress(self):
         """Скрыть прогресс"""
         self._status_label.setText("")

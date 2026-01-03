@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class R2DownloadMixin:
     """Миксин для операций скачивания из R2"""
-    
+
     def download_file(self, remote_key: str, local_path: str) -> bool:
         """
         Скачать файл из R2
@@ -25,19 +25,19 @@ class R2DownloadMixin:
         try:
             local_file = Path(local_path)
             local_file.parent.mkdir(parents=True, exist_ok=True)
-            
+
             logger.debug(f"Скачивание файла из R2: {remote_key} → {local_path}")
-            
+
             self.s3_client.download_file(
                 self.bucket_name,
                 remote_key,
                 str(local_file),
-                Config=self.transfer_config
+                Config=self.transfer_config,
             )
-            
+
             logger.info(f"✅ Файл скачан из R2: {remote_key}")
             return True
-            
+
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             if error_code == "NoSuchKey" or error_code == "404":
@@ -46,7 +46,10 @@ class R2DownloadMixin:
                 logger.error(f"❌ Ошибка скачивания из R2: {error_code} - {e}")
             return False
         except Exception as e:
-            logger.error(f"❌ Неожиданная ошибка скачивания из R2: {type(e).__name__}: {e}", exc_info=True)
+            logger.error(
+                f"❌ Неожиданная ошибка скачивания из R2: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
             return False
 
     def download_text(self, remote_key: str) -> Optional[str]:
@@ -60,7 +63,9 @@ class R2DownloadMixin:
             Текст или None при ошибке
         """
         try:
-            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=remote_key)
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name, Key=remote_key
+            )
             content = response["Body"].read().decode("utf-8")
             logger.info(f"✅ Текст загружен из R2: {remote_key}")
             return content
@@ -71,6 +76,3 @@ class R2DownloadMixin:
             else:
                 logger.error(f"❌ Ошибка загрузки текста из R2: {e}")
             return None
-
-
-

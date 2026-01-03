@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
@@ -26,13 +27,13 @@ def get_memory_details() -> dict:
     """Детальная информация о памяти"""
     if not HAS_PSUTIL:
         return {"rss_mb": 0, "vms_mb": 0, "shared_mb": 0}
-    
+
     proc = psutil.Process(os.getpid())
     mem = proc.memory_info()
     return {
         "rss_mb": mem.rss / (1024 * 1024),
         "vms_mb": mem.vms / (1024 * 1024),
-        "shared_mb": getattr(mem, 'shared', 0) / (1024 * 1024),
+        "shared_mb": getattr(mem, "shared", 0) / (1024 * 1024),
     }
 
 
@@ -59,7 +60,9 @@ def force_gc(label: str = "") -> float:
     after = get_memory_mb()
     freed = before - after
     if freed > 1:
-        logger.info(f"[MEMORY] GC{' ' + label if label else ''}: освобождено {freed:.1f} MB")
+        logger.info(
+            f"[MEMORY] GC{' ' + label if label else ''}: освобождено {freed:.1f} MB"
+        )
     return after
 
 
@@ -85,6 +88,3 @@ def log_pil_images_summary(images: dict, label: str = "") -> None:
     total_mb = sum(get_pil_image_size_mb(img) for img in images.values())
     count = len(images)
     logger.info(f"[MEMORY] {label}: {count} images, ~{total_mb:.1f} MB")
-
-
-

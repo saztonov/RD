@@ -5,9 +5,9 @@
 
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from typing import List, Tuple, Optional
+from datetime import datetime, timedelta, timezone
 from enum import Enum
+from typing import List, Optional, Tuple
 
 # Московский часовой пояс (UTC+3)
 _MSK_TZ = timezone(timedelta(hours=3))
@@ -44,21 +44,21 @@ def _calculate_checksum(payload: str) -> str:
         v1 += val
         v2 += val * (i + 3)
         v3 += val * (i + 7) * (i + 1)
-    return (_ARMOR_ALPHABET[v1 % 26] + 
-            _ARMOR_ALPHABET[v2 % 26] + 
-            _ARMOR_ALPHABET[v3 % 26])
+    return (
+        _ARMOR_ALPHABET[v1 % 26] + _ARMOR_ALPHABET[v2 % 26] + _ARMOR_ALPHABET[v3 % 26]
+    )
 
 
 def generate_armor_id() -> str:
     """
     Генерировать уникальный ID блока в формате XXXX-XXXX-XXX.
-    
+
     40 бит энтропии (8 символов payload) + 3 символа контрольной суммы.
     """
     # 40 бит = 5 байт
     random_bytes = secrets.token_bytes(5)
-    num = int.from_bytes(random_bytes, 'big')
-    
+    num = int.from_bytes(random_bytes, "big")
+
     payload = _num_to_base26(num, 8)
     checksum = _calculate_checksum(payload)
     full_code = payload + checksum
@@ -85,7 +85,7 @@ def uuid_to_armor_id(uuid_str: str) -> str:
 def migrate_block_id(block_id: str) -> tuple[str, bool]:
     """
     Мигрировать ID блока в armor формат если нужно.
-    
+
     Returns: (new_id, was_migrated)
     """
     if is_armor_id(block_id):
@@ -96,27 +96,30 @@ def migrate_block_id(block_id: str) -> tuple[str, bool]:
 
 class BlockType(Enum):
     """Типы блоков разметки (2 типа: текст и картинка)"""
+
     TEXT = "text"
     IMAGE = "image"
 
 
 class BlockSource(Enum):
     """Источник создания блока"""
-    USER = "user"    # Создан пользователем вручную
-    AUTO = "auto"    # Создан автоматической сегментацией
+
+    USER = "user"  # Создан пользователем вручную
+    AUTO = "auto"  # Создан автоматической сегментацией
 
 
 class ShapeType(Enum):
     """Тип формы блока"""
+
     RECTANGLE = "rectangle"  # Прямоугольник
-    POLYGON = "polygon"      # Многоугольник
+    POLYGON = "polygon"  # Многоугольник
 
 
 @dataclass
 class Block:
     """
     Блок разметки на странице PDF (обновлённая версия)
-    
+
     Attributes:
         id: уникальный идентификатор блока (UUID)
         page_index: индекс страницы (начиная с 0)
@@ -138,6 +141,7 @@ class Block:
         category_code: код категории изображения (для IMAGE блоков)
         created_at: дата и время создания блока (ISO формат)
     """
+
     id: str
     page_index: int
     coords_px: Tuple[int, int, int, int]  # (x1, y1, x2, y2)
@@ -157,47 +161,44 @@ class Block:
     category_id: Optional[str] = None  # ID категории изображения
     category_code: Optional[str] = None  # Код категории изображения (для сериализации)
     created_at: Optional[str] = None  # Дата создания (ISO формат)
-    
+
     @staticmethod
     def generate_id() -> str:
         """Генерировать уникальный ID для блока в формате XXXX-XXXX-XXX"""
         return generate_armor_id()
-    
+
     @staticmethod
-    def px_to_norm(coords_px: Tuple[int, int, int, int], 
-                   page_width: int, 
-                   page_height: int) -> Tuple[float, float, float, float]:
+    def px_to_norm(
+        coords_px: Tuple[int, int, int, int], page_width: int, page_height: int
+    ) -> Tuple[float, float, float, float]:
         """
         Конвертировать координаты из пикселей в нормализованные (0..1)
-        
+
         Args:
             coords_px: координаты в пикселях (x1, y1, x2, y2)
             page_width: ширина страницы в пикселях
             page_height: высота страницы в пикселях
-        
+
         Returns:
             Нормализованные координаты (x1, y1, x2, y2)
         """
         x1, y1, x2, y2 = coords_px
-        return (
-            x1 / page_width,
-            y1 / page_height,
-            x2 / page_width,
-            y2 / page_height
-        )
-    
+        return (x1 / page_width, y1 / page_height, x2 / page_width, y2 / page_height)
+
     @staticmethod
-    def norm_to_px(coords_norm: Tuple[float, float, float, float],
-                   page_width: int,
-                   page_height: int) -> Tuple[int, int, int, int]:
+    def norm_to_px(
+        coords_norm: Tuple[float, float, float, float],
+        page_width: int,
+        page_height: int,
+    ) -> Tuple[int, int, int, int]:
         """
         Конвертировать нормализованные координаты (0..1) в пиксели
-        
+
         Args:
             coords_norm: нормализованные координаты (x1, y1, x2, y2)
             page_width: ширина страницы в пикселях
             page_height: высота страницы в пикселях
-        
+
         Returns:
             Координаты в пикселях (x1, y1, x2, y2)
         """
@@ -206,29 +207,31 @@ class Block:
             int(x1 * page_width),
             int(y1 * page_height),
             int(x2 * page_width),
-            int(y2 * page_height)
+            int(y2 * page_height),
         )
-    
+
     @classmethod
-    def create(cls,
-               page_index: int,
-               coords_px: Tuple[int, int, int, int],
-               page_width: int,
-               page_height: int,
-               block_type: BlockType,
-               source: BlockSource,
-               shape_type: ShapeType = ShapeType.RECTANGLE,
-               polygon_points: Optional[List[Tuple[int, int]]] = None,
-               image_file: Optional[str] = None,
-               ocr_text: Optional[str] = None,
-               block_id: Optional[str] = None,
-               prompt: Optional[dict] = None,
-               hint: Optional[str] = None,
-               pdfplumber_text: Optional[str] = None,
-               linked_block_id: Optional[str] = None) -> 'Block':
+    def create(
+        cls,
+        page_index: int,
+        coords_px: Tuple[int, int, int, int],
+        page_width: int,
+        page_height: int,
+        block_type: BlockType,
+        source: BlockSource,
+        shape_type: ShapeType = ShapeType.RECTANGLE,
+        polygon_points: Optional[List[Tuple[int, int]]] = None,
+        image_file: Optional[str] = None,
+        ocr_text: Optional[str] = None,
+        block_id: Optional[str] = None,
+        prompt: Optional[dict] = None,
+        hint: Optional[str] = None,
+        pdfplumber_text: Optional[str] = None,
+        linked_block_id: Optional[str] = None,
+    ) -> "Block":
         """
         Создать блок с автоматическим вычислением нормализованных координат
-        
+
         Args:
             page_index: индекс страницы
             coords_px: координаты в пикселях (x1, y1, x2, y2)
@@ -245,12 +248,12 @@ class Block:
             hint: подсказка пользователя для IMAGE блока
             pdfplumber_text: сырой текст pdfplumber
             linked_block_id: ID связанного блока
-        
+
         Returns:
             Новый экземпляр Block
         """
         coords_norm = cls.px_to_norm(coords_px, page_width, page_height)
-        
+
         return cls(
             id=block_id or cls.generate_id(),
             page_index=page_index,
@@ -266,24 +269,28 @@ class Block:
             hint=hint,
             pdfplumber_text=pdfplumber_text,
             linked_block_id=linked_block_id,
-            created_at=get_moscow_time_str()
+            created_at=get_moscow_time_str(),
         )
-    
+
     def get_width_height_px(self) -> Tuple[int, int]:
         """Получить ширину и высоту блока в пикселях"""
         x1, y1, x2, y2 = self.coords_px
         return (x2 - x1, y2 - y1)
-    
+
     def get_width_height_norm(self) -> Tuple[float, float]:
         """Получить ширину и высоту блока в нормализованных координатах"""
         x1, y1, x2, y2 = self.coords_norm
         return (x2 - x1, y2 - y1)
-    
-    def update_coords_px(self, new_coords_px: Tuple[int, int, int, int],
-                        page_width: int, page_height: int):
+
+    def update_coords_px(
+        self,
+        new_coords_px: Tuple[int, int, int, int],
+        page_width: int,
+        page_height: int,
+    ):
         """
         Обновить координаты в пикселях и пересчитать нормализованные
-        
+
         Args:
             new_coords_px: новые координаты в пикселях
             page_width: ширина страницы
@@ -291,7 +298,7 @@ class Block:
         """
         self.coords_px = new_coords_px
         self.coords_norm = self.px_to_norm(new_coords_px, page_width, page_height)
-    
+
     def to_dict(self) -> dict:
         """Сериализация в словарь для JSON"""
         result = {
@@ -303,7 +310,7 @@ class Block:
             "source": self.source.value,
             "shape_type": self.shape_type.value,
             "image_file": self.image_file,
-            "ocr_text": self.ocr_text
+            "ocr_text": self.ocr_text,
         }
         if self.polygon_points:
             result["polygon_points"] = [list(p) for p in self.polygon_points]
@@ -326,16 +333,16 @@ class Block:
         if self.created_at:
             result["created_at"] = self.created_at
         return result
-    
+
     @classmethod
-    def from_dict(cls, data: dict, migrate_ids: bool = True) -> tuple['Block', bool]:
+    def from_dict(cls, data: dict, migrate_ids: bool = True) -> tuple["Block", bool]:
         """
         Десериализация из словаря.
-        
+
         Args:
             data: словарь с данными блока
             migrate_ids: мигрировать UUID в armor ID формат
-        
+
         Returns:
             (Block, was_migrated) - блок и флаг миграции
         """
@@ -349,36 +356,36 @@ class Block:
                 block_type = BlockType(raw_type)
             except ValueError:
                 block_type = BlockType.TEXT
-        
+
         # Безопасное получение shape_type с fallback на RECTANGLE
         try:
             shape_type = ShapeType(data.get("shape_type", "rectangle"))
         except ValueError:
             shape_type = ShapeType.RECTANGLE
-        
+
         # Получение polygon_points если есть
         polygon_points = None
         if "polygon_points" in data and data["polygon_points"]:
             polygon_points = [tuple(p) for p in data["polygon_points"]]
-        
+
         # Миграция ID
         was_migrated = False
         block_id = data["id"]
         linked_block_id = data.get("linked_block_id")
         group_id = data.get("group_id")
-        
+
         if migrate_ids:
             block_id, m1 = migrate_block_id(block_id)
             was_migrated = m1
-            
+
             if linked_block_id:
                 linked_block_id, m2 = migrate_block_id(linked_block_id)
                 was_migrated = was_migrated or m2
-            
+
             if group_id:
                 group_id, m3 = migrate_block_id(group_id)
                 was_migrated = was_migrated or m3
-        
+
         block = cls(
             id=block_id,
             page_index=data["page_index"],
@@ -398,43 +405,45 @@ class Block:
             group_name=data.get("group_name"),
             category_id=data.get("category_id"),
             category_code=data.get("category_code"),
-            created_at=data.get("created_at") or get_moscow_time_str()
+            created_at=data.get("created_at") or get_moscow_time_str(),
         )
         return block, was_migrated
 
 
 # ========== LEGACY КЛАССЫ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ ==========
 
+
 @dataclass
 class Page:
     """
     Страница PDF с блоками разметки (legacy, для совместимости с GUI)
-    
+
     Attributes:
         page_number: номер страницы (начиная с 0)
         width: ширина страницы в пикселях (после рендеринга)
         height: высота страницы в пикселях
         blocks: список блоков разметки на этой странице
     """
+
     page_number: int
     width: int
     height: int
     blocks: List[Block] = field(default_factory=list)
-    
+
     def to_dict(self) -> dict:
         """Сериализация в словарь для JSON"""
         return {
             "page_number": self.page_number,
             "width": self.width,
             "height": self.height,
-            "blocks": [block.to_dict() for block in self.blocks]
+            "blocks": [block.to_dict() for block in self.blocks],
         }
-    
+
     @classmethod
-    def from_dict(cls, data: dict, migrate_ids: bool = True) -> tuple['Page', bool]:
+    def from_dict(cls, data: dict, migrate_ids: bool = True) -> tuple["Page", bool]:
         """
         Десериализация из словаря.
-        
+
         Returns:
             (Page, was_migrated)
         """
@@ -442,46 +451,50 @@ class Page:
         page_num = data.get("page_number")
         if page_num is None:
             page_num = data.get("page_index", 0)
-        
+
         blocks = []
         was_migrated = False
         for b in data.get("blocks", []):
             block, migrated = Block.from_dict(b, migrate_ids)
             blocks.append(block)
             was_migrated = was_migrated or migrated
-            
-        return cls(
-            page_number=page_num,
-            width=data["width"],
-            height=data["height"],
-            blocks=blocks
-        ), was_migrated
+
+        return (
+            cls(
+                page_number=page_num,
+                width=data["width"],
+                height=data["height"],
+                blocks=blocks,
+            ),
+            was_migrated,
+        )
 
 
 @dataclass
 class Document:
     """
     PDF-документ с разметкой (legacy, для совместимости)
-    
+
     Attributes:
         pdf_path: путь к PDF-файлу
         pages: список страниц с разметкой
     """
+
     pdf_path: str
     pages: List[Page] = field(default_factory=list)
-    
+
     def to_dict(self) -> dict:
         """Сериализация в словарь для JSON"""
         return {
             "pdf_path": self.pdf_path,
-            "pages": [page.to_dict() for page in self.pages]
+            "pages": [page.to_dict() for page in self.pages],
         }
-    
+
     @classmethod
-    def from_dict(cls, data: dict, migrate_ids: bool = True) -> tuple['Document', bool]:
+    def from_dict(cls, data: dict, migrate_ids: bool = True) -> tuple["Document", bool]:
         """
         Десериализация из словаря с поддержкой старого формата.
-        
+
         Returns:
             (Document, was_migrated) - документ и флаг миграции ID
         """
@@ -491,7 +504,7 @@ class Document:
             page, migrated = Page.from_dict(p, migrate_ids)
             raw_pages.append(page)
             was_migrated = was_migrated or migrated
-        
+
         # Определяем, старый ли это формат (page_number != индекс массива)
         is_old_format = False
         if raw_pages:
@@ -500,13 +513,13 @@ class Document:
                 if page.page_number != idx:
                     is_old_format = True
                     break
-        
+
         if is_old_format and raw_pages:
             # Старый формат: создаём разреженный массив по page_number
             max_page = max(p.page_number for p in raw_pages)
             # Собираем страницы в dict по page_number
             pages_by_num = {p.page_number: p for p in raw_pages}
-            
+
             # Создаём полный массив страниц
             pages = []
             for i in range(max_page + 1):
@@ -515,9 +528,12 @@ class Document:
                 else:
                     # Берём размеры от ближайшей страницы
                     ref = raw_pages[0]
-                    pages.append(Page(page_number=i, width=ref.width, height=ref.height, blocks=[]))
+                    pages.append(
+                        Page(
+                            page_number=i, width=ref.width, height=ref.height, blocks=[]
+                        )
+                    )
         else:
             pages = raw_pages
-        
-        return cls(pdf_path=data["pdf_path"], pages=pages), was_migrated
 
+        return cls(pdf_path=data["pdf_path"], pages=pages), was_migrated

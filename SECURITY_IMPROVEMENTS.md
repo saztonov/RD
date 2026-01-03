@@ -199,13 +199,13 @@ python test_unified_client.py
 4. **Уведомить пользователей:**
    ```
    Внимание! Обновление безопасности.
-   
+
    1. Скачайте новую версию CoreStructure.exe
    2. Создайте файл .env рядом с exe:
-   
+
    REMOTE_OCR_BASE_URL=https://ocr.fvds.ru
    REMOTE_OCR_API_KEY=<новый_ключ>
-   
+
    Старые версии перестанут работать после [дата].
    ```
 

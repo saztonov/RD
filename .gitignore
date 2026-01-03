@@ -1,4 +1,27 @@
-# Python
+# ============================================
+# СЕКРЕТЫ И КОНФИДЕНЦИАЛЬНЫЕ ДАННЫЕ
+# ============================================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+*_secret*
+*_private*
+client_id.txt
+
+# Экспорты настроек (могут содержать ключи)
+*_export_*.json
+*_settings_*.json
+ocr_settings_export_*.json
+
+# ============================================
+# PYTHON
+# ============================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -7,6 +30,28 @@ __pycache__/
 env/
 venv/
 ENV/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.hypothesis/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# ============================================
+# СБОРКА И ДИСТРИБУТИВЫ
+# ============================================
 build/
 develop-eggs/
 dist/
@@ -22,26 +67,54 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-.env
+MANIFEST
 
 # PyInstaller
 *.manifest
 *.spec
+_pyi_*.py
 
-# IDEs
-.vscode/
-.idea/
+# ============================================
+# ЛОГИ И ВРЕМЕННЫЕ ФАЙЛЫ
+# ============================================
+*.log
+logs/
+*.tmp
+*.temp
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Project specific
+# ============================================
+# IDE И РЕДАКТОРЫ
+# ============================================
+.vscode/
+.idea/
+*.iml
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# ТЕСТИРОВАНИЕ
+# ============================================
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+test_*.py
+*_test.py
+tests/__pycache__/
+.hypothesis/
+
+# ============================================
+# ПРОЕКТ СПЕЦИФИЧНЫЕ
+# ============================================
 output/
-logs/
 examples/all_pages/
 examples/zoom_comparison/
 examples/*.png
@@ -49,5 +122,36 @@ blocks.json
 *.pdf
 *.png
 *.jpg
+*.jpeg
 *.rar
+*.zip
 
+# Локальные настройки проектов
+projects/
+
+# Временные файлы аннотаций
+*_annotation.json
+*_ocr.html
+*_result.json
+
+# Кеши
+pdf_status_cache.db
+*.cache
+*.pkl
+*.pickle
+
+# Pre-commit
+.secrets.baseline
+
+# ============================================
+# БАЗА ДАННЫХ (ЭКСПОРТЫ С ДАННЫМИ)
+# ============================================
+# Схема БД разрешена (без секретов)
+# database/exports/*.json
+# database/migrations/*.sql
+
+# Но бэкапы с данными запрещены
+database/backups/
+database/dumps/
+*.sql.gz
+*.dump

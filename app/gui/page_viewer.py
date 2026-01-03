@@ -3,25 +3,42 @@
 Отображение страницы с возможностью рисовать прямоугольники для разметки
 """
 
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsPolygonItem, QGraphicsTextItem, QGraphicsEllipseItem, QGraphicsLineItem
-from PySide6.QtCore import Qt, QRectF, QPointF, Signal
-from PySide6.QtGui import QPixmap, QPainter, QImage
-from PIL import Image
-from typing import Optional, List, Dict, Union
-from rd_core.models import Block, ShapeType
+from typing import Dict, List, Optional, Union
 
+from PIL import Image
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QImage, QPainter, QPixmap
+from PySide6.QtWidgets import (
+    QGraphicsEllipseItem,
+    QGraphicsLineItem,
+    QGraphicsPixmapItem,
+    QGraphicsPolygonItem,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsTextItem,
+    QGraphicsView,
+)
+
+from app.gui.page_viewer_blocks import BlockRenderingMixin
+from app.gui.page_viewer_context_menu import ContextMenuMixin
+from app.gui.page_viewer_mouse import MouseEventsMixin
 from app.gui.page_viewer_polygon import PolygonMixin
 from app.gui.page_viewer_resize import ResizeHandlesMixin
-from app.gui.page_viewer_blocks import BlockRenderingMixin
-from app.gui.page_viewer_mouse import MouseEventsMixin
-from app.gui.page_viewer_context_menu import ContextMenuMixin
+from rd_core.models import Block, ShapeType
 
 
-class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, PolygonMixin, ResizeHandlesMixin, QGraphicsView):
+class PageViewer(
+    ContextMenuMixin,
+    MouseEventsMixin,
+    BlockRenderingMixin,
+    PolygonMixin,
+    ResizeHandlesMixin,
+    QGraphicsView,
+):
     """
     Виджет для отображения страницы PDF и рисования блоков разметки
     """
-    
+
     blockDrawn = Signal(int, int, int, int)
     polygonDrawn = Signal(list)
     block_selected = Signal(int)
@@ -29,13 +46,13 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
     blockDeleted = Signal(int)
     blocks_deleted = Signal(list)
     blockMoved = Signal(int, int, int, int, int)
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
-        
+
         self.page_image: Optional[QPixmap] = None
         self.image_item: Optional[QGraphicsPixmapItem] = None
         self.current_blocks: List[Block] = []
@@ -43,7 +60,7 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
         self.block_labels: Dict[str, QGraphicsTextItem] = {}
         self.resize_handles: List[QGraphicsRectItem] = []
         self.current_page: int = 0
-        
+
         self.read_only = False  # Режим "только чтение" для заблокированных документов
         self.drawing = False
         self.drawing_polygon = False
@@ -57,23 +74,23 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
         self.rubber_band_item: Optional[QGraphicsRectItem] = None
         self.selected_block_idx: Optional[int] = None
         self.selected_block_indices: List[int] = []
-        
+
         self.moving_block = False
         self.resizing_block = False
         self.resize_handle = None
         self.move_start_pos: Optional[QPointF] = None
         self.original_block_rect: Optional[QRectF] = None
-        
+
         self.dragging_polygon_vertex: Optional[int] = None
         self.dragging_polygon_edge: Optional[int] = None
         self.original_polygon_points: Optional[List[tuple]] = None
-        
+
         self.panning = False
         self.pan_start_pos: Optional[QPointF] = None
-        
+
         self.zoom_factor = 1.0
         self._setup_ui()
-    
+
     def _setup_ui(self):
         """Настройка интерфейса"""
         self.setRenderHint(QPainter.Antialiasing)
@@ -87,14 +104,14 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
         self.context_menu_pos: Optional[QPointF] = None
-    
+
     def get_current_shape_type(self) -> ShapeType:
         """Получить текущий выбранный тип формы из главного окна"""
         main_window = self.parent().window()
-        if hasattr(main_window, 'selected_shape_type'):
+        if hasattr(main_window, "selected_shape_type"):
             return main_window.selected_shape_type
         return ShapeType.RECTANGLE
-    
+
     def _clamp_to_page(self, point: QPointF) -> QPointF:
         """Ограничить точку границами страницы"""
         if not self.page_image:
@@ -103,7 +120,7 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
         x = max(page_rect.left(), min(point.x(), page_rect.right()))
         y = max(page_rect.top(), min(point.y(), page_rect.bottom()))
         return QPointF(x, y)
-    
+
     def _clamp_rect_to_page(self, rect: QRectF) -> QRectF:
         """Ограничить прямоугольник границами страницы"""
         if not self.page_image:
@@ -118,8 +135,10 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
         if y2 - y1 < 10:
             y2 = min(y1 + 10, page_rect.bottom())
         return QRectF(QPointF(x1, y1), QPointF(x2, y2))
-    
-    def set_page_image(self, pil_image: Image.Image, page_number: int = 0, reset_zoom: bool = True):
+
+    def set_page_image(
+        self, pil_image: Image.Image, page_number: int = 0, reset_zoom: bool = True
+    ):
         """Установить изображение страницы"""
         if pil_image is None:
             self.scene.clear()
@@ -130,7 +149,7 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
             self.block_items.clear()
             self._set_close_button_visible(False)
             return
-        
+
         # Конвертируем в RGB если нужно (RGBA -> RGB)
         if pil_image.mode == "RGBA":
             rgb_image = Image.new("RGB", pil_image.size, (255, 255, 255))
@@ -138,59 +157,63 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin, BlockRenderingMixin, Polygo
             pil_image = rgb_image
         elif pil_image.mode != "RGB":
             pil_image = pil_image.convert("RGB")
-        
+
         # Прямая конвертация PIL → QPixmap без промежуточного копирования
         img_data = pil_image.tobytes("raw", "RGB")
-        qimage = QImage(img_data, pil_image.width, pil_image.height,
-                        pil_image.width * 3, QImage.Format_RGB888)
+        qimage = QImage(
+            img_data,
+            pil_image.width,
+            pil_image.height,
+            pil_image.width * 3,
+            QImage.Format_RGB888,
+        )
         # Важно: делаем copy() чтобы QImage владел данными
         self.page_image = QPixmap.fromImage(qimage.copy())
         self.current_page = page_number
-        
+
         self.scene.clear()
         self.image_item = self.scene.addPixmap(self.page_image)
         self.scene.setSceneRect(QRectF(self.page_image.rect()))
-        
+
         self.selected_block_idx = None
         self.selected_block_indices = []
         self.block_items.clear()
         self.block_labels.clear()
-        
+
         if reset_zoom:
             self.fit_to_view()
-        
+
         self._set_close_button_visible(True)
-    
+
     def _set_close_button_visible(self, visible: bool):
         """Показать/скрыть кнопку закрытия"""
         main_window = self.window()
-        if hasattr(main_window, 'close_pdf_btn'):
+        if hasattr(main_window, "close_pdf_btn"):
             if visible:
                 main_window.close_pdf_btn.show()
                 self._update_close_button_position()
             else:
                 main_window.close_pdf_btn.hide()
-    
+
     def reset_zoom(self):
         """Сбросить масштаб к 100%"""
         self.resetTransform()
         self.zoom_factor = 1.0
-    
+
     def fit_to_view(self):
         """Подогнать страницу под размер view"""
         if self.page_image:
             self.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
             self.zoom_factor = self.transform().m11()
-    
+
     def resizeEvent(self, event):
         """Позиционирование кнопки закрытия при изменении размера"""
         super().resizeEvent(event)
         self._update_close_button_position()
-    
+
     def _update_close_button_position(self):
         """Обновить позицию кнопки закрытия"""
         main_window = self.window()
-        if hasattr(main_window, 'close_pdf_btn'):
+        if hasattr(main_window, "close_pdf_btn"):
             btn = main_window.close_pdf_btn
             btn.move(self.width() - btn.width() - 10, 10)
-    

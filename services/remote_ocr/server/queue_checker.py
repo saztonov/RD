@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import threading
-import redis
 from urllib.parse import urlparse
+
+import redis
 
 from .settings import settings
 
@@ -54,7 +55,7 @@ def is_queue_full() -> bool:
 
 def check_queue_capacity() -> tuple[bool, int, int]:
     """Проверить ёмкость очереди.
-    
+
     Returns:
         (can_accept, current_size, max_size)
     """
@@ -62,4 +63,3 @@ def check_queue_capacity() -> tuple[bool, int, int]:
     max_size = settings.max_queue_size
     can_accept = max_size <= 0 or current < max_size
     return can_accept, current, max_size
-

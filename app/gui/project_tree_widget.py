@@ -6,20 +6,43 @@ import logging
 from pathlib import Path
 from typing import Dict, List
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem,
-    QMenu, QLabel, QAbstractItemView, QFrame, QLineEdit, QMessageBox, QFileDialog
-)
-from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QSettings
+from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
-from app.tree_client import TreeClient, TreeNode, NodeType, NodeStatus, StageType, SectionType, FileType, FileType
-from app.gui.tree_node_operations import TreeNodeOperationsMixin, NODE_ICONS, STATUS_COLORS
-from app.gui.tree_delegates import VersionHighlightDelegate
-from app.gui.tree_sync_mixin import TreeSyncMixin
-from app.gui.tree_filter_mixin import TreeFilterMixin
-from app.gui.tree_context_menu import TreeContextMenuMixin
 from app.gui.sync_check_worker import SyncCheckWorker, SyncStatus
+from app.gui.tree_context_menu import TreeContextMenuMixin
+from app.gui.tree_delegates import VersionHighlightDelegate
+from app.gui.tree_filter_mixin import TreeFilterMixin
+from app.gui.tree_node_operations import (
+    NODE_ICONS,
+    STATUS_COLORS,
+    TreeNodeOperationsMixin,
+)
+from app.gui.tree_sync_mixin import TreeSyncMixin
+from app.tree_client import (
+    FileType,
+    NodeStatus,
+    NodeType,
+    SectionType,
+    StageType,
+    TreeClient,
+    TreeNode,
+)
 from rd_core.pdf_status import PDFStatus
 
 logger = logging.getLogger(__name__)
@@ -33,7 +56,7 @@ NODE_TYPE_NAMES = {
     NodeType.DOCUMENT: "Документ",
 }
 
-__all__ = ['ProjectTreeWidget', 'NODE_TYPE_NAMES']
+__all__ = ["ProjectTreeWidget", "NODE_TYPE_NAMES"]
 
 
 class ProjectTreeWidget(
@@ -41,14 +64,14 @@ class ProjectTreeWidget(
     TreeSyncMixin,
     TreeFilterMixin,
     TreeContextMenuMixin,
-    QWidget
+    QWidget,
 ):
     """Виджет дерева проектов"""
-    
+
     document_selected = Signal(str, str)  # node_id, r2_key
     file_uploaded_r2 = Signal(str, str)  # node_id, r2_key
     annotation_replaced = Signal(str)  # r2_key - для обновления открытого документа
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.client = TreeClient()
@@ -66,36 +89,36 @@ class ProjectTreeWidget(
         self._pdf_statuses_loaded: bool = False  # Флаг загрузки статусов
         self._setup_ui()
         self._setup_auto_refresh()
-        
+
         QTimer.singleShot(100, self._initial_load)
-    
+
     def _setup_auto_refresh(self):
         """Настроить автообновление дерева"""
         self._auto_refresh_timer = QTimer(self)
         self._auto_refresh_timer.timeout.connect(self._auto_refresh_tree)
         self._auto_refresh_timer.start(10000)  # Каждые 10 секунд
-        
+
         # Таймер для очистки истёкших записей кеша
         self._cache_cleanup_timer = QTimer(self)
         self._cache_cleanup_timer.timeout.connect(self._cleanup_pdf_cache)
         self._cache_cleanup_timer.start(60000)  # Каждую минуту
-    
+
     def _auto_refresh_tree(self):
         """Автоматическое обновление дерева (проверка изменений)"""
         if self._loading:
             return
-        
+
         try:
             # Быстрая проверка количества корневых узлов
             roots = self.client.get_root_nodes()
             current_count = len(roots)
-            
+
             # Проверяем изменились ли данные
             if current_count != self._last_node_count:
                 self._last_node_count = current_count
                 self._refresh_tree()
                 return
-            
+
             # Проверяем обновление существующих узлов (по updated_at)
             for root in roots:
                 if root.id in self._node_map:
@@ -109,31 +132,34 @@ class ProjectTreeWidget(
                     # Новый узел - обновляем
                     self._refresh_tree()
                     return
-                    
+
         except Exception as e:
             logger.debug(f"Auto-refresh check failed: {e}")
-    
+
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
+
         header = QWidget()
-        header.setStyleSheet("background-color: #252526; border-bottom: 1px solid #3e3e42;")
+        header.setStyleSheet(
+            "background-color: #252526; border-bottom: 1px solid #3e3e42;"
+        )
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(10, 10, 10, 10)
         header_layout.setSpacing(10)
-        
+
         title_label = QLabel("ДЕРЕВО ПРОЕКТОВ")
         title_label.setStyleSheet("color: #bbbbbb; font-weight: bold; font-size: 9pt;")
         header_layout.addWidget(title_label)
-        
+
         btns_layout = QHBoxLayout()
         btns_layout.setSpacing(8)
-        
+
         self.create_btn = QPushButton("+ Проект")
         self.create_btn.setCursor(Qt.PointingHandCursor)
-        self.create_btn.setStyleSheet("""
+        self.create_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #0e639c;
                 color: white;
@@ -142,20 +168,22 @@ class ProjectTreeWidget(
                 border-radius: 4px;
                 font-weight: 500;
             }
-            QPushButton:hover { 
+            QPushButton:hover {
                 background-color: #1177bb;
             }
             QPushButton:pressed {
                 background-color: #0a4d78;
             }
-        """)
+        """
+        )
         self.create_btn.clicked.connect(self._create_project)
-        
+
         self.refresh_btn = QPushButton("↻")
         self.refresh_btn.setCursor(Qt.PointingHandCursor)
         self.refresh_btn.setToolTip("Обновить")
         self.refresh_btn.setFixedSize(32, 32)
-        self.refresh_btn.setStyleSheet("""
+        self.refresh_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #3e3e42;
                 color: #cccccc;
@@ -164,16 +192,17 @@ class ProjectTreeWidget(
                 font-size: 14px;
                 font-weight: bold;
             }
-            QPushButton:hover { 
+            QPushButton:hover {
                 background-color: #505054;
                 color: #ffffff;
             }
             QPushButton:pressed {
                 background-color: #0e639c;
             }
-        """)
+        """
+        )
         self.refresh_btn.clicked.connect(self._refresh_tree)
-        
+
         icon_btn_style = """
             QPushButton {
                 background-color: #3e3e42;
@@ -183,7 +212,7 @@ class ProjectTreeWidget(
                 font-size: 12px;
                 font-weight: bold;
             }
-            QPushButton:hover { 
+            QPushButton:hover {
                 background-color: #505054;
                 color: #ffffff;
             }
@@ -191,41 +220,42 @@ class ProjectTreeWidget(
                 background-color: #0e639c;
             }
         """
-        
+
         self.expand_all_btn = QPushButton("▼")
         self.expand_all_btn.setCursor(Qt.PointingHandCursor)
         self.expand_all_btn.setToolTip("Развернуть все")
         self.expand_all_btn.setFixedSize(32, 32)
         self.expand_all_btn.setStyleSheet(icon_btn_style)
         self.expand_all_btn.clicked.connect(self._expand_all)
-        
+
         self.collapse_all_btn = QPushButton("▲")
         self.collapse_all_btn.setCursor(Qt.PointingHandCursor)
         self.collapse_all_btn.setToolTip("Свернуть все")
         self.collapse_all_btn.setFixedSize(32, 32)
         self.collapse_all_btn.setStyleSheet(icon_btn_style)
         self.collapse_all_btn.clicked.connect(self._collapse_all)
-        
+
         self.sync_check_btn = QPushButton("🔄")
         self.sync_check_btn.setCursor(Qt.PointingHandCursor)
         self.sync_check_btn.setToolTip("Проверить синхронизацию с R2")
         self.sync_check_btn.setFixedSize(32, 32)
         self.sync_check_btn.setStyleSheet(icon_btn_style)
         self.sync_check_btn.clicked.connect(self._start_sync_check)
-        
+
         btns_layout.addWidget(self.create_btn)
         btns_layout.addWidget(self.refresh_btn)
         btns_layout.addWidget(self.expand_all_btn)
         btns_layout.addWidget(self.collapse_all_btn)
         btns_layout.addWidget(self.sync_check_btn)
         header_layout.addLayout(btns_layout)
-        
+
         layout.addWidget(header)
-        
+
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Поиск...")
         self.search_input.setClearButtonEnabled(True)
-        self.search_input.setStyleSheet("""
+        self.search_input.setStyleSheet(
+            """
             QLineEdit {
                 background-color: #3c3c3c;
                 color: #e0e0e0;
@@ -236,10 +266,11 @@ class ProjectTreeWidget(
             QLineEdit:focus {
                 border: 1px solid #0e639c;
             }
-        """)
+        """
+        )
         self.search_input.textChanged.connect(self._filter_tree)
         layout.addWidget(self.search_input)
-        
+
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.setFrameShape(QFrame.NoFrame)
@@ -254,7 +285,8 @@ class ProjectTreeWidget(
         self.tree.itemCollapsed.connect(self._on_item_collapsed)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.tree.installEventFilter(self)
-        self.tree.setStyleSheet("""
+        self.tree.setStyleSheet(
+            """
             QTreeWidget {
                 background-color: #1e1e1e;
                 color: #e0e0e0;
@@ -271,56 +303,59 @@ class ProjectTreeWidget(
             QTreeWidget::item:selected {
                 background-color: #094771;
             }
-        """)
-        
+        """
+        )
+
         # Делегат для красной версии
         self.tree.setItemDelegate(VersionHighlightDelegate(self.tree))
-        
+
         layout.addWidget(self.tree)
-        
+
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("color: #666; font-size: 8pt; padding: 4px;")
         layout.addWidget(self.status_label)
-    
+
     def _initial_load(self):
         """Начальная загрузка"""
         if not self.client.is_available():
             self.status_label.setText("⚠ Supabase недоступен")
             return
-        
+
         self._load_expanded_state()
         self.refresh_types()
         self._refresh_tree()
-    
+
     def refresh_types(self):
         """Обновить кэшированные типы стадий и разделов"""
         try:
             self._stage_types = self.client.get_stage_types()
             self._section_types = self.client.get_section_types()
-            logger.debug(f"Refreshed types: {len(self._stage_types)} stages, {len(self._section_types)} sections")
+            logger.debug(
+                f"Refreshed types: {len(self._stage_types)} stages, {len(self._section_types)} sections"
+            )
         except Exception as e:
             logger.error(f"Failed to load types: {e}")
-    
+
     def _expand_all(self):
         """Развернуть все элементы"""
         self.tree.expandAll()
-    
+
     def _collapse_all(self):
         """Свернуть все элементы"""
         self.tree.collapseAll()
-    
+
     def _refresh_tree(self):
         """Обновить дерево"""
         if self._loading:
             return
-        
+
         self._loading = True
         self._pdf_statuses_loaded = False  # Сбрасываем флаг при обновлении
         self.status_label.setText("Загрузка...")
         self.tree.clear()
         self._node_map.clear()
         self._sync_statuses.clear()
-        
+
         try:
             roots = self.client.get_root_nodes()
             self._last_node_count = len(roots)
@@ -328,15 +363,15 @@ class ProjectTreeWidget(
                 item = self._create_tree_item(node)
                 self.tree.addTopLevelItem(item)
                 self._add_placeholder(item, node)
-            
+
             self.status_label.setText(f"Проектов: {len(roots)}")
-            
+
             # Восстанавливаем раскрытое состояние с задержкой
             QTimer.singleShot(100, self._restore_expanded_state)
-            
+
             # Запускаем проверку синхронизации с задержкой
             QTimer.singleShot(500, self._start_sync_check)
-            
+
             # Загружаем статусы PDF батчем (один раз)
             if not self._pdf_statuses_loaded:
                 QTimer.singleShot(200, self._load_pdf_statuses_batch)
@@ -345,11 +380,11 @@ class ProjectTreeWidget(
             self.status_label.setText(f"Ошибка: {e}")
         finally:
             self._loading = False
-    
+
     def _create_tree_item(self, node: TreeNode) -> QTreeWidgetItem:
         """Создать элемент дерева"""
         icon = NODE_ICONS.get(node.node_type, "📄")
-        
+
         # Для документов показываем версию и иконку статуса PDF из БД
         if node.node_type == NodeType.DOCUMENT:
             version_tag = f"[v{node.version}]" if node.version else "[v1]"
@@ -373,19 +408,19 @@ class ProjectTreeWidget(
         else:
             display_name = f"{icon} {node.name}"
             version_display = None
-        
+
         item = QTreeWidgetItem([display_name])
         item.setData(0, Qt.UserRole, node)
         item.setData(0, Qt.UserRole + 1, version_display)  # Версия для делегата
         item.setForeground(0, QColor(STATUS_COLORS.get(node.status, "#e0e0e0")))
-        
+
         # Устанавливаем tooltip для PDF документов
         if node.node_type == NodeType.DOCUMENT and node.pdf_status_message:
             item.setToolTip(0, node.pdf_status_message)
-        
+
         self._node_map[node.id] = item
         return item
-    
+
     def _get_pdf_status_icon(self, status: str) -> str:
         """Получить иконку для статуса PDF"""
         icons = {
@@ -395,7 +430,7 @@ class ProjectTreeWidget(
             "unknown": "",
         }
         return icons.get(status, "")
-    
+
     def _load_pdf_statuses_batch(self):
         """Загрузить статусы всех PDF документов батчем"""
         try:
@@ -405,60 +440,70 @@ class ProjectTreeWidget(
                 node = item.data(0, Qt.UserRole)
                 if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
                     doc_ids.append(node_id)
-            
+
             if not doc_ids:
                 self._pdf_statuses_loaded = True
                 return
-            
+
             logger.debug(f"Loading PDF statuses for {len(doc_ids)} documents")
-            
+
             # Загружаем батчем
             statuses = self.client.get_pdf_statuses_batch(doc_ids)
-            
+
             # Обновляем отображение для ВСЕХ документов (не только тех, что в statuses)
             for node_id in doc_ids:
                 item = self._node_map.get(node_id)
                 if item:
                     node = item.data(0, Qt.UserRole)
-                    if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
+                    if (
+                        isinstance(node, TreeNode)
+                        and node.node_type == NodeType.DOCUMENT
+                    ):
                         # Получаем статус или используем "unknown" если нет в БД
                         status, message = statuses.get(node_id, ("unknown", ""))
-                        
+
                         # Обновляем кешированные значения в узле
                         node.pdf_status = status
                         node.pdf_status_message = message
-                        
+
                         # Обновляем отображение
                         icon = NODE_ICONS.get(node.node_type, "📄")
                         status_icon = self._get_pdf_status_icon(status)
                         lock_icon = "🔒" if node.is_locked else ""
                         version_tag = f"[v{node.version}]" if node.version else "[v1]"
-                        
-                        display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+
+                        display_name = (
+                            f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+                        )
                         item.setText(0, display_name)
                         item.setData(0, Qt.UserRole + 1, version_tag)
-                        
+
                         if message:
                             item.setToolTip(0, message)
-            
+
             self._pdf_statuses_loaded = True
-            logger.info(f"Loaded PDF statuses: {len(statuses)}/{len(doc_ids)} documents")
-            
+            logger.info(
+                f"Loaded PDF statuses: {len(statuses)}/{len(doc_ids)} documents"
+            )
+
         except Exception as e:
             logger.error(f"Failed to load PDF statuses batch: {e}")
-            self._pdf_statuses_loaded = True  # Помечаем как загруженные чтобы не повторять
-    
+            self._pdf_statuses_loaded = (
+                True  # Помечаем как загруженные чтобы не повторять
+            )
+
     def _cleanup_pdf_cache(self):
         """Периодическая очистка истёкших записей из кеша PDF статусов"""
         try:
             from app.gui.pdf_status_cache import get_pdf_status_cache
+
             cache = get_pdf_status_cache()
             cleaned = cache.cleanup_expired()
             if cleaned > 0:
                 logger.debug(f"Cleaned {cleaned} expired PDF status cache entries")
         except Exception as e:
             logger.error(f"PDF cache cleanup failed: {e}")
-    
+
     def _add_placeholder(self, item: QTreeWidgetItem, node: TreeNode):
         """Добавить placeholder для lazy loading"""
         allowed = node.get_allowed_child_types()
@@ -467,7 +512,7 @@ class ProjectTreeWidget(
             placeholder = QTreeWidgetItem(["..."])
             placeholder.setData(0, Qt.UserRole, "placeholder")
             item.addChild(placeholder)
-    
+
     def _on_item_expanded(self, item: QTreeWidgetItem):
         """Lazy loading при раскрытии"""
         node = item.data(0, Qt.UserRole)
@@ -475,7 +520,7 @@ class ProjectTreeWidget(
             # Сохраняем ID раскрытого узла
             self._expanded_nodes.add(node.id)
             self._save_expanded_state()
-            
+
         if item.childCount() == 1:
             child = item.child(0)
             child_data = child.data(0, Qt.UserRole)
@@ -485,7 +530,7 @@ class ProjectTreeWidget(
                     self._load_children(item, node)
                     # Запускаем проверку синхронизации для загруженных дочерних
                     QTimer.singleShot(100, self._start_sync_check)
-    
+
     def _on_item_collapsed(self, item: QTreeWidgetItem):
         """Обработчик сворачивания узла"""
         node = item.data(0, Qt.UserRole)
@@ -493,7 +538,7 @@ class ProjectTreeWidget(
             # Удаляем ID свернутого узла
             self._expanded_nodes.discard(node.id)
             self._save_expanded_state()
-    
+
     def _load_children(self, parent_item: QTreeWidgetItem, parent_node: TreeNode):
         """Загрузить дочерние узлы"""
         try:
@@ -504,21 +549,18 @@ class ProjectTreeWidget(
                 self._add_placeholder(child_item, child)
         except Exception as e:
             logger.error(f"Failed to load children: {e}")
-    
-    
-    
+
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
         """Двойной клик - открыть документ (скачать из R2)"""
         data = item.data(0, Qt.UserRole)
-        
+
         # Документ PDF
         if isinstance(data, TreeNode) and data.node_type == NodeType.DOCUMENT:
             r2_key = data.attributes.get("r2_key", "")
             if r2_key:
                 self.highlight_document(data.id)
                 self.document_selected.emit(data.id, r2_key)
-    
-    
+
     def highlight_document(self, node_id: str):
         """Подсветить текущий открытый документ"""
         # Сбросить подсветку предыдущего
@@ -527,8 +569,10 @@ class ProjectTreeWidget(
             prev_node = prev_item.data(0, Qt.UserRole)
             if isinstance(prev_node, TreeNode):
                 prev_item.setBackground(0, QColor("transparent"))
-                prev_item.setForeground(0, QColor(STATUS_COLORS.get(prev_node.status, "#e0e0e0")))
-        
+                prev_item.setForeground(
+                    0, QColor(STATUS_COLORS.get(prev_node.status, "#e0e0e0"))
+                )
+
         # Установить подсветку нового
         self._current_document_id = node_id
         if node_id and node_id in self._node_map:
@@ -536,7 +580,7 @@ class ProjectTreeWidget(
             item.setBackground(0, QColor("#264f78"))  # Синий фон для активного
             item.setForeground(0, QColor("#ffffff"))  # Белый текст
             self.tree.scrollToItem(item)
-    
+
     def eventFilter(self, obj, event):
         """Обработка событий для дерева"""
         if obj == self.tree and event.type() == QEvent.KeyPress:
@@ -548,26 +592,26 @@ class ProjectTreeWidget(
                         self._delete_node(node)
                         return True
         return super().eventFilter(obj, event)
-    
+
     def _copy_annotation(self, node: TreeNode):
         """Скопировать аннотацию документа в буфер"""
         # Копирование разрешено для заблокированных документов
-        from rd_core.r2_storage import R2Storage
         from app.gui.file_operations import get_annotation_r2_key
-        
+        from rd_core.r2_storage import R2Storage
+
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
             return
-        
+
         try:
             r2 = R2Storage()
             ann_r2_key = get_annotation_r2_key(r2_key)
             json_content = r2.download_text(ann_r2_key)
-            
+
             if json_content:
                 self._copied_annotation = {
                     "json": json_content,
-                    "source_r2_key": r2_key
+                    "source_r2_key": r2_key,
                 }
                 self.status_label.setText(f"📋 Аннотация скопирована")
                 logger.info(f"Annotation copied from {ann_r2_key}")
@@ -576,62 +620,64 @@ class ProjectTreeWidget(
         except Exception as e:
             logger.error(f"Copy annotation failed: {e}")
             QMessageBox.critical(self, "Ошибка", f"Ошибка копирования: {e}")
-    
+
     def _paste_annotation(self, node: TreeNode):
         """Вставить аннотацию из буфера в документ"""
         # Проверка блокировки документа
         if self._check_document_locked(node):
             return
-        
-        from rd_core.r2_storage import R2Storage
+
         from app.gui.file_operations import get_annotation_r2_key
-        
+        from rd_core.r2_storage import R2Storage
+
         if not self._copied_annotation:
             return
-        
+
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
             return
-        
+
         try:
             r2 = R2Storage()
             ann_r2_key = get_annotation_r2_key(r2_key)
-            
+
             # Загружаем скопированную аннотацию
             if r2.upload_text(self._copied_annotation["json"], ann_r2_key):
                 # Обновляем флаг has_annotation
                 attrs = node.attributes.copy()
                 attrs["has_annotation"] = True
                 self.client.update_node(node.id, attributes=attrs)
-                
+
                 # Обновляем статус PDF и дерево
-                from rd_core.pdf_status import calculate_pdf_status, PDFStatus
+                from rd_core.pdf_status import PDFStatus, calculate_pdf_status
                 from rd_core.r2_storage import R2Storage
-                
+
                 r2 = R2Storage()
                 status, message = calculate_pdf_status(r2, node.id, r2_key)
                 self.client.update_pdf_status(node.id, status.value, message)
-                
+
                 # Обновляем только этот узел
                 item = self._node_map.get(node.id)
                 if item and node.node_type == NodeType.DOCUMENT:
                     node.pdf_status = status.value
                     node.pdf_status_message = message
-                    
+
                     icon = NODE_ICONS.get(node.node_type, "📄")
                     status_icon = self._get_pdf_status_icon(status.value)
                     lock_icon = "🔒" if node.is_locked else ""
                     version_tag = f"[v{node.version}]" if node.version else "[v1]"
-                    
-                    display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+
+                    display_name = (
+                        f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+                    )
                     item.setText(0, display_name)
                     item.setData(0, Qt.UserRole + 1, version_tag)
                     if message:
                         item.setToolTip(0, message)
-                
+
                 self.status_label.setText(f"📥 Аннотация вставлена")
                 logger.info(f"Annotation pasted to {ann_r2_key}")
-                
+
                 # Сигнал для обновления открытого документа
                 self.annotation_replaced.emit(r2_key)
             else:
@@ -639,64 +685,67 @@ class ProjectTreeWidget(
         except Exception as e:
             logger.error(f"Paste annotation failed: {e}")
             QMessageBox.critical(self, "Ошибка", f"Ошибка вставки: {e}")
-    
+
     def _detect_and_assign_stamps(self, node: TreeNode):
         """Определить и назначить штамп на всех страницах PDF"""
         # Проверка блокировки документа
         if self._check_document_locked(node):
             return
-        
-        from rd_core.r2_storage import R2Storage
-        from rd_core.models import Document, BlockType
-        from rd_core.annotation_io import AnnotationIO
+
         from app.gui.file_operations import get_annotation_r2_key
-        
+        from rd_core.annotation_io import AnnotationIO
+        from rd_core.models import BlockType, Document
+        from rd_core.r2_storage import R2Storage
+
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
             QMessageBox.warning(self, "Ошибка", "Документ не имеет привязки к R2")
             return
-        
+
         try:
             r2 = R2Storage()
             ann_r2_key = get_annotation_r2_key(r2_key)
-            
+
             # Загрузить аннотацию из R2
             json_content = r2.download_text(ann_r2_key)
             if not json_content:
                 QMessageBox.warning(self, "Ошибка", "Аннотация документа не найдена")
                 return
-            
+
             import json as json_module
+
             data = json_module.loads(json_content)
             doc, _ = Document.from_dict(data)
-            
+
             # Получить категорию stamp из базы
             stamp_category = self.client.get_image_category_by_code("stamp")
             stamp_category_id = stamp_category.get("id") if stamp_category else None
-            
+
             modified_count = 0
-            
+
             # Пройтись по всем страницам
             for page in doc.pages:
                 if not page.blocks:
                     continue
-                
+
                 # Пропускаем страницы, где уже есть штамп
-                has_stamp = any(getattr(b, 'category_code', None) == 'stamp' for b in page.blocks)
+                has_stamp = any(
+                    getattr(b, "category_code", None) == "stamp" for b in page.blocks
+                )
                 if has_stamp:
                     continue
-                
+
                 # Найти блок в правом нижнем углу
                 # Критерий: центр блока в правом нижнем квадранте (x > 0.5, y > 0.7)
                 # и максимально близок к углу (1, 1)
                 best_block = None
                 best_score = -1
-                
+
                 for block in page.blocks:
                     x1, y1, x2, y2 = block.coords_norm
                     cx = (x1 + x2) / 2
                     cy = (y1 + y2) / 2
-                    
+
                     # Проверяем что блок в правом нижнем углу
                     if cx > 0.5 and cy > 0.7:
                         # Score = близость к правому нижнему углу
@@ -704,7 +753,7 @@ class ProjectTreeWidget(
                         if score > best_score:
                             best_score = score
                             best_block = block
-                
+
                 # Назначить штамп
                 if best_block:
                     best_block.block_type = BlockType.IMAGE
@@ -712,78 +761,78 @@ class ProjectTreeWidget(
                     if stamp_category_id:
                         best_block.category_id = stamp_category_id
                     modified_count += 1
-            
+
             if modified_count == 0:
                 QMessageBox.information(self, "Результат", "Штампы не найдены")
                 return
-            
+
             # Сохранить аннотацию обратно в R2
-            updated_json = json_module.dumps(doc.to_dict(), ensure_ascii=False, indent=2)
+            updated_json = json_module.dumps(
+                doc.to_dict(), ensure_ascii=False, indent=2
+            )
             if not r2.upload_text(updated_json, ann_r2_key):
                 QMessageBox.critical(self, "Ошибка", "Не удалось сохранить аннотацию")
                 return
-            
+
             self.status_label.setText(f"🔖 Назначено штампов: {modified_count}")
             QMessageBox.information(
-                self, "Успех", 
-                f"Штамп назначен на {modified_count} страницах"
+                self, "Успех", f"Штамп назначен на {modified_count} страницах"
             )
-            
+
             # Сигнал для обновления открытого документа
             self.annotation_replaced.emit(r2_key)
-            
+
         except Exception as e:
             logger.error(f"Detect stamps failed: {e}")
             QMessageBox.critical(self, "Ошибка", f"Ошибка определения штампов:\n{e}")
-    
+
     def _upload_annotation_dialog(self, node: TreeNode):
         """Диалог загрузки аннотации блоков из файла"""
         # Проверка блокировки документа
         if self._check_document_locked(node):
             return
-        
-        from rd_core.r2_storage import R2Storage
+
         from app.gui.file_operations import get_annotation_r2_key
-        
+        from rd_core.r2_storage import R2Storage
+
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
             QMessageBox.warning(self, "Ошибка", "Документ не имеет привязки к R2")
             return
-        
+
         # Диалог выбора файла
         file_path, _ = QFileDialog.getOpenFileName(
-            self, 
-            "Выберите файл аннотации", 
-            "", 
-            "JSON Files (*.json);;All Files (*)"
+            self, "Выберите файл аннотации", "", "JSON Files (*.json);;All Files (*)"
         )
-        
+
         if not file_path:
             return
-        
+
         try:
             # Читаем содержимое файла
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 json_content = f.read()
-            
+
             # Валидация JSON
             json.loads(json_content)  # Проверяем что это валидный JSON
-            
+
             r2 = R2Storage()
             ann_r2_key = get_annotation_r2_key(r2_key)
-            
+
             # Загружаем в R2
             if not r2.upload_text(json_content, ann_r2_key):
-                QMessageBox.critical(self, "Ошибка", "Не удалось загрузить аннотацию в R2")
+                QMessageBox.critical(
+                    self, "Ошибка", "Не удалось загрузить аннотацию в R2"
+                )
                 return
-            
+
             logger.info(f"Annotation uploaded to R2: {ann_r2_key}")
-            
+
             # Обновляем флаг has_annotation в узле
             attrs = node.attributes.copy()
             attrs["has_annotation"] = True
             self.client.update_node(node.id, attributes=attrs)
-            
+
             # Регистрируем файл в node_files
             file_size = Path(file_path).stat().st_size
             self.client.upsert_node_file(
@@ -794,53 +843,54 @@ class ProjectTreeWidget(
                 file_size=file_size,
                 mime_type="application/json",
             )
-            
+
             logger.info(f"Annotation registered in Supabase: node_id={node.id}")
-            
+
             # Обновляем статус PDF и дерево
-            from rd_core.pdf_status import calculate_pdf_status, PDFStatus
-            
+            from rd_core.pdf_status import PDFStatus, calculate_pdf_status
+
             status, message = calculate_pdf_status(r2, node.id, r2_key)
             self.client.update_pdf_status(node.id, status.value, message)
-            
+
             # Обновляем только этот узел
             item = self._node_map.get(node.id)
             if item and node.node_type == NodeType.DOCUMENT:
                 node.pdf_status = status.value
                 node.pdf_status_message = message
-                
+
                 icon = NODE_ICONS.get(node.node_type, "📄")
                 status_icon = self._get_pdf_status_icon(status.value)
                 lock_icon = "🔒" if node.is_locked else ""
                 version_tag = f"[v{node.version}]" if node.version else "[v1]"
-                
+
                 display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
                 item.setText(0, display_name)
                 item.setData(0, Qt.UserRole + 1, version_tag)
                 if message:
                     item.setToolTip(0, message)
-            
+
             self.status_label.setText("📤 Аннотация загружена")
-            
+
             # Сигнал для обновления открытого документа
             self.annotation_replaced.emit(r2_key)
-            
+
             QMessageBox.information(self, "Успех", "Аннотация блоков успешно загружена")
-            
+
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in annotation file: {e}")
             QMessageBox.critical(self, "Ошибка", f"Неверный формат JSON:\n{e}")
         except Exception as e:
             logger.error(f"Upload annotation failed: {e}")
             QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки аннотации:\n{e}")
-    
+
     def _view_on_r2(self, node: TreeNode):
         """Показать файлы узла на R2 Storage"""
         import os
         from pathlib import PurePosixPath
-        from rd_core.r2_storage import R2Storage
+
         from app.gui.r2_files_dialog import R2FilesDialog
-        
+        from rd_core.r2_storage import R2Storage
+
         # Определяем r2_prefix для узла
         if node.node_type == NodeType.DOCUMENT:
             r2_key = node.attributes.get("r2_key", "")
@@ -850,102 +900,120 @@ class ProjectTreeWidget(
                 r2_prefix = f"tree_docs/{node.id}/"
         else:
             r2_prefix = f"tree_docs/{node.id}/"
-        
+
         self.status_label.setText("Загрузка файлов с R2...")
-        
+
         try:
             r2 = R2Storage()
             r2_objects = r2.list_objects_with_metadata(r2_prefix)
-            
+
             if not r2_objects:
-                QMessageBox.information(self, "R2 Storage", f"Нет файлов в папке:\n{r2_prefix}")
+                QMessageBox.information(
+                    self, "R2 Storage", f"Нет файлов в папке:\n{r2_prefix}"
+                )
                 self.status_label.setText("")
                 return
-            
+
             # Преобразуем в формат для диалога
             r2_files = self._build_r2_file_tree(r2_objects, r2_prefix)
-            
+
             # Получаем публичный URL R2
             r2_base_url = os.getenv("R2_PUBLIC_URL", "https://rd1.svarovsky.ru")
             r2_base_url = f"{r2_base_url}/{r2_prefix.rstrip('/')}"
-            
+
             # Определяем локальную папку
-            from app.gui.folder_settings_dialog import get_projects_dir
             from pathlib import Path
+
+            from app.gui.folder_settings_dialog import get_projects_dir
+
             local_folder = None
             if node.node_type == NodeType.DOCUMENT:
                 r2_key = node.attributes.get("r2_key", "")
                 if r2_key:
                     projects_dir = get_projects_dir()
-                    rel_path = r2_key[len("tree_docs/"):] if r2_key.startswith("tree_docs/") else r2_key
+                    rel_path = (
+                        r2_key[len("tree_docs/") :]
+                        if r2_key.startswith("tree_docs/")
+                        else r2_key
+                    )
                     local_folder = Path(projects_dir) / Path(rel_path).parent
-            
+
             self.status_label.setText("")
-            
+
             dialog = R2FilesDialog(
-                r2_base_url, r2_files, self,
+                r2_base_url,
+                r2_files,
+                self,
                 r2_prefix=r2_prefix,
                 node_id=node.id,
                 local_folder=local_folder,
             )
             dialog.exec()
-            
+
         except Exception as e:
             logger.error(f"Failed to list R2 files: {e}")
             self.status_label.setText("")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить список файлов:\n{e}")
-    
+            QMessageBox.critical(
+                self, "Ошибка", f"Не удалось загрузить список файлов:\n{e}"
+            )
+
     def _build_r2_file_tree(self, r2_objects: list, prefix: str) -> list:
         """Построить дерево файлов из списка R2 объектов"""
         from collections import defaultdict
-        
+
         # Группируем по папкам
         folders = defaultdict(list)
         files = []
-        
+
         for obj in r2_objects:
             key = obj.get("Key", "")
             if not key.startswith(prefix):
                 continue
-            
-            rel_path = key[len(prefix):]
+
+            rel_path = key[len(prefix) :]
             if not rel_path:
                 continue
-            
+
             parts = rel_path.split("/")
             if len(parts) == 1:
                 # Файл в корне
                 ext = rel_path.split(".")[-1].lower() if "." in rel_path else ""
                 icon = self._get_file_icon(ext)
-                files.append({
-                    "name": rel_path,
-                    "path": key,
-                    "icon": icon,
-                    "is_dir": False,
-                    "size": obj.get("Size", 0),
-                })
+                files.append(
+                    {
+                        "name": rel_path,
+                        "path": key,
+                        "icon": icon,
+                        "is_dir": False,
+                        "size": obj.get("Size", 0),
+                    }
+                )
             else:
                 # Файл в подпапке
                 folder_name = parts[0]
                 folders[folder_name].append(obj)
-        
+
         result = []
-        
+
         # Добавляем папки
         for folder_name, folder_objects in sorted(folders.items()):
-            children = self._build_r2_file_tree(folder_objects, f"{prefix}{folder_name}/")
-            result.append({
-                "name": folder_name,
-                "icon": "📁",
-                "is_dir": True,
-                "children": children,
-            })
-        
+            children = self._build_r2_file_tree(
+                folder_objects, f"{prefix}{folder_name}/"
+            )
+            result.append(
+                {
+                    "name": folder_name,
+                    "icon": "📁",
+                    "is_dir": True,
+                    "children": children,
+                }
+            )
+
         # Добавляем файлы
         result.extend(sorted(files, key=lambda x: x["name"]))
-        
+
         return result
-    
+
     def _get_file_icon(self, ext: str) -> str:
         """Получить иконку для расширения файла"""
         icons = {
@@ -959,7 +1027,7 @@ class ProjectTreeWidget(
             "zip": "📦",
         }
         return icons.get(ext, "📄")
-    
+
     def _save_expanded_state(self):
         """Сохранить состояние раскрытых узлов"""
         try:
@@ -967,7 +1035,7 @@ class ProjectTreeWidget(
             settings.setValue("expanded_nodes", list(self._expanded_nodes))
         except Exception as e:
             logger.debug(f"Failed to save expanded state: {e}")
-    
+
     def _load_expanded_state(self):
         """Загрузить состояние раскрытых узлов"""
         try:
@@ -980,12 +1048,12 @@ class ProjectTreeWidget(
         except Exception as e:
             logger.debug(f"Failed to load expanded state: {e}")
             self._expanded_nodes = set()
-    
+
     def _restore_expanded_state(self):
         """Восстановить раскрытое состояние дерева"""
         if not self._expanded_nodes:
             return
-        
+
         def expand_recursive(item: QTreeWidgetItem):
             node = item.data(0, Qt.UserRole)
             if isinstance(node, TreeNode) and node.id in self._expanded_nodes:
@@ -994,65 +1062,75 @@ class ProjectTreeWidget(
                 # Обрабатываем дочерние элементы
                 for i in range(item.childCount()):
                     expand_recursive(item.child(i))
-        
+
         # Проходим по всем корневым элементам
         for i in range(self.tree.topLevelItemCount()):
             expand_recursive(self.tree.topLevelItem(i))
-    
+
     def _lock_document(self, node: TreeNode):
         """Заблокировать документ от изменений"""
         try:
             if self.client.lock_document(node.id):
                 node.is_locked = True
                 self.status_label.setText("🔒 Документ заблокирован")
-                
+
                 # Обновляем режим read_only в главном окне если это текущий документ
                 main_window = self.window()
-                if hasattr(main_window, '_current_node_id') and main_window._current_node_id == node.id:
+                if (
+                    hasattr(main_window, "_current_node_id")
+                    and main_window._current_node_id == node.id
+                ):
                     main_window._current_node_locked = True
-                    if hasattr(main_window, 'page_viewer'):
+                    if hasattr(main_window, "page_viewer"):
                         main_window.page_viewer.read_only = True
                     # Отключаем кнопки перемещения блоков
-                    if hasattr(main_window, 'move_block_up_btn'):
+                    if hasattr(main_window, "move_block_up_btn"):
                         main_window.move_block_up_btn.setEnabled(False)
-                    if hasattr(main_window, 'move_block_down_btn'):
+                    if hasattr(main_window, "move_block_down_btn"):
                         main_window.move_block_down_btn.setEnabled(False)
-                
+
                 from PySide6.QtCore import QTimer
+
                 QTimer.singleShot(100, self._refresh_tree)
             else:
                 QMessageBox.warning(self, "Ошибка", "Не удалось заблокировать документ")
         except Exception as e:
             logger.error(f"Lock document failed: {e}")
             QMessageBox.critical(self, "Ошибка", f"Ошибка блокировки: {e}")
-    
+
     def _unlock_document(self, node: TreeNode):
         """Разблокировать документ"""
         try:
             if self.client.unlock_document(node.id):
                 node.is_locked = False
                 self.status_label.setText("🔓 Документ разблокирован")
-                
+
                 # Обновляем режим read_only в главном окне если это текущий документ
                 main_window = self.window()
-                if hasattr(main_window, '_current_node_id') and main_window._current_node_id == node.id:
+                if (
+                    hasattr(main_window, "_current_node_id")
+                    and main_window._current_node_id == node.id
+                ):
                     main_window._current_node_locked = False
-                    if hasattr(main_window, 'page_viewer'):
+                    if hasattr(main_window, "page_viewer"):
                         main_window.page_viewer.read_only = False
                     # Включаем кнопки перемещения блоков
-                    if hasattr(main_window, 'move_block_up_btn'):
+                    if hasattr(main_window, "move_block_up_btn"):
                         main_window.move_block_up_btn.setEnabled(True)
-                    if hasattr(main_window, 'move_block_down_btn'):
+                    if hasattr(main_window, "move_block_down_btn"):
                         main_window.move_block_down_btn.setEnabled(True)
-                
+
                 from PySide6.QtCore import QTimer
+
                 QTimer.singleShot(100, self._refresh_tree)
             else:
-                QMessageBox.warning(self, "Ошибка", "Не удалось разблокировать документ")
+                QMessageBox.warning(
+                    self, "Ошибка", "Не удалось разблокировать документ"
+                )
         except Exception as e:
             logger.error(f"Unlock document failed: {e}")
             QMessageBox.critical(self, "Ошибка", f"Ошибка разблокировки: {e}")
-    
+
     def _check_document_locked(self, node: TreeNode) -> bool:
         """
         Проверить заблокирован ли документ.
@@ -1061,21 +1139,21 @@ class ProjectTreeWidget(
         """
         if node.node_type == NodeType.DOCUMENT and node.is_locked:
             QMessageBox.warning(
-                self, 
-                "Документ заблокирован", 
-                "Этот документ заблокирован от изменений.\nСначала снимите блокировку."
+                self,
+                "Документ заблокирован",
+                "Этот документ заблокирован от изменений.\nСначала снимите блокировку.",
             )
             return True
         return False
-    
+
     def _verify_blocks(self, node: TreeNode):
         """Верификация блоков документа"""
         from app.gui.block_verification_dialog import BlockVerificationDialog
-        
+
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
             QMessageBox.warning(self, "Ошибка", "Документ не имеет привязки к R2")
             return
-        
+
         dialog = BlockVerificationDialog(node.name, r2_key, self)
         dialog.exec()

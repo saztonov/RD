@@ -1,6 +1,6 @@
 """Модели данных для хранилища задач OCR"""
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import List, Optional
 
 
 @dataclass
@@ -41,6 +41,3 @@ class Job:
     # Вложенные данные (опционально загружаются)
     files: List[JobFile] = field(default_factory=list)
     settings: Optional[JobSettings] = None
-
-
-

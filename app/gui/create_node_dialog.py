@@ -4,16 +4,20 @@ from __future__ import annotations
 from typing import List, Optional
 
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QComboBox, QLineEdit, QDialogButtonBox
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QLineEdit,
 )
 
-from app.tree_client import NodeType, StageType, SectionType
 from app.gui.project_tree_widget import NODE_TYPE_NAMES
+from app.tree_client import NodeType, SectionType, StageType
 
 
 class CreateNodeDialog(QDialog):
     """Диалог создания узла дерева"""
-    
+
     def __init__(
         self,
         parent,
@@ -26,13 +30,13 @@ class CreateNodeDialog(QDialog):
         self.stage_types = stage_types or []
         self.section_types = section_types or []
         self._setup_ui()
-    
+
     def _setup_ui(self):
         self.setWindowTitle(f"Создать: {NODE_TYPE_NAMES[self.node_type]}")
         self.setMinimumWidth(350)
-        
+
         layout = QFormLayout(self)
-        
+
         if self.node_type == NodeType.STAGE and self.stage_types:
             self.stage_combo = QComboBox()
             for st in self.stage_types:
@@ -51,26 +55,34 @@ class CreateNodeDialog(QDialog):
             layout.addRow("Название:", self.name_edit)
             self.stage_combo = None
             self.section_combo = None
-        
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
-    
+
     def get_data(self) -> tuple[str, Optional[str]]:
         """Вернуть (name, code)"""
-        if self.node_type == NodeType.STAGE and hasattr(self, 'stage_combo') and self.stage_combo is not None:
+        if (
+            self.node_type == NodeType.STAGE
+            and hasattr(self, "stage_combo")
+            and self.stage_combo is not None
+        ):
             st = self.stage_combo.currentData()
-            if st and hasattr(st, 'name') and hasattr(st, 'code'):
+            if st and hasattr(st, "name") and hasattr(st, "code"):
                 return st.name, st.code
             text = self.stage_combo.currentText()
             if " - " in text:
                 code, name = text.split(" - ", 1)
                 return name, code
             return text, None
-        elif self.node_type == NodeType.SECTION and hasattr(self, 'section_combo') and self.section_combo is not None:
+        elif (
+            self.node_type == NodeType.SECTION
+            and hasattr(self, "section_combo")
+            and self.section_combo is not None
+        ):
             st = self.section_combo.currentData()
-            if st and hasattr(st, 'name') and hasattr(st, 'code'):
+            if st and hasattr(st, "name") and hasattr(st, "code"):
                 return st.name, st.code
             text = self.section_combo.currentText()
             if " - " in text:
@@ -79,4 +91,3 @@ class CreateNodeDialog(QDialog):
             return text, None
         else:
             return self.name_edit.text().strip(), None
-

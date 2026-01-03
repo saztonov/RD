@@ -10,8 +10,10 @@ logger = logging.getLogger(__name__)
 
 class R2UploadMixin:
     """Миксин для операций загрузки в R2"""
-    
-    def upload_file(self, local_path: str, remote_key: str, content_type: Optional[str] = None) -> bool:
+
+    def upload_file(
+        self, local_path: str, remote_key: str, content_type: Optional[str] = None
+    ) -> bool:
         """
         Загрузить файл в R2
 
@@ -25,7 +27,9 @@ class R2UploadMixin:
         """
         try:
             local_file = Path(local_path)
-            logger.debug(f"Попытка загрузки файла: {local_file} → {self.bucket_name}/{remote_key}")
+            logger.debug(
+                f"Попытка загрузки файла: {local_file} → {self.bucket_name}/{remote_key}"
+            )
 
             if not local_file.exists():
                 logger.error(f"❌ Файл не найден: {local_path}")
@@ -67,13 +71,16 @@ class R2UploadMixin:
             return False
         except Exception as e:
             logger.error(
-                f"❌ Неожиданная ошибка загрузки в R2: {type(e).__name__}: {e}", exc_info=True
+                f"❌ Неожиданная ошибка загрузки в R2: {type(e).__name__}: {e}",
+                exc_info=True,
             )
             logger.error(f"   Файл: {local_path}")
             logger.error(f"   Bucket: {self.bucket_name}, Key: {remote_key}")
             return False
 
-    def upload_directory(self, local_dir: str, remote_prefix: str = "", recursive: bool = True) -> tuple[int, int]:
+    def upload_directory(
+        self, local_dir: str, remote_prefix: str = "", recursive: bool = True
+    ) -> tuple[int, int]:
         """
         Загрузить директорию в R2
 
@@ -111,7 +118,11 @@ class R2UploadMixin:
         for idx, file_path in enumerate(files, 1):
             # Формируем remote_key с сохранением структуры
             relative_path = file_path.relative_to(local_path)
-            remote_key = f"{remote_prefix}/{relative_path.as_posix()}" if remote_prefix else relative_path.as_posix()
+            remote_key = (
+                f"{remote_prefix}/{relative_path.as_posix()}"
+                if remote_prefix
+                else relative_path.as_posix()
+            )
 
             logger.info(f"[{idx}/{len(files)}] Загрузка: {relative_path.as_posix()}")
 
@@ -120,10 +131,14 @@ class R2UploadMixin:
             else:
                 error_count += 1
 
-        logger.info(f"=== Загрузка завершена: ✅ {success_count} успешно, ❌ {error_count} ошибок ===")
+        logger.info(
+            f"=== Загрузка завершена: ✅ {success_count} успешно, ❌ {error_count} ошибок ==="
+        )
         return (success_count, error_count)
 
-    def upload_text(self, content: str, remote_key: str, content_type: str = None) -> bool:
+    def upload_text(
+        self, content: str, remote_key: str, content_type: str = None
+    ) -> bool:
         """
         Загрузить текстовый контент в R2
 
@@ -142,7 +157,7 @@ class R2UploadMixin:
                     content_type = "application/json; charset=utf-8"
                 else:
                     content_type = "text/plain; charset=utf-8"
-            
+
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=remote_key,
@@ -154,6 +169,3 @@ class R2UploadMixin:
         except ClientError as e:
             logger.error(f"❌ Ошибка загрузки текста в R2: {e}")
             return False
-
-
-

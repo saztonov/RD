@@ -6,13 +6,21 @@ import os
 import threading
 import webbrowser
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, List, Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QListWidget, QListWidgetItem,
-    QDialogButtonBox, QLabel, QHBoxLayout, QPushButton,
-    QMessageBox, QProgressDialog, QFileDialog
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QProgressDialog,
+    QPushButton,
+    QVBoxLayout,
 )
 
 if TYPE_CHECKING:
@@ -23,9 +31,10 @@ logger = logging.getLogger(__name__)
 
 class R2DownloadWorker(QThread):
     """Воркер для параллельного скачивания файлов с R2"""
+
     progress = Signal(int, int, str)  # current, total, filename
     finished = Signal(bool, str)  # success, message
-    
+
     def __init__(self, files_to_download: list, target_dir: Path, max_workers: int = 8):
         super().__init__()
         self.files_to_download = files_to_download
@@ -34,60 +43,63 @@ class R2DownloadWorker(QThread):
         self._cancelled = False
         self._downloaded = 0
         self._lock = threading.Lock()
-    
+
     def cancel(self):
         self._cancelled = True
-    
-    def _download_single_file(self, file_info: dict, r2: 'R2Storage') -> bool:
+
+    def _download_single_file(self, file_info: dict, r2: "R2Storage") -> bool:
         """Скачать один файл (вызывается в отдельном потоке)"""
         if self._cancelled:
             return False
-        
+
         try:
             r2_key = file_info.get("path", "")
             filename = file_info.get("name", Path(r2_key).name)
-            
+
             # Сохраняем структуру папок
             rel_path = file_info.get("rel_path", filename)
             local_path = self.target_dir / rel_path
             local_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Скачиваем файл
             success = r2.download_file(r2_key, str(local_path))
-            
+
             # Обновляем прогресс (потокобезопасно)
             with self._lock:
                 if success:
                     self._downloaded += 1
                 current = self._downloaded
-            
+
             # Отправляем сигнал прогресса
             self.progress.emit(current, len(self.files_to_download), filename)
-            
+
             return success
-            
+
         except Exception as e:
             logger.error(f"Failed to download {file_info.get('path')}: {e}")
             return False
-    
+
     def run(self):
         from concurrent.futures import ThreadPoolExecutor, as_completed
+
         from rd_core.r2_storage import R2Storage
-        
+
         try:
             r2 = R2Storage()
             total = len(self.files_to_download)
             self._downloaded = 0
             failed = 0
-            
+
             # Параллельная загрузка с использованием ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 # Отправляем все задачи на выполнение
                 futures = {
-                    executor.submit(self._download_single_file, file_info, r2): file_info
+                    executor.submit(
+                        self._download_single_file, file_info, r2
+                    ): file_info
                     for file_info in self.files_to_download
                 }
-                
+
                 # Ждём завершения всех задач
                 for future in as_completed(futures):
                     if self._cancelled:
@@ -96,7 +108,7 @@ class R2DownloadWorker(QThread):
                             f.cancel()
                         self.finished.emit(False, "Отменено")
                         return
-                    
+
                     # Проверяем результат
                     try:
                         success = future.result()
@@ -105,7 +117,7 @@ class R2DownloadWorker(QThread):
                     except Exception as e:
                         logger.error(f"Download task failed: {e}")
                         failed += 1
-            
+
             # Итоговое сообщение
             if failed > 0:
                 msg = f"Скачано {self._downloaded}/{total} файлов (ошибок: {failed})"
@@ -113,7 +125,7 @@ class R2DownloadWorker(QThread):
             else:
                 msg = f"Скачано {self._downloaded}/{total} файлов"
                 self.finished.emit(True, msg)
-                
+
         except Exception as e:
             logger.error(f"Download failed: {e}")
             self.finished.emit(False, str(e))
@@ -121,67 +133,72 @@ class R2DownloadWorker(QThread):
 
 class R2DeleteWorker(QThread):
     """Воркер для удаления файлов с R2"""
+
     progress = Signal(int, int, str)
     finished = Signal(bool, str, list)  # success, message, deleted_keys
-    
+
     def __init__(self, files_to_delete: list, node_id: Optional[str] = None):
         super().__init__()
         self.files_to_delete = files_to_delete
         self.node_id = node_id
         self._cancelled = False
-    
+
     def cancel(self):
         self._cancelled = True
-    
+
     def run(self):
         from rd_core.r2_storage import R2Storage
-        
+
         try:
             r2 = R2Storage()
             total = len(self.files_to_delete)
-            
+
             # Собираем все ключи для пакетного удаления
             keys_to_delete = []
             for file_info in self.files_to_delete:
                 r2_key = file_info.get("path", "")
                 if r2_key:
                     keys_to_delete.append(r2_key)
-            
+
             if not keys_to_delete:
                 self.finished.emit(False, "Нет файлов для удаления", [])
                 return
-            
+
             # Пакетное удаление (до 1000 файлов за раз)
             # Показываем прогресс для каждого батча
             batch_size = 1000
             all_deleted = []
             all_errors = []
-            
+
             for i in range(0, len(keys_to_delete), batch_size):
                 if self._cancelled:
                     self.finished.emit(False, "Отменено", all_deleted)
                     return
-                
-                batch = keys_to_delete[i:i + batch_size]
+
+                batch = keys_to_delete[i : i + batch_size]
                 batch_num = i // batch_size + 1
                 total_batches = (len(keys_to_delete) + batch_size - 1) // batch_size
-                
+
                 # Обновляем прогресс
-                progress_msg = f"Пакет {batch_num}/{total_batches} ({len(batch)} файлов)"
+                progress_msg = (
+                    f"Пакет {batch_num}/{total_batches} ({len(batch)} файлов)"
+                )
                 self.progress.emit(i + len(batch), total, progress_msg)
-                
+
                 # Удаляем батч
                 deleted, errors = r2.delete_objects_batch(batch)
                 all_deleted.extend(deleted)
                 all_errors.extend(errors)
-            
+
             # Формируем итоговое сообщение
             if all_errors:
                 error_msg = f"Удалено {len(all_deleted)}/{total} файлов. Ошибок: {len(all_errors)}"
                 self.finished.emit(False, error_msg, all_deleted)
             else:
-                self.finished.emit(True, f"Удалено {len(all_deleted)}/{total} файлов", all_deleted)
-                
+                self.finished.emit(
+                    True, f"Удалено {len(all_deleted)}/{total} файлов", all_deleted
+                )
+
         except Exception as e:
             logger.error(f"Delete failed: {e}")
             self.finished.emit(False, str(e), [])
@@ -189,13 +206,13 @@ class R2DeleteWorker(QThread):
 
 class R2FilesDialog(QDialog):
     """Диалог со списком файлов на R2"""
-    
+
     files_changed = Signal()  # Сигнал об изменении файлов
-    
+
     def __init__(
-        self, 
-        r2_base_url: str, 
-        r2_files: list, 
+        self,
+        r2_base_url: str,
+        r2_files: list,
         parent=None,
         r2_prefix: str = "",
         node_id: Optional[str] = None,
@@ -212,27 +229,27 @@ class R2FilesDialog(QDialog):
         self.setWindowTitle("Файлы на R2 Storage")
         self.setMinimumSize(600, 500)
         self._setup_ui()
-    
+
     def _setup_ui(self):
         """Настроить UI"""
         layout = QVBoxLayout(self)
-        
+
         # Заголовок с навигацией
         nav_layout = QHBoxLayout()
-        
+
         self.back_btn = QPushButton("⬅️ Назад")
         self.back_btn.setMaximumWidth(80)
         self.back_btn.clicked.connect(self._go_back)
         self.back_btn.setEnabled(False)
         nav_layout.addWidget(self.back_btn)
-        
+
         self.header = QLabel(f"📦 {self.r2_base_url}")
         self.header.setWordWrap(True)
         self.header.setStyleSheet("font-weight: bold; padding: 5px;")
         nav_layout.addWidget(self.header, 1)
-        
+
         layout.addLayout(nav_layout)
-        
+
         # Список файлов с мультивыбором
         self.files_list = QListWidget()
         self.files_list.setSelectionMode(QListWidget.ExtendedSelection)
@@ -240,64 +257,66 @@ class R2FilesDialog(QDialog):
         self.files_list.itemDoubleClicked.connect(self._on_file_double_clicked)
         self.files_list.itemSelectionChanged.connect(self._on_selection_changed)
         layout.addWidget(self.files_list)
-        
+
         # Панель действий
         actions_layout = QHBoxLayout()
-        
+
         self.download_btn = QPushButton("📥 Скачать")
         self.download_btn.clicked.connect(self._download_selected)
         self.download_btn.setEnabled(False)
         actions_layout.addWidget(self.download_btn)
-        
+
         self.download_all_btn = QPushButton("📥 Скачать всё")
         self.download_all_btn.clicked.connect(self._download_all)
         actions_layout.addWidget(self.download_all_btn)
-        
+
         actions_layout.addStretch()
-        
+
         self.delete_btn = QPushButton("🗑️ Удалить")
         self.delete_btn.clicked.connect(self._delete_selected)
         self.delete_btn.setEnabled(False)
         self.delete_btn.setStyleSheet("color: #d32f2f;")
         actions_layout.addWidget(self.delete_btn)
-        
+
         layout.addLayout(actions_layout)
-        
+
         # Подсказка
-        hint = QLabel("💡 Дважды кликните для открытия. Выделите файлы для скачивания/удаления.")
+        hint = QLabel(
+            "💡 Дважды кликните для открытия. Выделите файлы для скачивания/удаления."
+        )
         hint.setStyleSheet("color: gray; font-size: 9pt; padding: 5px;")
         layout.addWidget(hint)
-        
+
         # Кнопки
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         self._populate_files(self.r2_files)
-    
+
     def _on_selection_changed(self):
         """Обработчик изменения выделения"""
         selected = self.files_list.selectedItems()
         has_selection = len(selected) > 0
         self.download_btn.setEnabled(has_selection)
         self.delete_btn.setEnabled(has_selection)
-        
+
         if has_selection:
             self.download_btn.setText(f"📥 Скачать ({len(selected)})")
             self.delete_btn.setText(f"🗑️ Удалить ({len(selected)})")
         else:
             self.download_btn.setText("📥 Скачать")
             self.delete_btn.setText("🗑️ Удалить")
-    
+
     def _populate_files(self, files: list):
         """Заполнить список файлов"""
         self.files_list.clear()
-        
+
         for file_info in files:
             icon = file_info.get("icon", "📄")
             name = file_info.get("name", "")
             size = file_info.get("size", 0)
-            
+
             # Форматируем размер
             if size > 0:
                 if size < 1024:
@@ -309,46 +328,46 @@ class R2FilesDialog(QDialog):
                 display = f"{icon}  {name}  ({size_str})"
             else:
                 display = f"{icon}  {name}"
-            
+
             item = QListWidgetItem(display)
             item.setData(Qt.UserRole, file_info)
             self.files_list.addItem(item)
-    
+
     def _on_file_double_clicked(self, item: QListWidgetItem):
         """Обработчик двойного клика на файл"""
         file_info = item.data(Qt.UserRole)
         if not file_info:
             return
-        
+
         if file_info.get("is_dir"):
             children = file_info.get("children", [])
-            self.current_path.append({
-                "name": file_info.get("name", ""),
-                "files": self._get_current_files()
-            })
+            self.current_path.append(
+                {"name": file_info.get("name", ""), "files": self._get_current_files()}
+            )
             self._populate_files(children)
             self._update_header()
             self.back_btn.setEnabled(True)
             return
-        
+
         file_path = file_info.get("path", "")
         if file_path:
             # Открываем через публичный URL
             import os
+
             r2_public = os.getenv("R2_PUBLIC_URL", "https://rd1.svarovsky.ru")
             url = f"{r2_public}/{file_path}"
             webbrowser.open(url)
-    
+
     def _go_back(self):
         """Вернуться в родительскую папку"""
         if not self.current_path:
             return
-        
+
         prev = self.current_path.pop()
         self._populate_files(prev["files"])
         self._update_header()
         self.back_btn.setEnabled(len(self.current_path) > 0)
-    
+
     def _update_header(self):
         """Обновить заголовок с текущим путём"""
         if self.current_path:
@@ -356,7 +375,7 @@ class R2FilesDialog(QDialog):
             self.header.setText(f"📦 {self.r2_base_url}/{path_str}")
         else:
             self.header.setText(f"📦 {self.r2_base_url}")
-    
+
     def _get_current_files(self) -> list:
         """Получить текущий список файлов для сохранения в стек"""
         files = []
@@ -366,7 +385,7 @@ class R2FilesDialog(QDialog):
             if file_info:
                 files.append(file_info)
         return files
-    
+
     def _collect_all_files(self, files: list, base_path: str = "") -> list:
         """Рекурсивно собрать все файлы (включая вложенные папки)"""
         result = []
@@ -384,13 +403,13 @@ class R2FilesDialog(QDialog):
                     file_copy["rel_path"] = f.get("name", "")
                 result.append(file_copy)
         return result
-    
+
     def _download_selected(self):
         """Скачать выбранные файлы"""
         selected = self.files_list.selectedItems()
         if not selected:
             return
-        
+
         files_to_download = []
         for item in selected:
             file_info = item.data(Qt.UserRole)
@@ -399,29 +418,31 @@ class R2FilesDialog(QDialog):
                     # Собираем все файлы из папки
                     children = file_info.get("children", [])
                     folder_name = file_info.get("name", "")
-                    files_to_download.extend(self._collect_all_files(children, folder_name))
+                    files_to_download.extend(
+                        self._collect_all_files(children, folder_name)
+                    )
                 else:
                     file_copy = file_info.copy()
                     file_copy["rel_path"] = file_info.get("name", "")
                     files_to_download.append(file_copy)
-        
+
         if not files_to_download:
             QMessageBox.information(self, "Скачивание", "Нет файлов для скачивания")
             return
-        
+
         self._start_download(files_to_download)
-    
+
     def _download_all(self):
         """Скачать все файлы"""
         current_files = self._get_current_files()
         files_to_download = self._collect_all_files(current_files)
-        
+
         if not files_to_download:
             QMessageBox.information(self, "Скачивание", "Нет файлов для скачивания")
             return
-        
+
         self._start_download(files_to_download)
-    
+
     def _start_download(self, files: list):
         """Начать скачивание файлов"""
         # Выбираем папку для сохранения
@@ -429,24 +450,23 @@ class R2FilesDialog(QDialog):
             target_dir = self.local_folder
         else:
             target_dir = QFileDialog.getExistingDirectory(
-                self, "Выберите папку для сохранения",
-                str(Path.home())
+                self, "Выберите папку для сохранения", str(Path.home())
             )
             if not target_dir:
                 return
             target_dir = Path(target_dir)
-        
+
         # Прогресс
         progress = QProgressDialog("Скачивание...", "Отмена", 0, len(files), self)
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
-        
+
         self._worker = R2DownloadWorker(files, target_dir)
-        
+
         def on_progress(current, total, filename):
             progress.setValue(current)
             progress.setLabelText(f"Скачивание: {filename}")
-        
+
         def on_finished(success, message):
             progress.close()
             if success:
@@ -454,6 +474,7 @@ class R2FilesDialog(QDialog):
                 # Открываем папку
                 import subprocess
                 import sys
+
                 if sys.platform == "win32":
                     subprocess.Popen(["explorer", str(target_dir)])
                 elif sys.platform == "darwin":
@@ -463,18 +484,18 @@ class R2FilesDialog(QDialog):
             else:
                 QMessageBox.warning(self, "Ошибка", message)
             self._worker = None
-        
+
         progress.canceled.connect(self._worker.cancel)
         self._worker.progress.connect(on_progress)
         self._worker.finished.connect(on_finished)
         self._worker.start()
-    
+
     def _delete_selected(self):
         """Удалить выбранные файлы"""
         selected = self.files_list.selectedItems()
         if not selected:
             return
-        
+
         files_to_delete = []
         for item in selected:
             file_info = item.data(Qt.UserRole)
@@ -482,43 +503,48 @@ class R2FilesDialog(QDialog):
                 if file_info.get("is_dir"):
                     children = file_info.get("children", [])
                     folder_name = file_info.get("name", "")
-                    files_to_delete.extend(self._collect_all_files(children, folder_name))
+                    files_to_delete.extend(
+                        self._collect_all_files(children, folder_name)
+                    )
                 else:
                     files_to_delete.append(file_info)
-        
+
         if not files_to_delete:
             QMessageBox.information(self, "Удаление", "Нет файлов для удаления")
             return
-        
+
         # Подтверждение
         reply = QMessageBox.question(
-            self, "Подтверждение удаления",
+            self,
+            "Подтверждение удаления",
             f"Удалить {len(files_to_delete)} файл(ов)?\n\n"
             "Файлы будут удалены:\n"
             "• С R2 Storage\n"
             "• Из локальной папки (если есть)\n"
             "• Из базы данных Supabase",
             QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.No,
         )
-        
+
         if reply != QMessageBox.Yes:
             return
-        
+
         # Прогресс
-        progress = QProgressDialog("Удаление...", "Отмена", 0, len(files_to_delete), self)
+        progress = QProgressDialog(
+            "Удаление...", "Отмена", 0, len(files_to_delete), self
+        )
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
-        
+
         self._worker = R2DeleteWorker(files_to_delete, self.node_id)
-        
+
         def on_progress(current, total, filename):
             progress.setValue(current)
             progress.setLabelText(f"Удаление: {filename}")
-        
+
         def on_finished(success, message, deleted_keys):
             progress.close()
-            
+
             # Удаляем локальные файлы
             if deleted_keys and self.local_folder:
                 for r2_key in deleted_keys:
@@ -529,7 +555,7 @@ class R2FilesDialog(QDialog):
                         if local_file.exists():
                             local_file.unlink()
                             logger.info(f"Deleted local file: {local_file}")
-                        
+
                         # Для кропов проверяем подпапку crops
                         if "crops/" in r2_key:
                             rel_path = r2_key.split("crops/")[-1]
@@ -539,11 +565,12 @@ class R2FilesDialog(QDialog):
                                 logger.info(f"Deleted local crop: {crops_file}")
                     except Exception as e:
                         logger.warning(f"Failed to delete local file: {e}")
-            
+
             # Удаляем записи из Supabase node_files
             if deleted_keys and self.node_id:
                 try:
                     from app.tree_client import TreeClient
+
                     client = TreeClient()
                     node_files = client.get_node_files(self.node_id)
                     for nf in node_files:
@@ -552,57 +579,62 @@ class R2FilesDialog(QDialog):
                             logger.info(f"Deleted node_file record: {nf.id}")
                 except Exception as e:
                     logger.warning(f"Failed to cleanup Supabase: {e}")
-            
+
             if success:
                 QMessageBox.information(self, "Готово", message)
                 self._refresh_files()
                 self.files_changed.emit()
             else:
                 QMessageBox.warning(self, "Ошибка", message)
-            
+
             self._worker = None
-        
+
         progress.canceled.connect(self._worker.cancel)
         self._worker.progress.connect(on_progress)
         self._worker.finished.connect(on_finished)
         self._worker.start()
-    
+
     def _refresh_files(self):
         """Обновить список файлов с R2"""
         if not self.r2_prefix:
             return
-        
+
         try:
             from rd_core.r2_storage import R2Storage
+
             r2 = R2Storage()
             r2_objects = r2.list_objects_with_metadata(self.r2_prefix)
-            
+
             if r2_objects:
                 # Пересобираем дерево файлов (вызываем метод родителя если есть)
                 parent = self.parent()
-                if hasattr(parent, '_build_r2_file_tree'):
-                    self.r2_files = parent._build_r2_file_tree(r2_objects, self.r2_prefix)
+                if hasattr(parent, "_build_r2_file_tree"):
+                    self.r2_files = parent._build_r2_file_tree(
+                        r2_objects, self.r2_prefix
+                    )
                 else:
                     # Простой список
                     self.r2_files = []
                     for obj in r2_objects:
                         key = obj.get("Key", "")
                         name = Path(key).name
-                        self.r2_files.append({
-                            "name": name,
-                            "path": key,
-                            "icon": "📄",
-                            "is_dir": False,
-                            "size": obj.get("Size", 0),
-                        })
+                        self.r2_files.append(
+                            {
+                                "name": name,
+                                "path": key,
+                                "icon": "📄",
+                                "is_dir": False,
+                                "size": obj.get("Size", 0),
+                            }
+                        )
             else:
                 self.r2_files = []
-            
+
             # Сбрасываем навигацию и обновляем
             self.current_path = []
             self.back_btn.setEnabled(False)
             self._update_header()
             self._populate_files(self.r2_files)
-            
+
         except Exception as e:
             logger.error(f"Failed to refresh R2 files: {e}")

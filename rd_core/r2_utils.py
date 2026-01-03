@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class R2UtilsMixin:
     """Миксин для утилит R2"""
-    
+
     def _guess_content_type(self, file_path: Path) -> str:
         """Определить MIME тип по расширению"""
         extension = file_path.suffix.lower()
@@ -63,23 +63,23 @@ class R2UtilsMixin:
             # Копируем объект с новым ключом
             copy_source = {"Bucket": self.bucket_name, "Key": old_key}
             self.s3_client.copy_object(
-                Bucket=self.bucket_name,
-                CopySource=copy_source,
-                Key=new_key
+                Bucket=self.bucket_name, CopySource=copy_source, Key=new_key
             )
             logger.info(f"✅ Объект скопирован: {old_key} → {new_key}")
-            
+
             # Удаляем старый объект
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=old_key)
             logger.info(f"✅ Старый объект удален: {old_key}")
-            
+
             return True
 
         except ClientError as e:
             logger.error(f"❌ Ошибка переименования объекта: {e}")
             return False
 
-    def generate_presigned_url(self, remote_key: str, expiration: int = 3600) -> Optional[str]:
+    def generate_presigned_url(
+        self, remote_key: str, expiration: int = 3600
+    ) -> Optional[str]:
         """
         Создать временную ссылку на объект
 
@@ -92,7 +92,9 @@ class R2UtilsMixin:
         """
         try:
             url = self.s3_client.generate_presigned_url(
-                "get_object", Params={"Bucket": self.bucket_name, "Key": remote_key}, ExpiresIn=expiration
+                "get_object",
+                Params={"Bucket": self.bucket_name, "Key": remote_key},
+                ExpiresIn=expiration,
             )
             return url
 
@@ -111,7 +113,9 @@ class R2UtilsMixin:
             Список ключей
         """
         try:
-            response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix)
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket_name, Prefix=prefix
+            )
 
             if "Contents" not in response:
                 return []
@@ -140,11 +144,13 @@ class R2UtilsMixin:
 
         # Используем пакетное удаление вместо цикла
         deleted_keys, errors = self.delete_objects_batch(keys)
-        
-        logger.info(f"✅ Удалено {len(deleted_keys)}/{len(keys)} объектов по префиксу: {prefix}")
+
+        logger.info(
+            f"✅ Удалено {len(deleted_keys)}/{len(keys)} объектов по префиксу: {prefix}"
+        )
         if errors:
             logger.warning(f"⚠️ Ошибок при удалении по префиксу: {len(errors)}")
-        
+
         return len(deleted_keys)
 
     def list_objects_with_metadata(self, prefix: str) -> list[dict]:
@@ -158,7 +164,9 @@ class R2UtilsMixin:
             Список dict с ключами: Key, LastModified, Size, ETag
         """
         try:
-            response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix)
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.bucket_name, Prefix=prefix
+            )
 
             if "Contents" not in response:
                 return []
@@ -199,72 +207,70 @@ class R2UtilsMixin:
     def delete_objects_batch(self, keys: list[str]) -> tuple[list[str], list[dict]]:
         """
         Пакетное удаление объектов из R2 (до 1000 за раз)
-        
+
         Args:
             keys: Список ключей для удаления
-            
+
         Returns:
             Кортеж: (список успешно удаленных ключей, список ошибок)
             Ошибка - dict с полями: Key, Code, Message
         """
         if not keys:
             return [], []
-        
+
         deleted = []
         errors = []
-        
+
         # AWS S3 API позволяет удалить до 1000 объектов за раз
         batch_size = 1000
-        
+
         for i in range(0, len(keys), batch_size):
-            batch = keys[i:i + batch_size]
-            
+            batch = keys[i : i + batch_size]
+
             try:
                 delete_dict = {
-                    'Objects': [{'Key': key} for key in batch],
-                    'Quiet': False  # Получать информацию об удалённых объектах
+                    "Objects": [{"Key": key} for key in batch],
+                    "Quiet": False,  # Получать информацию об удалённых объектах
                 }
-                
+
                 response = self.s3_client.delete_objects(
-                    Bucket=self.bucket_name,
-                    Delete=delete_dict
+                    Bucket=self.bucket_name, Delete=delete_dict
                 )
-                
+
                 # Обрабатываем успешно удалённые
-                if 'Deleted' in response:
-                    for obj in response['Deleted']:
-                        deleted.append(obj['Key'])
-                
+                if "Deleted" in response:
+                    for obj in response["Deleted"]:
+                        deleted.append(obj["Key"])
+
                 # Обрабатываем ошибки
-                if 'Errors' in response:
-                    for error in response['Errors']:
-                        errors.append({
-                            'Key': error.get('Key', ''),
-                            'Code': error.get('Code', ''),
-                            'Message': error.get('Message', '')
-                        })
+                if "Errors" in response:
+                    for error in response["Errors"]:
+                        errors.append(
+                            {
+                                "Key": error.get("Key", ""),
+                                "Code": error.get("Code", ""),
+                                "Message": error.get("Message", ""),
+                            }
+                        )
                         logger.warning(
                             f"❌ Ошибка удаления {error.get('Key')}: "
                             f"{error.get('Code')} - {error.get('Message')}"
                         )
-                
-                logger.info(f"✅ Пакет {i//batch_size + 1}: удалено {len(response.get('Deleted', []))} объектов")
-                
+
+                logger.info(
+                    f"✅ Пакет {i//batch_size + 1}: удалено {len(response.get('Deleted', []))} объектов"
+                )
+
             except ClientError as e:
                 logger.error(f"❌ Ошибка пакетного удаления: {e}")
                 # Добавляем все ключи из этого батча в ошибки
                 for key in batch:
-                    errors.append({
-                        'Key': key,
-                        'Code': 'ClientError',
-                        'Message': str(e)
-                    })
-        
+                    errors.append(
+                        {"Key": key, "Code": "ClientError", "Message": str(e)}
+                    )
+
         logger.info(f"✅ Всего удалено {len(deleted)}/{len(keys)} объектов")
         if errors:
             logger.warning(f"⚠️ Ошибок при удалении: {len(errors)}")
-        
+
         return deleted, errors
-
-
-

@@ -20,4 +20,3 @@ services:
       - ./services/remote_ocr/data:/data
     restart: "no"
     deploy: {}
-

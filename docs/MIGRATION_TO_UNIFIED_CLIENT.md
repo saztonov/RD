@@ -122,7 +122,7 @@ dist/
    # Было
    from app.tree_client import TreeClient
    from rd_core.r2_storage import R2Storage
-   
+
    # Стало
    from app.unified_client import UnifiedClient
    ```
@@ -132,7 +132,7 @@ dist/
    # Было
    client = TreeClient()
    r2 = R2Storage()
-   
+
    # Стало
    client = UnifiedClient()  # Заменяет оба!
    ```

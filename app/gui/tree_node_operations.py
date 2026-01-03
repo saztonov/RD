@@ -5,14 +5,20 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QInputDialog, QMessageBox, QFileDialog, QDialog, QTreeWidgetItem
-from PySide6.QtGui import QColor
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
+    QDialog,
+    QFileDialog,
+    QInputDialog,
+    QMessageBox,
+    QTreeWidgetItem,
+)
 
-from app.tree_client import TreeNode, NodeType, NodeStatus
 from app.gui.file_transfer_worker import FileTransferWorker, TransferTask, TransferType
 from app.gui.tree_cache_ops import TreeCacheOperationsMixin
 from app.gui.tree_folder_ops import TreeFolderOperationsMixin
+from app.tree_client import NodeStatus, NodeType, TreeNode
 
 if TYPE_CHECKING:
     pass
@@ -37,15 +43,17 @@ STATUS_COLORS = {
 
 class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixin):
     """Миксин для CRUD операций с узлами дерева"""
-    
-    def _check_name_unique(self, parent_id: str, name: str, exclude_node_id: str = None) -> bool:
+
+    def _check_name_unique(
+        self, parent_id: str, name: str, exclude_node_id: str = None
+    ) -> bool:
         """Проверить уникальность имени в папке. True если уникально."""
         siblings = self.client.get_children(parent_id)
         for s in siblings:
             if s.name == name and s.id != exclude_node_id:
                 return False
         return True
-    
+
     def _create_project(self):
         """Создать новый проект"""
         name, ok = QInputDialog.getText(self, "Новый проект", "Название проекта:")
@@ -58,27 +66,34 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                 self.tree.setCurrentItem(item)
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
-    
+
     def _create_child_node(self, parent_node: TreeNode, child_type):
         """Создать дочерний узел"""
         if isinstance(child_type, str):
             logger.debug(f"child_type is str: {child_type}, converting to NodeType")
             child_type = NodeType(child_type)
-        
-        logger.debug(f"_create_child_node: parent={parent_node.id}, child_type={child_type}")
-        
+
+        logger.debug(
+            f"_create_child_node: parent={parent_node.id}, child_type={child_type}"
+        )
+
         stage_types = self._stage_types if child_type == NodeType.STAGE else None
         section_types = self._section_types if child_type == NodeType.SECTION else None
-        
+
         from app.gui.create_node_dialog import CreateNodeDialog
+
         dialog = CreateNodeDialog(self, child_type, stage_types, section_types)
         if dialog.exec_() == QDialog.Accepted:
             name, code = dialog.get_data()
             logger.debug(f"Dialog result: name={name}, code={code}")
             if name:
                 try:
-                    logger.debug(f"Creating node: type={child_type}, name={name}, parent={parent_node.id}, code={code}")
-                    node = self.client.create_node(child_type, name, parent_node.id, code)
+                    logger.debug(
+                        f"Creating node: type={child_type}, name={name}, parent={parent_node.id}, code={code}"
+                    )
+                    node = self.client.create_node(
+                        child_type, name, parent_node.id, code
+                    )
                     logger.debug(f"Node created: {node.id}")
                     parent_item = self._node_map.get(parent_node.id)
                     if parent_item:
@@ -86,7 +101,7 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                             child = parent_item.child(0)
                             if child.data(0, self._get_user_role()) == "placeholder":
                                 parent_item.removeChild(child)
-                        
+
                         child_item = self._create_tree_item(node)
                         parent_item.addChild(child_item)
                         self._add_placeholder(child_item, node)
@@ -95,48 +110,51 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                 except Exception as e:
                     logger.exception(f"Error creating child node: {e}")
                     QMessageBox.critical(self, "Ошибка", str(e))
-    
+
     def _get_user_role(self):
         """Получить Qt.UserRole"""
         return Qt.UserRole
-    
+
     def _close_if_open(self, r2_key: str):
         """Закрыть файл в редакторе если он открыт (по r2_key)"""
         if not r2_key:
             return
-        
+
         from app.gui.folder_settings_dialog import get_projects_dir
-        
+
         projects_dir = get_projects_dir()
         if not projects_dir:
             return
-        
+
         # Формируем локальный путь из r2_key
         if r2_key.startswith("tree_docs/"):
-            rel_path = r2_key[len("tree_docs/"):]
+            rel_path = r2_key[len("tree_docs/") :]
         else:
             rel_path = r2_key
-        
+
         cache_path = Path(projects_dir) / "cache" / rel_path
-        
+
         # Получаем главное окно
         main_window = self.window()
-        if not hasattr(main_window, '_current_pdf_path') or not main_window._current_pdf_path:
+        if (
+            not hasattr(main_window, "_current_pdf_path")
+            or not main_window._current_pdf_path
+        ):
             return
-        
+
         # Сравниваем пути
         try:
             current_path = Path(main_window._current_pdf_path).resolve()
             target_path = cache_path.resolve()
-            
+
             if current_path == target_path:
                 # Закрываем файл
-                if hasattr(main_window, '_clear_interface'):
+                if hasattr(main_window, "_clear_interface"):
                     main_window._clear_interface()
                     logger.info(f"Closed file in editor: {cache_path}")
         except Exception as e:
             logger.error(f"Error checking open file: {e}")
-    
+
     def _upload_file(self, node: TreeNode):
         """Добавить файл в папку заданий (асинхронная загрузка в R2)"""
         paths, _ = QFileDialog.getOpenFileNames(
@@ -144,17 +162,17 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
         )
         if not paths:
             return
-        
+
         # Создаём worker для асинхронной загрузки
         self._upload_worker = FileTransferWorker(self)
         self._upload_target_node = node
-        
+
         for path in paths:
             file_path = Path(path)
             filename = file_path.name
             file_size = file_path.stat().st_size
             r2_key = f"tree_docs/{node.id}/{filename}"
-            
+
             task = TransferTask(
                 transfer_type=TransferType.UPLOAD,
                 local_path=str(file_path),
@@ -165,7 +183,7 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                 parent_node_id=node.id,
             )
             self._upload_worker.add_task(task)
-        
+
         # Подключаем сигналы
         main_window = self.window()
         self._upload_worker.progress.connect(
@@ -173,28 +191,36 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
         )
         self._upload_worker.finished_task.connect(self._on_upload_task_finished)
         self._upload_worker.all_finished.connect(self._on_all_uploads_finished)
-        
+
         # Запускаем
         self._upload_worker.start()
-    
+
     def _on_upload_task_finished(self, task: TransferTask, success: bool, error: str):
         """Обработка завершения загрузки одного файла"""
         if not success:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить файл в R2:\n{task.filename}\n{error}")
+            QMessageBox.critical(
+                self,
+                "Ошибка",
+                f"Не удалось загрузить файл в R2:\n{task.filename}\n{error}",
+            )
             return
-        
+
         logger.info(f"File uploaded to R2: {task.r2_key}")
-        
+
         # Проверка уникальности имени в папке
         if not self._check_name_unique(task.parent_node_id, task.filename):
-            QMessageBox.warning(self, "Ошибка", f"Файл с именем '{task.filename}' уже существует в этой папке")
+            QMessageBox.warning(
+                self,
+                "Ошибка",
+                f"Файл с именем '{task.filename}' уже существует в этой папке",
+            )
             return
-        
+
         # Копируем файл в локальный кэш ДО создания узла (чтобы открытие было мгновенным)
         self._copy_to_cache(task.local_path, task.r2_key)
-        
+
         parent_item = self._node_map.get(task.parent_node_id)
-        
+
         try:
             doc_node = self.client.add_document(
                 parent_id=task.parent_node_id,
@@ -202,51 +228,60 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                 r2_key=task.r2_key,
                 file_size=task.file_size,
             )
-            
+
             if parent_item:
                 if parent_item.childCount() == 1:
                     child = parent_item.child(0)
                     if child.data(0, self._get_user_role()) == "placeholder":
                         parent_item.removeChild(child)
-                
+
                 child_item = self._create_tree_item(doc_node)
                 parent_item.addChild(child_item)
                 parent_item.setExpanded(True)
                 self.tree.setCurrentItem(child_item)
                 self.highlight_document(doc_node.id)
-            
+
             logger.info(f"Document added: {doc_node.id} with r2_key={task.r2_key}")
             # Сигнал с node_id и r2_key для открытия
             self.file_uploaded_r2.emit(doc_node.id, task.r2_key)
-            
+
         except Exception as e:
             logger.exception(f"Failed to add document: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Файл загружен в R2, но не добавлен в дерево:\n{e}")
-    
+            QMessageBox.critical(
+                self, "Ошибка", f"Файл загружен в R2, но не добавлен в дерево:\n{e}"
+            )
+
     def _on_all_uploads_finished(self):
         """Все загрузки завершены"""
         main_window = self.window()
         main_window.hide_transfer_progress()
         self._upload_worker = None
-    
+
     def _rename_related_files(self, old_r2_key: str, new_r2_key: str, node_id: str):
         """Переименовать связанные файлы (annotation.json, ocr.html, result.json)"""
         from pathlib import PurePosixPath
+
         from rd_core.r2_storage import R2Storage
-        
+
         old_stem = PurePosixPath(old_r2_key).stem
         new_stem = PurePosixPath(new_r2_key).stem
         r2_prefix = str(PurePosixPath(old_r2_key).parent)
-        
+
         r2 = R2Storage()
-        
+
         # Список связанных файлов для переименования
         related_files = [
-            (f"{r2_prefix}/{old_stem}_annotation.json", f"{r2_prefix}/{new_stem}_annotation.json"),
+            (
+                f"{r2_prefix}/{old_stem}_annotation.json",
+                f"{r2_prefix}/{new_stem}_annotation.json",
+            ),
             (f"{r2_prefix}/{old_stem}_ocr.html", f"{r2_prefix}/{new_stem}_ocr.html"),
-            (f"{r2_prefix}/{old_stem}_result.json", f"{r2_prefix}/{new_stem}_result.json"),
+            (
+                f"{r2_prefix}/{old_stem}_result.json",
+                f"{r2_prefix}/{new_stem}_result.json",
+            ),
         ]
-        
+
         # Переименовываем файлы в R2
         for old_key, new_key in related_files:
             if r2.exists(old_key):
@@ -259,7 +294,7 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                         self._update_node_file_r2_key(node_id, old_key, new_key)
                 except Exception as e:
                     logger.error(f"Failed to rename {old_key}: {e}")
-    
+
     def _update_node_file_r2_key(self, node_id: str, old_r2_key: str, new_r2_key: str):
         """Обновить r2_key в таблице node_files"""
         try:
@@ -267,63 +302,84 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
             if node_file:
                 # Обновляем r2_key и file_name
                 new_file_name = Path(new_r2_key).name
-                self.client.update_node_file(node_file.id, r2_key=new_r2_key, file_name=new_file_name)
+                self.client.update_node_file(
+                    node_file.id, r2_key=new_r2_key, file_name=new_file_name
+                )
                 logger.info(f"Updated node_file: {old_r2_key} → {new_r2_key}")
         except Exception as e:
             logger.error(f"Failed to update node_file: {e}")
-    
+
     def _rename_node(self, node: TreeNode):
         """Переименовать узел (для документов также переименовывает в R2)"""
         # Проверка блокировки документа
         if self._check_document_locked(node):
             return
-        
+
         new_name, ok = QInputDialog.getText(
             self, "Переименовать", "Новое название:", text=node.name
         )
         if ok and new_name.strip() and new_name.strip() != node.name:
             try:
                 new_name_clean = new_name.strip()
-                
+
                 # Проверка уникальности имени в папке
-                if node.parent_id and not self._check_name_unique(node.parent_id, new_name_clean, node.id):
-                    QMessageBox.warning(self, "Ошибка", f"Элемент с именем '{new_name_clean}' уже существует в этой папке")
+                if node.parent_id and not self._check_name_unique(
+                    node.parent_id, new_name_clean, node.id
+                ):
+                    QMessageBox.warning(
+                        self,
+                        "Ошибка",
+                        f"Элемент с именем '{new_name_clean}' уже существует в этой папке",
+                    )
                     return
-                
+
                 # Для документов переименовываем файл в R2
                 if node.node_type == NodeType.DOCUMENT:
                     old_r2_key = node.attributes.get("r2_key", "")
-                    
+
                     # Закрываем файл если он открыт в редакторе
                     self._close_if_open(old_r2_key)
-                    
+
                     if old_r2_key:
-                        from rd_core.r2_storage import R2Storage
                         from pathlib import PurePosixPath
-                        
+
+                        from rd_core.r2_storage import R2Storage
+
                         # Формируем новый ключ (меняем только имя файла)
                         # Используем PurePosixPath чтобы сохранить / в путях R2
                         old_path = PurePosixPath(old_r2_key)
                         new_r2_key = str(old_path.parent / new_name_clean)
-                        
+
                         try:
                             r2 = R2Storage()
                             if r2.rename_object(old_r2_key, new_r2_key):
                                 # Переименовываем связанные файлы
-                                self._rename_related_files(old_r2_key, new_r2_key, node.id)
-                                
+                                self._rename_related_files(
+                                    old_r2_key, new_r2_key, node.id
+                                )
+
                                 # Обновляем r2_key в attributes
                                 node.attributes["r2_key"] = new_r2_key
                                 node.attributes["original_name"] = new_name_clean
-                                self.client.update_node(node.id, name=new_name_clean, attributes=node.attributes)
-                                
+                                self.client.update_node(
+                                    node.id,
+                                    name=new_name_clean,
+                                    attributes=node.attributes,
+                                )
+
                                 # Переименовываем PDF в локальном кэше
                                 self._rename_cache_file(old_r2_key, new_r2_key)
-                                
+
                                 # Обновляем запись PDF в node_files
-                                self._update_node_file_r2_key(node.id, old_r2_key, new_r2_key)
+                                self._update_node_file_r2_key(
+                                    node.id, old_r2_key, new_r2_key
+                                )
                             else:
-                                QMessageBox.warning(self, "Внимание", "Не удалось переименовать файл в R2")
+                                QMessageBox.warning(
+                                    self,
+                                    "Внимание",
+                                    "Не удалось переименовать файл в R2",
+                                )
                                 return
                         except Exception as e:
                             logger.error(f"R2 rename error: {e}")
@@ -333,14 +389,15 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                         self.client.update_node(node.id, name=new_name_clean)
                 else:
                     self.client.update_node(node.id, name=new_name_clean)
-                
+
                 # Обновляем UI
                 node.name = new_name_clean
                 from PySide6.QtCore import QTimer
+
                 QTimer.singleShot(100, self._refresh_tree)
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
-    
+
     def _set_status(self, node: TreeNode, status: NodeStatus):
         """Установить статус узла"""
         try:
@@ -351,13 +408,13 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                 node.status = status
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
-    
+
     def _set_document_version(self, node: TreeNode, version: int):
         """Установить версию документа"""
         try:
             self.client.update_node(node.id, version=version)
             node.version = version
-            
+
             # Обновляем отображение в дереве
             item = self._node_map.get(node.id)
             if item:
@@ -369,23 +426,24 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                 item.setData(0, Qt.UserRole + 1, f"[v{version}]")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", str(e))
-    
+
     def _delete_node(self, node: TreeNode):
         """Удалить узел и все вложенные (из R2, кэша и Supabase)"""
         # Проверка блокировки документа
         if self._check_document_locked(node):
             return
-        
+
         reply = QMessageBox.question(
-            self, "Подтверждение",
+            self,
+            "Подтверждение",
             f"Удалить '{node.name}' и все вложенные элементы?",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
             try:
                 # Рекурсивно удаляем все документы в ветке из R2 и кэша
                 self._delete_branch_files(node)
-                
+
                 if self.client.delete_node(node.id):
                     item = self._node_map.get(node.id)
                     if item:

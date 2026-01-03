@@ -211,19 +211,19 @@ app/gui/
 Главное окно использует паттерн **Mixin** для разделения ответственности:
 
 ```python
-class MainWindow(MenuSetupMixin, PanelsSetupMixin, 
+class MainWindow(MenuSetupMixin, PanelsSetupMixin,
                  FileOperationsMixin, BlockHandlersMixin, QMainWindow):
     def __init__(self):
         # Данные
         self.pdf_document: Optional[PDFDocument] = None
         self.annotation_document: Optional[Document] = None
         self.current_page: int = 0
-        
+
         # Менеджеры
         self.prompt_manager = PromptManager(self)
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree)
         self.navigation_manager = NavigationManager(self)
-        
+
         # Remote OCR
         self.remote_ocr_panel = RemoteOCRPanel(self)
 ```
@@ -233,10 +233,10 @@ class MainWindow(MenuSetupMixin, PanelsSetupMixin,
 Виджет отображения PDF страницы на базе `QGraphicsView`:
 
 ```python
-class PageViewer(ContextMenuMixin, MouseEventsMixin, 
-                 BlockRenderingMixin, PolygonMixin, 
+class PageViewer(ContextMenuMixin, MouseEventsMixin,
+                 BlockRenderingMixin, PolygonMixin,
                  ResizeHandlesMixin, QGraphicsView):
-    
+
     # Сигналы
     blockDrawn = Signal(int, int, int, int)     # Нарисован прямоугольник
     polygonDrawn = Signal(list)                  # Нарисован полигон
@@ -244,10 +244,10 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin,
     blocks_selected = Signal(list)               # Множественный выбор
     blockMoved = Signal(int, int, int, int, int) # Перемещён блок
     blockDeleted = Signal(int)                   # Удалён блок
-    
+
     def set_page_image(self, pil_image, page_number, reset_zoom=True):
         """Установить изображение страницы"""
-        
+
     def set_blocks(self, blocks: List[Block]):
         """Отобразить блоки на странице"""
 ```
@@ -257,18 +257,18 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin,
 Dock-панель для управления OCR-задачами:
 
 ```python
-class RemoteOCRPanel(EditorMixin, DraftMixin, 
+class RemoteOCRPanel(EditorMixin, DraftMixin,
                      JobOperationsMixin, DownloadMixin, QDockWidget):
-    
+
     POLL_INTERVAL_PROCESSING = 5000   # 5 сек при активных задачах
     POLL_INTERVAL_IDLE = 30000        # 30 сек в режиме ожидания
-    
+
     def _create_job(self):
         """Создать новую OCR-задачу"""
-        
+
     def _save_draft(self):
         """Сохранить черновик (PDF + разметка) без OCR"""
-        
+
     def _open_job_in_editor(self, job_id):
         """Открыть результат в редакторе"""
 ```
@@ -281,7 +281,7 @@ class RemoteOCRPanel(EditorMixin, DraftMixin,
 class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
     document_selected = Signal(str, str)  # node_id, r2_key
     file_uploaded = Signal(str)           # local_path
-    
+
     def _on_item_expanded(self, item):
         """Lazy loading — загрузка дочерних при раскрытии"""
         if item.data(0, Qt.UserRole) == "placeholder":
@@ -353,22 +353,22 @@ services/remote_ocr/server/
 def run_ocr_task(self, job_id: str) -> dict:
     # 1. Скачать PDF и blocks.json из R2
     pdf_path, blocks_path = _download_job_files(job, work_dir)
-    
+
     # 2. Вырезать кропы блоков
     strip_paths, strip_images, strips, image_blocks, _ = \
         crop_and_merge_blocks_from_pdf(pdf_path, blocks, crops_dir)
-    
+
     # 3. OCR для TEXT/TABLE (объединённые полосы)
     for strip in strips:
         result = strip_backend.recognize(merged_image, prompt=prompt_data)
-    
+
     # 4. OCR для IMAGE блоков (индивидуально)
     for block, crop, part_idx, total_parts in image_blocks:
         text = image_backend.recognize(crop, prompt=prompt_data)
-    
+
     # 5. Генерация результатов
     generate_structured_markdown(pages, "result.md")
-    
+
     # 6. Создание ZIP и загрузка в R2
     _upload_results_to_r2(job, work_dir)
 ```
@@ -395,16 +395,16 @@ class TreeClient:
     supabase_url: str
     supabase_key: str
     client_id: str
-    
+
     def get_root_nodes(self) -> List[TreeNode]:
         """Корневые проекты (parent_id IS NULL)"""
-        
+
     def get_children(self, parent_id: str) -> List[TreeNode]:
         """Дочерние узлы (lazy loading)"""
-        
+
     def create_node(self, node_type, name, parent_id=None, code=None):
         """Создать новый узел"""
-        
+
     def add_document(self, parent_id, name, r2_key, file_size):
         """Добавить документ с автоверсионированием"""
 ```
@@ -462,7 +462,7 @@ class R2Storage:
             aws_secret_access_key=secret_access_key,
             region_name="auto"
         )
-    
+
     def upload_file(self, local_path, remote_key) -> bool
     def download_file(self, remote_key, local_path) -> bool
     def upload_text(self, content, remote_key) -> bool
@@ -504,7 +504,7 @@ rd1/
 
 ```python
 class OCRBackend(Protocol):
-    def recognize(self, image: Image.Image, 
+    def recognize(self, image: Image.Image,
                   prompt: Optional[dict] = None,
                   json_mode: bool = None) -> str:
         """Распознать текст на изображении"""
@@ -517,11 +517,11 @@ class OCRBackend(Protocol):
 ```python
 class OpenRouterBackend:
     DEFAULT_MODEL = "qwen/qwen3-vl-30b-a3b-instruct"
-    
+
     def __init__(self, api_key: str, model_name: str):
         self.api_key = api_key
         self.model_name = model_name
-        
+
     def recognize(self, image, prompt=None, json_mode=None) -> str:
         # 1. Конвертация изображения в base64
         # 2. Построение payload с system/user messages
@@ -812,13 +812,13 @@ services:
       - OPENROUTER_API_KEY
       - REDIS_URL=redis://redis:6379/0
     depends_on: [redis]
-    
+
   worker:
     build: ./services/remote_ocr
     command: celery -A server.celery_app worker -l info
     environment: ...
     depends_on: [redis, api]
-    
+
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
@@ -881,7 +881,7 @@ class PDFDocument:
 class AnnotationIO:
     @staticmethod
     def save_annotation(document: Document, file_path: str)
-    
+
     @staticmethod
     def load_annotation(file_path: str) -> Optional[Document]
 ```
@@ -907,4 +907,3 @@ setup_logging(log_level=logging.INFO)
 
 **PDF Annotation Tool**  
 Python 3.11 | PySide6 | PyMuPDF | Cloudflare R2 | Supabase
-

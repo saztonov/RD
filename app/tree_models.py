@@ -47,6 +47,7 @@ class FileType(str, Enum):
 @dataclass
 class NodeFile:
     """Файл привязанный к узлу дерева"""
+
     id: str
     node_id: str
     file_type: FileType
@@ -69,14 +70,19 @@ class NodeFile:
             file_size=data.get("file_size", 0),
             mime_type=data.get("mime_type", "application/octet-stream"),
             metadata=data.get("metadata") or {},
-            created_at=datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")) if data.get("created_at") else None,
-            updated_at=datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")) if data.get("updated_at") else None,
+            created_at=datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
+            if data.get("created_at")
+            else None,
+            updated_at=datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
+            if data.get("updated_at")
+            else None,
         )
 
 
 @dataclass
 class TreeNode:
     """Узел дерева проектов"""
+
     id: str
     parent_id: Optional[str]
     client_id: str
@@ -93,7 +99,7 @@ class TreeNode:
     pdf_status: Optional[str] = None
     pdf_status_message: Optional[str] = None
     is_locked: bool = False
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "TreeNode":
         return cls(
@@ -107,13 +113,17 @@ class TreeNode:
             status=NodeStatus(data.get("status", "active")),
             attributes=data.get("attributes") or {},
             sort_order=data.get("sort_order", 0),
-            created_at=datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")) if data.get("created_at") else None,
-            updated_at=datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")) if data.get("updated_at") else None,
+            created_at=datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
+            if data.get("created_at")
+            else None,
+            updated_at=datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
+            if data.get("updated_at")
+            else None,
             pdf_status=data.get("pdf_status"),
             pdf_status_message=data.get("pdf_status_message"),
             is_locked=data.get("is_locked", False),
         )
-    
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -127,7 +137,7 @@ class TreeNode:
             "attributes": self.attributes,
             "sort_order": self.sort_order,
         }
-    
+
     def get_allowed_child_types(self) -> List[NodeType]:
         return ALLOWED_CHILDREN.get(self.node_type, [])
 
@@ -135,6 +145,7 @@ class TreeNode:
 @dataclass
 class StageType:
     """Тип стадии"""
+
     id: int
     code: str
     name: str
@@ -144,8 +155,8 @@ class StageType:
 @dataclass
 class SectionType:
     """Тип раздела"""
+
     id: int
     code: str
     name: str
     sort_order: int = 0
-

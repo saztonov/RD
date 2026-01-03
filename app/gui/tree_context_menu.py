@@ -1,22 +1,22 @@
 """Миксин для контекстного меню дерева проектов"""
 import logging
 
-from PySide6.QtWidgets import QMenu
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMenu
 
-from app.tree_client import TreeNode, NodeType
+from app.tree_client import NodeType, TreeNode
 
 logger = logging.getLogger(__name__)
 
 
 class TreeContextMenuMixin:
     """Миксин для контекстного меню дерева"""
-    
+
     def _show_context_menu(self, pos):
         """Показать контекстное меню"""
-        from app.gui.tree_node_operations import NODE_ICONS
         from app.gui.folder_settings_dialog import get_max_versions
-        
+        from app.gui.tree_node_operations import NODE_ICONS
+
         # Названия типов узлов для UI
         NODE_TYPE_NAMES = {
             NodeType.PROJECT: "Проект",
@@ -25,31 +25,33 @@ class TreeContextMenuMixin:
             NodeType.TASK_FOLDER: "Папка заданий",
             NodeType.DOCUMENT: "Документ",
         }
-        
+
         item = self.tree.itemAt(pos)
         menu = QMenu(self)
-        
+
         if item:
             node = item.data(0, Qt.UserRole)
             if isinstance(node, TreeNode):
                 allowed = node.get_allowed_child_types()
-                
+
                 for child_type in allowed:
                     if child_type == NodeType.DOCUMENT:
                         continue
                     icon = NODE_ICONS.get(child_type, "+")
-                    action = menu.addAction(f"{icon} Добавить {NODE_TYPE_NAMES[child_type]}")
+                    action = menu.addAction(
+                        f"{icon} Добавить {NODE_TYPE_NAMES[child_type]}"
+                    )
                     action.setData(("add", child_type, node))
-                
+
                 if node.node_type == NodeType.TASK_FOLDER:
                     action = menu.addAction("📄 Добавить файл")
                     action.setData(("upload", node))
-                
+
                 if node.node_type == NodeType.DOCUMENT:
                     # Открыть папку с файлами
                     action = menu.addAction("📂 Открыть папку")
                     action.setData(("open_folder", node))
-                    
+
                     # Блокировка/разблокировка
                     menu.addSeparator()
                     if node.is_locked:
@@ -59,7 +61,7 @@ class TreeContextMenuMixin:
                         action = menu.addAction("🔒 Заблокировать документ")
                         action.setData(("lock_document", node))
                     menu.addSeparator()
-                    
+
                     # Подменю выбора версии
                     max_versions = get_max_versions()
                     version_menu = menu.addMenu(f"📌 Версия [v{node.version or 1}]")
@@ -69,65 +71,65 @@ class TreeContextMenuMixin:
                         if v == (node.version or 1):
                             v_action.setCheckable(True)
                             v_action.setChecked(True)
-                    
+
                     r2_key = node.attributes.get("r2_key", "")
                     if r2_key and r2_key.lower().endswith(".pdf"):
                         action = menu.addAction("🗑️ Удалить рамки/QR")
                         action.setData(("remove_stamps", node))
-                    
+
                     # Копировать/вставить аннотацию
                     has_annotation = node.attributes.get("has_annotation", False)
                     if has_annotation and r2_key:
                         action = menu.addAction("📋 Скопировать аннотацию")
                         action.setData(("copy_annotation", node))
-                    
+
                     if self._copied_annotation and r2_key:
                         action = menu.addAction("📥 Вставить аннотацию")
                         action.setData(("paste_annotation", node))
-                    
+
                     # Загрузить аннотацию из файла
                     if r2_key:
                         action = menu.addAction("📤 Загрузить аннотацию блоков")
                         action.setData(("upload_annotation", node))
-                    
+
                     # Определить и назначить штамп
                     if r2_key and r2_key.lower().endswith(".pdf"):
                         action = menu.addAction("🔖 Определить и назначить штамп")
                         action.setData(("detect_stamps", node))
-                    
+
                     # Верификация блоков
                     if r2_key and r2_key.lower().endswith(".pdf"):
                         action = menu.addAction("🔍 Верификация блоков")
                         action.setData(("verify_blocks", node))
-                
+
                 # Посмотреть на R2
                 menu.addSeparator()
                 action = menu.addAction("☁️ Посмотреть на R2")
                 action.setData(("view_on_r2", node))
-                
+
                 menu.addSeparator()
                 menu.addAction("✏️ Переименовать").setData(("rename", node))
                 menu.addSeparator()
                 menu.addAction("🗑️ Удалить").setData(("delete", node))
         else:
             menu.addAction("📁 Создать проект").setData(("create_project",))
-        
+
         action = menu.exec_(self.tree.mapToGlobal(pos))
         if action:
             data = action.data()
             if data:
                 self._handle_menu_action(data)
-    
+
     def _handle_menu_action(self, data):
         """Обработать действие меню"""
         from app.tree_client import NodeStatus
-        
+
         if not data:
             return
-        
+
         action = data[0]
         logger.debug(f"_handle_menu_action: action={action}, data={data}")
-        
+
         if action == "create_project":
             self._create_project()
         elif action == "add":
@@ -181,5 +183,3 @@ class TreeContextMenuMixin:
         elif action == "verify_blocks":
             node = data[1]
             self._verify_blocks(node)
-
-

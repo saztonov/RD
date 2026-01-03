@@ -8,8 +8,7 @@ from typing import Optional
 # OCR может искажать: пропускать/добавлять символы и дефисы
 # Ловим любые последовательности 8-14 символов (алфавит + цифры + дефисы)
 ARMOR_BLOCK_MARKER_RE = re.compile(
-    r"BLOCK:\s*([A-Z0-9]{2,5}[-\s]*[A-Z0-9]{2,5}[-\s]*[A-Z0-9]{2,5})",
-    re.IGNORECASE
+    r"BLOCK:\s*([A-Z0-9]{2,5}[-\s]*[A-Z0-9]{2,5}[-\s]*[A-Z0-9]{2,5})", re.IGNORECASE
 )
 
 # Legacy: UUID формат
@@ -22,14 +21,22 @@ BLOCK_MARKER_RE = re.compile(
     r"\[\[?\s*BLOCK[\s_]*ID\s*[:\-]?\s*"
     r"([0-9A-Za-z]{8}[-\s_]*[0-9A-Za-z]{4}[-\s_]*[0-9A-Za-z]{4}[-\s_]*[0-9A-Za-z]{4}[-\s_]*[0-9A-Za-z]{12})"
     r"\s*\]?\]?",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 OCR_REPLACEMENTS = {
-    "O": "0", "o": "0",
-    "I": "1", "l": "1", "|": "1", "!": "1", "і": "1", "І": "1",
-    "S": "5", "s": "5",
-    "G": "6", "g": "6",
+    "O": "0",
+    "o": "0",
+    "I": "1",
+    "l": "1",
+    "|": "1",
+    "!": "1",
+    "і": "1",
+    "І": "1",
+    "S": "5",
+    "s": "5",
+    "G": "6",
+    "g": "6",
 }
 
 
@@ -78,24 +85,24 @@ def _levenshtein_ratio(s1: str, s2: str) -> float:
         return 0.0
     if s1 == s2:
         return 100.0
-    
+
     len1, len2 = len(s1), len(s2)
-    
+
     # Матрица расстояний (оптимизация памяти - только 2 строки)
     prev = list(range(len2 + 1))
     curr = [0] * (len2 + 1)
-    
+
     for i in range(1, len1 + 1):
         curr[0] = i
         for j in range(1, len2 + 1):
-            cost = 0 if s1[i-1] == s2[j-1] else 1
+            cost = 0 if s1[i - 1] == s2[j - 1] else 1
             curr[j] = min(
-                prev[j] + 1,      # удаление
-                curr[j-1] + 1,    # вставка
-                prev[j-1] + cost  # замена
+                prev[j] + 1,  # удаление
+                curr[j - 1] + 1,  # вставка
+                prev[j - 1] + cost,  # замена
             )
         prev, curr = curr, prev
-    
+
     distance = prev[len2]
     max_len = max(len1, len2)
     return ((max_len - distance) / max_len) * 100
@@ -111,7 +118,7 @@ def match_armor_code(
     Использует ArmorID для восстановления и декодирования.
     """
     from .armor_id import match_armor_to_uuid
-    
+
     matched_uuid, score = match_armor_to_uuid(armor_code, expected_ids)
     return matched_uuid, score
 
@@ -120,7 +127,7 @@ def match_uuid(
     candidate_raw: str,
     expected_ids: list[str],
     expected_set: set[str],
-    score_cutoff: int = 90
+    score_cutoff: int = 90,
 ) -> tuple[Optional[str], float]:
     """
     Сопоставить кандидата UUID с ожидаемыми ID (legacy).
@@ -141,10 +148,10 @@ def match_uuid(
                 best_score = score
         if best_match:
             return best_match, best_score
-    
+
     # Фоллбек: пробуем без нормализации (для случаев когда OCR сильно исказил)
     if candidate_raw:
-        clean = re.sub(r'[^a-f0-9\-]', '', candidate_raw.lower())
+        clean = re.sub(r"[^a-f0-9\-]", "", candidate_raw.lower())
         if len(clean) >= 30:
             best_match = None
             best_score = 0.0
@@ -157,4 +164,3 @@ def match_uuid(
                 return best_match, best_score
 
     return None, 0.0
-

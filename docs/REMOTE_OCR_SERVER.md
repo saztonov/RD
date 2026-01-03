@@ -424,10 +424,10 @@ class DatalabRateLimiter:
     - max_rpm: запросов в минуту
     - max_concurrent: параллельных запросов
     """
-    
+
     def acquire(self, timeout: float = 60.0) -> bool:
         """Получить разрешение на запрос"""
-        
+
     def release(self):
         """Освободить слот"""
 
@@ -521,7 +521,7 @@ def build_strip_prompt(blocks: List[Block]) -> dict:
 ### Промпты для IMAGE
 
 ```python
-def fill_image_prompt_variables(prompt_data, doc_name, page_index, 
+def fill_image_prompt_variables(prompt_data, doc_name, page_index,
                                  block_id, hint, pdfplumber_text) -> dict:
     """
     Заполнить placeholder-переменные в промпте:
@@ -740,4 +740,3 @@ DATALAB_MAX_CONCURRENT=10
 ```env
 REDIS_URL=redis://redis-cluster:6379/0
 ```
-
