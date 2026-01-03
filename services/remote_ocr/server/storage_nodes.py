@@ -1,11 +1,12 @@
 """Операции с node_files (связь с деревом проектов)"""
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from .storage_client import get_client
 
@@ -124,12 +125,14 @@ def add_node_file(
 def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
     """Зарегистрировать все OCR результаты в node_files.
     
-    Файлы загружены в папку исходного PDF (parent dir от pdf_r2_key)
+    Файлы загружены в папку исходного PDF (parent dir от pdf_r2_key).
+    Кропы сохраняются с метаданными блоков (block_id, page_index, coords, block_type).
     """
     if not node_id:
         return 0
     
     work_path = Path(work_dir)
+    now = datetime.utcnow().isoformat()
     
     # Получаем r2_key исходного PDF и используем его родительскую папку
     pdf_r2_key = get_node_pdf_r2_key(node_id)
@@ -142,6 +145,19 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
     
     doc_stem = Path(doc_name).stem
     
+    # Загружаем annotation.json для получения метаданных блоков
+    blocks_by_id: Dict[str, dict] = {}
+    annotation_path = work_path / "annotation.json"
+    if annotation_path.exists():
+        try:
+            with open(annotation_path, "r", encoding="utf-8") as f:
+                ann = json.load(f)
+            for page in ann.get("pages", []):
+                for blk in page.get("blocks", []):
+                    blocks_by_id[blk["id"]] = blk
+        except Exception as e:
+            logger.warning(f"Failed to load annotation.json for metadata: {e}")
+    
     # result.json -> {doc_stem}_result.json
     result_json = work_path / "result.json"
     if result_json.exists():
@@ -153,12 +169,11 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
         registered += 1
     
     # annotation.json -> {doc_stem}_annotation.json
-    annotation = work_path / "annotation.json"
-    if annotation.exists():
+    if annotation_path.exists():
         annotation_filename = f"{doc_stem}_annotation.json"
         add_node_file(
             node_id, "annotation", f"{tree_prefix}/{annotation_filename}",
-            annotation_filename, annotation.stat().st_size, "application/json"
+            annotation_filename, annotation_path.stat().st_size, "application/json"
         )
         registered += 1
     
@@ -172,18 +187,47 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
         )
         registered += 1
     
-    # crops/
-    crops_dir = work_path / "crops"
-    if crops_dir.exists():
-        for crop_file in crops_dir.iterdir():
-            if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
-                add_node_file(
-                    node_id, "crop", f"{tree_prefix}/crops/{crop_file.name}",
-                    crop_file.name, crop_file.stat().st_size, "application/pdf"
-                )
-                registered += 1
+    # Собираем все кропы из crops/ и crops_final/
+    all_crop_files: List[Path] = []
+    for crops_subdir in ["crops", "crops_final"]:
+        crops_dir = work_path / crops_subdir
+        if crops_dir.exists():
+            for crop_file in crops_dir.iterdir():
+                if crop_file.is_file() and crop_file.suffix.lower() == ".pdf":
+                    # Избегаем дубликатов (проверяем по имени файла)
+                    if not any(c.name == crop_file.name for c in all_crop_files):
+                        all_crop_files.append(crop_file)
     
-    logger.info(f"Registered {registered} OCR result files for node {node_id}")
+    # Регистрируем папку кропов как сущность
+    if all_crop_files:
+        add_node_file(
+            node_id, "crops_folder", f"{tree_prefix}/crops/",
+            "crops", 0, "inode/directory",
+            metadata={
+                "crops_count": len(all_crop_files),
+                "created_at": now
+            }
+        )
+        registered += 1
+    
+    # Регистрируем каждый кроп с метаданными блока
+    for crop_file in all_crop_files:
+        block_id = crop_file.stem  # block_id = имя файла без расширения
+        block_data = blocks_by_id.get(block_id, {})
+        
+        add_node_file(
+            node_id, "crop", f"{tree_prefix}/crops/{crop_file.name}",
+            crop_file.name, crop_file.stat().st_size, "application/pdf",
+            metadata={
+                "block_id": block_id,
+                "page_index": block_data.get("page_index"),
+                "coords_norm": block_data.get("coords_norm"),
+                "block_type": block_data.get("block_type"),
+            }
+        )
+        registered += 1
+    
+    logger.info(f"Registered {registered} OCR result files for node {node_id} ({len(all_crop_files)} crops)")
     return registered
 
 

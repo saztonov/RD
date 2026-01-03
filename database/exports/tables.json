@@ -2533,7 +2533,7 @@
       },
       {
         "name": "file_type",
-        "comment": "Тип файла: pdf, annotation, result_md, result_zip, crop, image, ocr_html, result_json",
+        "comment": "Тип файла: pdf, annotation, result_md, result_zip, crop, image, ocr_html, result_json, crops_folder",
         "default": null,
         "data_type": "text",
         "is_nullable": false
