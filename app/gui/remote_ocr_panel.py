@@ -201,6 +201,12 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self._is_fetching = False
         self.status_label.setText("🔴 Сервер недоступен")
         self._consecutive_errors += 1
+        
+        # Уведомляем ConnectionManager о проблеме
+        main_window = self.main_window
+        if hasattr(main_window, 'connection_manager') and main_window.connection_manager:
+            main_window.connection_manager.mark_error(error_msg)
+        
         backoff_interval = min(
             self.POLL_INTERVAL_ERROR * (2 ** min(self._consecutive_errors - 1, 3)),
             180000,

@@ -71,11 +71,20 @@ class UnifiedClient:
         return headers
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
-        """Выполнить HTTP запрос"""
-        client = _get_unified_client(self.base_url, self.timeout)
-        resp = getattr(client, method)(path, headers=self._headers(), **kwargs)
-        resp.raise_for_status()
-        return resp
+        """Выполнить HTTP запрос с обработкой сетевых ошибок"""
+        try:
+            client = _get_unified_client(self.base_url, self.timeout)
+            resp = getattr(client, method)(path, headers=self._headers(), **kwargs)
+            resp.raise_for_status()
+            return resp
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, 
+                httpx.TimeoutException, httpx.NetworkError) as e:
+            logger.error(f"Сетевая ошибка при запросе {method} {path}: {e}")
+            # Уведомляем ConnectionManager об ошибке
+            from app.gui.connection_manager import is_network_error
+            if is_network_error(e):
+                logger.warning(f"Потеря соединения: {e}")
+            raise
 
     # ===== Tree API =====
 
@@ -84,7 +93,8 @@ class UnifiedClient:
         try:
             resp = self._request("get", "/health")
             return resp.status_code == 200
-        except Exception:
+        except Exception as e:
+            logger.debug(f"API недоступен: {e}")
             return False
 
     def get_root_nodes(self) -> List[TreeNode]:
@@ -336,6 +346,10 @@ class UnifiedClient:
             logger.debug(f"Downloaded: {r2_key} -> {local_path}")
             return True
 
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, 
+                httpx.TimeoutException, httpx.NetworkError) as e:
+            logger.warning(f"Сетевая ошибка при скачивании {r2_key}: {e}")
+            return False
         except Exception as e:
             logger.error(f"Download failed {r2_key}: {e}")
             return False
@@ -381,6 +395,26 @@ class UnifiedClient:
             logger.debug(f"Uploaded: {local_path} -> {r2_key}")
             return True
 
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, 
+                httpx.TimeoutException, httpx.NetworkError) as e:
+            logger.warning(f"Сетевая ошибка при загрузке {r2_key}: {e}")
+            # Добавляем в очередь отложенной синхронизации
+            from app.gui.sync_queue import get_sync_queue, SyncOperation, SyncOperationType
+            from datetime import datetime
+            import uuid
+            
+            queue = get_sync_queue()
+            op = SyncOperation(
+                id=str(uuid.uuid4()),
+                type=SyncOperationType.UPLOAD_FILE,
+                timestamp=datetime.now().isoformat(),
+                local_path=local_path,
+                r2_key=r2_key,
+                data={"content_type": content_type}
+            )
+            queue.add_operation(op)
+            logger.info(f"Файл добавлен в очередь синхронизации: {r2_key}")
+            return False
         except Exception as e:
             logger.error(f"Upload failed {r2_key}: {e}")
             return False
@@ -398,6 +432,32 @@ class UnifiedClient:
             self._request("post", "/api/storage/upload-text", json=payload)
             logger.debug(f"Uploaded text: {r2_key}")
             return True
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, 
+                httpx.TimeoutException, httpx.NetworkError) as e:
+            logger.warning(f"Сетевая ошибка при загрузке текста {r2_key}: {e}")
+            # Сохраняем текст во временный файл и добавляем в очередь
+            from app.gui.sync_queue import get_sync_queue, SyncOperation, SyncOperationType
+            from datetime import datetime
+            import uuid
+            import tempfile
+            
+            # Создаём временный файл
+            temp_file = Path(tempfile.gettempdir()) / "RD" / "sync_pending" / f"{uuid.uuid4()}.txt"
+            temp_file.parent.mkdir(parents=True, exist_ok=True)
+            temp_file.write_text(content, encoding='utf-8')
+            
+            queue = get_sync_queue()
+            op = SyncOperation(
+                id=str(uuid.uuid4()),
+                type=SyncOperationType.UPLOAD_FILE,
+                timestamp=datetime.now().isoformat(),
+                local_path=str(temp_file),
+                r2_key=r2_key,
+                data={"content_type": content_type or "text/plain", "is_temp": True}
+            )
+            queue.add_operation(op)
+            logger.info(f"Текст добавлен в очередь синхронизации: {r2_key}")
+            return False
         except Exception as e:
             logger.error(f"Upload text failed {r2_key}: {e}")
             return False

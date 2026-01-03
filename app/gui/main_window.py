@@ -61,6 +61,7 @@ class MainWindow(
         self.blocks_tree_manager = None
         self.navigation_manager = None
         self.remote_ocr_panel = None
+        self.connection_manager = None
 
         # Настройка UI
         self._setup_menu()
@@ -76,6 +77,9 @@ class MainWindow(
         # Инициализация менеджеров после создания UI
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree)
         self.navigation_manager = NavigationManager(self)
+        
+        # Инициализация менеджера соединения
+        self._setup_connection_manager()
 
         self.setWindowTitle(__product__)
         self.resize(1200, 800)
@@ -381,8 +385,26 @@ class MainWindow(
         self._status_progress.setTextVisible(True)
         self._status_progress.hide()
 
+        # Индикатор статуса соединения
+        self._connection_status_label = QLabel("⚪ Проверка...")
+        self._connection_status_label.setStyleSheet("color: #888; font-size: 9pt;")
+        self._connection_status_label.setToolTip("Статус подключения к серверу")
+
+        # Индикатор очереди синхронизации
+        self._sync_queue_label = QLabel("")
+        self._sync_queue_label.setStyleSheet("color: #888; font-size: 9pt;")
+        self._sync_queue_label.setToolTip("Операции ожидают синхронизации")
+        self._sync_queue_label.hide()
+
+        self._status_bar.addPermanentWidget(self._sync_queue_label)
+        self._status_bar.addPermanentWidget(self._connection_status_label)
         self._status_bar.addPermanentWidget(self._status_label)
         self._status_bar.addPermanentWidget(self._status_progress)
+        
+        # Таймер для обновления индикатора очереди
+        self._sync_queue_timer = QTimer(self)
+        self._sync_queue_timer.timeout.connect(self._update_sync_queue_indicator)
+        self._sync_queue_timer.start(2000)  # Каждые 2 секунды
 
     def show_transfer_progress(self, message: str, current: int = 0, total: int = 0):
         """Показать прогресс загрузки/скачивания"""
@@ -398,3 +420,137 @@ class MainWindow(
         """Скрыть прогресс"""
         self._status_label.setText("")
         self._status_progress.hide()
+    
+    # === Connection Manager ===
+    def _setup_connection_manager(self):
+        """Инициализировать менеджер соединения"""
+        from app.gui.connection_manager import ConnectionManager, ConnectionStatus
+        
+        self.connection_manager = ConnectionManager(self)
+        
+        # Устанавливаем callback для проверки соединения
+        def check_connection() -> bool:
+            """Проверить доступность сервера"""
+            try:
+                from app.remote_ocr_client import RemoteOCRClient
+                client = RemoteOCRClient()
+                return client.health()
+            except Exception:
+                return False
+        
+        self.connection_manager.set_check_callback(check_connection)
+        
+        # Подключаем сигналы
+        self.connection_manager.connection_lost.connect(self._on_connection_lost)
+        self.connection_manager.connection_restored.connect(self._on_connection_restored)
+        self.connection_manager.status_changed.connect(self._on_connection_status_changed)
+        
+        # Запускаем мониторинг
+        self.connection_manager.start_monitoring()
+    
+    def _on_connection_lost(self):
+        """Обработчик потери соединения"""
+        from app.gui.toast import show_toast
+        logger.warning("Соединение потеряно")
+        show_toast(
+            self, 
+            "⚠️ Связь с сервером разорвана. Изменения будут синхронизированы при восстановлении подключения.",
+            duration=5000
+        )
+        # Обновляем индикатор в статус-баре
+        self._connection_status_label.setText("🔴 Офлайн")
+        self._connection_status_label.setStyleSheet("color: #f44336; font-size: 9pt; font-weight: bold;")
+        self._connection_status_label.setToolTip("Нет подключения к серверу")
+    
+    def _on_connection_restored(self):
+        """Обработчик восстановления соединения"""
+        from app.gui.toast import show_toast
+        logger.info("Соединение восстановлено")
+        show_toast(self, "✅ Связь с сервером восстановлена. Синхронизация...", duration=3000)
+        # Обновляем индикатор в статус-баре
+        self._connection_status_label.setText("🟢 Онлайн")
+        self._connection_status_label.setStyleSheet("color: #4caf50; font-size: 9pt; font-weight: bold;")
+        self._connection_status_label.setToolTip("Подключено к серверу")
+        
+        # Запускаем синхронизацию отложенных операций
+        self._sync_pending_operations()
+    
+    def _on_connection_status_changed(self, status):
+        """Обработчик изменения статуса соединения"""
+        from app.gui.connection_manager import ConnectionStatus
+        
+        if status == ConnectionStatus.RECONNECTING:
+            self._connection_status_label.setText("🟡 Переподключение...")
+            self._connection_status_label.setStyleSheet("color: #ff9800; font-size: 9pt; font-weight: bold;")
+            self._connection_status_label.setToolTip("Попытка переподключения...")
+        elif status == ConnectionStatus.CONNECTED:
+            self._connection_status_label.setText("🟢 Онлайн")
+            self._connection_status_label.setStyleSheet("color: #4caf50; font-size: 9pt; font-weight: bold;")
+            self._connection_status_label.setToolTip("Подключено к серверу")
+    
+    def _update_sync_queue_indicator(self):
+        """Обновить индикатор очереди синхронизации"""
+        from app.gui.sync_queue import get_sync_queue
+        
+        queue = get_sync_queue()
+        queue_size = queue.size()
+        
+        if queue_size > 0:
+            self._sync_queue_label.setText(f"📤 {queue_size}")
+            self._sync_queue_label.setStyleSheet("color: #ff9800; font-size: 9pt; font-weight: bold;")
+            self._sync_queue_label.setToolTip(f"{queue_size} операций ожидают синхронизации")
+            self._sync_queue_label.show()
+        else:
+            self._sync_queue_label.hide()
+    
+    def _sync_pending_operations(self):
+        """Синхронизировать отложенные операции"""
+        from app.gui.sync_queue import get_sync_queue
+        
+        queue = get_sync_queue()
+        if queue.is_empty():
+            return
+        
+        pending = queue.get_pending_operations()
+        logger.info(f"Синхронизация {len(pending)} отложенных операций...")
+        
+        # Синхронизируем операции в фоновом потоке
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def sync_operation(operation):
+            try:
+                from app.gui.sync_queue import SyncOperationType
+                from rd_core.r2_storage import R2Storage
+                from pathlib import Path
+                
+                if operation.type == SyncOperationType.UPLOAD_FILE:
+                    r2 = R2Storage()
+                    local_path = operation.local_path
+                    r2_key = operation.r2_key
+                    content_type = operation.data.get("content_type")
+                    
+                    if not Path(local_path).exists():
+                        logger.warning(f"Файл не найден для синхронизации: {local_path}")
+                        queue.remove_operation(operation.id)
+                        return
+                    
+                    if r2.upload_file(local_path, r2_key, content_type):
+                        logger.info(f"Операция синхронизирована: {operation.id}")
+                        queue.remove_operation(operation.id)
+                        
+                        # Удаляем временный файл если это был временный файл
+                        if operation.data.get("is_temp"):
+                            try:
+                                Path(local_path).unlink()
+                            except Exception:
+                                pass
+                    else:
+                        queue.mark_failed(operation.id, "Не удалось загрузить файл")
+                        
+            except Exception as e:
+                logger.error(f"Ошибка синхронизации операции {operation.id}: {e}")
+                queue.mark_failed(operation.id, str(e))
+        
+        # Синхронизируем операции параллельно
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            executor.map(sync_operation, pending)

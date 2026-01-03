@@ -192,13 +192,19 @@ class RemoteOCRClient:
                 self._handle_response_error(resp)
                 return resp
 
-            except (httpx.ConnectError, httpx.TimeoutException) as e:
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout,
+                    httpx.TimeoutException, httpx.NetworkError) as e:
                 last_error = e
                 if attempt < retries - 1:
                     delay = 2**attempt
                     logger.warning(f"Сетевая ошибка: {e}, ретрай через {delay}с...")
                     time.sleep(delay)
                     continue
+                # Не выбрасываем исключение - просто логируем
+                logger.error(f"Все попытки подключения исчерпаны: {e}")
+                from app.gui.connection_manager import is_network_error
+                if is_network_error(e):
+                    raise RemoteOCRError(f"Сервер недоступен: {e}")
                 raise
 
         if last_error:
@@ -222,6 +228,10 @@ class RemoteOCRClient:
             resp = client.get("/health", headers=self._headers(), timeout=2.0)
             logger.debug(f"Health check response: {resp.status_code}")
             return resp.status_code == 200 and resp.json().get("ok", False)
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, 
+                httpx.TimeoutException, httpx.NetworkError) as e:
+            logger.debug(f"Health check network error: {e}")
+            return False
         except Exception as e:
             logger.warning(f"Health check failed: {url} -> {e}")
             return False

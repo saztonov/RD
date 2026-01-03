@@ -77,12 +77,17 @@ class TreeClient:
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         url = f"{self.supabase_url}/rest/v1{path}"
-        client = _get_tree_client()
-        resp = getattr(client, method)(
-            url, headers=self._headers(), timeout=self.timeout, **kwargs
-        )
-        resp.raise_for_status()
-        return resp
+        try:
+            client = _get_tree_client()
+            resp = getattr(client, method)(
+                url, headers=self._headers(), timeout=self.timeout, **kwargs
+            )
+            resp.raise_for_status()
+            return resp
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, 
+                httpx.TimeoutException, httpx.NetworkError) as e:
+            logger.error(f"Сетевая ошибка при запросе к Supabase {method} {path}: {e}")
+            raise
 
     def is_available(self) -> bool:
         """Проверить доступность Supabase"""
@@ -91,7 +96,8 @@ class TreeClient:
         try:
             self._request("get", "/stage_types?select=id&limit=1")
             return True
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Supabase недоступен: {e}")
             return False
 
     # === Справочники ===

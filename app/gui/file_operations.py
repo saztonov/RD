@@ -47,11 +47,20 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
 
             r2 = R2Storage()
             ann_r2_key = get_annotation_r2_key(self._current_r2_key)
-            r2.upload_file(str(ann_path), ann_r2_key)
-            logger.debug(f"Annotation synced to R2: {ann_r2_key}")
-
-            # Обновить атрибут has_annotation в дереве
-            self._update_has_annotation_flag(True)
+            success = r2.upload_file(str(ann_path), ann_r2_key)
+            
+            if success:
+                logger.debug(f"Annotation synced to R2: {ann_r2_key}")
+                # Обновить атрибут has_annotation в дереве
+                self._update_has_annotation_flag(True)
+            else:
+                # Проверяем статус соединения
+                if hasattr(self, 'connection_manager') and not self.connection_manager.is_connected():
+                    logger.info(f"Аннотация будет синхронизирована при восстановлении соединения")
+                    from app.gui.toast import show_toast
+                    show_toast(self, "Аннотация сохранена локально. Синхронизация при восстановлении связи.", duration=3000)
+                else:
+                    logger.warning(f"Не удалось синхронизировать аннотацию: {ann_r2_key}")
         except Exception as e:
             logger.error(f"Sync annotation to R2 failed: {e}")
 
@@ -126,7 +135,13 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
 
                 r2 = R2Storage()
                 ann_r2_key = get_annotation_r2_key(r2_key)
-                r2.download_file(ann_r2_key, str(ann_path))
+                success = r2.download_file(ann_r2_key, str(ann_path))
+                
+                if not success:
+                    # Проверяем статус соединения
+                    if hasattr(self, 'connection_manager') and not self.connection_manager.is_connected():
+                        logger.info(f"Не удалось скачать аннотацию - работа в офлайн режиме")
+                        show_toast(self, "Работа в офлайн режиме. Аннотация недоступна.", duration=3000)
             except Exception as e:
                 logger.debug(f"No annotation in R2 or error: {e}")
 

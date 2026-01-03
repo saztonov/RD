@@ -42,8 +42,13 @@ class R2DownloadMixin:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             if error_code == "NoSuchKey" or error_code == "404":
                 logger.warning(f"⚠️ Файл не найден в R2: {remote_key}")
+            elif error_code in ["RequestTimeout", "ServiceUnavailable"]:
+                logger.warning(f"⚠️ Сетевая ошибка при скачивании из R2: {error_code}")
             else:
                 logger.error(f"❌ Ошибка скачивания из R2: {error_code} - {e}")
+            return False
+        except (ConnectionError, TimeoutError) as e:
+            logger.warning(f"⚠️ Сетевая ошибка при скачивании из R2: {e}")
             return False
         except Exception as e:
             logger.error(
@@ -73,6 +78,11 @@ class R2DownloadMixin:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             if error_code == "NoSuchKey":
                 logger.warning(f"⚠️ Файл не найден в R2: {remote_key}")
+            elif error_code in ["RequestTimeout", "ServiceUnavailable"]:
+                logger.warning(f"⚠️ Сетевая ошибка при загрузке текста из R2: {error_code}")
             else:
                 logger.error(f"❌ Ошибка загрузки текста из R2: {e}")
+            return None
+        except (ConnectionError, TimeoutError) as e:
+            logger.warning(f"⚠️ Сетевая ошибка при загрузке текста из R2: {e}")
             return None
