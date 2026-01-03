@@ -56,8 +56,12 @@ def calculate_pdf_status(
         has_result_json_r2 = r2_storage.exists(res_r2_key)
 
         # Проверяем наличие файлов в Supabase
-        node_files = client.get_node_files(node_id)
-        file_types_in_db = {nf.file_type for nf in node_files}
+        try:
+            node_files = client.get_node_files(node_id)
+            file_types_in_db = {nf.file_type for nf in node_files}
+        except Exception as e:
+            logger.error(f"Failed to get node files for {node_id}: {e}", exc_info=True)
+            raise
 
         has_annotation_db = FileType.ANNOTATION in file_types_in_db
         has_ocr_html_db = FileType.OCR_HTML in file_types_in_db
@@ -125,7 +129,7 @@ def calculate_pdf_status(
             return PDFStatus.COMPLETE, "Все файлы на месте, блоки размечены"
 
     except Exception as e:
-        logger.error(f"Failed to calculate PDF status: {e}")
+        logger.error(f"Failed to calculate PDF status: {e}", exc_info=True)
         return PDFStatus.UNKNOWN, f"Ошибка проверки: {e}"
 
 

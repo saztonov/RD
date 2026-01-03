@@ -61,10 +61,23 @@ class NodeFile:
 
     @classmethod
     def from_dict(cls, data: dict) -> "NodeFile":
+        # Безопасное преобразование file_type
+        raw_file_type = data["file_type"]
+        try:
+            # Нормализуем значение: убираем пробелы и приводим к нижнему регистру
+            normalized_type = raw_file_type.strip().lower() if isinstance(raw_file_type, str) else raw_file_type
+            file_type = FileType(normalized_type)
+        except ValueError as e:
+            # Если значение не валидно, логируем предупреждение и используем fallback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Invalid file_type '{raw_file_type}' for node_file {data.get('id')}, using 'pdf' as fallback: {e}")
+            file_type = FileType.PDF
+        
         return cls(
             id=data["id"],
             node_id=data["node_id"],
-            file_type=FileType(data["file_type"]),
+            file_type=file_type,
             r2_key=data["r2_key"],
             file_name=data["file_name"],
             file_size=data.get("file_size", 0),
