@@ -65,15 +65,22 @@ class NodeFile:
         raw_file_type = data["file_type"]
         try:
             # Нормализуем значение: убираем пробелы и приводим к нижнему регистру
-            normalized_type = raw_file_type.strip().lower() if isinstance(raw_file_type, str) else raw_file_type
+            normalized_type = (
+                raw_file_type.strip().lower()
+                if isinstance(raw_file_type, str)
+                else raw_file_type
+            )
             file_type = FileType(normalized_type)
         except ValueError as e:
             # Если значение не валидно, логируем предупреждение и используем fallback
             import logging
+
             logger = logging.getLogger(__name__)
-            logger.warning(f"Invalid file_type '{raw_file_type}' for node_file {data.get('id')}, using 'pdf' as fallback: {e}")
+            logger.warning(
+                f"Invalid file_type '{raw_file_type}' for node_file {data.get('id')}, using 'pdf' as fallback: {e}"
+            )
             file_type = FileType.PDF
-        
+
         return cls(
             id=data["id"],
             node_id=data["node_id"],

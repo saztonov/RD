@@ -37,7 +37,7 @@ def from_dict(cls, data: dict) -> "NodeFile":
         logger = logging.getLogger(__name__)
         logger.warning(f"Invalid file_type '{raw_file_type}' for node_file {data.get('id')}, using 'pdf' as fallback: {e}")
         file_type = FileType.PDF
-    
+
     return cls(...)
 ```
 
