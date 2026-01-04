@@ -17,6 +17,7 @@ from .generator_common import (
     get_block_armor_id,
     get_html_header,
     is_image_ocr_json,
+    sanitize_html,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,9 +75,9 @@ def _extract_html_from_ocr_text(ocr_text: str) -> str:
     if not text:
         return ""
 
-    # Если начинается с HTML тега - возвращаем как есть
-    if text.startswith("<"):
-        return text
+    # Если начинается с HTML тега или закрывающего тега - обрабатываем как HTML
+    if text.startswith("<") or text.startswith("</"):
+        return sanitize_html(text)
 
     # Пробуем распарсить как JSON
     try:
@@ -92,7 +93,7 @@ def _extract_html_from_ocr_text(ocr_text: str) -> str:
             # Иначе пробуем извлечь HTML из структуры
             html = _extract_html_from_parsed(parsed)
             if html:
-                return html
+                return sanitize_html(html)
     except json_module.JSONDecodeError:
         pass
 

@@ -15,6 +15,7 @@ from rd_core.ocr.generator_common import (
     get_html_header,
     parse_stamp_json,
     propagate_stamp_data,
+    sanitize_html,
 )
 
 from .ocr_html_parser import build_segments_from_html
@@ -96,8 +97,9 @@ def merge_ocr_results(
                 if "page_index" in blk:
                     blk["page_index"] = blk["page_index"] + 1
 
-                # HTML фрагмент
-                blk["ocr_html"] = segments.get(bid, "")
+                # HTML фрагмент (санитизируем от артефактов datalab)
+                raw_html = segments.get(bid, "")
+                blk["ocr_html"] = sanitize_html(raw_html) if raw_html else ""
                 blk["ocr_meta"] = meta.get(
                     bid, {"method": [], "match_score": 0.0, "marker_text_sample": ""}
                 )
@@ -215,7 +217,8 @@ def regenerate_html_from_result(
                         f'<p><a href="{crop_url}" target="_blank"><b>🖼️ Открыть кроп изображения</b></a></p>'
                     )
 
-            html_parts.append(ocr_html)
+            # Санитизируем HTML от мусорных артефактов datalab
+            html_parts.append(sanitize_html(ocr_html))
             html_parts.append("</div></div>")
 
     html_parts.append(HTML_FOOTER)

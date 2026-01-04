@@ -176,6 +176,65 @@ def collect_block_groups(pages: List) -> Dict[str, List]:
     return groups
 
 
+# Паттерн для мусорных img тегов от datalab (хеш_img.ext)
+DATALAB_IMG_PATTERN = re.compile(
+    r'<img[^>]*src=["\']?[a-f0-9]{20,}_img(?:\.[a-z]{3,4})?["\']?[^>]*/?>',
+    re.IGNORECASE
+)
+
+# Паттерн для markdown-ссылок на мусорные изображения [img:hash_img]
+DATALAB_MD_IMG_PATTERN = re.compile(r'\[img:[a-f0-9]{20,}_img\]')
+
+
+def sanitize_html(html: str) -> str:
+    """
+    Очистить HTML от артефактов datalab OCR.
+
+    1. Удаляет мусорные img теги (хеш_img.jpg)
+    2. Удаляет осиротевшие закрывающие теги в начале
+    3. Удаляет незакрытые открывающие теги в конце
+    """
+    if not html:
+        return ""
+
+    text = html
+
+    # 1. Удаляем мусорные img теги от datalab
+    text = DATALAB_IMG_PATTERN.sub("", text)
+
+    # 2. Удаляем осиротевшие закрывающие теги в начале
+    # Паттерн: начало строки, возможные пробелы, закрывающий тег
+    text = re.sub(r'^\s*</[a-z]+>\s*', '', text, flags=re.IGNORECASE)
+
+    # 3. Удаляем незакрытые теги типа </body></html> в конце (часто артефакт)
+    text = re.sub(r'\s*</div>\s*</body>\s*</html>\s*$', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s*</body>\s*</html>\s*$', '', text, flags=re.IGNORECASE)
+
+    # 4. Удаляем одиночные незакрытые <p> или </p> на границах
+    text = re.sub(r'^\s*<p>\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\s*<p>\s*$', '', text)
+
+    return text.strip()
+
+
+def sanitize_markdown(md: str) -> str:
+    """
+    Очистить Markdown от артефактов datalab OCR.
+
+    Удаляет ссылки вида [img:hash_img].
+    """
+    if not md:
+        return ""
+
+    # Удаляем мусорные markdown-ссылки на изображения
+    text = DATALAB_MD_IMG_PATTERN.sub("", md)
+
+    # Удаляем пустые строки после удаления
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    return text.strip()
+
+
 def extract_image_ocr_data(data: dict) -> Dict[str, Any]:
     """
     Извлечь структурированные данные из JSON блока изображения.

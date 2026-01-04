@@ -7,11 +7,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .generator_common import (
+    DATALAB_IMG_PATTERN,
+    DATALAB_MD_IMG_PATTERN,
     collect_block_groups,
     collect_inheritable_stamp_data,
     extract_image_ocr_data,
     get_block_armor_id,
     is_image_ocr_json,
+    sanitize_html,
+    sanitize_markdown,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,7 +104,8 @@ def _html_to_markdown(html: str) -> str:
     if not html:
         return ""
 
-    text = html
+    # Сначала санитизируем HTML (удаляем мусорные img от datalab)
+    text = sanitize_html(html)
 
     # Удаляем stamp-info блоки (уже в header)
     text = re.sub(r'<div class="stamp-info[^"]*">.*?</div>', "", text, flags=re.DOTALL)
@@ -143,9 +148,8 @@ def _html_to_markdown(html: str) -> str:
     text = re.sub(r"<[ou]l[^>]*>", "", text)
     text = re.sub(r"</[ou]l>", "", text)
 
-    # Изображения - компактно
-    text = re.sub(r'<img[^>]*src="([^"]*)"[^>]*/?>',
-                  lambda m: f"[img:{Path(m.group(1)).stem}]" if m.group(1) else "", text)
+    # Удаляем все img теги (уже обработаны в sanitize_html, но на всякий случай)
+    text = re.sub(r'<img[^>]*/?>','', text)
 
     # Ссылки
     text = re.sub(r'<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>', r"[\2](\1)", text, flags=re.DOTALL)
@@ -166,6 +170,9 @@ def _html_to_markdown(html: str) -> str:
     text = text.replace("&gt;", ">")
     text = text.replace("&quot;", '"')
     text = text.replace("&#39;", "'")
+
+    # Удаляем остаточные markdown-ссылки на мусорные изображения
+    text = DATALAB_MD_IMG_PATTERN.sub("", text)
 
     # Нормализуем пробелы и переносы
     text = re.sub(r"[ \t]+", " ", text)
@@ -220,8 +227,8 @@ def _process_ocr_content(ocr_text: str) -> str:
     if not text:
         return ""
 
-    # HTML контент
-    if text.startswith("<"):
+    # HTML контент (включая случаи, начинающиеся с закрывающего тега)
+    if text.startswith("<") or text.startswith("</"):
         return _html_to_markdown(text)
 
     # JSON контент
@@ -235,8 +242,8 @@ def _process_ocr_content(ocr_text: str) -> str:
         except json_module.JSONDecodeError:
             pass
 
-    # Обычный текст
-    return text
+    # Обычный текст - также применяем санитизацию markdown
+    return sanitize_markdown(text)
 
 
 def generate_md_from_pages(
