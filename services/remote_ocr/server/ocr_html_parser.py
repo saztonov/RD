@@ -84,6 +84,21 @@ def _extract_blocks_by_div_structure(
             # Убираем обёртку <p>...</p> вокруг маркера
             clean_content = re.sub(r"<p>\s*</p>", "", clean_content).strip()
 
+            # Удаляем метаданные, которые будут добавлены в шапку при регенерации
+            clean_content = re.sub(
+                r'<p><b>Created:</b>[^<]*</p>\s*', '', clean_content, flags=re.IGNORECASE
+            )
+            clean_content = re.sub(
+                r'<p><b>Linked block:</b>[^<]*</p>\s*', '', clean_content, flags=re.IGNORECASE
+            )
+            clean_content = re.sub(
+                r'<p><b>Grouped blocks:</b>[^<]*</p>\s*', '', clean_content, flags=re.IGNORECASE
+            )
+            clean_content = re.sub(
+                r'<div class="stamp-info[^"]*">.*?</div>\s*', '', clean_content, flags=re.DOTALL
+            )
+            clean_content = clean_content.strip()
+
             segments[matched_id] = clean_content
             meta[matched_id] = {
                 "method": ["div_structure"],
@@ -195,6 +210,21 @@ def build_segments_from_html(
 
         # Убираем <p> перед следующим маркером (может содержать только пробелы)
         fragment = re.sub(r"\s*<p>\s*$", "", fragment)
+
+        # Удаляем метаданные, которые будут добавлены в шапку при регенерации
+        # Created: и stamp-info (уже есть в annotation.json)
+        fragment = re.sub(
+            r'<p><b>Created:</b>[^<]*</p>\s*', '', fragment, flags=re.IGNORECASE
+        )
+        fragment = re.sub(
+            r'<p><b>Linked block:</b>[^<]*</p>\s*', '', fragment, flags=re.IGNORECASE
+        )
+        fragment = re.sub(
+            r'<p><b>Grouped blocks:</b>[^<]*</p>\s*', '', fragment, flags=re.IGNORECASE
+        )
+        fragment = re.sub(
+            r'<div class="stamp-info[^"]*">.*?</div>\s*', '', fragment, flags=re.DOTALL
+        )
 
         fragment = fragment.strip()
 

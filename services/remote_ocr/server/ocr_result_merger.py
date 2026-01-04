@@ -12,6 +12,8 @@ from rd_core.ocr.generator_common import (
     HTML_FOOTER,
     INHERITABLE_STAMP_FIELDS,
     collect_inheritable_stamp_data_dict,
+    format_stamp_parts,
+    get_block_armor_id,
     get_html_header,
     parse_stamp_json,
     propagate_stamp_data,
@@ -208,6 +210,27 @@ def regenerate_html_from_result(
             )
             html_parts.append('<div class="block-content">')
             html_parts.append(f"<p>BLOCK: {block_id}</p>")
+
+            # Linked block - в шапку
+            linked_id = blk.get("linked_block_id")
+            if linked_id:
+                linked_armor = get_block_armor_id(linked_id)
+                html_parts.append(f"<p><b>Linked block:</b> {linked_armor}</p>")
+
+            # Created - в шапку
+            created_at = blk.get("created_at")
+            if created_at:
+                html_parts.append(f"<p><b>Created:</b> {created_at}</p>")
+
+            # Stamp info - в шапку
+            stamp_data = blk.get("stamp_data")
+            if stamp_data:
+                parts = format_stamp_parts(stamp_data)
+                if parts:
+                    stamp_html_parts = [f"<b>{key}:</b> {value}" for key, value in parts]
+                    html_parts.append(
+                        '<div class="stamp-info">' + " | ".join(stamp_html_parts) + "</div>"
+                    )
 
             # Для IMAGE блоков добавляем ссылку на кроп
             if block_type == "image" and blk.get("crop_url"):
