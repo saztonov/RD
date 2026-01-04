@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -68,6 +69,7 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
 
         self._download_dialog: Optional[QProgressDialog] = None
         self._downloaded_jobs: set = set()  # Уже скачанные задачи
+        self._optimistic_jobs: dict = {}  # Оптимистично добавленные задачи {job_id: (JobInfo, timestamp)}
 
         self._setup_ui()
         self._setup_timer()
@@ -183,11 +185,31 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
     def _on_jobs_loaded(self, jobs):
         """Слот: список задач получен"""
         self._is_fetching = False
-        self._update_table(jobs)
+        
+        # Добавляем оптимистично добавленные задачи, которых ещё нет в ответе сервера
+        jobs_ids = {j.id for j in jobs}
+        merged_jobs = list(jobs)
+        current_time = time.time()
+        
+        for job_id, (job_info, timestamp) in list(self._optimistic_jobs.items()):
+            if job_id in jobs_ids:
+                # Задача уже в списке от сервера - удаляем из оптимистичного списка
+                logger.info(f"Задача {job_id[:8]}... найдена в ответе сервера, удаляем из оптимистичного списка")
+                self._optimistic_jobs.pop(job_id, None)
+            elif current_time - timestamp > 60:
+                # Задача висит в оптимистичном списке более минуты - удаляем (таймаут)
+                logger.warning(f"Задача {job_id[:8]}... в оптимистичном списке более минуты, удаляем (таймаут)")
+                self._optimistic_jobs.pop(job_id, None)
+            else:
+                # Задачи ещё нет на сервере - добавляем в начало списка
+                logger.debug(f"Задача {job_id[:8]}... ещё не на сервере, добавляем оптимистично")
+                merged_jobs.insert(0, job_info)
+        
+        self._update_table(merged_jobs)
         self.status_label.setText("🟢 Подключено")
         self._consecutive_errors = 0
 
-        self._has_active_jobs = any(j.status in ("queued", "processing") for j in jobs)
+        self._has_active_jobs = any(j.status in ("queued", "processing") for j in merged_jobs)
         new_interval = (
             self.POLL_INTERVAL_PROCESSING
             if self._has_active_jobs
@@ -380,17 +402,25 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
 
         show_toast(self, f"Задача создана: {job_info.id[:8]}...", duration=2500)
 
-        # Оптимистично добавляем задачу в начало таблицы
+        # Добавляем задачу в список оптимистично добавленных с текущим timestamp
+        self._optimistic_jobs[job_info.id] = (job_info, time.time())
+        logger.info(f"Задача добавлена в оптимистичный список: {job_info.id}")
+
+        # Устанавливаем быстрый интервал обновления для скорейшей синхронизации
+        if self.refresh_timer.interval() > 2000:
+            self.refresh_timer.setInterval(2000)
+            logger.info("Установлен быстрый интервал обновления: 2000ms")
+
+        # Немедленно добавляем в таблицу
         logger.info(f"Добавление задачи в таблицу (оптимистично)")
         self._add_job_to_table(job_info, at_top=True)
         logger.info(f"Задача добавлена в таблицу, строк={self.jobs_table.rowCount()}")
 
-        # Фоновый refresh для синхронизации с сервером
-        logger.info("Запуск фонового обновления списка задач")
-        self._refresh_jobs(manual=False)
-
     def _on_job_create_error(self, error_type: str, message: str):
         """Слот: ошибка создания задачи"""
+        # Очищаем оптимистичный список при ошибке создания
+        self._optimistic_jobs.clear()
+        
         titles = {
             "auth": "Ошибка авторизации",
             "size": "Файл слишком большой",

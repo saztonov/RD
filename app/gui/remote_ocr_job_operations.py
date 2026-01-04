@@ -298,6 +298,10 @@ class JobOperationsMixin:
         try:
             client.delete_job(job_id)
 
+            # Удаляем из оптимистичного списка если есть
+            if hasattr(self, '_optimistic_jobs'):
+                self._optimistic_jobs.pop(job_id, None)
+
             from app.gui.toast import show_toast
 
             show_toast(self, "Задача удалена")
