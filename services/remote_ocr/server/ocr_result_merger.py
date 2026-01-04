@@ -198,8 +198,11 @@ def regenerate_html_from_result(
             block_id = blk.get("id", "")
             block_type = blk.get("block_type", "text")
             ocr_html = blk.get("ocr_html", "")
+            stamp_data = blk.get("stamp_data")
+            created_at = blk.get("created_at")
 
-            if not ocr_html:
+            # Блок отображается если есть контент ИЛИ метаданные
+            if not ocr_html and not stamp_data and not created_at:
                 continue
 
             block_count += 1
@@ -218,12 +221,10 @@ def regenerate_html_from_result(
                 html_parts.append(f"<p><b>Linked block:</b> {linked_armor}</p>")
 
             # Created - в шапку
-            created_at = blk.get("created_at")
             if created_at:
                 html_parts.append(f"<p><b>Created:</b> {created_at}</p>")
 
             # Stamp info - в шапку
-            stamp_data = blk.get("stamp_data")
             if stamp_data:
                 parts = format_stamp_parts(stamp_data)
                 if parts:
@@ -241,7 +242,8 @@ def regenerate_html_from_result(
                     )
 
             # Санитизируем HTML от мусорных артефактов datalab
-            html_parts.append(sanitize_html(ocr_html))
+            if ocr_html:
+                html_parts.append(sanitize_html(ocr_html))
             html_parts.append("</div></div>")
 
     html_parts.append(HTML_FOOTER)

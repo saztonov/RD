@@ -106,6 +106,9 @@ class TreeContextMenuMixin:
                 menu.addSeparator()
                 action = menu.addAction("☁️ Посмотреть на R2")
                 action.setData(("view_on_r2", node))
+                
+                action = menu.addAction("🗄️ Показать в Supabase")
+                action.setData(("view_in_supabase", node))
 
                 menu.addSeparator()
                 menu.addAction("✏️ Переименовать").setData(("rename", node))
@@ -183,3 +186,6 @@ class TreeContextMenuMixin:
         elif action == "verify_blocks":
             node = data[1]
             self._verify_blocks(node)
+        elif action == "view_in_supabase":
+            node = data[1]
+            self._view_in_supabase(node)

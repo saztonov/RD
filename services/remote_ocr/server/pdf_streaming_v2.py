@@ -381,7 +381,7 @@ def pass2_ocr_from_manifest(
 
             # Парсим результат
             index_results = parse_batch_response_by_index(
-                len(strip.block_parts), response_text
+                len(strip.block_parts), response_text, block_ids=block_ids
             )
             
             # Логируем результат парсинга для диагностики

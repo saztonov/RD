@@ -1165,3 +1165,10 @@ class ProjectTreeWidget(
 
         dialog = BlockVerificationDialog(node.name, r2_key, self)
         dialog.exec()
+
+    def _view_in_supabase(self, node: TreeNode):
+        """Открыть диалог просмотра файлов узла в Supabase"""
+        from app.gui.node_files_dialog import NodeFilesDialog
+
+        dialog = NodeFilesDialog(node, self.client, self)
+        dialog.exec()

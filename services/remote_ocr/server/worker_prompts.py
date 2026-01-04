@@ -113,10 +113,10 @@ def inject_pdfplumber_to_ocr_text(ocr_result: str, pdfplumber_text: str) -> str:
     return ocr_result
 
 
-def build_strip_prompt(blocks: list) -> dict:
+def build_strip_prompt(blocks: list, block_ids: Optional[List[str]] = None) -> dict:
     """
     Построить промпт для batch запроса (полоса TEXT/TABLE блоков).
-    Формат ответа: [1] результат первого ... [N] результат N-го
+    Формат ответа: BLOCK: XXXX-XXXX-XXX с результатом каждого блока.
     """
     if len(blocks) == 1:
         block = blocks[0]
@@ -127,19 +127,21 @@ def build_strip_prompt(blocks: list) -> dict:
             "user": "Распознай текст на изображении. Сохрани форматирование.",
         }
 
-    system = "You are an expert OCR system. Extract text from each block accurately."
+    system = (
+        "You are an expert OCR system. Extract text from each block accurately. "
+        "Each block is separated by a black bar with white text 'BLOCK: XXXX-XXXX-XXX'. "
+        "You MUST include these BLOCK markers in your response to separate each block's content."
+    )
     user = "Распознай текст на изображении."
 
     batch_instruction = (
-        f"\n\nНа изображении {len(blocks)} блоков, расположенных вертикально (сверху вниз).\n"
-        f"Распознай каждый блок ОТДЕЛЬНО.\n"
+        f"\n\nНа изображении {len(blocks)} блоков, разделённых чёрными полосами.\n"
+        f"Каждый блок начинается с маркера 'BLOCK: XXXX-XXXX-XXX' (белый текст на чёрном фоне).\n"
+        f"ВАЖНО: В ответе выводи маркер BLOCK: перед текстом КАЖДОГО блока.\n"
         f"Формат ответа:\n"
-    )
-    for i in range(1, len(blocks) + 1):
-        batch_instruction += f"[{i}] <результат блока {i}>\n"
-
-    batch_instruction += (
-        "\nНе объединяй блоки. Каждый блок — отдельный фрагмент документа."
+        f"BLOCK: XXXX-XXXX-XXX\n<текст первого блока>\n\n"
+        f"BLOCK: YYYY-YYYY-YYY\n<текст второго блока>\n...\n\n"
+        f"Не объединяй блоки. Каждый блок — отдельный фрагмент документа."
     )
 
     return {"system": system, "user": user + batch_instruction}
@@ -272,23 +274,52 @@ def parse_batch_response_by_index(
     armor_pattern = r"BLOCK:\s*([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3})"
     armor_matches = list(re.finditer(armor_pattern, response_text, re.IGNORECASE))
 
-    if armor_matches and len(armor_matches) >= num_blocks:
+    if armor_matches:
         logger.info(
             f"Парсинг по BLOCK (armor) разделителям: найдено {len(armor_matches)}"
         )
 
-        for i, match in enumerate(armor_matches):
-            if i >= num_blocks:
-                break
+        # Если есть block_ids - сопоставляем по armor кодам
+        if block_ids:
+            from .armor_id import match_armor_to_uuid
 
-            start_pos = match.end()
-            if i + 1 < len(armor_matches):
-                end_pos = armor_matches[i + 1].start()
-            else:
-                end_pos = len(response_text)
+            # Создаём маппинг block_id -> index
+            id_to_index = {bid: i for i, bid in enumerate(block_ids)}
 
-            block_text = response_text[start_pos:end_pos].strip()
-            results[i] = block_text
+            for i, match in enumerate(armor_matches):
+                armor_code = match.group(1)
+                start_pos = match.end()
+
+                if i + 1 < len(armor_matches):
+                    end_pos = armor_matches[i + 1].start()
+                else:
+                    end_pos = len(response_text)
+
+                block_text = response_text[start_pos:end_pos].strip()
+
+                # Сопоставляем armor код с uuid
+                matched_uuid, score = match_armor_to_uuid(armor_code, block_ids)
+                if matched_uuid and matched_uuid in id_to_index:
+                    idx = id_to_index[matched_uuid]
+                    results[idx] = block_text
+                else:
+                    logger.warning(
+                        f"Armor код {armor_code} не сопоставлен ни с одним block_id"
+                    )
+        else:
+            # Fallback: по порядку (старое поведение)
+            for i, match in enumerate(armor_matches):
+                if i >= num_blocks:
+                    break
+
+                start_pos = match.end()
+                if i + 1 < len(armor_matches):
+                    end_pos = armor_matches[i + 1].start()
+                else:
+                    end_pos = len(response_text)
+
+                block_text = response_text[start_pos:end_pos].strip()
+                results[i] = block_text
 
         for i in range(num_blocks):
             if i not in results:
