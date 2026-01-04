@@ -363,8 +363,9 @@ def pass2_ocr_from_manifest(
 
                 prompt_data = build_strip_prompt(strip_blocks)
 
+                block_ids = [bp["block_id"] for bp in strip.block_parts]
                 logger.info(
-                    f"PASS2: начало обработки strip {strip.strip_id} ({len(strip.block_parts)} блоков)"
+                    f"PASS2: начало обработки strip {strip.strip_id} ({len(strip.block_parts)} блоков): {block_ids}"
                 )
 
                 global_sem.acquire()
@@ -375,12 +376,17 @@ def pass2_ocr_from_manifest(
                 finally:
                     global_sem.release()
 
-                logger.info(f"PASS2: завершена обработка strip {strip.strip_id}")
+                response_len = len(response_text) if response_text else 0
+                logger.info(f"PASS2: завершена обработка strip {strip.strip_id}, ответ {response_len} символов")
 
             # Парсим результат
             index_results = parse_batch_response_by_index(
                 len(strip.block_parts), response_text
             )
+            
+            # Логируем результат парсинга для диагностики
+            parsed_lens = {i: len(v) if v else 0 for i, v in index_results.items()}
+            logger.info(f"PASS2: strip {strip.strip_id} парсинг результата: {parsed_lens}")
 
             return strip, index_results
 

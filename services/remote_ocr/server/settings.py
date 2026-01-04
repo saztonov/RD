@@ -148,6 +148,21 @@ class Settings:
             _db_settings, "datalab_max_concurrent", "DATALAB_MAX_CONCURRENT", 5, int
         )
     )
+    datalab_poll_interval: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "datalab_poll_interval", "DATALAB_POLL_INTERVAL", 3, int
+        )
+    )
+    datalab_poll_max_attempts: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "datalab_poll_max_attempts", "DATALAB_POLL_MAX_ATTEMPTS", 90, int
+        )
+    )
+    datalab_max_retries: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "datalab_max_retries", "DATALAB_MAX_RETRIES", 3, int
+        )
+    )
 
     # ===== НАСТРОЙКИ OCR =====
     crop_png_compress: int = field(

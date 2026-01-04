@@ -11,10 +11,12 @@ class DatalabOCRBackend:
     """OCR через Datalab Marker API"""
 
     API_URL = "https://www.datalab.to/api/v1/marker"
-    POLL_INTERVAL = 3
-    MAX_POLL_ATTEMPTS = 60  # Уменьшено с 180 до 60 (3 минуты вместо 9)
-    MAX_RETRIES = 3
     MAX_WIDTH = 4000
+
+    # Дефолтные значения (переопределяются через настройки)
+    DEFAULT_POLL_INTERVAL = 3
+    DEFAULT_POLL_MAX_ATTEMPTS = 90
+    DEFAULT_MAX_RETRIES = 3
 
     BLOCK_CORRECTION_PROMPT = """You are a specialized QA OCR assistant for Russian Construction Documentation (Stages P & RD). Your goal is to transcribe image blocks into strict Markdown for automated error checking.
 
@@ -35,13 +37,26 @@ RULES:
 6. **Block Separators (CRITICAL)**: If you see text like "[[[BLOCK_ID: uuid]]]" (black text on white background), you MUST preserve it EXACTLY in your output. These are block identifiers that must appear in the final text.
 7. **Output**: Return ONLY the clean Markdown. No conversational filler."""
 
-    def __init__(self, api_key: str, rate_limiter=None):
+    def __init__(
+        self,
+        api_key: str,
+        rate_limiter=None,
+        poll_interval: Optional[int] = None,
+        poll_max_attempts: Optional[int] = None,
+        max_retries: Optional[int] = None,
+    ):
         if not api_key:
             raise ValueError("DATALAB_API_KEY не указан")
         self.api_key = api_key
         self.headers = {"X-Api-Key": api_key}
         self.rate_limiter = rate_limiter
         self.last_html_result: Optional[str] = None  # HTML результат последнего запроса
+
+        # Настройки polling (из параметров или дефолт)
+        self.poll_interval = poll_interval if poll_interval is not None else self.DEFAULT_POLL_INTERVAL
+        self.poll_max_attempts = poll_max_attempts if poll_max_attempts is not None else self.DEFAULT_POLL_MAX_ATTEMPTS
+        self.max_retries = max_retries if max_retries is not None else self.DEFAULT_MAX_RETRIES
+
         try:
             import requests
             from requests.adapters import HTTPAdapter
@@ -56,7 +71,10 @@ RULES:
             self.session.mount("http://", adapter)
         except ImportError:
             raise ImportError("Требуется установить requests: pip install requests")
-        logger.info("Datalab OCR инициализирован")
+        logger.info(
+            f"Datalab OCR инициализирован (poll_interval={self.poll_interval}s, "
+            f"poll_max_attempts={self.poll_max_attempts}, max_retries={self.max_retries})"
+        )
 
     def recognize(
         self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None
@@ -85,117 +103,138 @@ RULES:
                 tmp_path = tmp.name
 
             try:
-                response = None
-                for retry in range(self.MAX_RETRIES):
-                    with open(tmp_path, "rb") as f:
-                        import json
-
-                        files = {"file": (os.path.basename(tmp_path), f, "image/png")}
-                        data = {
-                            "mode": "accurate",
-                            "paginate": "true",
-                            "output_format": "html",
-                            "disable_image_extraction": "true",
-                            "disable_image_captions": "true",
-                            "block_correction_prompt": self.BLOCK_CORRECTION_PROMPT,
-                            "additional_config": json.dumps(
-                                {"keep_pageheader_in_output": True}
-                            ),
-                        }
-
-                        response = self.session.post(
-                            self.API_URL,
-                            headers=self.headers,
-                            files=files,
-                            data=data,
-                            timeout=120,
-                        )
-
-                    if response.status_code == 429:
-                        wait_time = min(60, (2**retry) * 10)
+                # Внешний retry loop для повторной отправки при таймауте polling
+                for full_retry in range(self.max_retries):
+                    if full_retry > 0:
                         logger.warning(
-                            f"Datalab API 429: ждём {wait_time}с (попытка {retry + 1}/{self.MAX_RETRIES})"
+                            f"Datalab: повторная отправка запроса (попытка {full_retry + 1}/{self.max_retries})"
                         )
-                        time.sleep(wait_time)
-                        continue
-                    break
 
-                if response is None or response.status_code == 429:
-                    return "[Ошибка Datalab API: превышен лимит запросов (429)]"
+                    response = None
+                    for retry in range(self.max_retries):
+                        with open(tmp_path, "rb") as f:
+                            import json
 
-                if response.status_code != 200:
-                    logger.error(
-                        f"Datalab API error: {response.status_code} - {response.text}"
-                    )
-                    return f"[Ошибка Datalab API: {response.status_code}]"
+                            files = {"file": (os.path.basename(tmp_path), f, "image/png")}
+                            data = {
+                                "mode": "accurate",
+                                "paginate": "true",
+                                "output_format": "html",
+                                "disable_image_extraction": "true",
+                                "disable_image_captions": "true",
+                                "block_correction_prompt": self.BLOCK_CORRECTION_PROMPT,
+                                "additional_config": json.dumps(
+                                    {"keep_pageheader_in_output": True}
+                                ),
+                            }
 
-                result = response.json()
+                            response = self.session.post(
+                                self.API_URL,
+                                headers=self.headers,
+                                files=files,
+                                data=data,
+                                timeout=120,
+                            )
 
-                if not result.get("success"):
-                    error = result.get("error", "Unknown error")
-                    return f"[Ошибка Datalab: {error}]"
+                        if response.status_code == 429:
+                            wait_time = min(60, (2**retry) * 10)
+                            logger.warning(
+                                f"Datalab API 429: ждём {wait_time}с (попытка {retry + 1}/{self.max_retries})"
+                            )
+                            time.sleep(wait_time)
+                            continue
+                        break
 
-                check_url = result.get("request_check_url")
-                if not check_url:
-                    if "json" in result:
-                        json_result = result["json"]
-                        if isinstance(json_result, dict):
-                            import json as json_lib
+                    if response is None or response.status_code == 429:
+                        return "[Ошибка Datalab API: превышен лимит запросов (429)]"
 
-                            return json_lib.dumps(json_result, ensure_ascii=False)
-                        return json_result
-                    return "[Ошибка: нет request_check_url]"
-
-                logger.info(f"Datalab: начало поллинга результата по URL: {check_url}")
-                for attempt in range(self.MAX_POLL_ATTEMPTS):
-                    time.sleep(self.POLL_INTERVAL)
-
-                    logger.debug(
-                        f"Datalab: попытка поллинга {attempt + 1}/{self.MAX_POLL_ATTEMPTS}"
-                    )
-                    poll_response = self.session.get(
-                        check_url, headers=self.headers, timeout=30
-                    )
-
-                    if poll_response.status_code == 429:
-                        logger.warning("Datalab: 429 при поллинге, ждём 30с")
-                        time.sleep(30)
-                        continue
-
-                    if poll_response.status_code != 200:
-                        logger.warning(
-                            f"Datalab: поллинг вернул статус {poll_response.status_code}: {poll_response.text}"
+                    if response.status_code != 200:
+                        logger.error(
+                            f"Datalab API error: {response.status_code} - {response.text}"
                         )
-                        continue
+                        return f"[Ошибка Datalab API: {response.status_code}]"
 
-                    poll_result = poll_response.json()
-                    status = poll_result.get("status", "")
+                    result = response.json()
 
-                    logger.info(
-                        f"Datalab: текущий статус задачи: '{status}' (попытка {attempt + 1}/{self.MAX_POLL_ATTEMPTS})"
-                    )
-
-                    if status == "complete":
-                        logger.info("Datalab: задача успешно завершена")
-                        html_result = poll_result.get("html", "")
-                        logger.debug(
-                            f"Datalab: ключи ответа: {list(poll_result.keys())}"
-                        )
-                        self.last_html_result = html_result if html_result else None
-                        return html_result if html_result else ""
-                    elif status == "failed":
-                        error = poll_result.get("error", "Unknown error")
-                        logger.error(f"Datalab: задача завершилась с ошибкой: {error}")
+                    if not result.get("success"):
+                        error = result.get("error", "Unknown error")
                         return f"[Ошибка Datalab: {error}]"
-                    elif status not in ["processing", "pending", "queued"]:
-                        logger.warning(
-                            f"Datalab: неизвестный статус '{status}'. Полный ответ: {poll_result}"
+
+                    check_url = result.get("request_check_url")
+                    if not check_url:
+                        if "json" in result:
+                            json_result = result["json"]
+                            if isinstance(json_result, dict):
+                                import json as json_lib
+
+                                return json_lib.dumps(json_result, ensure_ascii=False)
+                            return json_result
+                        return "[Ошибка: нет request_check_url]"
+
+                    logger.info(f"Datalab: начало поллинга результата по URL: {check_url}")
+                    poll_timeout = False
+                    for attempt in range(self.poll_max_attempts):
+                        time.sleep(self.poll_interval)
+
+                        logger.debug(
+                            f"Datalab: попытка поллинга {attempt + 1}/{self.poll_max_attempts}"
+                        )
+                        poll_response = self.session.get(
+                            check_url, headers=self.headers, timeout=30
                         )
 
+                        if poll_response.status_code == 429:
+                            logger.warning("Datalab: 429 при поллинге, ждём 30с")
+                            time.sleep(30)
+                            continue
+
+                        if poll_response.status_code != 200:
+                            logger.warning(
+                                f"Datalab: поллинг вернул статус {poll_response.status_code}: {poll_response.text}"
+                            )
+                            continue
+
+                        poll_result = poll_response.json()
+                        status = poll_result.get("status", "")
+
+                        logger.info(
+                            f"Datalab: текущий статус задачи: '{status}' (попытка {attempt + 1}/{self.poll_max_attempts})"
+                        )
+
+                        if status == "complete":
+                            logger.info("Datalab: задача успешно завершена")
+                            html_result = poll_result.get("html", "")
+                            logger.debug(
+                                f"Datalab: ключи ответа: {list(poll_result.keys())}"
+                            )
+                            self.last_html_result = html_result if html_result else None
+                            return html_result if html_result else ""
+                        elif status == "failed":
+                            error = poll_result.get("error", "Unknown error")
+                            logger.error(f"Datalab: задача завершилась с ошибкой: {error}")
+                            return f"[Ошибка Datalab: {error}]"
+                        elif status not in ["processing", "pending", "queued"]:
+                            logger.warning(
+                                f"Datalab: неизвестный статус '{status}'. Полный ответ: {poll_result}"
+                            )
+
+                    # Таймаут поллинга - попробуем отправить новый запрос
+                    logger.warning(
+                        f"Datalab: таймаут поллинга после {self.poll_max_attempts} попыток, "
+                        f"retry {full_retry + 1}/{self.max_retries}"
+                    )
+                    poll_timeout = True
+
+                    if full_retry < self.max_retries - 1:
+                        # Ждём перед повторной отправкой
+                        wait_time = (full_retry + 1) * 10
+                        logger.info(f"Datalab: ожидание {wait_time}с перед повторной отправкой")
+                        time.sleep(wait_time)
+
+                # Все retry исчерпаны
                 logger.error(
-                    f"Datalab: превышено время ожидания после {self.MAX_POLL_ATTEMPTS} попыток"
+                    f"Datalab: превышено время ожидания после {self.max_retries} полных попыток"
                 )
-                # Возвращаем пустую строку вместо ошибки, чтобы продолжить обработку
                 logger.warning(
                     f"Datalab: пропускаем блок из-за таймаута, продолжаем обработку"
                 )
