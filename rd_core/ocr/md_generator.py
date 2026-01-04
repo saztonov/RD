@@ -12,6 +12,7 @@ from .generator_common import (
     collect_block_groups,
     collect_inheritable_stamp_data,
     extract_image_ocr_data,
+    find_page_stamp,
     get_block_armor_id,
     is_image_ocr_json,
     sanitize_html,
@@ -310,6 +311,23 @@ def generate_md_from_pages(
             if page_num != current_page_num:
                 current_page_num = page_num
                 md_parts.append(f"## СТРАНИЦА {page_num}")
+
+                # Добавляем информацию из штампа страницы (лист, наименование)
+                page_stamp = find_page_stamp(page.blocks)
+                if page_stamp:
+                    sheet_num = page_stamp.get("sheet_number", "")
+                    total_sheets = page_stamp.get("total_sheets", "")
+                    sheet_name = page_stamp.get("sheet_name", "")
+
+                    if sheet_num or total_sheets:
+                        if total_sheets:
+                            md_parts.append(f"**Лист:** {sheet_num} (из {total_sheets})")
+                        else:
+                            md_parts.append(f"**Лист:** {sheet_num}")
+
+                    if sheet_name:
+                        md_parts.append(f"**Наименование листа:** {sheet_name}")
+
                 md_parts.append("")
 
             for block in page.blocks:
@@ -424,6 +442,28 @@ def generate_md_from_result(
         if page_num != current_page_num:
             current_page_num = page_num
             md_parts.append(f"## СТРАНИЦА {page_num}")
+
+            # Ищем штамп на странице для получения информации о листе
+            page_stamp = None
+            for blk in page.get("blocks", []):
+                if blk.get("category_code") == "stamp":
+                    page_stamp = blk.get("stamp_data") or blk.get("ocr_json")
+                    break
+
+            if page_stamp:
+                sheet_num = page_stamp.get("sheet_number", "")
+                total_sheets = page_stamp.get("total_sheets", "")
+                sheet_name = page_stamp.get("sheet_name", "")
+
+                if sheet_num or total_sheets:
+                    if total_sheets:
+                        md_parts.append(f"**Лист:** {sheet_num} (из {total_sheets})")
+                    else:
+                        md_parts.append(f"**Лист:** {sheet_num}")
+
+                if sheet_name:
+                    md_parts.append(f"**Наименование листа:** {sheet_name}")
+
             md_parts.append("")
 
         for blk in page.get("blocks", []):
