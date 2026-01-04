@@ -96,16 +96,16 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         )
         logger.info(f"Загружен result.json в R2: {r2_key}")
 
-    # document.md -> {doc_stem}_document.md (компактный Markdown для LLM)
+    # document.md -> {doc_stem}_document.md (компактный Markdown для LLM, file_type=result_md)
     md_path = work_dir / "document.md"
     if md_path.exists():
         md_filename = f"{doc_stem}_document.md"
         r2_key = f"{r2_prefix}/{md_filename}"
         r2.upload_file(str(md_path), r2_key)
         add_job_file(
-            job.id, "document_md", r2_key, md_filename, md_path.stat().st_size
+            job.id, "result_md", r2_key, md_filename, md_path.stat().st_size
         )
-        logger.info(f"✅ Загружен document.md в R2: {r2_key}")
+        logger.info(f"✅ Загружен document.md в R2: {r2_key} (file_type=result_md)")
     else:
         logger.warning(f"⚠️ document.md не найден для загрузки в R2: {md_path}")
 
