@@ -432,9 +432,12 @@ class MainWindow(
         def check_connection() -> bool:
             """Проверить доступность сервера"""
             try:
-                from app.remote_ocr_client import RemoteOCRClient
-                client = RemoteOCRClient()
-                return client.health()
+                # Переиспользуем клиент из remote_ocr_panel
+                if self.remote_ocr_panel:
+                    client = self.remote_ocr_panel._get_client()
+                    if client:
+                        return client.health()
+                return False
             except Exception:
                 return False
         
