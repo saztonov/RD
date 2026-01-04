@@ -128,11 +128,11 @@ def _html_to_markdown(html: str) -> str:
 
     text = re.sub(r"<table[^>]*>.*?</table>", process_table_match, text, flags=re.DOTALL)
 
-    # Заголовки
-    text = re.sub(r"<h1[^>]*>\s*(.*?)\s*</h1>", r"# \1\n", text, flags=re.DOTALL)
-    text = re.sub(r"<h2[^>]*>\s*(.*?)\s*</h2>", r"## \1\n", text, flags=re.DOTALL)
-    text = re.sub(r"<h3[^>]*>\s*(.*?)\s*</h3>", r"### \1\n", text, flags=re.DOTALL)
-    text = re.sub(r"<h4[^>]*>\s*(.*?)\s*</h4>", r"#### \1\n", text, flags=re.DOTALL)
+    # Заголовки (сдвиг на 3 уровня вниз для вложенности в блок)
+    text = re.sub(r"<h1[^>]*>\s*(.*?)\s*</h1>", r"#### \1\n", text, flags=re.DOTALL)
+    text = re.sub(r"<h2[^>]*>\s*(.*?)\s*</h2>", r"##### \1\n", text, flags=re.DOTALL)
+    text = re.sub(r"<h3[^>]*>\s*(.*?)\s*</h3>", r"###### \1\n", text, flags=re.DOTALL)
+    text = re.sub(r"<h4[^>]*>\s*(.*?)\s*</h4>", r"###### \1\n", text, flags=re.DOTALL)
 
     # Жирный и курсив
     text = re.sub(r"<b>\s*(.*?)\s*</b>", r"**\1**", text, flags=re.DOTALL)
@@ -339,8 +339,11 @@ def generate_md_from_pages(
                 armor_code = get_block_armor_id(block.id)
                 block_type = block.block_type.value.upper()
 
-                # Метаданные блока - компактно в одну строку
-                meta_parts = [f"[{block_type}]", f"BLOCK:{armor_code}"]
+                # Заголовок блока (H3)
+                header_parts = [f"### БЛОК [{block_type}]: {armor_code}"]
+
+                # Метаданные - компактно в одну строку под заголовком
+                meta_parts = []
 
                 # Linked block
                 linked_id = getattr(block, "linked_block_id", None)
@@ -354,7 +357,9 @@ def generate_md_from_pages(
                     group_block_ids = [get_block_armor_id(b.id) for b in groups[group_id]]
                     meta_parts.append(f"📦{group_name}[{','.join(group_block_ids)}]")
 
-                md_parts.append(" ".join(meta_parts))
+                md_parts.append(" ".join(header_parts))
+                if meta_parts:
+                    md_parts.append(" ".join(meta_parts))
 
                 # Содержимое блока
                 content = _process_ocr_content(block.ocr_text)
@@ -478,8 +483,11 @@ def generate_md_from_result(
 
             block_count += 1
 
-            # Метаданные блока
-            meta_parts = [f"[{block_type}]", f"BLOCK:{block_id}"]
+            # Заголовок блока (H3)
+            header_parts = [f"### БЛОК [{block_type}]: {block_id}"]
+
+            # Метаданные - компактно в одну строку под заголовком
+            meta_parts = []
 
             # Linked block
             if blk.get("linked_block_id"):
@@ -492,7 +500,9 @@ def generate_md_from_result(
                 group_block_ids = groups[group_id]
                 meta_parts.append(f"📦{group_name}[{','.join(group_block_ids)}]")
 
-            md_parts.append(" ".join(meta_parts))
+            md_parts.append(" ".join(header_parts))
+            if meta_parts:
+                md_parts.append(" ".join(meta_parts))
 
             # Содержимое блока
             content = ""
