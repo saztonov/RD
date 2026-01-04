@@ -547,24 +547,25 @@ class R2FilesDialog(QDialog):
 
             # Удаляем локальные файлы
             if deleted_keys and self.local_folder:
-                for r2_key in deleted_keys:
-                    try:
-                        # Извлекаем имя файла из ключа
-                        filename = Path(r2_key).name
-                        local_file = self.local_folder / filename
-                        if local_file.exists():
-                            local_file.unlink()
-                            logger.info(f"Deleted local file: {local_file}")
+                from app.gui.folder_settings_dialog import get_projects_dir
 
-                        # Для кропов проверяем подпапку crops
-                        if "crops/" in r2_key:
-                            rel_path = r2_key.split("crops/")[-1]
-                            crops_file = self.local_folder / "crops" / rel_path
-                            if crops_file.exists():
-                                crops_file.unlink()
-                                logger.info(f"Deleted local crop: {crops_file}")
-                    except Exception as e:
-                        logger.warning(f"Failed to delete local file: {e}")
+                projects_dir = get_projects_dir()
+                if projects_dir:
+                    for r2_key in deleted_keys:
+                        try:
+                            # Определяем локальный путь на основе r2_key
+                            if r2_key.startswith("tree_docs/"):
+                                rel_path = r2_key[len("tree_docs/") :]
+                            else:
+                                rel_path = r2_key
+
+                            # Полный путь к файлу в кэше
+                            local_file = Path(projects_dir) / "cache" / rel_path
+                            if local_file.exists():
+                                local_file.unlink()
+                                logger.info(f"Deleted local file: {local_file}")
+                        except Exception as e:
+                            logger.warning(f"Failed to delete local file {r2_key}: {e}")
 
             # Удаляем записи из Supabase node_files
             if deleted_keys and self.node_id:

@@ -927,16 +927,24 @@ class ProjectTreeWidget(
             from app.gui.folder_settings_dialog import get_projects_dir
 
             local_folder = None
-            if node.node_type == NodeType.DOCUMENT:
-                r2_key = node.attributes.get("r2_key", "")
-                if r2_key:
-                    projects_dir = get_projects_dir()
-                    rel_path = (
-                        r2_key[len("tree_docs/") :]
-                        if r2_key.startswith("tree_docs/")
-                        else r2_key
-                    )
-                    local_folder = Path(projects_dir) / Path(rel_path).parent
+            projects_dir = get_projects_dir()
+            if projects_dir:
+                # Для всех типов узлов формируем путь к кэшу
+                if node.node_type == NodeType.DOCUMENT:
+                    r2_key = node.attributes.get("r2_key", "")
+                    if r2_key:
+                        rel_path = (
+                            r2_key[len("tree_docs/") :]
+                            if r2_key.startswith("tree_docs/")
+                            else r2_key
+                        )
+                        local_folder = Path(projects_dir) / "cache" / Path(rel_path).parent
+                    else:
+                        # Если r2_key нет, используем node_id
+                        local_folder = Path(projects_dir) / "cache" / node.id
+                else:
+                    # Для папок используем node_id
+                    local_folder = Path(projects_dir) / "cache" / node.id
 
             self.status_label.setText("")
 
