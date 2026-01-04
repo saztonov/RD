@@ -6,7 +6,7 @@
 import copy
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QLabel, QMainWindow, QProgressBar, QStatusBar
 
 from app.gui.block_handlers import BlockHandlersMixin
