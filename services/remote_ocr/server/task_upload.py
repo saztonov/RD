@@ -96,6 +96,17 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         )
         logger.info(f"Загружен result.json в R2: {r2_key}")
 
+    # document.md -> {doc_stem}_document.md (компактный Markdown для LLM)
+    md_path = work_dir / "document.md"
+    if md_path.exists():
+        md_filename = f"{doc_stem}_document.md"
+        r2_key = f"{r2_prefix}/{md_filename}"
+        r2.upload_file(str(md_path), r2_key)
+        add_job_file(
+            job.id, "document_md", r2_key, md_filename, md_path.stat().st_size
+        )
+        logger.info(f"Загружен document.md в R2: {r2_key}")
+
     # crops/ (проверяем оба варианта: crops и crops_final для двухпроходного алгоритма)
     # Исключаем блоки-штампы (category_code='stamp')
     stamp_ids = _get_stamp_block_ids(work_dir)

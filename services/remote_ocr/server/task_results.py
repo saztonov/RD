@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> str:
     """Генерация результатов OCR (annotation.json + HTML)"""
     from rd_core.models import Block, Document, Page, ShapeType
-    from rd_core.ocr import generate_html_from_pages
+    from rd_core.ocr import generate_html_from_pages, generate_md_from_pages
 
     from .pdf_streaming import get_page_dimensions_streaming
 
@@ -105,6 +105,16 @@ def generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> 
         logger.info(f"HTML файл сгенерирован: {html_path}")
     except Exception as e:
         logger.warning(f"Ошибка генерации HTML: {e}")
+
+    # Генерация компактного Markdown файла (оптимизирован для LLM)
+    md_path = work_dir / "document.md"
+    try:
+        generate_md_from_pages(
+            pages, str(md_path), doc_name=doc_name, project_name=project_name
+        )
+        logger.info(f"MD файл сгенерирован: {md_path}")
+    except Exception as e:
+        logger.warning(f"Ошибка генерации MD: {e}")
 
     # Генерация result.json (annotation + ocr_html + crop_url для каждого блока)
     result_path = work_dir / "result.json"

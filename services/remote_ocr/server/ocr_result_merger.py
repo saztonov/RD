@@ -234,11 +234,31 @@ def merge_ocr_results(
         # Регенерируем HTML из разделённых ocr_html
         regenerate_html_from_result(result, ocr_html_path, doc_name=doc_name)
 
+        # Регенерируем MD из разделённых ocr_html
+        md_path = output_path.parent / "document.md"
+        regenerate_md_from_result(result, md_path, doc_name=doc_name)
+
         return True
 
     except Exception as e:
         logger.error(f"Ошибка объединения OCR результатов: {e}", exc_info=True)
         return False
+
+
+def regenerate_md_from_result(
+    result: dict, output_path: Path, doc_name: Optional[str] = None
+) -> None:
+    """
+    Регенерировать Markdown файл из result.json.
+
+    Компактный формат, оптимизированный для LLM.
+    """
+    from rd_core.ocr.md_generator import generate_md_from_result
+
+    try:
+        generate_md_from_result(result, output_path, doc_name=doc_name)
+    except Exception as e:
+        logger.warning(f"Ошибка регенерации MD: {e}")
 
 
 def regenerate_html_from_result(
