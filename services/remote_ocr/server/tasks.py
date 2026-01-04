@@ -151,8 +151,9 @@ def run_ocr_task(self, job_id: str) -> dict:
 
         force_gc("после OCR обработки")
 
-        # Генерация результатов
-        r2_prefix = generate_results(job, pdf_path, blocks, work_dir)
+        # Генерация результатов (передаём datalab backend для верификации)
+        verification_backend = strip_backend if engine == "datalab" else None
+        r2_prefix = generate_results(job, pdf_path, blocks, work_dir, verification_backend)
 
         # Загрузка результатов в R2
         logger.info(f"Загрузка результатов в R2...")

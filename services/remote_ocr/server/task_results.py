@@ -11,7 +11,9 @@ from .storage import Job, get_node_full_path, get_node_pdf_r2_key
 logger = logging.getLogger(__name__)
 
 
-def generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> str:
+def generate_results(
+    job: Job, pdf_path: Path, blocks: list, work_dir: Path, datalab_backend=None
+) -> str:
     """Генерация результатов OCR (annotation.json + HTML)"""
     from rd_core.models import Block, Document, Page, ShapeType
     from rd_core.ocr import generate_html_from_pages, generate_md_from_pages
@@ -131,5 +133,15 @@ def generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> 
         )
     except Exception as e:
         logger.warning(f"Ошибка генерации result.json: {e}")
+
+    # Верификация и повторное распознавание пропущенных блоков
+    if datalab_backend and result_path.exists():
+        from .block_verification import verify_and_retry_missing_blocks
+        
+        try:
+            logger.info("Запуск верификации блоков...")
+            verify_and_retry_missing_blocks(result_path, pdf_path, work_dir, datalab_backend)
+        except Exception as e:
+            logger.warning(f"Ошибка верификации блоков: {e}", exc_info=True)
 
     return r2_prefix
