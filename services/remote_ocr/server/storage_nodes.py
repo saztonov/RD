@@ -375,6 +375,20 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
         )
         registered += 1
 
+    # document.md -> {doc_stem}_document.md
+    document_md = work_path / "document.md"
+    if document_md.exists():
+        md_filename = f"{doc_stem}_document.md"
+        add_node_file(
+            node_id,
+            "document_md",
+            f"{tree_prefix}/{md_filename}",
+            md_filename,
+            document_md.stat().st_size,
+            "text/markdown",
+        )
+        registered += 1
+
     # Собираем все кропы из crops/ и crops_final/
     all_crop_files: List[Path] = []
     for crops_subdir in ["crops", "crops_final"]:
