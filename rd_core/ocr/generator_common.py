@@ -1,9 +1,10 @@
-"""Общие утилиты для генераторов HTML и Markdown из OCR результатов."""
+"""Общие утилиты для генераторов HTML, Markdown и result.json из OCR результатов."""
 import json as json_module
 import logging
 import re
 from collections import Counter
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,49 @@ INHERITABLE_STAMP_FIELDS = ("document_code", "project_name", "stage", "organizat
 
 # Алфавит для armor ID
 ARMOR_ALPHABET = "34679ACDEFGHJKLMNPQRTUVWXY"
+
+# HTML шаблон (общий для всех генераторов)
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title} - OCR</title>
+    <style>
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 2rem; line-height: 1.6; }}
+        .block {{ margin: 1.5rem 0; padding: 1rem; border-left: 3px solid #3498db; background: #f8f9fa; }}
+        .block-header {{ font-size: 0.8rem; color: #666; margin-bottom: 0.5rem; }}
+        .block-content {{ }}
+        .block-type-text {{ border-left-color: #2ecc71; }}
+        .block-type-table {{ border-left-color: #e74c3c; }}
+        .block-type-image {{ border-left-color: #9b59b6; }}
+        .block-content h3 {{ color: #555; font-size: 1rem; margin: 1rem 0 0.5rem 0; padding-bottom: 0.3rem; border-bottom: 1px solid #ddd; }}
+        .block-content p {{ margin: 0.5rem 0; }}
+        .block-content code {{ background: #e8f4f8; padding: 0.2rem 0.4rem; margin: 0.2rem; border-radius: 3px; display: inline-block; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9em; }}
+        .stamp-info {{ font-size: 0.75rem; color: #2980b9; background: #eef6fc; padding: 0.4rem 0.6rem; margin-top: 0.5rem; border-radius: 3px; border: 1px solid #bde0f7; }}
+        .stamp-inherited {{ color: #7f8c8d; background: #f5f5f5; border-color: #ddd; font-style: italic; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 0.5rem; text-align: left; }}
+        th {{ background: #f0f0f0; }}
+        img {{ max-width: 100%; height: auto; }}
+        h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; }}
+        pre {{ white-space: pre-wrap; word-wrap: break-word; background: #fff; padding: 0.5rem; }}
+    </style>
+</head>
+<body>
+<h1>{title}</h1>
+<p>Сгенерировано: {timestamp} UTC</p>
+"""
+
+HTML_FOOTER = "</body></html>"
+
+
+def get_html_header(title: str) -> str:
+    """Получить HTML заголовок с шаблоном."""
+    return HTML_TEMPLATE.format(
+        title=title,
+        timestamp=datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    )
 
 
 def get_block_armor_id(block_id: str) -> str:
@@ -189,7 +233,7 @@ def is_image_ocr_json(data: dict) -> bool:
     )
 
 
-def format_stamp_parts(stamp_data: Dict) -> List[str]:
+def format_stamp_parts(stamp_data: Dict) -> List[tuple]:
     """
     Извлечь части штампа для форматирования.
 
@@ -255,3 +299,65 @@ def format_stamp_parts(stamp_data: Dict) -> List[str]:
             parts.append(("Ответственные", signatures))
 
     return parts
+
+
+# =============================================================================
+# Функции для работы с dict (используются в result.json / ocr_result_merger)
+# =============================================================================
+
+
+def find_page_stamp_dict(page: Dict) -> Optional[Dict]:
+    """Найти JSON штампа на странице (для dict структуры)."""
+    for blk in page.get("blocks", []):
+        if blk.get("block_type") == "image" and blk.get("category_code") == "stamp":
+            return blk.get("ocr_json")
+    return None
+
+
+def collect_inheritable_stamp_data_dict(pages: List[Dict]) -> Optional[Dict]:
+    """
+    Собрать общие поля штампа со всех страниц (для dict структуры).
+    Для каждого поля выбирается наиболее часто встречающееся значение (мода).
+    """
+    field_values: Dict[str, List] = {field: [] for field in INHERITABLE_STAMP_FIELDS}
+
+    for page in pages:
+        stamp_json = find_page_stamp_dict(page)
+        if stamp_json:
+            for field in INHERITABLE_STAMP_FIELDS:
+                val = stamp_json.get(field)
+                if val:
+                    field_values[field].append(val)
+
+    inherited = {}
+    for field in INHERITABLE_STAMP_FIELDS:
+        values = field_values[field]
+        if values:
+            counter = Counter(values)
+            most_common = counter.most_common(1)[0][0]
+            inherited[field] = most_common
+
+    return inherited if inherited else None
+
+
+def propagate_stamp_data(page: Dict, inherited_data: Optional[Dict] = None) -> None:
+    """
+    Распространить данные штампа на все блоки страницы.
+    Если на странице есть штамп - мержим его с inherited_data.
+    Если штампа нет - используем inherited_data.
+    """
+    blocks = page.get("blocks", [])
+    stamp_json = find_page_stamp_dict(page)
+
+    if stamp_json:
+        merged = dict(stamp_json)
+        if inherited_data:
+            for field in INHERITABLE_STAMP_FIELDS:
+                if not merged.get(field):
+                    if inherited_data.get(field):
+                        merged[field] = inherited_data[field]
+        for blk in blocks:
+            blk["stamp_data"] = merged
+    elif inherited_data:
+        for blk in blocks:
+            blk["stamp_data"] = inherited_data

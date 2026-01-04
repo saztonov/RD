@@ -3,11 +3,11 @@ import json as json_module
 import logging
 import os
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .generator_common import (
+    HTML_FOOTER,
     INHERITABLE_STAMP_FIELDS,
     collect_block_groups,
     collect_inheritable_stamp_data,
@@ -15,6 +15,7 @@ from .generator_common import (
     find_page_stamp,
     format_stamp_parts,
     get_block_armor_id,
+    get_html_header,
     is_image_ocr_json,
 )
 
@@ -180,39 +181,8 @@ def generate_html_from_pages(
 
         title = doc_name or "OCR Result"
 
-        html_parts = [
-            f"""<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title} - OCR</title>
-    <style>
-        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 2rem; line-height: 1.6; }}
-        .block {{ margin: 1.5rem 0; padding: 1rem; border-left: 3px solid #3498db; background: #f8f9fa; }}
-        .block-header {{ font-size: 0.8rem; color: #666; margin-bottom: 0.5rem; }}
-        .block-content {{ }}
-        .block-type-text {{ border-left-color: #2ecc71; }}
-        .block-type-table {{ border-left-color: #e74c3c; }}
-        .block-type-image {{ border-left-color: #9b59b6; }}
-        .block-content h3 {{ color: #555; font-size: 1rem; margin: 1rem 0 0.5rem 0; padding-bottom: 0.3rem; border-bottom: 1px solid #ddd; }}
-        .block-content p {{ margin: 0.5rem 0; }}
-        .block-content code {{ background: #e8f4f8; padding: 0.2rem 0.4rem; margin: 0.2rem; border-radius: 3px; display: inline-block; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9em; }}
-        .stamp-info {{ font-size: 0.75rem; color: #2980b9; background: #eef6fc; padding: 0.4rem 0.6rem; margin-top: 0.5rem; border-radius: 3px; border: 1px solid #bde0f7; }}
-        .stamp-inherited {{ color: #7f8c8d; background: #f5f5f5; border-color: #ddd; font-style: italic; }}
-        table {{ border-collapse: collapse; width: 100%; margin: 0.5rem 0; }}
-        th, td {{ border: 1px solid #ddd; padding: 0.5rem; text-align: left; }}
-        th {{ background: #f0f0f0; }}
-        img {{ max-width: 100%; height: auto; }}
-        h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; }}
-        pre {{ white-space: pre-wrap; word-wrap: break-word; background: #fff; padding: 0.5rem; }}
-    </style>
-</head>
-<body>
-<h1>{title}</h1>
-<p>Сгенерировано: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
-"""
-        ]
+        # Используем общий HTML шаблон
+        html_parts = [get_html_header(title)]
 
         # Собираем блоки по группам
         groups = collect_block_groups(pages)
@@ -301,7 +271,7 @@ def generate_html_from_pages(
 
                 html_parts.append("</div></div>")
 
-        html_parts.append("</body></html>")
+        html_parts.append(HTML_FOOTER)
 
         with open(output_file, "w", encoding="utf-8") as f:
             f.write("\n".join(html_parts))
