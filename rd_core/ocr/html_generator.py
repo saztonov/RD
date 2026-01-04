@@ -1,110 +1,56 @@
-"""Генератор HTML из OCR результатов"""
+"""Генератор HTML (ocr.html) из OCR результатов."""
 import json as json_module
 import logging
 import os
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .generator_common import (
+    INHERITABLE_STAMP_FIELDS,
+    collect_block_groups,
+    collect_inheritable_stamp_data,
+    extract_image_ocr_data,
+    find_page_stamp,
+    format_stamp_parts,
+    get_block_armor_id,
+    is_image_ocr_json,
+)
+
 logger = logging.getLogger(__name__)
 
 
-def _get_block_armor_id(block_id: str) -> str:
-    """
-    Получить armor ID блока.
-
-    Новые блоки уже имеют ID в формате XXXX-XXXX-XXX.
-    Для legacy UUID блоков - конвертируем в armor формат.
-    """
-    # Если уже в armor формате (11 символов без дефисов, pattern XXXX-XXXX-XXX)
-    clean = block_id.replace("-", "")
-    if len(clean) == 11 and all(c in "34679ACDEFGHJKLMNPQRTUVWXY" for c in clean):
-        return block_id  # Уже armor ID
-
-    # Legacy: конвертируем UUID в armor формат
-    ALPHABET = "34679ACDEFGHJKLMNPQRTUVWXY"
-
-    def num_to_base26(num: int, length: int) -> str:
-        if num == 0:
-            return ALPHABET[0] * length
-        result = []
-        while num > 0:
-            result.append(ALPHABET[num % 26])
-            num //= 26
-        while len(result) < length:
-            result.append(ALPHABET[0])
-        return "".join(reversed(result[-length:]))
-
-    def calculate_checksum(payload: str) -> str:
-        char_map = {c: i for i, c in enumerate(ALPHABET)}
-        v1, v2, v3 = 0, 0, 0
-        for i, char in enumerate(payload):
-            val = char_map.get(char, 0)
-            v1 += val
-            v2 += val * (i + 3)
-            v3 += val * (i + 7) * (i + 1)
-        return ALPHABET[v1 % 26] + ALPHABET[v2 % 26] + ALPHABET[v3 % 26]
-
-    clean = block_id.replace("-", "").lower()
-    hex_prefix = clean[:10]
-    num = int(hex_prefix, 16)
-    payload = num_to_base26(num, 8)
-    checksum = calculate_checksum(payload)
-    full_code = payload + checksum
-    return f"{full_code[:4]}-{full_code[4:8]}-{full_code[8:]}"
-
-
-def _format_image_ocr_json(data: dict) -> str:
-    """
-    Форматировать JSON блока изображения в компактный HTML.
-
-    Обрабатывает структуры с полями:
-    - location, content_summary, detailed_description, clean_ocr_text, key_entities
-    или с обёрткой "analysis"
-    """
-    # Если есть обёртка "analysis", извлекаем её
-    if "analysis" in data and isinstance(data["analysis"], dict):
-        data = data["analysis"]
-
+def _format_image_ocr_html(data: dict) -> str:
+    """Форматировать данные OCR изображения в компактный HTML."""
+    img_data = extract_image_ocr_data(data)
     parts = []
 
     # Заголовок: [ИЗОБРАЖЕНИЕ] Тип: XXX | Оси: XXX
     header_parts = ["<b>[ИЗОБРАЖЕНИЕ]</b>"]
-    location = data.get("location")
-    if location and isinstance(location, dict):
-        if location.get("zone_name") and location["zone_name"] != "Не определено":
-            header_parts.append(f"Тип: {location['zone_name']}")
-        if location.get("grid_lines") and location["grid_lines"] != "Не определены":
-            header_parts.append(f"Оси: {location['grid_lines']}")
-    elif location:
-        header_parts.append(str(location))
+    if img_data.get("zone_name") and img_data["zone_name"] != "Не определено":
+        header_parts.append(f"Тип: {img_data['zone_name']}")
+    if img_data.get("grid_lines") and img_data["grid_lines"] != "Не определены":
+        header_parts.append(f"Оси: {img_data['grid_lines']}")
+    if img_data.get("location_text"):
+        header_parts.append(img_data["location_text"])
     parts.append(f"<p>{' | '.join(header_parts)}</p>")
 
     # Краткое описание
-    content_summary = data.get("content_summary")
-    if content_summary:
-        parts.append(f"<p><b>Краткое описание:</b> {content_summary}</p>")
+    if img_data.get("content_summary"):
+        parts.append(f"<p><b>Краткое описание:</b> {img_data['content_summary']}</p>")
 
     # Детальное описание
-    detailed_desc = data.get("detailed_description")
-    if detailed_desc:
-        parts.append(f"<p><b>Описание:</b> {detailed_desc}</p>")
+    if img_data.get("detailed_description"):
+        parts.append(f"<p><b>Описание:</b> {img_data['detailed_description']}</p>")
 
     # Распознанный текст
-    clean_ocr = data.get("clean_ocr_text")
-    if clean_ocr:
-        # Убираем маркеры "•" и нормализуем пробелы
-        clean_text = re.sub(r"•\s*", "", clean_ocr)
-        clean_text = re.sub(r"\s+", " ", clean_text).strip()
-        if clean_text:
-            parts.append(f"<p><b>Текст на чертеже:</b> {clean_text}</p>")
+    if img_data.get("clean_ocr_text"):
+        parts.append(f"<p><b>Текст на чертеже:</b> {img_data['clean_ocr_text']}</p>")
 
-    # Ключевые сущности - через запятую, без code тегов
-    key_entities = data.get("key_entities")
-    if key_entities and isinstance(key_entities, list):
-        entities_str = ", ".join(key_entities[:20])  # Максимум 20
+    # Ключевые сущности - через запятую
+    if img_data.get("key_entities"):
+        entities_str = ", ".join(img_data["key_entities"])
         parts.append(f"<p><b>Сущности:</b> {entities_str}</p>")
 
     return "\n".join(parts) if parts else ""
@@ -135,16 +81,10 @@ def _extract_html_from_ocr_text(ocr_text: str) -> str:
     try:
         parsed = json_module.loads(text)
 
-        # Проверяем, это JSON блока изображения?
         if isinstance(parsed, dict):
-            # Проверяем наличие характерных полей image OCR
-            has_image_fields = any(
-                key in parsed or (parsed.get("analysis") and key in parsed["analysis"])
-                for key in ["content_summary", "detailed_description", "clean_ocr_text"]
-            )
-
-            if has_image_fields:
-                formatted = _format_image_ocr_json(parsed)
+            # Проверяем, это JSON блока изображения?
+            if is_image_ocr_json(parsed):
+                formatted = _format_image_ocr_html(parsed)
                 if formatted:
                     return formatted
 
@@ -164,7 +104,6 @@ def _extract_html_from_parsed(data: Any) -> str:
     html_parts = []
 
     if isinstance(data, dict):
-        # Если есть html на этом уровне
         if "html" in data and isinstance(data["html"], str):
             html_parts.append(data["html"])
         elif "children" in data and isinstance(data["children"], list):
@@ -187,153 +126,14 @@ def _escape_html(text: str) -> str:
     )
 
 
-def _parse_stamp_json(ocr_text: Optional[str]) -> Optional[Dict]:
-    """Извлечь JSON штампа из ocr_text."""
-    if not ocr_text:
-        return None
-
-    text = ocr_text.strip()
-    if not text:
-        return None
-
-    # Прямой JSON
-    if text.startswith("{"):
-        try:
-            return json_module.loads(text)
-        except json_module.JSONDecodeError:
-            pass
-
-    # JSON внутри ```json ... ```
-    json_match = re.search(r"```json\s*([\s\S]*?)\s*```", text)
-    if json_match:
-        try:
-            return json_module.loads(json_match.group(1))
-        except json_module.JSONDecodeError:
-            pass
-
-    return None
-
-
 def _format_stamp_html(stamp_data: Dict) -> str:
     """Форматировать данные штампа в компактный HTML блок."""
-    parts = []
-
-    # Шифр
-    if stamp_data.get("document_code"):
-        parts.append(f"<b>Шифр:</b> {stamp_data['document_code']}")
-
-    # Стадия
-    if stamp_data.get("stage"):
-        parts.append(f"<b>Стадия:</b> {stamp_data['stage']}")
-
-    # Лист
-    sheet_num = stamp_data.get("sheet_number", "")
-    total = stamp_data.get("total_sheets", "")
-    if sheet_num or total:
-        parts.append(
-            f"<b>Лист:</b> {sheet_num} (из {total})"
-            if total
-            else f"<b>Лист:</b> {sheet_num}"
-        )
-
-    # Объект
-    if stamp_data.get("project_name"):
-        parts.append(f"<b>Объект:</b> {stamp_data['project_name']}")
-
-    # Наименование листа
-    if stamp_data.get("sheet_name"):
-        parts.append(f"<b>Наименование:</b> {stamp_data['sheet_name']}")
-
-    # Организация
-    if stamp_data.get("organization"):
-        parts.append(f"<b>Организация:</b> {stamp_data['organization']}")
-
-    # Ревизии/изменения
-    revisions = stamp_data.get("revisions")
-    if revisions:
-        if isinstance(revisions, list) and revisions:
-            # Берём последнюю ревизию
-            last_rev = revisions[-1] if revisions else {}
-            rev_num = last_rev.get("revision_number", "")
-            doc_num = last_rev.get("document_number", "")
-            rev_date = last_rev.get("date", "")
-            if rev_num or doc_num:
-                rev_str = f"Изм. {rev_num}"
-                if doc_num:
-                    rev_str += f" (Док. № {doc_num}"
-                    if rev_date:
-                        rev_str += f" от {rev_date}"
-                    rev_str += ")"
-                parts.append(f"<b>Статус:</b> {rev_str}")
-        elif isinstance(revisions, str):
-            parts.append(f"<b>Статус:</b> {revisions}")
-
-    # Подписи
-    signatures = stamp_data.get("signatures")
-    if signatures:
-        if isinstance(signatures, list):
-            sig_parts = []
-            for sig in signatures:
-                if isinstance(sig, dict):
-                    role = sig.get("role", "")
-                    name = sig.get("name", "")
-                    if role and name:
-                        sig_parts.append(f"{role}: {name}")
-                elif isinstance(sig, str):
-                    sig_parts.append(sig)
-            if sig_parts:
-                parts.append(f"<b>Ответственные:</b> {'; '.join(sig_parts)}")
-        elif isinstance(signatures, str):
-            parts.append(f"<b>Ответственные:</b> {signatures}")
-
+    parts = format_stamp_parts(stamp_data)
     if not parts:
         return ""
 
-    return '<div class="stamp-info">' + " | ".join(parts) + "</div>"
-
-
-def _find_page_stamp(blocks: List) -> Optional[Dict]:
-    """Найти данные штампа на странице (из блока с category_code='stamp')."""
-    for block in blocks:
-        if getattr(block, "category_code", None) == "stamp":
-            stamp_data = _parse_stamp_json(block.ocr_text)
-            if stamp_data:
-                return stamp_data
-    return None
-
-
-# Поля штампа, наследуемые на страницы без штампа
-INHERITABLE_STAMP_FIELDS = ("document_code", "project_name", "stage", "organization")
-
-
-def _collect_inheritable_stamp_data(pages: List) -> Optional[Dict]:
-    """
-    Собрать общие поля штампа со всех страниц.
-    Для каждого поля выбирается наиболее часто встречающееся значение (мода).
-    """
-    from collections import Counter
-
-    # Собираем все значения для каждого поля
-    field_values: Dict[str, List] = {field: [] for field in INHERITABLE_STAMP_FIELDS}
-
-    for page in pages:
-        stamp_data = _find_page_stamp(page.blocks)
-        if stamp_data:
-            for field in INHERITABLE_STAMP_FIELDS:
-                val = stamp_data.get(field)
-                if val:  # непустое значение
-                    field_values[field].append(val)
-
-    # Выбираем моду для каждого поля
-    inherited = {}
-    for field in INHERITABLE_STAMP_FIELDS:
-        values = field_values[field]
-        if values:
-            counter = Counter(values)
-            most_common = counter.most_common(1)[0][0]
-            inherited[field] = most_common
-
-    return inherited if inherited else None
+    html_parts = [f"<b>{key}:</b> {value}" for key, value in parts]
+    return '<div class="stamp-info">' + " | ".join(html_parts) + "</div>"
 
 
 def _format_inherited_stamp_html(inherited_data: Dict) -> str:
@@ -359,7 +159,7 @@ def generate_html_from_pages(
     pages: List, output_path: str, doc_name: str = None, project_name: str = None
 ) -> str:
     """
-    Генерация итогового HTML файла из OCR результатов.
+    Генерация итогового HTML файла (ocr.html) из OCR результатов.
 
     Args:
         pages: список Page объектов с блоками
@@ -414,20 +214,11 @@ def generate_html_from_pages(
 """
         ]
 
-        # Собираем блоки по группам для отображения групповой информации
-        groups: Dict[str, List] = {}  # group_id -> list of blocks
-        all_blocks: Dict[str, Any] = {}  # block_id -> block
-        for page in pages:
-            for block in page.blocks:
-                all_blocks[block.id] = block
-                group_id = getattr(block, "group_id", None)
-                if group_id:
-                    if group_id not in groups:
-                        groups[group_id] = []
-                    groups[group_id].append(block)
+        # Собираем блоки по группам
+        groups = collect_block_groups(pages)
 
         # Собираем общие данные штампа для страниц без штампа
-        inherited_stamp_data = _collect_inheritable_stamp_data(pages)
+        inherited_stamp_data = collect_inheritable_stamp_data(pages)
         inherited_stamp_html = (
             _format_inherited_stamp_html(inherited_stamp_data)
             if inherited_stamp_data
@@ -437,7 +228,7 @@ def generate_html_from_pages(
         block_count = 0
         for page in pages:
             # Находим данные штампа для этой страницы
-            page_stamp = _find_page_stamp(page.blocks)
+            page_stamp = find_page_stamp(page.blocks)
             if page_stamp:
                 # Мержим с inherited: заполняем пустые поля из унаследованных
                 merged_stamp = dict(page_stamp)
@@ -453,7 +244,7 @@ def generate_html_from_pages(
                 stamp_html = ""
 
             for idx, block in enumerate(page.blocks):
-                # Пропускаем блоки штампа - их данные уже добавлены в stamp_html каждого блока
+                # Пропускаем блоки штампа
                 if getattr(block, "category_code", None) == "stamp":
                     continue
 
@@ -467,37 +258,35 @@ def generate_html_from_pages(
                 )
                 html_parts.append('<div class="block-content">')
 
-                # Вставляем маркер BLOCK: XXXX-XXXX-XXX для ocr_result_merger
-                armor_code = _get_block_armor_id(block.id)
+                # Маркер BLOCK: XXXX-XXXX-XXX
+                armor_code = get_block_armor_id(block.id)
                 html_parts.append(f"<p>BLOCK: {armor_code}</p>")
 
-                # Grouped blocks: группа и все блоки в ней
+                # Grouped blocks
                 group_id = getattr(block, "group_id", None)
                 if group_id and group_id in groups:
                     group_name = getattr(block, "group_name", None) or group_id
-                    group_block_ids = [
-                        _get_block_armor_id(b.id) for b in groups[group_id]
-                    ]
+                    group_block_ids = [get_block_armor_id(b.id) for b in groups[group_id]]
                     html_parts.append(
                         f'<p><b>Grouped blocks:</b> {group_name} [{", ".join(group_block_ids)}]</p>'
                     )
 
-                # Linked block: связанный блок
+                # Linked block
                 linked_id = getattr(block, "linked_block_id", None)
                 if linked_id:
-                    linked_armor = _get_block_armor_id(linked_id)
+                    linked_armor = get_block_armor_id(linked_id)
                     html_parts.append(f"<p><b>Linked block:</b> {linked_armor}</p>")
 
-                # Created at: дата создания блока
+                # Created at
                 created_at = getattr(block, "created_at", None)
                 if created_at:
                     html_parts.append(f"<p><b>Created:</b> {created_at}</p>")
 
-                # Добавляем информацию о штампе сразу после маркера блока (в метаинформацию)
+                # Информация о штампе
                 if stamp_html:
                     html_parts.append(stamp_html)
 
-                # Для IMAGE блоков добавляем ссылку на изображение в начале
+                # Для IMAGE блоков добавляем ссылку на изображение
                 if block.block_type == BlockType.IMAGE and block.image_file:
                     crop_filename = Path(block.image_file).name
                     if project_name:

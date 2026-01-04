@@ -1,0 +1,257 @@
+"""Общие утилиты для генераторов HTML и Markdown из OCR результатов."""
+import json as json_module
+import logging
+import re
+from collections import Counter
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+# Поля штампа, наследуемые на страницы без штампа
+INHERITABLE_STAMP_FIELDS = ("document_code", "project_name", "stage", "organization")
+
+# Алфавит для armor ID
+ARMOR_ALPHABET = "34679ACDEFGHJKLMNPQRTUVWXY"
+
+
+def get_block_armor_id(block_id: str) -> str:
+    """
+    Получить armor ID блока.
+
+    Новые блоки уже имеют ID в формате XXXX-XXXX-XXX.
+    Для legacy UUID блоков - конвертируем в armor формат.
+    """
+    clean = block_id.replace("-", "")
+    if len(clean) == 11 and all(c in ARMOR_ALPHABET for c in clean):
+        return block_id  # Уже armor ID
+
+    # Legacy: конвертируем UUID в armor формат
+    def num_to_base26(num: int, length: int) -> str:
+        if num == 0:
+            return ARMOR_ALPHABET[0] * length
+        result = []
+        while num > 0:
+            result.append(ARMOR_ALPHABET[num % 26])
+            num //= 26
+        while len(result) < length:
+            result.append(ARMOR_ALPHABET[0])
+        return "".join(reversed(result[-length:]))
+
+    def calculate_checksum(payload: str) -> str:
+        char_map = {c: i for i, c in enumerate(ARMOR_ALPHABET)}
+        v1, v2, v3 = 0, 0, 0
+        for i, char in enumerate(payload):
+            val = char_map.get(char, 0)
+            v1 += val
+            v2 += val * (i + 3)
+            v3 += val * (i + 7) * (i + 1)
+        return ARMOR_ALPHABET[v1 % 26] + ARMOR_ALPHABET[v2 % 26] + ARMOR_ALPHABET[v3 % 26]
+
+    clean = block_id.replace("-", "").lower()
+    hex_prefix = clean[:10]
+    num = int(hex_prefix, 16)
+    payload = num_to_base26(num, 8)
+    checksum = calculate_checksum(payload)
+    full_code = payload + checksum
+    return f"{full_code[:4]}-{full_code[4:8]}-{full_code[8:]}"
+
+
+def parse_stamp_json(ocr_text: Optional[str]) -> Optional[Dict]:
+    """Извлечь JSON штампа из ocr_text."""
+    if not ocr_text:
+        return None
+
+    text = ocr_text.strip()
+    if not text:
+        return None
+
+    # Прямой JSON
+    if text.startswith("{"):
+        try:
+            return json_module.loads(text)
+        except json_module.JSONDecodeError:
+            pass
+
+    # JSON внутри ```json ... ```
+    json_match = re.search(r"```json\s*([\s\S]*?)\s*```", text)
+    if json_match:
+        try:
+            return json_module.loads(json_match.group(1))
+        except json_module.JSONDecodeError:
+            pass
+
+    return None
+
+
+def find_page_stamp(blocks: List) -> Optional[Dict]:
+    """Найти данные штампа на странице (из блока с category_code='stamp')."""
+    for block in blocks:
+        if getattr(block, "category_code", None) == "stamp":
+            stamp_data = parse_stamp_json(block.ocr_text)
+            if stamp_data:
+                return stamp_data
+    return None
+
+
+def collect_inheritable_stamp_data(pages: List) -> Optional[Dict]:
+    """
+    Собрать общие поля штампа со всех страниц.
+    Для каждого поля выбирается наиболее часто встречающееся значение (мода).
+    """
+    field_values: Dict[str, List] = {field: [] for field in INHERITABLE_STAMP_FIELDS}
+
+    for page in pages:
+        stamp_data = find_page_stamp(page.blocks)
+        if stamp_data:
+            for field in INHERITABLE_STAMP_FIELDS:
+                val = stamp_data.get(field)
+                if val:
+                    field_values[field].append(val)
+
+    inherited = {}
+    for field in INHERITABLE_STAMP_FIELDS:
+        values = field_values[field]
+        if values:
+            counter = Counter(values)
+            most_common = counter.most_common(1)[0][0]
+            inherited[field] = most_common
+
+    return inherited if inherited else None
+
+
+def collect_block_groups(pages: List) -> Dict[str, List]:
+    """Собрать блоки по группам."""
+    groups: Dict[str, List] = {}
+    for page in pages:
+        for block in page.blocks:
+            group_id = getattr(block, "group_id", None)
+            if group_id:
+                if group_id not in groups:
+                    groups[group_id] = []
+                groups[group_id].append(block)
+    return groups
+
+
+def extract_image_ocr_data(data: dict) -> Dict[str, Any]:
+    """
+    Извлечь структурированные данные из JSON блока изображения.
+
+    Returns:
+        dict с полями: location, zone_name, grid_lines, content_summary,
+        detailed_description, clean_ocr_text, key_entities
+    """
+    # Если есть обёртка "analysis", извлекаем её
+    if "analysis" in data and isinstance(data["analysis"], dict):
+        data = data["analysis"]
+
+    result = {}
+
+    # Локация
+    location = data.get("location")
+    if location:
+        if isinstance(location, dict):
+            result["zone_name"] = location.get("zone_name", "")
+            result["grid_lines"] = location.get("grid_lines", "")
+        else:
+            result["location_text"] = str(location)
+
+    # Описания
+    result["content_summary"] = data.get("content_summary", "")
+    result["detailed_description"] = data.get("detailed_description", "")
+
+    # Распознанный текст - нормализуем
+    clean_ocr = data.get("clean_ocr_text", "")
+    if clean_ocr:
+        clean_ocr = re.sub(r"•\s*", "", clean_ocr)
+        clean_ocr = re.sub(r"\s+", " ", clean_ocr).strip()
+    result["clean_ocr_text"] = clean_ocr
+
+    # Ключевые сущности
+    key_entities = data.get("key_entities", [])
+    if isinstance(key_entities, list):
+        result["key_entities"] = key_entities[:20]  # Максимум 20
+    else:
+        result["key_entities"] = []
+
+    return result
+
+
+def is_image_ocr_json(data: dict) -> bool:
+    """Проверить, является ли JSON данными OCR изображения."""
+    if not isinstance(data, dict):
+        return False
+
+    # Проверяем характерные поля
+    image_fields = ["content_summary", "detailed_description", "clean_ocr_text"]
+    return any(
+        key in data or (data.get("analysis") and key in data["analysis"])
+        for key in image_fields
+    )
+
+
+def format_stamp_parts(stamp_data: Dict) -> List[str]:
+    """
+    Извлечь части штампа для форматирования.
+
+    Returns:
+        Список кортежей (ключ, значение) для форматирования.
+    """
+    parts = []
+
+    if stamp_data.get("document_code"):
+        parts.append(("Шифр", stamp_data["document_code"]))
+    if stamp_data.get("stage"):
+        parts.append(("Стадия", stamp_data["stage"]))
+
+    # Лист
+    sheet_num = stamp_data.get("sheet_number", "")
+    total = stamp_data.get("total_sheets", "")
+    if sheet_num or total:
+        sheet_str = f"{sheet_num} (из {total})" if total else str(sheet_num)
+        parts.append(("Лист", sheet_str))
+
+    if stamp_data.get("project_name"):
+        parts.append(("Объект", stamp_data["project_name"]))
+    if stamp_data.get("sheet_name"):
+        parts.append(("Наименование", stamp_data["sheet_name"]))
+    if stamp_data.get("organization"):
+        parts.append(("Организация", stamp_data["organization"]))
+
+    # Ревизии/изменения
+    revisions = stamp_data.get("revisions")
+    if revisions:
+        if isinstance(revisions, list) and revisions:
+            last_rev = revisions[-1] if revisions else {}
+            rev_num = last_rev.get("revision_number", "")
+            doc_num = last_rev.get("document_number", "")
+            rev_date = last_rev.get("date", "")
+            if rev_num or doc_num:
+                rev_str = f"Изм. {rev_num}"
+                if doc_num:
+                    rev_str += f" (Док. № {doc_num}"
+                    if rev_date:
+                        rev_str += f" от {rev_date}"
+                    rev_str += ")"
+                parts.append(("Статус", rev_str))
+        elif isinstance(revisions, str):
+            parts.append(("Статус", revisions))
+
+    # Подписи
+    signatures = stamp_data.get("signatures")
+    if signatures:
+        if isinstance(signatures, list):
+            sig_parts = []
+            for sig in signatures:
+                if isinstance(sig, dict):
+                    role = sig.get("role", "")
+                    name = sig.get("name", "")
+                    if role and name:
+                        sig_parts.append(f"{role}: {name}")
+                elif isinstance(sig, str):
+                    sig_parts.append(sig)
+            if sig_parts:
+                parts.append(("Ответственные", "; ".join(sig_parts)))
+        elif isinstance(signatures, str):
+            parts.append(("Ответственные", signatures))
+
+    return parts

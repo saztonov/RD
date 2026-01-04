@@ -1,4 +1,4 @@
-"""Генератор Markdown из OCR результатов (оптимизирован для LLM)"""
+"""Генератор Markdown (_document.md) из OCR результатов (оптимизирован для LLM)."""
 import json as json_module
 import logging
 import re
@@ -6,112 +6,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .generator_common import (
+    collect_block_groups,
+    collect_inheritable_stamp_data,
+    extract_image_ocr_data,
+    get_block_armor_id,
+    is_image_ocr_json,
+)
+
 logger = logging.getLogger(__name__)
-
-# Поля штампа, наследуемые на страницы без штампа
-INHERITABLE_STAMP_FIELDS = ("document_code", "project_name", "stage", "organization")
-
-
-def _get_block_armor_id(block_id: str) -> str:
-    """Получить armor ID блока."""
-    clean = block_id.replace("-", "")
-    if len(clean) == 11 and all(c in "34679ACDEFGHJKLMNPQRTUVWXY" for c in clean):
-        return block_id
-
-    ALPHABET = "34679ACDEFGHJKLMNPQRTUVWXY"
-
-    def num_to_base26(num: int, length: int) -> str:
-        if num == 0:
-            return ALPHABET[0] * length
-        result = []
-        while num > 0:
-            result.append(ALPHABET[num % 26])
-            num //= 26
-        while len(result) < length:
-            result.append(ALPHABET[0])
-        return "".join(reversed(result[-length:]))
-
-    def calculate_checksum(payload: str) -> str:
-        char_map = {c: i for i, c in enumerate(ALPHABET)}
-        v1, v2, v3 = 0, 0, 0
-        for i, char in enumerate(payload):
-            val = char_map.get(char, 0)
-            v1 += val
-            v2 += val * (i + 3)
-            v3 += val * (i + 7) * (i + 1)
-        return ALPHABET[v1 % 26] + ALPHABET[v2 % 26] + ALPHABET[v3 % 26]
-
-    clean = block_id.replace("-", "").lower()
-    hex_prefix = clean[:10]
-    num = int(hex_prefix, 16)
-    payload = num_to_base26(num, 8)
-    checksum = calculate_checksum(payload)
-    full_code = payload + checksum
-    return f"{full_code[:4]}-{full_code[4:8]}-{full_code[8:]}"
-
-
-def _parse_stamp_json(ocr_text: Optional[str]) -> Optional[Dict]:
-    """Извлечь JSON штампа из ocr_text."""
-    if not ocr_text:
-        return None
-
-    text = ocr_text.strip()
-    if not text:
-        return None
-
-    if text.startswith("{"):
-        try:
-            return json_module.loads(text)
-        except json_module.JSONDecodeError:
-            pass
-
-    json_match = re.search(r"```json\s*([\s\S]*?)\s*```", text)
-    if json_match:
-        try:
-            return json_module.loads(json_match.group(1))
-        except json_module.JSONDecodeError:
-            pass
-
-    return None
-
-
-def _find_page_stamp(blocks: List) -> Optional[Dict]:
-    """Найти данные штампа на странице."""
-    for block in blocks:
-        if getattr(block, "category_code", None) == "stamp":
-            stamp_data = _parse_stamp_json(block.ocr_text)
-            if stamp_data:
-                return stamp_data
-    return None
-
-
-def _collect_inheritable_stamp_data(pages: List) -> Optional[Dict]:
-    """Собрать общие поля штампа со всех страниц."""
-    from collections import Counter
-
-    field_values: Dict[str, List] = {field: [] for field in INHERITABLE_STAMP_FIELDS}
-
-    for page in pages:
-        stamp_data = _find_page_stamp(page.blocks)
-        if stamp_data:
-            for field in INHERITABLE_STAMP_FIELDS:
-                val = stamp_data.get(field)
-                if val:
-                    field_values[field].append(val)
-
-    inherited = {}
-    for field in INHERITABLE_STAMP_FIELDS:
-        values = field_values[field]
-        if values:
-            counter = Counter(values)
-            most_common = counter.most_common(1)[0][0]
-            inherited[field] = most_common
-
-    return inherited if inherited else None
 
 
 def _format_stamp_md(stamp_data: Dict) -> str:
-    """Форматировать данные штампа в компактную строку."""
+    """Форматировать данные штампа в компактную Markdown строку."""
     parts = []
 
     if stamp_data.get("document_code"):
@@ -128,11 +35,8 @@ def _format_stamp_md(stamp_data: Dict) -> str:
 
 def _clean_cell_text(text: str) -> str:
     """Очистить текст ячейки таблицы - заменить переносы на пробелы."""
-    # Заменяем переносы строк на пробелы
     text = re.sub(r'\s*\n\s*', ' ', text)
-    # Убираем множественные пробелы
     text = re.sub(r' +', ' ', text)
-    # Убираем пробелы по краям
     return text.strip()
 
 
@@ -152,7 +56,6 @@ def _table_to_csv(table_html: str) -> str:
         cells = re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", row, flags=re.DOTALL)
         if cells:
             cleaned = [_clean_cell_text(re.sub(r"<[^>]+>", "", c)) for c in cells]
-            # Фильтруем пустые
             cleaned = [c for c in cleaned if c]
             if cleaned:
                 csv_lines.append("; ".join(cleaned))
@@ -162,7 +65,6 @@ def _table_to_csv(table_html: str) -> str:
 
 def _table_to_markdown(table_html: str) -> str:
     """Конвертировать таблицу HTML в Markdown."""
-    # Проверяем на сложную таблицу
     if _is_complex_table(table_html):
         return _table_to_csv(table_html)
 
@@ -178,7 +80,6 @@ def _table_to_markdown(table_html: str) -> str:
         if not cells:
             continue
 
-        # Очищаем ячейки: убираем HTML и переносы
         cleaned = []
         for c in cells:
             text = re.sub(r"<[^>]+>", "", c)
@@ -188,7 +89,6 @@ def _table_to_markdown(table_html: str) -> str:
         max_cols = max(max_cols, len(cleaned))
         md_rows.append("| " + " | ".join(cleaned) + " |")
 
-        # Добавляем разделитель после первой строки
         if i == 0:
             md_rows.append("|" + "|".join(["---"] * len(cleaned)) + "|")
 
@@ -222,7 +122,7 @@ def _html_to_markdown(html: str) -> str:
 
     text = re.sub(r"<table[^>]*>.*?</table>", process_table_match, text, flags=re.DOTALL)
 
-    # Заголовки - компактно
+    # Заголовки
     text = re.sub(r"<h1[^>]*>\s*(.*?)\s*</h1>", r"# \1\n", text, flags=re.DOTALL)
     text = re.sub(r"<h2[^>]*>\s*(.*?)\s*</h2>", r"## \1\n", text, flags=re.DOTALL)
     text = re.sub(r"<h3[^>]*>\s*(.*?)\s*</h3>", r"### \1\n", text, flags=re.DOTALL)
@@ -253,7 +153,7 @@ def _html_to_markdown(html: str) -> str:
     # Переносы строк
     text = re.sub(r"<br\s*/?>", "\n", text)
 
-    # Параграфы - убираем теги, оставляем текст
+    # Параграфы
     text = re.sub(r"<p[^>]*>\s*(.*?)\s*</p>", r"\1\n", text, flags=re.DOTALL)
 
     # Удаляем оставшиеся HTML теги
@@ -276,55 +176,67 @@ def _html_to_markdown(html: str) -> str:
     return text
 
 
-def _format_json_content_compact(data: Any) -> str:
-    """Форматировать JSON контент в компактный Markdown (для crops/images)."""
-    if isinstance(data, dict):
-        # Проверяем на image OCR структуру
-        if "analysis" in data and isinstance(data["analysis"], dict):
-            data = data["analysis"]
+def _format_image_ocr_md(data: dict) -> str:
+    """Форматировать данные OCR изображения в компактный Markdown."""
+    img_data = extract_image_ocr_data(data)
+    parts = []
 
-        parts = []
+    # Заголовок: [ИЗОБРАЖЕНИЕ] Тип: XXX | Оси: XXX
+    header_parts = ["**[ИЗОБРАЖЕНИЕ]**"]
+    if img_data.get("zone_name") and img_data["zone_name"] != "Не определено":
+        header_parts.append(f"Тип: {img_data['zone_name']}")
+    if img_data.get("grid_lines") and img_data["grid_lines"] != "Не определены":
+        header_parts.append(f"Оси: {img_data['grid_lines']}")
+    if img_data.get("location_text"):
+        header_parts.append(img_data["location_text"])
+    parts.append(" | ".join(header_parts))
 
-        # Заголовок: [ИЗОБРАЖЕНИЕ] Тип: XXX | Оси: XXX
-        header_parts = ["**[ИЗОБРАЖЕНИЕ]**"]
-        location = data.get("location")
-        if location and isinstance(location, dict):
-            zone = location.get("zone_name", "")
-            grid = location.get("grid_lines", "")
-            if zone and zone != "Не определено":
-                header_parts.append(f"Тип: {zone}")
-            if grid and grid != "Не определены":
-                header_parts.append(f"Оси: {grid}")
-        elif location:
-            header_parts.append(str(location))
-        parts.append(" | ".join(header_parts))
+    # Краткое описание
+    if img_data.get("content_summary"):
+        parts.append(f"**Краткое описание:** {img_data['content_summary']}")
 
-        # Краткое описание
-        if data.get("content_summary"):
-            parts.append(f"**Краткое описание:** {data['content_summary']}")
+    # Детальное описание
+    if img_data.get("detailed_description"):
+        parts.append(f"**Описание:** {img_data['detailed_description']}")
 
-        # Детальное описание
-        if data.get("detailed_description"):
-            parts.append(f"**Описание:** {data['detailed_description']}")
+    # Распознанный текст
+    if img_data.get("clean_ocr_text"):
+        parts.append(f"**Текст на чертеже:** {img_data['clean_ocr_text']}")
 
-        # Распознанный текст - убираем "•" маркеры
-        if data.get("clean_ocr_text"):
-            clean_text = data["clean_ocr_text"]
-            clean_text = re.sub(r"•\s*", "", clean_text)
-            clean_text = re.sub(r"\s+", " ", clean_text).strip()
-            if clean_text:
-                parts.append(f"**Текст на чертеже:** {clean_text}")
+    # Ключевые сущности - через запятую, без backticks
+    if img_data.get("key_entities"):
+        entities = ", ".join(img_data["key_entities"])
+        parts.append(f"**Сущности:** {entities}")
 
-        # Ключевые сущности - через запятую, без backticks
-        if data.get("key_entities") and isinstance(data["key_entities"], list):
-            entities = ", ".join(data["key_entities"][:20])  # Максимум 20
-            parts.append(f"**Сущности:** {entities}")
+    return "\n".join(parts) if parts else ""
 
-        if parts:
-            return "\n".join(parts)
 
-    # Fallback: компактный JSON
-    return json_module.dumps(data, ensure_ascii=False, separators=(',', ':'))
+def _process_ocr_content(ocr_text: str) -> str:
+    """Обработать содержимое блока и конвертировать в Markdown."""
+    if not ocr_text:
+        return ""
+
+    text = ocr_text.strip()
+    if not text:
+        return ""
+
+    # HTML контент
+    if text.startswith("<"):
+        return _html_to_markdown(text)
+
+    # JSON контент
+    if text.startswith("{") or text.startswith("["):
+        try:
+            parsed = json_module.loads(text)
+            if isinstance(parsed, dict) and is_image_ocr_json(parsed):
+                return _format_image_ocr_md(parsed)
+            # Fallback для другого JSON
+            return json_module.dumps(parsed, ensure_ascii=False, separators=(',', ':'))
+        except json_module.JSONDecodeError:
+            pass
+
+    # Обычный текст
+    return text
 
 
 def generate_md_from_pages(
@@ -334,29 +246,29 @@ def generate_md_from_pages(
     project_name: str = None,
 ) -> str:
     """
-    Генерация компактного Markdown файла из OCR результатов.
+    Генерация компактного Markdown файла (_document.md) из OCR результатов.
     Группировка по страницам, оптимизация для LLM.
+
+    Args:
+        pages: список Page объектов с блоками
+        output_path: путь для сохранения MD файла
+        doc_name: имя документа для заголовка
+        project_name: имя проекта (не используется в MD)
+
+    Returns:
+        Путь к сохранённому файлу
     """
     try:
-        from rd_core.models import BlockType
-
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         title = doc_name or "OCR Result"
 
         # Собираем блоки по группам
-        groups: Dict[str, List] = {}
-        for page in pages:
-            for block in page.blocks:
-                group_id = getattr(block, "group_id", None)
-                if group_id:
-                    if group_id not in groups:
-                        groups[group_id] = []
-                    groups[group_id].append(block)
+        groups = collect_block_groups(pages)
 
         # Собираем данные штампа
-        inherited_stamp_data = _collect_inheritable_stamp_data(pages)
+        inherited_stamp_data = collect_inheritable_stamp_data(pages)
 
         md_parts = []
 
@@ -365,7 +277,7 @@ def generate_md_from_pages(
         md_parts.append("")
         md_parts.append(f"Сгенерировано: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
-        # Штамп документа - компактно
+        # Штамп документа
         if inherited_stamp_data:
             stamp_str = _format_stamp_md(inherited_stamp_data)
             if stamp_str:
@@ -399,7 +311,7 @@ def generate_md_from_pages(
                     continue
 
                 block_count += 1
-                armor_code = _get_block_armor_id(block.id)
+                armor_code = get_block_armor_id(block.id)
                 block_type = block.block_type.value.upper()
 
                 # Метаданные блока - компактно в одну строку
@@ -408,36 +320,21 @@ def generate_md_from_pages(
                 # Linked block
                 linked_id = getattr(block, "linked_block_id", None)
                 if linked_id:
-                    meta_parts.append(f"→{_get_block_armor_id(linked_id)}")
+                    meta_parts.append(f"→{get_block_armor_id(linked_id)}")
 
                 # Grouped blocks
                 group_id = getattr(block, "group_id", None)
                 if group_id and group_id in groups:
                     group_name = getattr(block, "group_name", None) or "группа"
-                    group_block_ids = [_get_block_armor_id(b.id) for b in groups[group_id]]
+                    group_block_ids = [get_block_armor_id(b.id) for b in groups[group_id]]
                     meta_parts.append(f"📦{group_name}[{','.join(group_block_ids)}]")
 
                 md_parts.append(" ".join(meta_parts))
 
                 # Содержимое блока
-                ocr_text = block.ocr_text
-                if ocr_text:
-                    text = ocr_text.strip()
-                    if text.startswith("<"):
-                        # HTML контент
-                        content = _html_to_markdown(text)
-                    elif text.startswith("{") or text.startswith("["):
-                        # JSON контент (crops)
-                        try:
-                            parsed = json_module.loads(text)
-                            content = _format_json_content_compact(parsed)
-                        except json_module.JSONDecodeError:
-                            content = text
-                    else:
-                        content = text
-
-                    if content:
-                        md_parts.append(content)
+                content = _process_ocr_content(block.ocr_text)
+                if content:
+                    md_parts.append(content)
 
                 md_parts.append("")
 
@@ -458,7 +355,12 @@ def generate_md_from_result(
 ) -> None:
     """
     Генерировать Markdown файл из result.json с правильно разделёнными блоками.
-    Группировка по страницам, проверка всех блоков из annotation.
+    Группировка по страницам.
+
+    Args:
+        result: словарь с результатами OCR (pages, blocks)
+        output_path: путь для сохранения MD файла
+        doc_name: имя документа для заголовка
     """
     if not doc_name:
         doc_name = result.get("pdf_path", "OCR Result")
@@ -529,7 +431,7 @@ def generate_md_from_result(
 
             block_count += 1
 
-            # Метаданные блока - компактно
+            # Метаданные блока
             meta_parts = [f"[{block_type}]", f"BLOCK:{block_id}"]
 
             # Linked block
@@ -550,18 +452,7 @@ def generate_md_from_result(
             if ocr_html:
                 content = _html_to_markdown(ocr_html)
             elif ocr_text:
-                # Fallback: используем ocr_text напрямую
-                text = ocr_text.strip()
-                if text.startswith("<"):
-                    content = _html_to_markdown(text)
-                elif text.startswith("{") or text.startswith("["):
-                    try:
-                        parsed = json_module.loads(text)
-                        content = _format_json_content_compact(parsed)
-                    except json_module.JSONDecodeError:
-                        content = text
-                else:
-                    content = text
+                content = _process_ocr_content(ocr_text)
 
             if content:
                 md_parts.append(content)
