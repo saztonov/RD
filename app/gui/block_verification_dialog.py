@@ -55,17 +55,25 @@ class VerificationResult:
     # Блоки в result.json
     result_blocks: Set[str] = field(default_factory=set)  # block IDs
 
+    # Блоки в document.md (без штампов)
+    document_md_blocks: Set[str] = field(default_factory=set)  # block IDs
+
     # Ожидаемые блоки (без штампов)
     expected_blocks: Set[str] = field(default_factory=set)
 
     # Отсутствующие блоки
     missing_in_ocr_html: List[BlockInfo] = field(default_factory=list)
     missing_in_result: List[BlockInfo] = field(default_factory=list)
+    missing_in_document_md: List[BlockInfo] = field(default_factory=list)
 
     @property
     def is_success(self) -> bool:
         """Верификация прошла успешно?"""
-        return len(self.missing_in_ocr_html) == 0 and len(self.missing_in_result) == 0
+        return (
+            len(self.missing_in_ocr_html) == 0
+            and len(self.missing_in_result) == 0
+            and len(self.missing_in_document_md) == 0
+        )
 
 
 class VerificationWorker(QThread):
@@ -100,6 +108,7 @@ class VerificationWorker(QThread):
         ann_r2_key = f"{pdf_parent}/{pdf_stem}_annotation.json"
         ocr_r2_key = f"{pdf_parent}/{pdf_stem}_ocr.html"
         res_r2_key = f"{pdf_parent}/{pdf_stem}_result.json"
+        md_r2_key = f"{pdf_parent}/{pdf_stem}_document.md"
 
         # 1. Загружаем и парсим annotation.json
         self.progress.emit("Загрузка annotation.json...")
@@ -156,7 +165,18 @@ class VerificationWorker(QThread):
                     if block_id:
                         result.result_blocks.add(block_id)
 
-        # 4. Находим отсутствующие блоки
+        # 4. Загружаем и парсим document.md
+        self.progress.emit("Загрузка document.md...")
+        md_content = r2.download_text(md_r2_key)
+        if md_content:
+            # Ищем маркеры BLOCK:XXXX-XXXX-XXX (без пробела)
+            block_pattern = re.compile(
+                r"BLOCK:([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3})"
+            )
+            for match in block_pattern.finditer(md_content):
+                result.document_md_blocks.add(match.group(1))
+
+        # 5. Находим отсутствующие блоки
         self.progress.emit("Анализ расхождений...")
 
         for block_info in result.ann_blocks:
@@ -168,6 +188,9 @@ class VerificationWorker(QThread):
 
             if block_info.id not in result.result_blocks:
                 result.missing_in_result.append(block_info)
+
+            if block_info.id not in result.document_md_blocks:
+                result.missing_in_document_md.append(block_info)
 
         return result
 
@@ -232,6 +255,15 @@ class BlockVerificationDialog(QDialog):
         result_layout.addWidget(self.result_label)
         layout.addWidget(self.result_group)
         self.result_group.hide()
+
+        # Группа: Document MD
+        self.md_group = QGroupBox("📝 Document.md")
+        md_layout = QVBoxLayout(self.md_group)
+        self.md_label = QLabel()
+        self.md_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        md_layout.addWidget(self.md_label)
+        layout.addWidget(self.md_group)
+        self.md_group.hide()
 
         # Результат верификации
         self.verdict_group = QGroupBox("🔍 Результат верификации")
@@ -324,6 +356,13 @@ class BlockVerificationDialog(QDialog):
         self.result_label.setText(f"<b>Найдено блоков:</b> {len(r.result_blocks)}")
         self.result_group.show()
 
+        # Document MD stats
+        self.md_label.setText(
+            f"<b>Найдено блоков:</b> {len(r.document_md_blocks)}<br>"
+            f"<span style='color: #888;'>(компактный формат для LLM)</span>"
+        )
+        self.md_group.show()
+
         # Вердикт
         expected_count = len(r.expected_blocks)
 
@@ -335,11 +374,13 @@ class BlockVerificationDialog(QDialog):
         else:
             missing_ocr = len(r.missing_in_ocr_html)
             missing_res = len(r.missing_in_result)
+            missing_md = len(r.missing_in_document_md)
             self.verdict_label.setText(
                 f"<span style='color: #ff6b6b; font-size: 16px;'>❌ Обнаружены расхождения</span><br><br>"
                 f"<b>Ожидалось блоков (без штампов):</b> {expected_count}<br>"
                 f"<b>Отсутствует в ocr.html:</b> {missing_ocr}<br>"
-                f"<b>Отсутствует в result.json:</b> {missing_res}"
+                f"<b>Отсутствует в result.json:</b> {missing_res}<br>"
+                f"<b>Отсутствует в document.md:</b> {missing_md}"
             )
 
             # Детали отсутствующих блоков
@@ -355,6 +396,13 @@ class BlockVerificationDialog(QDialog):
                     lines.append("")
                 lines.append("=== Отсутствуют в result.json ===")
                 for b in r.missing_in_result:
+                    lines.append(f"  Стр. {b.page_index + 1}: {b.id} ({b.block_type})")
+
+            if r.missing_in_document_md:
+                if lines:
+                    lines.append("")
+                lines.append("=== Отсутствуют в document.md ===")
+                for b in r.missing_in_document_md:
                     lines.append(f"  Стр. {b.page_index + 1}: {b.id} ({b.block_type})")
 
             self.missing_text.setPlainText("\n".join(lines))
@@ -385,6 +433,9 @@ class BlockVerificationDialog(QDialog):
             "=== Result.json ===",
             f"Найдено блоков: {len(r.result_blocks)}",
             "",
+            "=== Document.md ===",
+            f"Найдено блоков: {len(r.document_md_blocks)}",
+            "",
             "=== Результат ===",
         ]
 
@@ -403,6 +454,12 @@ class BlockVerificationDialog(QDialog):
                 lines.append("")
                 lines.append("Отсутствуют в result.json:")
                 for b in r.missing_in_result:
+                    lines.append(f"  Стр. {b.page_index + 1}: {b.id} ({b.block_type})")
+
+            if r.missing_in_document_md:
+                lines.append("")
+                lines.append("Отсутствуют в document.md:")
+                for b in r.missing_in_document_md:
                     lines.append(f"  Стр. {b.page_index + 1}: {b.id} ({b.block_type})")
 
         QApplication.clipboard().setText("\n".join(lines))
