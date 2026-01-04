@@ -388,6 +388,9 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
             "text/markdown",
         )
         registered += 1
+        logger.info(f"✅ Зарегистрирован document.md в node_files: {md_filename}")
+    else:
+        logger.warning(f"⚠️ document.md не найден для регистрации в node_files: {document_md}")
 
     # Собираем все кропы из crops/ и crops_final/
     all_crop_files: List[Path] = []

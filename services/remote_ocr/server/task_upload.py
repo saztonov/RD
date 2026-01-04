@@ -105,7 +105,9 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         add_job_file(
             job.id, "document_md", r2_key, md_filename, md_path.stat().st_size
         )
-        logger.info(f"Загружен document.md в R2: {r2_key}")
+        logger.info(f"✅ Загружен document.md в R2: {r2_key}")
+    else:
+        logger.warning(f"⚠️ document.md не найден для загрузки в R2: {md_path}")
 
     # crops/ (проверяем оба варианта: crops и crops_final для двухпроходного алгоритма)
     # Исключаем блоки-штампы (category_code='stamp')

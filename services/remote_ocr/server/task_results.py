@@ -112,9 +112,12 @@ def generate_results(job: Job, pdf_path: Path, blocks: list, work_dir: Path) -> 
         generate_md_from_pages(
             pages, str(md_path), doc_name=doc_name, project_name=project_name
         )
-        logger.info(f"MD файл сгенерирован: {md_path}")
+        if md_path.exists():
+            logger.info(f"✅ MD файл сгенерирован: {md_path} ({md_path.stat().st_size} bytes)")
+        else:
+            logger.error(f"❌ MD файл не создан: {md_path}")
     except Exception as e:
-        logger.warning(f"Ошибка генерации MD: {e}")
+        logger.error(f"❌ Ошибка генерации MD: {e}", exc_info=True)
 
     # Генерация result.json (annotation + ocr_html + crop_url для каждого блока)
     result_path = work_dir / "result.json"
