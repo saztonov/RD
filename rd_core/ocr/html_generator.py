@@ -58,7 +58,7 @@ def _get_block_armor_id(block_id: str) -> str:
 
 def _format_image_ocr_json(data: dict) -> str:
     """
-    Форматировать JSON блока изображения в человекочитаемый HTML.
+    Форматировать JSON блока изображения в компактный HTML.
 
     Обрабатывает структуры с полями:
     - location, content_summary, detailed_description, clean_ocr_text, key_entities
@@ -70,62 +70,42 @@ def _format_image_ocr_json(data: dict) -> str:
 
     parts = []
 
-    # Локация
+    # Заголовок: [ИЗОБРАЖЕНИЕ] Тип: XXX | Оси: XXX
+    header_parts = ["<b>[ИЗОБРАЖЕНИЕ]</b>"]
     location = data.get("location")
-    if location:
-        parts.append("<h3>Расположение на чертеже</h3>")
-        if isinstance(location, dict):
-            if location.get("zone_name") and location["zone_name"] != "Не определено":
-                parts.append(f"<p><b>Тип элемента:</b> {location['zone_name']}</p>")
-            if location.get("grid_lines") and location["grid_lines"] != "Не определены":
-                parts.append(
-                    f"<p><b>Координатные оси:</b> {location['grid_lines']}</p>"
-                )
-        else:
-            parts.append(f"<p>{location}</p>")
+    if location and isinstance(location, dict):
+        if location.get("zone_name") and location["zone_name"] != "Не определено":
+            header_parts.append(f"Тип: {location['zone_name']}")
+        if location.get("grid_lines") and location["grid_lines"] != "Не определены":
+            header_parts.append(f"Оси: {location['grid_lines']}")
+    elif location:
+        header_parts.append(str(location))
+    parts.append(f"<p>{' | '.join(header_parts)}</p>")
 
     # Краткое описание
     content_summary = data.get("content_summary")
     if content_summary:
-        parts.append("<h3>Краткая характеристика</h3>")
-        parts.append(f"<p>{content_summary}</p>")
+        parts.append(f"<p><b>Краткое описание:</b> {content_summary}</p>")
 
     # Детальное описание
     detailed_desc = data.get("detailed_description")
     if detailed_desc:
-        parts.append("<h3>Детальное описание графики</h3>")
-        parts.append(f"<p>{detailed_desc}</p>")
+        parts.append(f"<p><b>Описание:</b> {detailed_desc}</p>")
 
     # Распознанный текст
     clean_ocr = data.get("clean_ocr_text")
     if clean_ocr:
-        parts.append("<h3>Распознанный текст (clean_ocr_text)</h3>")
-        # Форматируем текст с переносами строк
-        formatted_text = clean_ocr.replace(" - ", "<br/>• ")
-        if not formatted_text.startswith("<br/>"):
-            formatted_text = "• " + formatted_text
-        else:
-            formatted_text = formatted_text[5:]  # убираем первый <br/>
-        parts.append(f"<p style='line-height: 1.8;'>{formatted_text}</p>")
+        # Убираем маркеры "•" и нормализуем пробелы
+        clean_text = re.sub(r"•\s*", "", clean_ocr)
+        clean_text = re.sub(r"\s+", " ", clean_text).strip()
+        if clean_text:
+            parts.append(f"<p><b>Текст на чертеже:</b> {clean_text}</p>")
 
-    # Ключевые сущности
+    # Ключевые сущности - через запятую, без code тегов
     key_entities = data.get("key_entities")
     if key_entities and isinstance(key_entities, list):
-        parts.append("<h3>Ключевые сущности (key_entities)</h3>")
-        parts.append("<p style='line-height: 1.6;'>")
-        # Группируем по 5 элементов в строку
-        for i in range(0, len(key_entities), 5):
-            batch = key_entities[i : i + 5]
-            parts.append(
-                "<code style='background: #e8f4f8; padding: 0.2rem 0.4rem; margin: 0.2rem; border-radius: 3px; display: inline-block;'>"
-                + "</code> <code style='background: #e8f4f8; padding: 0.2rem 0.4rem; margin: 0.2rem; border-radius: 3px; display: inline-block;'>".join(
-                    batch
-                )
-                + "</code>"
-            )
-            if i + 5 < len(key_entities):
-                parts.append("<br/>")
-        parts.append("</p>")
+        entities_str = ", ".join(key_entities[:20])  # Максимум 20
+        parts.append(f"<p><b>Сущности:</b> {entities_str}</p>")
 
     return "\n".join(parts) if parts else ""
 

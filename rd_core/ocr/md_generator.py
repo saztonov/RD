@@ -277,7 +277,7 @@ def _html_to_markdown(html: str) -> str:
 
 
 def _format_json_content_compact(data: Any) -> str:
-    """Форматировать JSON контент в компактный Markdown (для crops)."""
+    """Форматировать JSON контент в компактный Markdown (для crops/images)."""
     if isinstance(data, dict):
         # Проверяем на image OCR структуру
         if "analysis" in data and isinstance(data["analysis"], dict):
@@ -285,25 +285,27 @@ def _format_json_content_compact(data: Any) -> str:
 
         parts = []
 
-        # Локация - одной строкой
+        # Заголовок: [ИЗОБРАЖЕНИЕ] Тип: XXX | Оси: XXX
+        header_parts = ["**[ИЗОБРАЖЕНИЕ]**"]
         location = data.get("location")
-        if location:
-            if isinstance(location, dict):
-                zone = location.get("zone_name", "")
-                grid = location.get("grid_lines", "")
-                loc_parts = []
-                if zone and zone != "Не определено":
-                    loc_parts.append(zone)
-                if grid and grid != "Не определены":
-                    loc_parts.append(f"оси {grid}")
-                if loc_parts:
-                    parts.append(f"**Расположение:** {', '.join(loc_parts)}")
-            elif location:
-                parts.append(f"**Расположение:** {location}")
+        if location and isinstance(location, dict):
+            zone = location.get("zone_name", "")
+            grid = location.get("grid_lines", "")
+            if zone and zone != "Не определено":
+                header_parts.append(f"Тип: {zone}")
+            if grid and grid != "Не определены":
+                header_parts.append(f"Оси: {grid}")
+        elif location:
+            header_parts.append(str(location))
+        parts.append(" | ".join(header_parts))
 
         # Краткое описание
         if data.get("content_summary"):
-            parts.append(data["content_summary"])
+            parts.append(f"**Краткое описание:** {data['content_summary']}")
+
+        # Детальное описание
+        if data.get("detailed_description"):
+            parts.append(f"**Описание:** {data['detailed_description']}")
 
         # Распознанный текст - убираем "•" маркеры
         if data.get("clean_ocr_text"):
@@ -311,15 +313,15 @@ def _format_json_content_compact(data: Any) -> str:
             clean_text = re.sub(r"•\s*", "", clean_text)
             clean_text = re.sub(r"\s+", " ", clean_text).strip()
             if clean_text:
-                parts.append(f"**Текст:** {clean_text}")
+                parts.append(f"**Текст на чертеже:** {clean_text}")
 
-        # Ключевые сущности - компактно через запятую
+        # Ключевые сущности - через запятую, без backticks
         if data.get("key_entities") and isinstance(data["key_entities"], list):
-            entities = ", ".join(data["key_entities"][:15])  # Максимум 15
+            entities = ", ".join(data["key_entities"][:20])  # Максимум 20
             parts.append(f"**Сущности:** {entities}")
 
         if parts:
-            return " | ".join(parts)
+            return "\n".join(parts)
 
     # Fallback: компактный JSON
     return json_module.dumps(data, ensure_ascii=False, separators=(',', ':'))
