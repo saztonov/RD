@@ -38,6 +38,7 @@ class Job:
     engine: str
     r2_prefix: str
     node_id: Optional[str] = None  # ID узла дерева (для связи с деревом проектов)
+    status_message: Optional[str] = None  # Детальное сообщение о прогрессе
     # Вложенные данные (опционально загружаются)
     files: List[JobFile] = field(default_factory=list)
     settings: Optional[JobSettings] = None

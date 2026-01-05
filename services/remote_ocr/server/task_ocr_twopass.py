@@ -57,10 +57,13 @@ def run_two_pass_ocr(
             return
 
         # PASS 2: OCR с загрузкой с диска
+        total_strips = len(manifest.strips) if manifest else 0
+        
         def on_pass2_progress(current, total):
             progress = 0.4 + 0.5 * (current / total)
+            status_msg = f"Обработка {current}/{total_strips} strips"
             if not is_job_paused(job.id):
-                update_job_status(job.id, "processing", progress=progress)
+                update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
 
         pass2_ocr_from_manifest(
             manifest,

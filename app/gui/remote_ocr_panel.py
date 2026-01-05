@@ -96,9 +96,9 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         layout.addLayout(header_layout)
 
         self.jobs_table = QTableWidget()
-        self.jobs_table.setColumnCount(6)
+        self.jobs_table.setColumnCount(7)
         self.jobs_table.setHorizontalHeaderLabels(
-            ["№", "Наименование", "Время начала", "Статус", "Прогресс", "Действия"]
+            ["№", "Наименование", "Время начала", "Статус", "Прогресс", "Детали", "Действия"]
         )
 
         header = self.jobs_table.horizontalHeader()
@@ -107,7 +107,8 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
 
         self.jobs_table.setSortingEnabled(True)
         self.jobs_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -288,8 +289,12 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
             progress_item.setData(Qt.UserRole, job.progress)
             self.jobs_table.setItem(row, 4, progress_item)
 
+            status_msg = job.status_message or ""
+            status_msg_item = QTableWidgetItem(status_msg)
+            self.jobs_table.setItem(row, 5, status_msg_item)
+
             actions_widget = self._create_actions_widget(job)
-            self.jobs_table.setCellWidget(row, 5, actions_widget)
+            self.jobs_table.setCellWidget(row, 6, actions_widget)
 
         self.jobs_table.setSortingEnabled(True)
 
@@ -333,8 +338,12 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         progress_item.setData(Qt.UserRole, job.progress)
         self.jobs_table.setItem(row, 4, progress_item)
 
+        status_msg = job.status_message or ""
+        status_msg_item = QTableWidgetItem(status_msg)
+        self.jobs_table.setItem(row, 5, status_msg_item)
+
         actions_widget = self._create_actions_widget(job)
-        self.jobs_table.setCellWidget(row, 5, actions_widget)
+        self.jobs_table.setCellWidget(row, 6, actions_widget)
 
         self.jobs_table.setSortingEnabled(True)
 

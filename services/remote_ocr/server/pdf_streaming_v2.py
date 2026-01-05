@@ -340,7 +340,7 @@ def pass2_ocr_from_manifest(
             on_progress(processed, total_requests)
 
     # --- Обработка strips ---
-    def _process_strip(strip: StripManifestEntry):
+    def _process_strip(strip: StripManifestEntry, strip_idx: int):
         if check_paused and check_paused():
             return None
 
@@ -388,7 +388,7 @@ def pass2_ocr_from_manifest(
             parsed_lens = {i: len(v) if v else 0 for i, v in index_results.items()}
             logger.info(f"PASS2: strip {strip.strip_id} парсинг результата: {parsed_lens}")
 
-            return strip, index_results
+            return strip, index_results, strip_idx
 
         except Exception as e:
             logger.error(f"PASS2 strip {strip.strip_id}: {e}")
@@ -400,13 +400,14 @@ def pass2_ocr_from_manifest(
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_process_strip, strip): strip for strip in manifest.strips
+            executor.submit(_process_strip, strip, idx): strip 
+            for idx, strip in enumerate(manifest.strips)
         }
 
         for future in as_completed(futures):
             result = future.result()
             if result:
-                strip, index_results = result
+                strip, index_results, strip_idx = result
 
                 for i, bp in enumerate(strip.block_parts):
                     block_id = bp["block_id"]

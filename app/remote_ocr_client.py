@@ -117,6 +117,7 @@ class JobInfo:
     updated_at: str = ""
     error_message: Optional[str] = None
     node_id: Optional[str] = None
+    status_message: Optional[str] = None
 
 
 @dataclass
@@ -383,6 +384,7 @@ class RemoteOCRClient:
                 updated_at=j.get("updated_at", ""),
                 error_message=j.get("error_message"),
                 node_id=j.get("node_id"),
+                status_message=j.get("status_message"),
             )
             for j in data
         ]
@@ -403,6 +405,7 @@ class RemoteOCRClient:
             updated_at=j.get("updated_at", ""),
             error_message=j.get("error_message"),
             node_id=j.get("node_id"),
+            status_message=j.get("status_message"),
         )
 
     def get_job_details(self, job_id: str) -> dict:

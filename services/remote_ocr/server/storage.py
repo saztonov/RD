@@ -92,4 +92,5 @@ def job_to_dict(job: Job) -> dict:
         "r2_prefix": job.r2_prefix,
         "node_id": job.node_id,
         "result_prefix": result_prefix,
+        "status_message": job.status_message,
     }

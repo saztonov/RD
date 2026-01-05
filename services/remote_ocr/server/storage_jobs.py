@@ -112,6 +112,7 @@ def update_job_status(
     progress: Optional[float] = None,
     error_message: Optional[str] = None,
     r2_prefix: Optional[str] = None,
+    status_message: Optional[str] = None,
 ) -> None:
     """Обновить статус задачи"""
     now = datetime.utcnow().isoformat()
@@ -124,6 +125,8 @@ def update_job_status(
         updates["error_message"] = error_message
     if r2_prefix is not None:
         updates["r2_prefix"] = r2_prefix
+    if status_message is not None:
+        updates["status_message"] = status_message
 
     client = get_client()
     client.table("jobs").update(updates).eq("id", job_id).execute()
@@ -240,4 +243,5 @@ def _row_to_job(row: dict) -> Job:
         engine=row.get("engine", ""),
         r2_prefix=row.get("r2_prefix", ""),
         node_id=row.get("node_id"),
+        status_message=row.get("status_message"),
     )
