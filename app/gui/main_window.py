@@ -95,6 +95,9 @@ class MainWindow(
 
         # Восстановить настройки окна
         self._restore_settings()
+        
+        # Загрузить настроенные горячие клавиши
+        self._update_hotkeys_from_settings()
 
     def _render_current_page(self, update_tree: bool = True):
         """Отрендерить текущую страницу"""
@@ -375,6 +378,31 @@ class MainWindow(
 
         dialog = ImageCategoriesDialog(self)
         dialog.exec()
+
+    def _show_hotkeys_dialog(self):
+        """Показать диалог настройки горячих клавиш"""
+        from app.gui.hotkeys_dialog import HotkeysDialog
+
+        dialog = HotkeysDialog(self)
+        dialog.exec()
+
+    def _update_hotkeys_from_settings(self):
+        """Обновить горячие клавиши из настроек"""
+        from app.gui.hotkeys_dialog import HotkeysDialog
+
+        # Обновляем горячие клавиши для действий в тулбаре
+        if hasattr(self, "text_action"):
+            self.text_action.setShortcut(
+                HotkeysDialog.get_hotkey("text_block")
+            )
+        if hasattr(self, "image_action"):
+            self.image_action.setShortcut(
+                HotkeysDialog.get_hotkey("image_block")
+            )
+        if hasattr(self, "stamp_action"):
+            self.stamp_action.setShortcut(
+                HotkeysDialog.get_hotkey("stamp_block")
+            )
 
     def _send_to_remote_ocr(self):
         """Отправить выделенные блоки на Remote OCR"""

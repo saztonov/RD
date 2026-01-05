@@ -87,6 +87,12 @@ class MenuSetupMixin:
         ocr_settings_action.triggered.connect(self._show_ocr_settings)
         settings_menu.addAction(ocr_settings_action)
 
+        settings_menu.addSeparator()
+
+        hotkeys_action = QAction("⌨️ Горячие клавиши", self)
+        hotkeys_action.triggered.connect(self._show_hotkeys_dialog)
+        settings_menu.addAction(hotkeys_action)
+
     def _setup_toolbar(self):
         """Настройка панели инструментов"""
         toolbar = QToolBar("Основная панель")
@@ -196,7 +202,6 @@ class MenuSetupMixin:
         self.text_action.setCheckable(True)
         self.text_action.setChecked(True)
         self.text_action.setData({"block_type": BlockType.TEXT})
-        self.text_action.setShortcut(QKeySequence("Ctrl+1"))
         self.text_action.setToolTip("Режим рисования текстовых блоков (Ctrl+1)")
         self.block_type_group.addAction(self.text_action)
         toolbar.addAction(self.text_action)
@@ -204,7 +209,6 @@ class MenuSetupMixin:
         self.image_action = QAction("🖼️ Картинка", self)
         self.image_action.setCheckable(True)
         self.image_action.setData({"block_type": BlockType.IMAGE})
-        self.image_action.setShortcut(QKeySequence("Ctrl+2"))
         self.image_action.setToolTip("Режим рисования блоков картинок (Ctrl+2)")
         self.block_type_group.addAction(self.image_action)
         toolbar.addAction(self.image_action)
@@ -214,7 +218,6 @@ class MenuSetupMixin:
         self.stamp_action.setData(
             {"block_type": BlockType.IMAGE, "category_code": "stamp"}
         )
-        self.stamp_action.setShortcut(QKeySequence("Ctrl+3"))
         self.stamp_action.setToolTip("Режим рисования блоков штампов (Ctrl+3)")
         self.block_type_group.addAction(self.stamp_action)
         toolbar.addAction(self.stamp_action)
@@ -231,7 +234,6 @@ class MenuSetupMixin:
         self.rectangle_action.setCheckable(True)
         self.rectangle_action.setChecked(True)
         self.rectangle_action.setData(ShapeType.RECTANGLE)
-        self.rectangle_action.setShortcut(QKeySequence("Ctrl+Q"))
         self.rectangle_action.setToolTip("Режим рисования прямоугольников (Ctrl+Q - переключение)")
         self.shape_type_group.addAction(self.rectangle_action)
         toolbar.addAction(self.rectangle_action)
@@ -239,7 +241,6 @@ class MenuSetupMixin:
         self.polygon_action = QAction("🔷 Обводка", self)
         self.polygon_action.setCheckable(True)
         self.polygon_action.setData(ShapeType.POLYGON)
-        self.polygon_action.setShortcut(QKeySequence("Ctrl+Q"))
         self.polygon_action.setToolTip(
             "Режим полигонов: клик для добавления точки, двойной клик для завершения (Ctrl+Q - переключение)"
         )

@@ -4,7 +4,7 @@ import copy
 import logging
 
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QKeySequence
 
 logger = logging.getLogger(__name__)
 
@@ -113,50 +113,59 @@ class BlockEventsMixin:
         # В режиме read_only блокируем все команды редактирования
         is_read_only = hasattr(self, "page_viewer") and self.page_viewer.read_only
 
-        # Ctrl+Z для отмены
-        if event.key() == Qt.Key_Z and event.modifiers() & Qt.ControlModifier:
+        # Получаем настроенные горячие клавиши
+        from app.gui.hotkeys_dialog import HotkeysDialog
+        
+        key_sequence = event.keyCombination()
+        pressed_key = QKeySequence(key_sequence).toString()
+
+        # Проверяем соответствие нажатой клавиши настроенным горячим клавишам
+        if pressed_key == HotkeysDialog.get_hotkey("undo"):
             if not is_read_only:
                 self._undo()
             return
-        # Ctrl+Y для повтора
-        elif event.key() == Qt.Key_Y and event.modifiers() & Qt.ControlModifier:
+        elif pressed_key == HotkeysDialog.get_hotkey("redo"):
             if not is_read_only:
                 self._redo()
             return
-        # Ctrl+G для группировки
-        elif event.key() == Qt.Key_G and event.modifiers() & Qt.ControlModifier:
+        elif pressed_key == HotkeysDialog.get_hotkey("group_blocks"):
             if not is_read_only:
                 self._group_selected_blocks()
             return
-        # Ctrl+1 для выбора типа "Текст"
-        elif event.key() == Qt.Key_1 and event.modifiers() & Qt.ControlModifier:
+        elif pressed_key == HotkeysDialog.get_hotkey("text_block"):
             if hasattr(self, "text_action"):
                 self.text_action.setChecked(True)
             return
-        # Ctrl+2 для выбора типа "Картинка"
-        elif event.key() == Qt.Key_2 and event.modifiers() & Qt.ControlModifier:
+        elif pressed_key == HotkeysDialog.get_hotkey("image_block"):
             if hasattr(self, "image_action"):
                 self.image_action.setChecked(True)
             return
-        # Ctrl+3 для выбора типа "Штамп"
-        elif event.key() == Qt.Key_3 and event.modifiers() & Qt.ControlModifier:
+        elif pressed_key == HotkeysDialog.get_hotkey("stamp_block"):
             if hasattr(self, "stamp_action"):
                 self.stamp_action.setChecked(True)
             return
-        # Ctrl+Q для переключения формы (прямоугольник ↔ обводка)
-        elif event.key() == Qt.Key_Q and event.modifiers() & Qt.ControlModifier:
+        elif pressed_key == HotkeysDialog.get_hotkey("toggle_shape"):
             if hasattr(self, "rectangle_action") and hasattr(self, "polygon_action"):
                 if self.rectangle_action.isChecked():
                     self.polygon_action.setChecked(True)
+                    self._on_shape_type_changed(self.polygon_action)
                 else:
                     self.rectangle_action.setChecked(True)
+                    self._on_shape_type_changed(self.rectangle_action)
             return
-        # Ctrl+C для копирования блоков
-        elif event.key() == Qt.Key_C and event.modifiers() & Qt.ControlModifier:
+        elif pressed_key == HotkeysDialog.get_hotkey("cycle_block_type"):
+            if hasattr(self, "text_action") and hasattr(self, "image_action") and hasattr(self, "stamp_action"):
+                if self.text_action.isChecked():
+                    self.image_action.setChecked(True)
+                elif self.image_action.isChecked():
+                    self.stamp_action.setChecked(True)
+                else:
+                    self.text_action.setChecked(True)
+            return
+        elif pressed_key == HotkeysDialog.get_hotkey("copy_blocks"):
             self._copy_selected_blocks()
             return
-        # Ctrl+V для вставки блоков
-        elif event.key() == Qt.Key_V and event.modifiers() & Qt.ControlModifier:
+        elif pressed_key == HotkeysDialog.get_hotkey("paste_blocks"):
             if not is_read_only:
                 self._paste_blocks()
             return
