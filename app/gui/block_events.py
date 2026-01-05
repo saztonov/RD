@@ -61,6 +61,7 @@ class BlockEventsMixin:
 
         # Вставляем блоки
         pasted_count = 0
+        skipped_count = 0
         for block in self._blocks_clipboard:
             # Создаем новую копию блока с новым ID
             new_block = copy.deepcopy(block)
@@ -75,6 +76,18 @@ class BlockEventsMixin:
             # Проверка: на странице может быть только один штамп
             if new_block.category_code == "stamp" and self._has_stamp_on_page(current_page_data):
                 logger.warning("Пропускаем вставку штампа - на странице уже есть штамп")
+                skipped_count += 1
+                continue
+
+            # Проверка: блок должен попадать на границы листа
+            x1, y1, x2, y2 = new_block.coords_px
+            page_width = current_page_data.width
+            page_height = current_page_data.height
+            
+            # Проверяем, что блок хотя бы частично попадает на страницу
+            if x2 <= 0 or y2 <= 0 or x1 >= page_width or y1 >= page_height:
+                logger.warning(f"Пропускаем блок за границей листа: coords={new_block.coords_px}, page_size={page_width}x{page_height}")
+                skipped_count += 1
                 continue
 
             current_page_data.blocks.append(new_block)
@@ -85,9 +98,15 @@ class BlockEventsMixin:
             self.blocks_tree_manager.update_blocks_tree()
             self._auto_save_annotation()
             
-            logger.info(f"Вставлено блоков: {pasted_count}")
+            logger.info(f"Вставлено блоков: {pasted_count}, пропущено: {skipped_count}")
             from app.gui.toast import show_toast
-            show_toast(self, f"✅ Вставлено блоков: {pasted_count}")
+            if skipped_count > 0:
+                show_toast(self, f"✅ Вставлено: {pasted_count}, пропущено: {skipped_count}")
+            else:
+                show_toast(self, f"✅ Вставлено блоков: {pasted_count}")
+        elif skipped_count > 0:
+            from app.gui.toast import show_toast
+            show_toast(self, f"⚠️ Все блоки ({skipped_count}) за границами листа")
 
     def keyPressEvent(self, event):
         """Обработка нажатия клавиш"""
