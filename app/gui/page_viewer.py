@@ -52,6 +52,9 @@ class PageViewer(
 
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
+        
+        # Отключаем индексирование BSP для быстрой отрисовки при перемещении
+        self.scene.setItemIndexMethod(QGraphicsScene.NoIndex)
 
         self.page_image: Optional[QPixmap] = None
         self.image_item: Optional[QGraphicsPixmapItem] = None
@@ -89,6 +92,14 @@ class PageViewer(
         self.pan_start_pos: Optional[QPointF] = None
 
         self.zoom_factor = 1.0
+        
+        # Кеш для main_window (оптимизация доступа)
+        self._main_window_cache = None
+        
+        # Throttling для mouseMoveEvent при рисовании
+        self._last_mouse_move_time = 0
+        self._mouse_move_throttle_ms = 8  # ~120 FPS максимум
+        
         self._setup_ui()
 
     def _setup_ui(self):
@@ -104,12 +115,19 @@ class PageViewer(
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
         self.context_menu_pos: Optional[QPointF] = None
+        
+        # Оптимизация рендеринга для интерактивных операций
+        self.setViewportUpdateMode(QGraphicsView.MinimalViewportUpdate)
+        self.setOptimizationFlag(QGraphicsView.DontAdjustForAntialiasing, True)
 
     def get_current_shape_type(self) -> ShapeType:
         """Получить текущий выбранный тип формы из главного окна"""
-        main_window = self.parent().window()
-        if hasattr(main_window, "selected_shape_type"):
-            return main_window.selected_shape_type
+        # Используем кеш для оптимизации
+        if self._main_window_cache is None:
+            self._main_window_cache = self.parent().window()
+        
+        if hasattr(self._main_window_cache, "selected_shape_type"):
+            return self._main_window_cache.selected_shape_type
         return ShapeType.RECTANGLE
 
     def _clamp_to_page(self, point: QPointF) -> QPointF:

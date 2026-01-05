@@ -36,6 +36,14 @@ class MouseEventsMixin:
 
     def mousePressEvent(self, event):
         """Обработка нажатия мыши"""
+        from app.gui.performance_monitor import get_performance_monitor
+        monitor = get_performance_monitor()
+        
+        with monitor.measure("mousePressEvent", warn_threshold_ms=50):
+            self._handle_left_button_press(event)
+    
+    def _handle_left_button_press(self, event):
+        """Внутренний обработчик левой кнопки мыши"""
         if event.button() == Qt.LeftButton:
             scene_pos = self.mapToScene(event.pos())
 
@@ -172,26 +180,30 @@ class MouseEventsMixin:
             else:
                 # Клик на пустое место - начинаем рисовать новый блок или полигон (только если не read_only)
                 if not self.read_only:
-                    shape_type = self.get_current_shape_type()
+                    from app.gui.performance_monitor import get_performance_monitor
+                    monitor = get_performance_monitor()
+                    
+                    with monitor.measure("start_drawing_block", warn_threshold_ms=50):
+                        shape_type = self.get_current_shape_type()
 
-                    if shape_type == ShapeType.POLYGON:
-                        self.drawing_polygon = True
-                        self.polygon_points = []
-                        self._add_polygon_point(scene_pos)
-                    else:
-                        clamped_start = self._clamp_to_page(scene_pos)
-                        self.drawing = True
-                        self.start_point = clamped_start
-                        self.selected_block_indices = []
+                        if shape_type == ShapeType.POLYGON:
+                            self.drawing_polygon = True
+                            self.polygon_points = []
+                            self._add_polygon_point(scene_pos)
+                        else:
+                            clamped_start = self._clamp_to_page(scene_pos)
+                            self.drawing = True
+                            self.start_point = clamped_start
+                            self.selected_block_indices = []
 
-                        self.rubber_band_item = QGraphicsRectItem(
-                            QRectF(clamped_start, clamped_start)
-                        )
-                        pen = QPen(QColor(255, 0, 0), 2, Qt.DashLine)
-                        brush = QBrush(QColor(255, 0, 0, 30))
-                        self.rubber_band_item.setPen(pen)
-                        self.rubber_band_item.setBrush(brush)
-                        self.scene.addItem(self.rubber_band_item)
+                            self.rubber_band_item = QGraphicsRectItem(
+                                QRectF(clamped_start, clamped_start)
+                            )
+                            pen = QPen(QColor(255, 0, 0), 2, Qt.DashLine)
+                            brush = QBrush(QColor(255, 0, 0, 30))
+                            self.rubber_band_item.setPen(pen)
+                            self.rubber_band_item.setBrush(brush)
+                            self.scene.addItem(self.rubber_band_item)
 
         elif event.button() == Qt.RightButton:
             scene_pos = self.mapToScene(event.pos())
@@ -226,6 +238,14 @@ class MouseEventsMixin:
             self.pan_start_pos = event.pos()
             return
 
+        # Throttling для рисования (оптимизация производительности)
+        if self.drawing or self.selecting:
+            import time
+            current_time = time.time() * 1000  # миллисекунды
+            if current_time - self._last_mouse_move_time < self._mouse_move_throttle_ms:
+                return
+            self._last_mouse_move_time = current_time
+
         scene_pos = self.mapToScene(event.pos())
         clamped_pos = self._clamp_to_page(scene_pos)
 
@@ -251,8 +271,12 @@ class MouseEventsMixin:
             self.rubber_band_item.setRect(rect)
 
         elif self.drawing and self.start_point and self.rubber_band_item:
-            rect = QRectF(self.start_point, clamped_pos).normalized()
-            self.rubber_band_item.setRect(rect)
+            from app.gui.performance_monitor import get_performance_monitor
+            monitor = get_performance_monitor()
+            
+            with monitor.measure("update_rubber_band", warn_threshold_ms=16):
+                rect = QRectF(self.start_point, clamped_pos).normalized()
+                self.rubber_band_item.setRect(rect)
 
         elif (
             self.dragging_polygon_vertex is not None

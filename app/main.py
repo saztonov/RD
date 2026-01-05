@@ -76,6 +76,13 @@ def main():
     setup_logging(log_level=logging.INFO)
 
     logger = logging.getLogger(__name__)
+    
+    # Включить мониторинг производительности через env переменную
+    import os
+    if os.getenv("ENABLE_PERFORMANCE_MONITOR", "").lower() in ("1", "true", "yes"):
+        from app.gui.performance_monitor import enable_performance_monitoring
+        enable_performance_monitoring()
+        logger.info("🔍 Мониторинг производительности включен")
 
     try:
         # Создаём приложение Qt
