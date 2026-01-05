@@ -56,6 +56,9 @@ class MainWindow(
         # Undo/Redo стек
         self.undo_stack: list = []  # [(page_num, blocks_copy), ...]
         self.redo_stack: list = []
+        
+        # Буфер обмена для блоков
+        self._blocks_clipboard: list = []
 
         # Менеджеры (инициализируются после setup_ui)
         self.blocks_tree_manager = None
@@ -80,6 +83,9 @@ class MainWindow(
         
         # Инициализация менеджера соединения
         self._setup_connection_manager()
+        
+        # Подключаем сигналы кеша аннотаций
+        self._setup_annotation_cache_signals()
 
         self.setWindowTitle(__product__)
         self.resize(1200, 800)
@@ -282,6 +288,11 @@ class MainWindow(
 
     def closeEvent(self, event):
         """Обработка закрытия окна"""
+        # Принудительно синхронизировать все несохраненные изменения
+        from app.gui.annotation_cache import get_annotation_cache
+        cache = get_annotation_cache()
+        cache.force_sync_all()
+        
         self._flush_pending_save()
         self._save_settings()
         event.accept()

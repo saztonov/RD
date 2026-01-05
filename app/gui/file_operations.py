@@ -179,6 +179,18 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             if loaded:
                 self.annotation_document = loaded
                 logger.info(f"Annotation loaded: {ann_path}")
+                
+                # Инициализируем кеш аннотаций
+                if self._current_node_id:
+                    from app.gui.annotation_cache import get_annotation_cache
+                    cache = get_annotation_cache()
+                    cache.set(
+                        self._current_node_id,
+                        self.annotation_document,
+                        pdf_path,
+                        r2_key,
+                        str(ann_path)
+                    )
 
                 # Миграция формата выполнена - сохраняем и уведомляем
                 if result.migrated:
