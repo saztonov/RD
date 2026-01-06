@@ -2498,6 +2498,20 @@
         "default": null,
         "data_type": "text",
         "is_nullable": true
+      },
+      {
+        "name": "migrated_to_node",
+        "comment": "Флаг: результаты перенесены в node_files",
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "migrated_at",
+        "comment": "Время переноса результатов в node_files",
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
       }
     ],
     "constraints": [
@@ -2611,6 +2625,22 @@
         "foreign_table": "tree_nodes",
         "foreign_column": "id",
         "foreign_table_schema": "public"
+      },
+      {
+        "name": "node_files_node_id_r2_key_unique",
+        "type": "UNIQUE",
+        "column": "node_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "node_files_node_id_r2_key_unique",
+        "type": "UNIQUE",
+        "column": "r2_key",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
       },
       {
         "name": "node_files_pkey",
@@ -3572,6 +3602,41 @@
         "comment": "Флаг блокировки документа от изменений (удаление, переименование, изменение блоков, запуск OCR)",
         "default": "false",
         "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "path",
+        "comment": "Materialized path: uuid1.uuid2.uuid3 для быстрого поиска предков/потомков",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "depth",
+        "comment": "Глубина узла от корня (0 = корневой проект)",
+        "default": "0",
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "children_count",
+        "comment": "Количество прямых дочерних узлов (обновляется триггером)",
+        "default": "0",
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "descendants_count",
+        "comment": "Количество всех потомков (обновляется триггером)",
+        "default": "0",
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "files_count",
+        "comment": "Количество файлов в node_files для этого узла (обновляется триггером)",
+        "default": "0",
+        "data_type": "integer",
         "is_nullable": true
       }
     ],

@@ -575,6 +575,14 @@
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX idx_node_files_unique_r2 ON public.node_files USING btree (node_id, r2_key)"
   },
+  "public.node_files.node_files_node_id_r2_key_unique": {
+    "schema": "public",
+    "name": "node_files_node_id_r2_key_unique",
+    "table_name": "node_files",
+    "is_unique": true,
+    "is_primary": false,
+    "sql": "CREATE UNIQUE INDEX node_files_node_id_r2_key_unique ON public.node_files USING btree (node_id, r2_key)"
+  },
   "public.qa_artifacts.idx_qa_artifacts_conversation_created": {
     "schema": "public",
     "name": "idx_qa_artifacts_conversation_created",
@@ -743,6 +751,22 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_tree_nodes_client_parent ON public.tree_nodes USING btree (client_id, parent_id)"
   },
+  "public.tree_nodes.idx_tree_nodes_depth": {
+    "schema": "public",
+    "name": "idx_tree_nodes_depth",
+    "table_name": "tree_nodes",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_tree_nodes_depth ON public.tree_nodes USING btree (depth)"
+  },
+  "public.tree_nodes.idx_tree_nodes_folders": {
+    "schema": "public",
+    "name": "idx_tree_nodes_folders",
+    "table_name": "tree_nodes",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_tree_nodes_folders ON public.tree_nodes USING btree (parent_id, sort_order) WHERE (node_type = 'folder'::text)"
+  },
   "public.tree_nodes.idx_tree_nodes_is_locked": {
     "schema": "public",
     "name": "idx_tree_nodes_is_locked",
@@ -759,6 +783,22 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_tree_nodes_parent_id ON public.tree_nodes USING btree (parent_id)"
   },
+  "public.tree_nodes.idx_tree_nodes_parent_sort": {
+    "schema": "public",
+    "name": "idx_tree_nodes_parent_sort",
+    "table_name": "tree_nodes",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_tree_nodes_parent_sort ON public.tree_nodes USING btree (parent_id, sort_order, created_at)"
+  },
+  "public.tree_nodes.idx_tree_nodes_path": {
+    "schema": "public",
+    "name": "idx_tree_nodes_path",
+    "table_name": "tree_nodes",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_tree_nodes_path ON public.tree_nodes USING btree (path text_pattern_ops)"
+  },
   "public.tree_nodes.idx_tree_nodes_pdf_status": {
     "schema": "public",
     "name": "idx_tree_nodes_pdf_status",
@@ -766,6 +806,14 @@
     "is_unique": false,
     "is_primary": false,
     "sql": "CREATE INDEX idx_tree_nodes_pdf_status ON public.tree_nodes USING btree (pdf_status) WHERE (node_type = 'document'::text)"
+  },
+  "public.tree_nodes.idx_tree_nodes_roots": {
+    "schema": "public",
+    "name": "idx_tree_nodes_roots",
+    "table_name": "tree_nodes",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_tree_nodes_roots ON public.tree_nodes USING btree (client_id, sort_order) WHERE (parent_id IS NULL)"
   },
   "public.tree_nodes.idx_tree_nodes_sort": {
     "schema": "public",

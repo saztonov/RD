@@ -27,19 +27,19 @@
     "comment": "Deprecated. Use auth.jwt() -> 'sub' instead.",
     "sql": "CREATE OR REPLACE FUNCTION auth.uid()\n RETURNS uuid\n LANGUAGE sql\n STABLE\nAS $function$\n  select \n  coalesce(\n    nullif(current_setting('request.jwt.claim.sub', true), ''),\n    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')\n  )::uuid\n$function$\n"
   },
-  "extensions.armor(bytea)": {
-    "schema": "extensions",
-    "name": "armor",
-    "arguments": "bytea",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.armor(bytea)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_armor$function$\n"
-  },
   "extensions.armor(bytea, text[], text[])": {
     "schema": "extensions",
     "name": "armor",
     "arguments": "bytea, text[], text[]",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_armor$function$\n"
+  },
+  "extensions.armor(bytea)": {
+    "schema": "extensions",
+    "name": "armor",
+    "arguments": "bytea",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.armor(bytea)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_armor$function$\n"
   },
   "extensions.crypt(text, text)": {
     "schema": "extensions",
@@ -111,19 +111,19 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.gen_random_uuid()\n RETURNS uuid\n LANGUAGE c\n PARALLEL SAFE\nAS '$libdir/pgcrypto', $function$pg_random_uuid$function$\n"
   },
-  "extensions.gen_salt(text, integer)": {
-    "schema": "extensions",
-    "name": "gen_salt",
-    "arguments": "text, integer",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)\n RETURNS text\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$\n"
-  },
   "extensions.gen_salt(text)": {
     "schema": "extensions",
     "name": "gen_salt",
     "arguments": "text",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.gen_salt(text)\n RETURNS text\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_gen_salt$function$\n"
+  },
+  "extensions.gen_salt(text, integer)": {
+    "schema": "extensions",
+    "name": "gen_salt",
+    "arguments": "text, integer",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)\n RETURNS text\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$\n"
   },
   "extensions.grant_pg_cron_access()": {
     "schema": "extensions",
@@ -146,19 +146,19 @@
     "comment": "Grants access to pg_net",
     "sql": "CREATE OR REPLACE FUNCTION extensions.grant_pg_net_access()\n RETURNS event_trigger\n LANGUAGE plpgsql\nAS $function$\nBEGIN\n  IF EXISTS (\n    SELECT 1\n    FROM pg_event_trigger_ddl_commands() AS ev\n    JOIN pg_extension AS ext\n    ON ev.objid = ext.oid\n    WHERE ext.extname = 'pg_net'\n  )\n  THEN\n    IF NOT EXISTS (\n      SELECT 1\n      FROM pg_roles\n      WHERE rolname = 'supabase_functions_admin'\n    )\n    THEN\n      CREATE USER supabase_functions_admin NOINHERIT CREATEROLE LOGIN NOREPLICATION;\n    END IF;\n\n    GRANT USAGE ON SCHEMA net TO supabase_functions_admin, postgres, anon, authenticated, service_role;\n\n    IF EXISTS (\n      SELECT FROM pg_extension\n      WHERE extname = 'pg_net'\n      -- all versions in use on existing projects as of 2025-02-20\n      -- version 0.12.0 onwards don't need these applied\n      AND extversion IN ('0.2', '0.6', '0.7', '0.7.1', '0.8', '0.10.0', '0.11.0')\n    ) THEN\n      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;\n      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;\n\n      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;\n      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;\n\n      REVOKE ALL ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;\n      REVOKE ALL ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;\n\n      GRANT EXECUTE ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;\n      GRANT EXECUTE ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;\n    END IF;\n  END IF;\nEND;\n$function$\n"
   },
-  "extensions.hmac(bytea, bytea, text)": {
-    "schema": "extensions",
-    "name": "hmac",
-    "arguments": "bytea, bytea, text",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_hmac$function$\n"
-  },
   "extensions.hmac(text, text, text)": {
     "schema": "extensions",
     "name": "hmac",
     "arguments": "text, text, text",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_hmac$function$\n"
+  },
+  "extensions.hmac(bytea, bytea, text)": {
+    "schema": "extensions",
+    "name": "hmac",
+    "arguments": "bytea, bytea, text",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_hmac$function$\n"
   },
   "extensions.pg_stat_statements(showtext boolean, OUT userid oid, OUT dbid oid, OUT toplevel boolean, OUT queryid bigint, OUT query text, OUT plans bigint, OUT total_plan_time double precision, OUT min_plan_time double precision, OUT max_plan_time double precision, OUT mean_plan_time double precision, OUT stddev_plan_time double precision, OUT calls bigint, OUT total_exec_time double precision, OUT min_exec_time double precision, OUT max_exec_time double precision, OUT mean_exec_time double precision, OUT stddev_exec_time double precision, OUT rows bigint, OUT shared_blks_hit bigint, OUT shared_blks_read bigint, OUT shared_blks_dirtied bigint, OUT shared_blks_written bigint, OUT local_blks_hit bigint, OUT local_blks_read bigint, OUT local_blks_dirtied bigint, OUT local_blks_written bigint, OUT temp_blks_read bigint, OUT temp_blks_written bigint, OUT shared_blk_read_time double precision, OUT shared_blk_write_time double precision, OUT local_blk_read_time double precision, OUT local_blk_write_time double precision, OUT temp_blk_read_time double precision, OUT temp_blk_write_time double precision, OUT wal_records bigint, OUT wal_fpi bigint, OUT wal_bytes numeric, OUT jit_functions bigint, OUT jit_generation_time double precision, OUT jit_inlining_count bigint, OUT jit_inlining_time double precision, OUT jit_optimization_count bigint, OUT jit_optimization_time double precision, OUT jit_emission_count bigint, OUT jit_emission_time double precision, OUT jit_deform_count bigint, OUT jit_deform_time double precision, OUT stats_since timestamp with time zone, OUT minmax_stats_since timestamp with time zone)": {
     "schema": "extensions",
@@ -216,13 +216,6 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$\n"
   },
-  "extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)": {
-    "schema": "extensions",
-    "name": "pgp_pub_decrypt_bytea",
-    "arguments": "bytea, bytea, text",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$\n"
-  },
   "extensions.pgp_pub_decrypt_bytea(bytea, bytea)": {
     "schema": "extensions",
     "name": "pgp_pub_decrypt_bytea",
@@ -237,12 +230,12 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$\n"
   },
-  "extensions.pgp_pub_encrypt(text, bytea, text)": {
+  "extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)": {
     "schema": "extensions",
-    "name": "pgp_pub_encrypt",
-    "arguments": "text, bytea, text",
+    "name": "pgp_pub_decrypt_bytea",
+    "arguments": "bytea, bytea, text",
     "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$\n"
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$\n"
   },
   "extensions.pgp_pub_encrypt(text, bytea)": {
     "schema": "extensions",
@@ -251,12 +244,12 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$\n"
   },
-  "extensions.pgp_pub_encrypt_bytea(bytea, bytea)": {
+  "extensions.pgp_pub_encrypt(text, bytea, text)": {
     "schema": "extensions",
-    "name": "pgp_pub_encrypt_bytea",
-    "arguments": "bytea, bytea",
+    "name": "pgp_pub_encrypt",
+    "arguments": "text, bytea, text",
     "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$\n"
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$\n"
   },
   "extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)": {
     "schema": "extensions",
@@ -264,6 +257,13 @@
     "arguments": "bytea, bytea, text",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$\n"
+  },
+  "extensions.pgp_pub_encrypt_bytea(bytea, bytea)": {
+    "schema": "extensions",
+    "name": "pgp_pub_encrypt_bytea",
+    "arguments": "bytea, bytea",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$\n"
   },
   "extensions.pgp_sym_decrypt(bytea, text)": {
     "schema": "extensions",
@@ -307,19 +307,19 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$\n"
   },
-  "extensions.pgp_sym_encrypt_bytea(bytea, text)": {
-    "schema": "extensions",
-    "name": "pgp_sym_encrypt_bytea",
-    "arguments": "bytea, text",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$\n"
-  },
   "extensions.pgp_sym_encrypt_bytea(bytea, text, text)": {
     "schema": "extensions",
     "name": "pgp_sym_encrypt_bytea",
     "arguments": "bytea, text, text",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$\n"
+  },
+  "extensions.pgp_sym_encrypt_bytea(bytea, text)": {
+    "schema": "extensions",
+    "name": "pgp_sym_encrypt_bytea",
+    "arguments": "bytea, text",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$\n"
   },
   "extensions.pgrst_ddl_watch()": {
     "schema": "extensions",
@@ -468,6 +468,27 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION pgbouncer.get_auth(p_usename text)\n RETURNS TABLE(username text, password text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  BEGIN\n      RAISE DEBUG 'PgBouncer auth request: %', p_usename;\n\n      RETURN QUERY\n      SELECT\n          rolname::text,\n          CASE WHEN rolvaliduntil < now()\n              THEN null\n              ELSE rolpassword::text\n          END\n      FROM pg_authid\n      WHERE rolname=$1 and rolcanlogin;\n  END;\n  $function$\n"
   },
+  "public.get_tree_ancestors(p_node_id uuid)": {
+    "schema": "public",
+    "name": "get_tree_ancestors",
+    "arguments": "p_node_id uuid",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.get_tree_ancestors(p_node_id uuid)\n RETURNS TABLE(id uuid, name text, depth integer)\n LANGUAGE plpgsql\nAS $function$\r\nDECLARE\r\n    node_path text;\r\n    path_parts text[];\r\nBEGIN\r\n    -- Получаем path узла\r\n    SELECT path INTO node_path FROM tree_nodes WHERE tree_nodes.id = p_node_id;\r\n\r\n    IF node_path IS NULL THEN\r\n        RETURN;\r\n    END IF;\r\n\r\n    -- Парсим path\r\n    path_parts := string_to_array(node_path, '.');\r\n\r\n    -- Возвращаем всех предков (кроме самого узла)\r\n    RETURN QUERY\r\n    SELECT t.id, t.name, t.depth\r\n    FROM tree_nodes t\r\n    WHERE t.id = ANY(path_parts[1:array_length(path_parts, 1) - 1]::uuid[])\r\n    ORDER BY t.depth;\r\nEND;\r\n$function$\n"
+  },
+  "public.get_tree_descendants(p_node_id uuid)": {
+    "schema": "public",
+    "name": "get_tree_descendants",
+    "arguments": "p_node_id uuid",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.get_tree_descendants(p_node_id uuid)\n RETURNS TABLE(id uuid, name text, node_type text, depth integer, path text)\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    RETURN QUERY\r\n    SELECT t.id, t.name, t.node_type, t.depth, t.path\r\n    FROM tree_nodes t\r\n    WHERE t.path LIKE (\r\n        SELECT tn.path || '.%' FROM tree_nodes tn WHERE tn.id = p_node_id\r\n    )\r\n    ORDER BY t.path;\r\nEND;\r\n$function$\n"
+  },
+  "public.move_tree_node(p_node_id uuid, p_new_parent_id uuid)": {
+    "schema": "public",
+    "name": "move_tree_node",
+    "arguments": "p_node_id uuid, p_new_parent_id uuid",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.move_tree_node(p_node_id uuid, p_new_parent_id uuid)\n RETURNS boolean\n LANGUAGE plpgsql\nAS $function$\r\nDECLARE\r\n    old_path text;\r\n    new_parent_path text;\r\n    new_path text;\r\n    new_depth integer;\r\nBEGIN\r\n    -- Получаем текущий путь узла\r\n    SELECT path INTO old_path FROM tree_nodes WHERE id = p_node_id;\r\n\r\n    IF old_path IS NULL THEN\r\n        RETURN false;\r\n    END IF;\r\n\r\n    -- Определяем новый путь\r\n    IF p_new_parent_id IS NULL THEN\r\n        new_path := p_node_id::text;\r\n        new_depth := 0;\r\n    ELSE\r\n        SELECT path INTO new_parent_path FROM tree_nodes WHERE id = p_new_parent_id;\r\n\r\n        IF new_parent_path IS NULL THEN\r\n            RETURN false;\r\n        END IF;\r\n\r\n        -- Проверяем что не перемещаем в собственного потомка\r\n        IF new_parent_path LIKE old_path || '.%' THEN\r\n            RETURN false;\r\n        END IF;\r\n\r\n        new_path := new_parent_path || '.' || p_node_id::text;\r\n        SELECT depth + 1 INTO new_depth FROM tree_nodes WHERE id = p_new_parent_id;\r\n    END IF;\r\n\r\n    -- Обновляем путь у узла и всех потомков\r\n    UPDATE tree_nodes\r\n    SET\r\n        path = new_path || substring(path from length(old_path) + 1),\r\n        depth = depth - (SELECT depth FROM tree_nodes WHERE id = p_node_id) + new_depth,\r\n        parent_id = CASE WHEN id = p_node_id THEN p_new_parent_id ELSE parent_id END,\r\n        updated_at = now()\r\n    WHERE path = old_path OR path LIKE old_path || '.%';\r\n\r\n    RETURN true;\r\nEND;\r\n$function$\n"
+  },
   "public.qa_get_descendants(p_client_id text, p_root_ids uuid[], p_node_types text[])": {
     "schema": "public",
     "name": "qa_get_descendants",
@@ -489,6 +510,13 @@
     "comment": "Пересчитывает статусы всех PDF документов на основе данных node_files",
     "sql": "CREATE OR REPLACE FUNCTION public.recalculate_all_pdf_statuses()\n RETURNS TABLE(node_id uuid, old_status text, new_status text, status_message text)\n LANGUAGE plpgsql\nAS $function$\r\nDECLARE\r\n    doc RECORD;\r\n    v_status TEXT;\r\n    v_message TEXT;\r\n    v_has_ann_r2 BOOLEAN;\r\n    v_has_ocr_r2 BOOLEAN;\r\n    v_has_res_r2 BOOLEAN;\r\n    v_has_ann_db BOOLEAN;\r\n    v_has_ocr_db BOOLEAN;\r\n    v_has_res_db BOOLEAN;\r\n    v_r2_key TEXT;\r\n    v_ann_key TEXT;\r\n    v_ocr_key TEXT;\r\n    v_res_key TEXT;\r\nBEGIN\r\n    -- Обходим все документы\r\n    FOR doc IN \r\n        SELECT id, attributes->>'r2_key' as r2_key, pdf_status\r\n        FROM tree_nodes \r\n        WHERE node_type = 'document'\r\n    LOOP\r\n        v_r2_key := doc.r2_key;\r\n        \r\n        IF v_r2_key IS NULL OR v_r2_key = '' THEN\r\n            v_status := 'unknown';\r\n            v_message := 'Нет R2 ключа';\r\n        ELSE\r\n            -- Формируем ключи для связанных файлов\r\n            v_ann_key := regexp_replace(v_r2_key, '\\.pdf$', '_annotation.json', 'i');\r\n            v_ocr_key := regexp_replace(v_r2_key, '\\.pdf$', '_ocr.html', 'i');\r\n            v_res_key := regexp_replace(v_r2_key, '\\.pdf$', '_result.json', 'i');\r\n            \r\n            -- Проверяем наличие в node_files\r\n            SELECT \r\n                bool_or(file_type = 'annotation') AS has_ann,\r\n                bool_or(file_type = 'ocr_html') AS has_ocr,\r\n                bool_or(file_type = 'result_json') AS has_res\r\n            INTO v_has_ann_db, v_has_ocr_db, v_has_res_db\r\n            FROM node_files\r\n            WHERE node_id = doc.id;\r\n            \r\n            -- Определяем статус на основе наличия файлов в БД\r\n            IF v_has_ann_db AND v_has_ocr_db AND v_has_res_db THEN\r\n                v_status := 'complete';\r\n                v_message := 'Все файлы на месте';\r\n            ELSIF NOT v_has_ann_db THEN\r\n                v_status := 'missing_blocks';\r\n                v_message := 'Отсутствует annotation.json';\r\n            ELSE\r\n                v_status := 'missing_files';\r\n                v_message := '';\r\n                IF NOT v_has_ocr_db THEN\r\n                    v_message := v_message || 'ocr.html не в Supabase; ';\r\n                END IF;\r\n                IF NOT v_has_res_db THEN\r\n                    v_message := v_message || 'result.json не в Supabase; ';\r\n                END IF;\r\n            END IF;\r\n        END IF;\r\n        \r\n        -- Обновляем статус\r\n        UPDATE tree_nodes\r\n        SET \r\n            pdf_status = v_status,\r\n            pdf_status_message = v_message,\r\n            pdf_status_updated_at = NOW()\r\n        WHERE id = doc.id;\r\n        \r\n        -- Возвращаем результат\r\n        node_id := doc.id;\r\n        old_status := doc.pdf_status;\r\n        new_status := v_status;\r\n        status_message := v_message;\r\n        RETURN NEXT;\r\n    END LOOP;\r\nEND;\r\n$function$\n"
   },
+  "public.update_ancestors_descendants_count()": {
+    "schema": "public",
+    "name": "update_ancestors_descendants_count",
+    "arguments": "",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.update_ancestors_descendants_count()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nDECLARE\r\n    ancestor_ids uuid[];\r\n    delta integer;\r\n    path_parts text[];\r\nBEGIN\r\n    IF TG_OP = 'INSERT' THEN\r\n        -- Парсим path для получения предков\r\n        IF NEW.path IS NOT NULL AND NEW.path != NEW.id::text THEN\r\n            path_parts := string_to_array(NEW.path, '.');\r\n            -- Убираем последний элемент (сам узел)\r\n            path_parts := path_parts[1:array_length(path_parts, 1) - 1];\r\n\r\n            IF array_length(path_parts, 1) > 0 THEN\r\n                ancestor_ids := path_parts::uuid[];\r\n                UPDATE tree_nodes\r\n                SET descendants_count = descendants_count + 1\r\n                WHERE id = ANY(ancestor_ids);\r\n            END IF;\r\n        END IF;\r\n        RETURN NEW;\r\n\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        -- Уменьшаем счётчики у всех предков\r\n        IF OLD.path IS NOT NULL AND OLD.path != OLD.id::text THEN\r\n            path_parts := string_to_array(OLD.path, '.');\r\n            path_parts := path_parts[1:array_length(path_parts, 1) - 1];\r\n\r\n            -- Delta = 1 (сам узел) + его потомки\r\n            delta := 1 + COALESCE(OLD.descendants_count, 0);\r\n\r\n            IF array_length(path_parts, 1) > 0 THEN\r\n                ancestor_ids := path_parts::uuid[];\r\n                UPDATE tree_nodes\r\n                SET descendants_count = descendants_count - delta\r\n                WHERE id = ANY(ancestor_ids);\r\n            END IF;\r\n        END IF;\r\n        RETURN OLD;\r\n    END IF;\r\n\r\n    RETURN NULL;\r\nEND;\r\n$function$\n"
+  },
   "public.update_app_settings_timestamp()": {
     "schema": "public",
     "name": "update_app_settings_timestamp",
@@ -503,12 +531,33 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION public.update_image_categories_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    NEW.updated_at = now();\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
   },
+  "public.update_node_files_count()": {
+    "schema": "public",
+    "name": "update_node_files_count",
+    "arguments": "",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.update_node_files_count()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    IF TG_OP = 'INSERT' THEN\r\n        UPDATE tree_nodes\r\n        SET files_count = files_count + 1\r\n        WHERE id = NEW.node_id;\r\n        RETURN NEW;\r\n\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        UPDATE tree_nodes\r\n        SET files_count = files_count - 1\r\n        WHERE id = OLD.node_id;\r\n        RETURN OLD;\r\n\r\n    ELSIF TG_OP = 'UPDATE' THEN\r\n        -- Если изменился node_id\r\n        IF OLD.node_id IS DISTINCT FROM NEW.node_id THEN\r\n            UPDATE tree_nodes\r\n            SET files_count = files_count - 1\r\n            WHERE id = OLD.node_id;\r\n\r\n            UPDATE tree_nodes\r\n            SET files_count = files_count + 1\r\n            WHERE id = NEW.node_id;\r\n        END IF;\r\n        RETURN NEW;\r\n    END IF;\r\n\r\n    RETURN NULL;\r\nEND;\r\n$function$\n"
+  },
+  "public.update_parent_children_count()": {
+    "schema": "public",
+    "name": "update_parent_children_count",
+    "arguments": "",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.update_parent_children_count()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    IF TG_OP = 'INSERT' THEN\r\n        IF NEW.parent_id IS NOT NULL THEN\r\n            UPDATE tree_nodes\r\n            SET children_count = children_count + 1\r\n            WHERE id = NEW.parent_id;\r\n        END IF;\r\n        RETURN NEW;\r\n\r\n    ELSIF TG_OP = 'DELETE' THEN\r\n        IF OLD.parent_id IS NOT NULL THEN\r\n            UPDATE tree_nodes\r\n            SET children_count = children_count - 1\r\n            WHERE id = OLD.parent_id;\r\n        END IF;\r\n        RETURN OLD;\r\n\r\n    ELSIF TG_OP = 'UPDATE' THEN\r\n        -- Если изменился parent_id\r\n        IF OLD.parent_id IS DISTINCT FROM NEW.parent_id THEN\r\n            IF OLD.parent_id IS NOT NULL THEN\r\n                UPDATE tree_nodes\r\n                SET children_count = children_count - 1\r\n                WHERE id = OLD.parent_id;\r\n            END IF;\r\n            IF NEW.parent_id IS NOT NULL THEN\r\n                UPDATE tree_nodes\r\n                SET children_count = children_count + 1\r\n                WHERE id = NEW.parent_id;\r\n            END IF;\r\n        END IF;\r\n        RETURN NEW;\r\n    END IF;\r\n\r\n    RETURN NULL;\r\nEND;\r\n$function$\n"
+  },
   "public.update_pdf_status(p_node_id uuid, p_status text, p_message text)": {
     "schema": "public",
     "name": "update_pdf_status",
     "arguments": "p_node_id uuid, p_status text, p_message text",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION public.update_pdf_status(p_node_id uuid, p_status text, p_message text DEFAULT NULL::text)\n RETURNS void\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    UPDATE tree_nodes\r\n    SET \r\n        pdf_status = p_status,\r\n        pdf_status_message = p_message,\r\n        pdf_status_updated_at = NOW(),\r\n        updated_at = NOW()\r\n    WHERE id = p_node_id AND node_type = 'document';\r\nEND;\r\n$function$\n"
+  },
+  "public.update_tree_node_path_and_depth()": {
+    "schema": "public",
+    "name": "update_tree_node_path_and_depth",
+    "arguments": "",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.update_tree_node_path_and_depth()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nDECLARE\r\n    parent_path text;\r\n    parent_depth integer;\r\nBEGIN\r\n    IF NEW.parent_id IS NULL THEN\r\n        -- Корневой узел\r\n        NEW.path := NEW.id::text;\r\n        NEW.depth := 0;\r\n    ELSE\r\n        -- Получаем path и depth родителя\r\n        SELECT path, depth INTO parent_path, parent_depth\r\n        FROM tree_nodes\r\n        WHERE id = NEW.parent_id;\r\n\r\n        IF parent_path IS NULL THEN\r\n            -- Родитель не найден или ещё не обработан\r\n            NEW.path := NEW.id::text;\r\n            NEW.depth := 0;\r\n        ELSE\r\n            NEW.path := parent_path || '.' || NEW.id::text;\r\n            NEW.depth := parent_depth + 1;\r\n        END IF;\r\n    END IF;\r\n\r\n    RETURN NEW;\r\nEND;\r\n$function$\n"
   },
   "public.update_updated_at_column()": {
     "schema": "public",
