@@ -364,6 +364,24 @@ class JobOperationsMixin:
             logger.error(f"Ошибка отмены задачи: {e}")
             QMessageBox.critical(self, "Ошибка", f"Не удалось отменить задачу:\n{e}")
 
+    def _delete_job(self, job_id: str):
+        """Удалить задачу (без удаления файлов из R2)"""
+        client = self._get_client()
+        if client is None:
+            return
+
+        try:
+            if client.delete_job(job_id):
+                from app.gui.toast import show_toast
+
+                show_toast(self, f"Задача {job_id[:8]}... удалена")
+                self._remove_job_from_table(job_id)
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось удалить задачу")
+        except Exception as e:
+            logger.error(f"Ошибка удаления задачи: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось удалить задачу:\n{e}")
+
     def _clear_all_jobs(self):
         """Очистить все задачи"""
         client = self._get_client()

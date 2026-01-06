@@ -232,5 +232,19 @@ class TableManagerMixin:
         )
         actions_layout.addWidget(info_btn)
 
+        # Кнопка удаления (без удаления файлов)
+        delete_btn = QPushButton("🗑")
+        delete_btn.setToolTip("Удалить задачу (файлы сохранятся)")
+        delete_btn.setFixedSize(26, 26)
+        delete_btn.setStyleSheet(
+            "QPushButton { background-color: #7f8c8d; border: 1px solid #5d6d7e; "
+            "border-radius: 4px; color: white; } "
+            "QPushButton:hover { background-color: #5d6d7e; }"
+        )
+        delete_btn.clicked.connect(
+            lambda checked, jid=job.id: self._delete_job(jid)
+        )
+        actions_layout.addWidget(delete_btn)
+
         actions_layout.addStretch()
         return actions_widget
