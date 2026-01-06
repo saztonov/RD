@@ -345,3 +345,68 @@ class JobOperationsMixin:
             QMessageBox.critical(
                 self, "Ошибка", f"Не удалось получить информацию:\n{e}"
             )
+
+    def _cancel_job(self, job_id: str):
+        """Отменить задачу"""
+        client = self._get_client()
+        if client is None:
+            return
+
+        try:
+            if client.cancel_job(job_id):
+                from app.gui.toast import show_toast
+
+                show_toast(self, f"Задача {job_id[:8]}... отменена")
+                self._refresh_jobs(manual=True)
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось отменить задачу")
+        except Exception as e:
+            logger.error(f"Ошибка отмены задачи: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось отменить задачу:\n{e}")
+
+    def _clear_all_jobs(self):
+        """Очистить все задачи"""
+        client = self._get_client()
+        if client is None:
+            QMessageBox.warning(self, "Ошибка", "Клиент не инициализирован")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Очистка задач",
+            "Вы уверены, что хотите удалить все задачи?\n"
+            "Это действие нельзя отменить.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            jobs = client.list_jobs()
+            deleted = 0
+            errors = 0
+
+            for job in jobs:
+                try:
+                    if client.delete_job(job.id):
+                        deleted += 1
+                    else:
+                        errors += 1
+                except Exception as e:
+                    logger.warning(f"Ошибка удаления задачи {job.id}: {e}")
+                    errors += 1
+
+            self._refresh_jobs(manual=True)
+
+            from app.gui.toast import show_toast
+
+            if errors == 0:
+                show_toast(self, f"Удалено {deleted} задач")
+            else:
+                show_toast(self, f"Удалено {deleted}, ошибок: {errors}")
+
+        except Exception as e:
+            logger.error(f"Ошибка очистки задач: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось очистить задачи:\n{e}")

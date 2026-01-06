@@ -182,6 +182,7 @@ class TableManagerMixin:
             "done": "✅ Готово",
             "error": "❌ Ошибка",
             "paused": "⏸️ Пауза",
+            "cancelled": "🚫 Отменено",
         }.get(status, status)
 
     def _create_actions_widget(self, job) -> QWidget:
@@ -191,27 +192,40 @@ class TableManagerMixin:
         actions_layout.setContentsMargins(1, 1, 1, 1)
         actions_layout.setSpacing(2)
 
+        # Кнопка остановки для активных задач
         if job.status in ("queued", "processing"):
-            pause_btn = QPushButton("⏸️")
-            pause_btn.setToolTip("Поставить на паузу")
-            pause_btn.setFixedSize(26, 26)
-            pause_btn.clicked.connect(lambda checked, jid=job.id: self._pause_job(jid))
-            actions_layout.addWidget(pause_btn)
+            stop_btn = QPushButton("⏹")
+            stop_btn.setToolTip("Отменить задачу")
+            stop_btn.setFixedSize(26, 26)
+            stop_btn.setStyleSheet(
+                "QPushButton { background-color: #c0392b; border: 1px solid #922b21; "
+                "border-radius: 4px; color: white; font-weight: bold; } "
+                "QPushButton:hover { background-color: #922b21; }"
+            )
+            stop_btn.clicked.connect(lambda checked, jid=job.id: self._cancel_job(jid))
+            actions_layout.addWidget(stop_btn)
         elif job.status == "paused":
-            resume_btn = QPushButton("▶️")
+            resume_btn = QPushButton("▶")
             resume_btn.setToolTip("Возобновить")
             resume_btn.setFixedSize(26, 26)
+            resume_btn.setStyleSheet(
+                "QPushButton { background-color: #27ae60; border: 1px solid #1e8449; "
+                "border-radius: 4px; color: white; } "
+                "QPushButton:hover { background-color: #1e8449; }"
+            )
             resume_btn.clicked.connect(
                 lambda checked, jid=job.id: self._resume_job(jid)
             )
             actions_layout.addWidget(resume_btn)
 
-        info_btn = QPushButton("ℹ️")
+        # Кнопка информации
+        info_btn = QPushButton("ℹ")
         info_btn.setToolTip("Информация о задаче")
         info_btn.setFixedSize(26, 26)
         info_btn.setStyleSheet(
-            "QPushButton { background-color: #7f8c8d; border: 1px solid #636e72; "
-            "border-radius: 4px; } QPushButton:hover { background-color: #636e72; }"
+            "QPushButton { background-color: #3498db; border: 1px solid #2980b9; "
+            "border-radius: 4px; color: white; font-weight: bold; } "
+            "QPushButton:hover { background-color: #2980b9; }"
         )
         info_btn.clicked.connect(
             lambda checked, jid=job.id: self._show_job_details(jid)

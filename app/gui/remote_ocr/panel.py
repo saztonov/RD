@@ -98,6 +98,12 @@ class RemoteOCRPanel(
         header_layout.addStretch()
         header_layout.addWidget(self.status_label)
 
+        self.clear_all_btn = QPushButton("🗑️")
+        self.clear_all_btn.setMaximumWidth(30)
+        self.clear_all_btn.setToolTip("Очистить все задачи")
+        self.clear_all_btn.clicked.connect(self._clear_all_jobs)
+        header_layout.addWidget(self.clear_all_btn)
+
         self.refresh_btn = QPushButton("🔄")
         self.refresh_btn.setMaximumWidth(30)
         self.refresh_btn.setToolTip("Обновить список")
@@ -113,13 +119,16 @@ class RemoteOCRPanel(
         )
 
         header = self.jobs_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.Stretch)
-        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setStretchLastSection(False)
+        # Default widths
+        header.resizeSection(0, 35)   # №
+        header.resizeSection(1, 150)  # Наименование
+        header.resizeSection(2, 120)  # Время начала
+        header.resizeSection(3, 100)  # Статус
+        header.resizeSection(4, 70)   # Прогресс
+        header.resizeSection(5, 150)  # Детали
+        header.resizeSection(6, 70)   # Действия
 
         self.jobs_table.setSortingEnabled(True)
         self.jobs_table.setSelectionBehavior(QTableWidget.SelectRows)

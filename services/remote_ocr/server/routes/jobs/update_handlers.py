@@ -211,3 +211,26 @@ def resume_job_handler(
     run_ocr_task.delay(job_id)
 
     return {"ok": True, "job_id": job_id, "status": "queued"}
+
+
+def cancel_job_handler(
+    job_id: str,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Отменить задачу (установить статус cancelled)"""
+    from services.remote_ocr.server.storage import update_job_status
+
+    check_api_key(x_api_key)
+
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status not in ("queued", "processing", "paused"):
+        raise HTTPException(
+            status_code=400, detail=f"Cannot cancel job in status: {job.status}"
+        )
+
+    update_job_status(job_id, "cancelled", status_message="Отменено пользователем")
+
+    return {"ok": True, "job_id": job_id, "status": "cancelled"}
