@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-04T22:44:52.116750
+-- Generated: 2026-01-06T14:25:13.052715
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -446,10 +446,10 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     error_message text,
-    status_message text,
     engine text DEFAULT ''::text,
     r2_prefix text,
     node_id uuid,
+    status_message text,
     CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT jobs_pkey PRIMARY KEY (id)
 );

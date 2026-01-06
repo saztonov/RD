@@ -2491,6 +2491,13 @@
         "default": null,
         "data_type": "uuid",
         "is_nullable": true
+      },
+      {
+        "name": "status_message",
+        "comment": "Детальное сообщение о текущей операции (отображается в колонке \"Детали\")",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
       }
     ],
     "constraints": [
