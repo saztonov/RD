@@ -287,38 +287,6 @@ class JobOperationsMixin:
             logger.error(f"Ошибка создания задачи: {e}", exc_info=True)
             self._signals.job_create_error.emit("generic", str(e))
 
-    def _delete_job(self, job_id: str):
-        """Удалить задачу и все связанные файлы"""
-        reply = QMessageBox.question(
-            self,
-            "Подтверждение удаления",
-            f"Удалить задачу {job_id[:8]}...?\n\n"
-            "Будут удалены:\n• Запись на сервере\n• Файлы в R2",
-            QMessageBox.Yes | QMessageBox.No,
-        )
-
-        if reply != QMessageBox.Yes:
-            return
-
-        client = self._get_client()
-        if client is None:
-            return
-
-        try:
-            client.delete_job(job_id)
-
-            if hasattr(self, "_optimistic_jobs"):
-                self._optimistic_jobs.pop(job_id, None)
-
-            from app.gui.toast import show_toast
-
-            show_toast(self, "Задача удалена")
-            self._refresh_jobs(manual=True)
-
-        except Exception as e:
-            logger.error(f"Ошибка удаления задачи: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось удалить задачу:\n{e}")
-
     def _pause_job(self, job_id: str):
         """Поставить задачу на паузу"""
         client = self._get_client()
@@ -354,96 +322,6 @@ class JobOperationsMixin:
         except Exception as e:
             logger.error(f"Ошибка возобновления задачи: {e}")
             QMessageBox.critical(self, "Ошибка", f"Не удалось возобновить:\n{e}")
-
-    def _rerun_job(self, job_id: str):
-        """Повторное распознавание с сохранёнными настройками"""
-        if (
-            hasattr(self.main_window, "_current_node_locked")
-            and self.main_window._current_node_locked
-        ):
-            QMessageBox.warning(
-                self,
-                "Документ заблокирован",
-                "Этот документ заблокирован от изменений.\nСначала снимите блокировку.",
-            )
-            return
-
-        from app.gui.toast import show_toast
-
-        show_toast(self, "Проверка изменений...", duration=1500)
-
-        self._executor.submit(self._rerun_job_bg, job_id)
-
-    def _rerun_job_bg(self, job_id: str):
-        """Фоновая повторная отправка на распознавание"""
-        try:
-            import hashlib
-            import json
-
-            from app.remote_ocr_client import AuthenticationError, ServerError
-            from rd_core.r2_storage import R2Storage
-
-            client = self._get_client()
-            if client is None:
-                self._signals.rerun_error.emit(job_id, "Клиент не инициализирован")
-                return
-
-            node_id = getattr(self.main_window, "_current_node_id", None)
-            r2_key = getattr(self.main_window, "_current_r2_key", None)
-
-            if node_id and r2_key:
-                try:
-                    r2 = R2Storage()
-                    self._clean_old_ocr_results(node_id, r2_key, r2)
-                except Exception as e:
-                    logger.warning(f"Не удалось очистить старые OCR результаты: {e}")
-
-            current_blocks = self._get_selected_blocks()
-            if not current_blocks:
-                self._signals.rerun_error.emit(job_id, "Нет блоков для распознавания")
-                return
-
-            current_blocks_data = [block.to_dict() for block in current_blocks]
-            current_hash = hashlib.sha256(
-                json.dumps(
-                    current_blocks_data, sort_keys=True, ensure_ascii=False
-                ).encode()
-            ).hexdigest()
-
-            server_blocks = client.get_job_blocks(job_id)
-            updated_blocks = None
-
-            if server_blocks:
-                server_hash = hashlib.sha256(
-                    json.dumps(
-                        server_blocks, sort_keys=True, ensure_ascii=False
-                    ).encode()
-                ).hexdigest()
-
-                if current_hash == server_hash:
-                    self._signals.rerun_no_changes.emit(job_id)
-                    return
-                else:
-                    updated_blocks = current_blocks
-                    logger.info("Блоки изменились, обновляем на сервере")
-            else:
-                updated_blocks = current_blocks
-
-            if not client.restart_job(job_id, updated_blocks):
-                self._signals.rerun_error.emit(
-                    job_id, "Не удалось перезапустить задачу"
-                )
-                return
-
-            self._signals.rerun_created.emit(job_id, None)
-
-        except AuthenticationError:
-            self._signals.rerun_error.emit(job_id, "Неверный API ключ")
-        except ServerError as e:
-            self._signals.rerun_error.emit(job_id, f"Сервер недоступен: {e}")
-        except Exception as e:
-            logger.error(f"Ошибка повторного распознавания: {e}")
-            self._signals.rerun_error.emit(job_id, str(e))
 
     def _show_job_details(self, job_id: str):
         """Показать детальную информацию о задаче"""

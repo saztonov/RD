@@ -16,8 +16,3 @@ class WorkerSignals(QObject):
     download_progress = Signal(str, int, str)  # job_id, current_file_num, filename
     download_finished = Signal(str, str)  # job_id, extract_dir
     download_error = Signal(str, str)  # job_id, error_message
-    # Сигналы для повторного распознавания
-    rerun_started = Signal(str)  # old_job_id
-    rerun_created = Signal(str, object)  # old_job_id, new_job_info
-    rerun_error = Signal(str, str)  # old_job_id, error_message
-    rerun_no_changes = Signal(str)  # job_id - блоки не изменились

@@ -191,16 +191,6 @@ class TableManagerMixin:
         actions_layout.setContentsMargins(1, 1, 1, 1)
         actions_layout.setSpacing(2)
 
-        rerun_btn = QPushButton("🔄")
-        rerun_btn.setToolTip("Повторное распознавание")
-        rerun_btn.setFixedSize(26, 26)
-        rerun_btn.setStyleSheet(
-            "QPushButton { background-color: #27ae60; border: 1px solid #1e8449; "
-            "border-radius: 4px; } QPushButton:hover { background-color: #1e8449; }"
-        )
-        rerun_btn.clicked.connect(lambda checked, jid=job.id: self._rerun_job(jid))
-        actions_layout.addWidget(rerun_btn)
-
         if job.status in ("queued", "processing"):
             pause_btn = QPushButton("⏸️")
             pause_btn.setToolTip("Поставить на паузу")
@@ -227,12 +217,6 @@ class TableManagerMixin:
             lambda checked, jid=job.id: self._show_job_details(jid)
         )
         actions_layout.addWidget(info_btn)
-
-        delete_btn = QPushButton("🗑️")
-        delete_btn.setToolTip("Удалить задачу")
-        delete_btn.setFixedSize(26, 26)
-        delete_btn.clicked.connect(lambda checked, jid=job.id: self._delete_job(jid))
-        actions_layout.addWidget(delete_btn)
 
         actions_layout.addStretch()
         return actions_widget

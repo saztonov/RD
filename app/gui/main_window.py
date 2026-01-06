@@ -95,7 +95,11 @@ class MainWindow(
 
         # Восстановить настройки окна
         self._restore_settings()
-        
+
+        # Гарантировать видимость Remote OCR панели после восстановления настроек
+        if self.remote_ocr_panel:
+            self.remote_ocr_panel.show()
+
         # Загрузить настроенные горячие клавиши
         self._update_hotkeys_from_settings()
 

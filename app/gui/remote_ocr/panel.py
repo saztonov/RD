@@ -84,9 +84,6 @@ class RemoteOCRPanel(
         self._signals.download_progress.connect(self._on_download_progress)
         self._signals.download_finished.connect(self._on_download_finished)
         self._signals.download_error.connect(self._on_download_error)
-        self._signals.rerun_created.connect(self._on_rerun_created)
-        self._signals.rerun_error.connect(self._on_rerun_error)
-        self._signals.rerun_no_changes.connect(self._on_rerun_no_changes)
 
     def _setup_ui(self):
         """Настроить UI панели"""
@@ -287,32 +284,6 @@ class RemoteOCRPanel(
 
         QMessageBox.critical(
             self, "Ошибка загрузки", f"Не удалось скачать файлы:\n{error_msg}"
-        )
-
-    def _on_rerun_created(self, old_job_id: str, new_job_info):
-        """Слот: повторное распознавание создано"""
-        from app.gui.toast import show_toast
-
-        if new_job_info:
-            show_toast(
-                self, f"Задача пересоздана: {new_job_info.id[:8]}...", duration=2500
-            )
-        else:
-            show_toast(self, f"Задача перезапущена: {old_job_id[:8]}...", duration=2500)
-        self._refresh_jobs(manual=True)
-
-    def _on_rerun_error(self, job_id: str, error_msg: str):
-        """Слот: ошибка повторного распознавания"""
-        QMessageBox.critical(
-            self, "Ошибка", f"Не удалось повторить распознавание:\n{error_msg}"
-        )
-
-    def _on_rerun_no_changes(self, job_id: str):
-        """Слот: блоки не изменились"""
-        QMessageBox.information(
-            self,
-            "Без изменений",
-            "Блоки не изменились.\nФайл уже был распознан с текущей аннотацией.",
         )
 
     def showEvent(self, event):
