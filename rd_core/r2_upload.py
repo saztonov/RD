@@ -5,6 +5,9 @@ from typing import Optional
 
 from botocore.exceptions import ClientError
 
+from rd_core.r2_disk_cache import get_disk_cache
+from rd_core.r2_metadata_cache import get_metadata_cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +61,10 @@ class R2UploadMixin:
                 ExtraArgs=extra_args,
                 Config=self.transfer_config,
             )
+
+            # Инвалидируем кэши после успешной загрузки
+            get_metadata_cache().invalidate_key(remote_key)
+            get_disk_cache().invalidate(remote_key)
 
             logger.info(f"✅ Файл загружен в R2: {remote_key} ({file_size} байт)")
             return True
@@ -211,11 +218,16 @@ class R2UploadMixin:
                 Body=content.encode("utf-8"),
                 ContentType=content_type,
             )
+
+            # Инвалидируем кэши после успешной загрузки
+            get_metadata_cache().invalidate_key(remote_key)
+            get_disk_cache().invalidate(remote_key)
+
             logger.info(f"✅ Текст загружен в R2: {remote_key}")
             return True
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
-            
+
             # Проверяем сетевые ошибки
             if error_code in ["RequestTimeout", "ServiceUnavailable"]:
                 logger.warning(f"⚠️ Сетевая ошибка при загрузке текста в R2")

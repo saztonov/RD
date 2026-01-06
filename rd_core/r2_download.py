@@ -1,9 +1,12 @@
 """Операции скачивания из R2"""
 import logging
+import shutil
 from pathlib import Path
 from typing import Optional
 
 from botocore.exceptions import ClientError
+
+from rd_core.r2_disk_cache import get_disk_cache
 
 logger = logging.getLogger(__name__)
 
@@ -11,13 +14,16 @@ logger = logging.getLogger(__name__)
 class R2DownloadMixin:
     """Миксин для операций скачивания из R2"""
 
-    def download_file(self, remote_key: str, local_path: str) -> bool:
+    def download_file(
+        self, remote_key: str, local_path: str, use_cache: bool = True
+    ) -> bool:
         """
         Скачать файл из R2
 
         Args:
             remote_key: Ключ объекта в R2
             local_path: Локальный путь для сохранения
+            use_cache: Использовать дисковый кэш (по умолчанию True)
 
         Returns:
             True если успешно, False при ошибке
@@ -25,6 +31,16 @@ class R2DownloadMixin:
         try:
             local_file = Path(local_path)
             local_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # Проверяем дисковый кэш
+            if use_cache:
+                disk_cache = get_disk_cache()
+                cached_path = disk_cache.get(remote_key)
+                if cached_path and cached_path.exists():
+                    # Копируем из кэша
+                    shutil.copy2(cached_path, local_file)
+                    logger.debug(f"R2 cache hit: {remote_key}")
+                    return True
 
             logger.debug(f"Скачивание файла из R2: {remote_key} → {local_path}")
 
@@ -36,6 +52,12 @@ class R2DownloadMixin:
             )
 
             logger.info(f"✅ Файл скачан из R2: {remote_key}")
+
+            # Добавляем в дисковый кэш
+            if use_cache:
+                disk_cache = get_disk_cache()
+                disk_cache.put(remote_key, local_file)
+
             return True
 
         except ClientError as e:

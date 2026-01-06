@@ -5,6 +5,9 @@ from typing import Optional
 
 from botocore.exceptions import ClientError
 
+from rd_core.r2_disk_cache import get_disk_cache
+from rd_core.r2_metadata_cache import get_metadata_cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +44,9 @@ class R2UtilsMixin:
         """
         try:
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=remote_key)
+            # Инвалидируем кэши
+            get_metadata_cache().invalidate_key(remote_key)
+            get_disk_cache().invalidate(remote_key)
             logger.info(f"✅ Объект удален из R2: {remote_key}")
             return True
 
@@ -70,6 +76,15 @@ class R2UtilsMixin:
             # Удаляем старый объект
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=old_key)
             logger.info(f"✅ Старый объект удален: {old_key}")
+
+            # Инвалидируем кэши для обоих ключей
+            metadata_cache = get_metadata_cache()
+            metadata_cache.invalidate_key(old_key)
+            metadata_cache.invalidate_key(new_key)
+
+            disk_cache = get_disk_cache()
+            disk_cache.invalidate(old_key)
+            disk_cache.invalidate(new_key)
 
             return True
 
@@ -153,53 +168,87 @@ class R2UtilsMixin:
 
         return len(deleted_keys)
 
-    def list_objects_with_metadata(self, prefix: str) -> list[dict]:
+    def list_objects_with_metadata(
+        self, prefix: str, use_cache: bool = True
+    ) -> list[dict]:
         """
         Получить список объектов с метаданными (LastModified, Size, ETag)
 
         Args:
             prefix: Префикс для поиска
+            use_cache: Использовать кэш (по умолчанию True)
 
         Returns:
             Список dict с ключами: Key, LastModified, Size, ETag
         """
+        cache = get_metadata_cache()
+
+        # Проверяем кэш
+        if use_cache:
+            cached = cache.get_list(prefix)
+            if cached is not None:
+                logger.debug(f"Cache hit for list_objects: {prefix}")
+                return cached
+
         try:
             response = self.s3_client.list_objects_v2(
                 Bucket=self.bucket_name, Prefix=prefix
             )
 
             if "Contents" not in response:
-                return []
+                result = []
+            else:
+                result = [
+                    {
+                        "Key": obj["Key"],
+                        "LastModified": obj.get("LastModified"),
+                        "Size": obj.get("Size", 0),
+                        "ETag": obj.get("ETag", "").strip('"'),
+                    }
+                    for obj in response["Contents"]
+                ]
 
-            return [
-                {
-                    "Key": obj["Key"],
-                    "LastModified": obj.get("LastModified"),
-                    "Size": obj.get("Size", 0),
-                    "ETag": obj.get("ETag", "").strip('"'),
-                }
-                for obj in response["Contents"]
-            ]
+            # Сохраняем в кэш
+            cache.set_list(prefix, result)
+
+            # Также обновляем exists кэш для найденных ключей
+            for obj in result:
+                cache.set_exists(obj["Key"], True)
+
+            return result
+
         except ClientError as e:
             logger.error(f"❌ Ошибка получения списка из R2: {e}")
             return []
 
-    def exists(self, remote_key: str) -> bool:
+    def exists(self, remote_key: str, use_cache: bool = True) -> bool:
         """
         Проверить существование объекта в R2
 
         Args:
             remote_key: Ключ объекта
+            use_cache: Использовать кэш (по умолчанию True)
 
         Returns:
             True если объект существует
         """
+        cache = get_metadata_cache()
+
+        # Проверяем кэш
+        if use_cache:
+            cached = cache.get_exists(remote_key)
+            if cached is not None:
+                logger.debug(f"Cache hit for exists: {remote_key} = {cached}")
+                return cached
+
         try:
             self.s3_client.head_object(Bucket=self.bucket_name, Key=remote_key)
+            cache.set_exists(remote_key, True)
             return True
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code in ("404", "NoSuchKey"):
+                cache.set_exists(remote_key, False)
                 return False
             logger.error(f"❌ Ошибка проверки существования объекта: {e}")
             return False
@@ -272,5 +321,13 @@ class R2UtilsMixin:
         logger.info(f"✅ Всего удалено {len(deleted)}/{len(keys)} объектов")
         if errors:
             logger.warning(f"⚠️ Ошибок при удалении: {len(errors)}")
+
+        # Инвалидируем кэши для удалённых ключей
+        if deleted:
+            metadata_cache = get_metadata_cache()
+            disk_cache = get_disk_cache()
+            for key in deleted:
+                metadata_cache.invalidate_key(key)
+                disk_cache.invalidate(key)
 
         return deleted, errors

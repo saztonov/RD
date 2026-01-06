@@ -232,6 +232,61 @@ class AsyncR2Storage:
             logger.error(f"❌ Async list error: {e}")
             return []
 
+    async def download_files_batch(
+        self, downloads: List[tuple[str, str]]
+    ) -> List[bool]:
+        """
+        Параллельное скачивание нескольких файлов.
+
+        Args:
+            downloads: Список кортежей (remote_key, local_path)
+
+        Returns:
+            Список результатов (True/False) для каждого файла
+        """
+        if not downloads:
+            return []
+
+        tasks = [
+            self.download_file(remote_key, local_path)
+            for remote_key, local_path in downloads
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Обрабатываем исключения как False
+        return [
+            result if isinstance(result, bool) else False
+            for result in results
+        ]
+
+    async def upload_files_batch(
+        self, uploads: List[tuple[str, str, Optional[str]]]
+    ) -> List[bool]:
+        """
+        Параллельная загрузка нескольких файлов.
+
+        Args:
+            uploads: Список кортежей (local_path, remote_key, content_type)
+                     content_type может быть None
+
+        Returns:
+            Список результатов (True/False) для каждого файла
+        """
+        if not uploads:
+            return []
+
+        tasks = [
+            self.upload_file(local_path, remote_key, content_type)
+            for local_path, remote_key, content_type in uploads
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Обрабатываем исключения как False
+        return [
+            result if isinstance(result, bool) else False
+            for result in results
+        ]
+
     def _guess_content_type(self, file_path: Path) -> str:
         ext = file_path.suffix.lower()
         types = {
@@ -307,6 +362,34 @@ class AsyncR2StorageSync:
 
     def list_objects(self, prefix: str = "") -> List[str]:
         return _run_async(self._async_storage.list_objects(prefix))
+
+    def download_files_batch(
+        self, downloads: List[tuple[str, str]]
+    ) -> List[bool]:
+        """
+        Параллельное скачивание нескольких файлов (sync wrapper).
+
+        Args:
+            downloads: Список кортежей (remote_key, local_path)
+
+        Returns:
+            Список результатов (True/False) для каждого файла
+        """
+        return _run_async(self._async_storage.download_files_batch(downloads))
+
+    def upload_files_batch(
+        self, uploads: List[tuple[str, str, Optional[str]]]
+    ) -> List[bool]:
+        """
+        Параллельная загрузка нескольких файлов (sync wrapper).
+
+        Args:
+            uploads: Список кортежей (local_path, remote_key, content_type)
+
+        Returns:
+            Список результатов (True/False) для каждого файла
+        """
+        return _run_async(self._async_storage.upload_files_batch(uploads))
 
     def generate_presigned_url(
         self, remote_key: str, expiration: int = 3600

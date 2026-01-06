@@ -50,10 +50,14 @@ def calculate_pdf_status(
         ocr_r2_key = f"{pdf_parent}/{pdf_stem}_ocr.html"
         res_r2_key = f"{pdf_parent}/{pdf_stem}_result.json"
 
-        # Проверяем наличие файлов на R2
-        has_annotation_r2 = r2_storage.exists(ann_r2_key)
-        has_ocr_html_r2 = r2_storage.exists(ocr_r2_key)
-        has_result_json_r2 = r2_storage.exists(res_r2_key)
+        # Проверяем наличие файлов на R2 одним запросом list_objects
+        # Вместо 3 отдельных exists() делаем 1 list_objects_with_metadata()
+        r2_objects = r2_storage.list_objects_with_metadata(f"{pdf_parent}/")
+        r2_keys = {obj["Key"] for obj in r2_objects}
+
+        has_annotation_r2 = ann_r2_key in r2_keys
+        has_ocr_html_r2 = ocr_r2_key in r2_keys
+        has_result_json_r2 = res_r2_key in r2_keys
 
         # Проверяем наличие файлов в Supabase
         try:
