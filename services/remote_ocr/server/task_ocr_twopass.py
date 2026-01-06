@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from .memory_utils import log_memory_delta
-from .pdf_streaming_v2 import (
+from .pdf_streaming_twopass import (
     cleanup_manifest_files,
     pass1_prepare_crops,
     pass2_ocr_from_manifest,

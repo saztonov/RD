@@ -18,7 +18,7 @@ def generate_results(
     from rd_core.models import Block, Document, Page, ShapeType
     from rd_core.ocr import generate_html_from_pages, generate_md_from_pages
 
-    from .pdf_streaming import get_page_dimensions_streaming
+    from .pdf_streaming_core import get_page_dimensions_streaming
 
     # Логирование состояния блоков
     blocks_with_ocr = sum(1 for b in blocks if b.ocr_text)

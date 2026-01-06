@@ -68,7 +68,7 @@ def verify_and_retry_missing_blocks(
     retry_crops_dir.mkdir(exist_ok=True)
 
     # Обрабатываем каждый блок отдельно
-    from .pdf_streaming import StreamingPDFProcessor
+    from .pdf_streaming_core import StreamingPDFProcessor
     from rd_core.models import Block
     
     successful_retries = 0

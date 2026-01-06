@@ -4,9 +4,8 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from botocore.exceptions import ClientError
-
 from rd_core.r2_disk_cache import get_disk_cache
+from rd_core.r2_errors import handle_r2_download_error
 
 logger = logging.getLogger(__name__)
 
@@ -60,23 +59,8 @@ class R2DownloadMixin:
 
             return True
 
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "Unknown")
-            if error_code == "NoSuchKey" or error_code == "404":
-                logger.warning(f"⚠️ Файл не найден в R2: {remote_key}")
-            elif error_code in ["RequestTimeout", "ServiceUnavailable"]:
-                logger.warning(f"⚠️ Сетевая ошибка при скачивании из R2: {error_code}")
-            else:
-                logger.error(f"❌ Ошибка скачивания из R2: {error_code} - {e}")
-            return False
-        except (ConnectionError, TimeoutError) as e:
-            logger.warning(f"⚠️ Сетевая ошибка при скачивании из R2: {e}")
-            return False
         except Exception as e:
-            logger.error(
-                f"❌ Неожиданная ошибка скачивания из R2: {type(e).__name__}: {e}",
-                exc_info=True,
-            )
+            handle_r2_download_error(e, remote_key, "download_file")
             return False
 
     def download_text(self, remote_key: str) -> Optional[str]:
@@ -96,15 +80,6 @@ class R2DownloadMixin:
             content = response["Body"].read().decode("utf-8")
             logger.info(f"✅ Текст загружен из R2: {remote_key}")
             return content
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "Unknown")
-            if error_code == "NoSuchKey":
-                logger.warning(f"⚠️ Файл не найден в R2: {remote_key}")
-            elif error_code in ["RequestTimeout", "ServiceUnavailable"]:
-                logger.warning(f"⚠️ Сетевая ошибка при загрузке текста из R2: {error_code}")
-            else:
-                logger.error(f"❌ Ошибка загрузки текста из R2: {e}")
-            return None
-        except (ConnectionError, TimeoutError) as e:
-            logger.warning(f"⚠️ Сетевая ошибка при загрузке текста из R2: {e}")
+        except Exception as e:
+            handle_r2_download_error(e, remote_key, "download_text")
             return None

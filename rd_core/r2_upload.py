@@ -3,10 +3,13 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from botocore.exceptions import ClientError
-
 from rd_core.r2_disk_cache import get_disk_cache
 from rd_core.r2_metadata_cache import get_metadata_cache
+from rd_core.r2_errors import (
+    handle_r2_upload_error,
+    create_sync_operation_callback,
+    create_text_sync_operation_callback,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,67 +72,9 @@ class R2UploadMixin:
             logger.info(f"✅ Файл загружен в R2: {remote_key} ({file_size} байт)")
             return True
 
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "Unknown")
-            error_msg = e.response.get("Error", {}).get("Message", str(e))
-            
-            # Проверяем сетевые ошибки
-            if error_code in ["RequestTimeout", "ServiceUnavailable"]:
-                logger.warning(f"⚠️ Сетевая ошибка при загрузке в R2: {error_msg}")
-                # Добавляем в очередь отложенной синхронизации
-                try:
-                    from app.gui.sync_queue import get_sync_queue, SyncOperation, SyncOperationType
-                    from datetime import datetime
-                    import uuid
-                    
-                    queue = get_sync_queue()
-                    op = SyncOperation(
-                        id=str(uuid.uuid4()),
-                        type=SyncOperationType.UPLOAD_FILE,
-                        timestamp=datetime.now().isoformat(),
-                        local_path=local_path,
-                        r2_key=remote_key,
-                        data={"content_type": content_type}
-                    )
-                    queue.add_operation(op)
-                    logger.info(f"Файл добавлен в очередь синхронизации: {remote_key}")
-                except Exception as queue_error:
-                    logger.error(f"Не удалось добавить в очередь: {queue_error}")
-                return False
-            
-            logger.error(f"❌ ClientError при загрузке в R2: {error_code} - {error_msg}")
-            logger.error(f"   Bucket: {self.bucket_name}, Key: {remote_key}")
-            logger.error(f"   Response: {e.response}", exc_info=True)
-            return False
-        except (ConnectionError, TimeoutError) as e:
-            logger.warning(f"⚠️ Сетевая ошибка при загрузке в R2: {e}")
-            # Добавляем в очередь отложенной синхронизации
-            try:
-                from app.gui.sync_queue import get_sync_queue, SyncOperation, SyncOperationType
-                from datetime import datetime
-                import uuid
-                
-                queue = get_sync_queue()
-                op = SyncOperation(
-                    id=str(uuid.uuid4()),
-                    type=SyncOperationType.UPLOAD_FILE,
-                    timestamp=datetime.now().isoformat(),
-                    local_path=local_path,
-                    r2_key=remote_key,
-                    data={"content_type": content_type}
-                )
-                queue.add_operation(op)
-                logger.info(f"Файл добавлен в очередь синхронизации: {remote_key}")
-            except Exception as queue_error:
-                logger.error(f"Не удалось добавить в очередь: {queue_error}")
-            return False
         except Exception as e:
-            logger.error(
-                f"❌ Неожиданная ошибка загрузки в R2: {type(e).__name__}: {e}",
-                exc_info=True,
-            )
-            logger.error(f"   Файл: {local_path}")
-            logger.error(f"   Bucket: {self.bucket_name}, Key: {remote_key}")
+            on_queue = create_sync_operation_callback(local_path, remote_key, content_type)
+            handle_r2_upload_error(e, remote_key, local_path, content_type, on_queue, "upload_file")
             return False
 
     def upload_directory(
@@ -225,67 +170,7 @@ class R2UploadMixin:
 
             logger.info(f"✅ Текст загружен в R2: {remote_key}")
             return True
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "Unknown")
-
-            # Проверяем сетевые ошибки
-            if error_code in ["RequestTimeout", "ServiceUnavailable"]:
-                logger.warning(f"⚠️ Сетевая ошибка при загрузке текста в R2")
-                # Сохраняем текст во временный файл и добавляем в очередь
-                try:
-                    from app.gui.sync_queue import get_sync_queue, SyncOperation, SyncOperationType
-                    from datetime import datetime
-                    import uuid
-                    import tempfile
-                    from pathlib import Path
-                    
-                    # Создаём временный файл
-                    temp_file = Path(tempfile.gettempdir()) / "RD" / "sync_pending" / f"{uuid.uuid4()}.txt"
-                    temp_file.parent.mkdir(parents=True, exist_ok=True)
-                    temp_file.write_text(content, encoding='utf-8')
-                    
-                    queue = get_sync_queue()
-                    op = SyncOperation(
-                        id=str(uuid.uuid4()),
-                        type=SyncOperationType.UPLOAD_FILE,
-                        timestamp=datetime.now().isoformat(),
-                        local_path=str(temp_file),
-                        r2_key=remote_key,
-                        data={"content_type": content_type, "is_temp": True}
-                    )
-                    queue.add_operation(op)
-                    logger.info(f"Текст добавлен в очередь синхронизации: {remote_key}")
-                except Exception as queue_error:
-                    logger.error(f"Не удалось добавить в очередь: {queue_error}")
-                return False
-            
-            logger.error(f"❌ Ошибка загрузки текста в R2: {e}")
-            return False
-        except (ConnectionError, TimeoutError) as e:
-            logger.warning(f"⚠️ Сетевая ошибка при загрузке текста в R2: {e}")
-            # Сохраняем текст во временный файл и добавляем в очередь
-            try:
-                from app.gui.sync_queue import get_sync_queue, SyncOperation, SyncOperationType
-                from datetime import datetime
-                import uuid
-                import tempfile
-                from pathlib import Path
-                
-                temp_file = Path(tempfile.gettempdir()) / "RD" / "sync_pending" / f"{uuid.uuid4()}.txt"
-                temp_file.parent.mkdir(parents=True, exist_ok=True)
-                temp_file.write_text(content, encoding='utf-8')
-                
-                queue = get_sync_queue()
-                op = SyncOperation(
-                    id=str(uuid.uuid4()),
-                    type=SyncOperationType.UPLOAD_FILE,
-                    timestamp=datetime.now().isoformat(),
-                    local_path=str(temp_file),
-                    r2_key=remote_key,
-                    data={"content_type": content_type, "is_temp": True}
-                )
-                queue.add_operation(op)
-                logger.info(f"Текст добавлен в очередь синхронизации: {remote_key}")
-            except Exception as queue_error:
-                logger.error(f"Не удалось добавить в очередь: {queue_error}")
+        except Exception as e:
+            on_queue = create_text_sync_operation_callback(content, remote_key, content_type)
+            handle_r2_upload_error(e, remote_key, None, content_type, on_queue, "upload_text")
             return False

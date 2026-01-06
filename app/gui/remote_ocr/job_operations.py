@@ -1,0 +1,469 @@
+"""Mixin для операций с Remote OCR задачами (CRUD, pause/resume)"""
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from PySide6.QtWidgets import QMessageBox
+
+if TYPE_CHECKING:
+    pass
+
+logger = logging.getLogger(__name__)
+
+
+class JobOperationsMixin:
+    """Миксин для операций с задачами: создание, удаление, пауза, возобновление, перезапуск"""
+
+    def _clean_old_ocr_results(self, node_id: str, r2_key: str, r2):
+        """Очистить старые результаты OCR перед новым распознаванием"""
+        import shutil
+        from pathlib import PurePosixPath
+
+        from app.gui.folder_settings_dialog import get_projects_dir
+        from app.tree_client import FileType, TreeClient
+
+        try:
+            pdf_stem = Path(r2_key).stem
+            r2_prefix = str(PurePosixPath(r2_key).parent)
+            projects_dir = get_projects_dir()
+
+            # 1. Удаляем кропы из R2 и локального кэша
+            crops_prefix = f"{r2_prefix}/crops/{pdf_stem}/"
+            crop_keys = r2.list_files(crops_prefix)
+
+            if crop_keys:
+                deleted_keys, errors = r2.delete_objects_batch(crop_keys)
+                logger.debug(f"Deleted {len(deleted_keys)} crops from R2")
+                if errors:
+                    logger.warning(f"Failed to delete {len(errors)} crops from R2")
+
+                if projects_dir:
+                    for crop_key in deleted_keys:
+                        rel = (
+                            crop_key[len("tree_docs/"):]
+                            if crop_key.startswith("tree_docs/")
+                            else crop_key
+                        )
+                        crop_local = Path(projects_dir) / "cache" / rel
+                        if crop_local.exists():
+                            crop_local.unlink()
+
+            # Удаляем папку crops из кэша
+            if projects_dir:
+                rel_prefix = (
+                    r2_prefix[len("tree_docs/"):]
+                    if r2_prefix.startswith("tree_docs/")
+                    else r2_prefix
+                )
+                crops_folder = (
+                    Path(projects_dir) / "cache" / rel_prefix / "crops" / pdf_stem
+                )
+                if crops_folder.exists():
+                    shutil.rmtree(crops_folder, ignore_errors=True)
+
+            # 2. Удаляем записи из node_files (CROP)
+            client = TreeClient()
+            node_files = client.get_node_files(node_id)
+            for nf in node_files:
+                if nf.file_type == FileType.CROP:
+                    client.delete_node_file(nf.id)
+
+            # 3. Очищаем ocr_text в блоках текущего документа
+            if self.main_window.annotation_document:
+                cleared = 0
+                for page in self.main_window.annotation_document.pages:
+                    for block in page.blocks:
+                        if hasattr(block, "ocr_text") and block.ocr_text:
+                            block.ocr_text = None
+                            cleared += 1
+
+                if cleared > 0:
+                    from app.gui.file_operations import (
+                        get_annotation_path,
+                        get_annotation_r2_key,
+                    )
+                    from rd_core.annotation_io import AnnotationIO
+
+                    pdf_path = getattr(self.main_window, "_current_pdf_path", None)
+                    if pdf_path:
+                        ann_path = get_annotation_path(pdf_path)
+                        AnnotationIO.save_annotation(
+                            self.main_window.annotation_document, str(ann_path)
+                        )
+                        logger.debug(f"Saved cleared annotation to {ann_path}")
+
+                        ann_r2_key = get_annotation_r2_key(r2_key)
+                        r2.upload_file(str(ann_path), ann_r2_key)
+                        logger.debug(f"Synced cleared annotation to R2: {ann_r2_key}")
+
+            logger.info(f"Cleaned old OCR results for node: {node_id}")
+
+            if hasattr(self, "_downloaded_jobs"):
+                self._downloaded_jobs.clear()
+
+        except Exception as e:
+            logger.warning(f"Failed to clean old OCR results: {e}")
+
+    def _create_job(self):
+        """Создать новую задачу OCR"""
+        if (
+            not self.main_window.pdf_document
+            or not self.main_window.annotation_document
+        ):
+            QMessageBox.warning(self, "Ошибка", "Откройте PDF документ")
+            return
+
+        if (
+            hasattr(self.main_window, "_current_node_locked")
+            and self.main_window._current_node_locked
+        ):
+            QMessageBox.warning(
+                self,
+                "Документ заблокирован",
+                "Этот документ заблокирован от изменений.\nСначала снимите блокировку.",
+            )
+            return
+
+        pdf_path = self.main_window.annotation_document.pdf_path
+        if not pdf_path or not Path(pdf_path).exists():
+            if (
+                hasattr(self.main_window, "_current_pdf_path")
+                and self.main_window._current_pdf_path
+            ):
+                pdf_path = self.main_window._current_pdf_path
+                self.main_window.annotation_document.pdf_path = pdf_path
+
+        if not pdf_path or not Path(pdf_path).exists():
+            QMessageBox.warning(self, "Ошибка", "PDF файл не найден")
+            return
+
+        node_id = getattr(self.main_window, "_current_node_id", None) or None
+        r2_key = getattr(self.main_window, "_current_r2_key", None) or None
+
+        if node_id and r2_key:
+            try:
+                from rd_core.r2_storage import R2Storage
+
+                r2 = R2Storage()
+                if not r2.exists(r2_key):
+                    QMessageBox.warning(
+                        self,
+                        "Ошибка",
+                        "PDF не загружен в облако.\n"
+                        "Синхронизируйте документ или перезагрузите его в дерево проектов.",
+                    )
+                    return
+
+                self._clean_old_ocr_results(node_id, r2_key, r2)
+            except Exception as e:
+                logger.warning(f"Не удалось проверить R2: {e}")
+
+        from PySide6.QtWidgets import QDialog
+
+        from app.gui.ocr_dialog import OCRDialog
+
+        task_name = Path(pdf_path).stem if pdf_path else ""
+
+        dialog = OCRDialog(self.main_window, task_name=task_name, pdf_path=pdf_path)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        self._last_output_dir = dialog.output_dir
+        self._last_engine = dialog.ocr_backend
+
+        selected_blocks = self._get_selected_blocks()
+        if not selected_blocks:
+            QMessageBox.warning(self, "Ошибка", "Нет блоков для распознавания")
+            return
+
+        client = self._get_client()
+        if client is None:
+            QMessageBox.warning(self, "Ошибка", "Клиент не инициализирован")
+            return
+
+        engine = "openrouter"
+        if dialog.ocr_backend == "datalab":
+            engine = "datalab"
+        elif dialog.ocr_backend == "openrouter":
+            engine = "openrouter"
+
+        self._pending_output_dir = dialog.output_dir
+
+        from app.gui.toast import show_toast
+
+        show_toast(self, "Отправка задачи...", duration=1500)
+
+        logger.info(
+            f"Отправка задачи на сервер: engine={engine}, blocks={len(selected_blocks)}, "
+            f"image_model={getattr(dialog, 'image_model', None)}, "
+            f"stamp_model={getattr(dialog, 'stamp_model', None)}, node_id={node_id}"
+        )
+
+        import uuid
+
+        temp_job_id = f"uploading-{uuid.uuid4().hex[:12]}"
+
+        from app.remote_ocr_client import JobInfo
+
+        temp_job = JobInfo(
+            id=temp_job_id,
+            status="uploading",
+            progress=0.0,
+            document_id="",
+            document_name=Path(pdf_path).name,
+            task_name=task_name,
+            status_message="Загрузка на сервер...",
+        )
+        self._signals.job_uploading.emit(temp_job)
+
+        self._executor.submit(
+            self._create_job_bg,
+            client,
+            pdf_path,
+            selected_blocks,
+            task_name,
+            engine,
+            getattr(dialog, "text_model", None),
+            getattr(dialog, "table_model", None),
+            getattr(dialog, "image_model", None),
+            getattr(dialog, "stamp_model", None),
+            node_id,
+            temp_job_id,
+        )
+
+    def _create_job_bg(
+        self,
+        client,
+        pdf_path,
+        blocks,
+        task_name,
+        engine,
+        text_model,
+        table_model,
+        image_model,
+        stamp_model,
+        node_id=None,
+        temp_job_id=None,
+    ):
+        """Фоновое создание задачи"""
+        try:
+            from app.remote_ocr_client import (
+                AuthenticationError,
+                PayloadTooLargeError,
+                ServerError,
+            )
+
+            logger.info(
+                f"Начало создания задачи: engine={engine}, blocks={len(blocks)}"
+            )
+            job_info = client.create_job(
+                pdf_path,
+                blocks,
+                task_name=task_name,
+                engine=engine,
+                text_model=text_model,
+                table_model=table_model,
+                image_model=image_model,
+                stamp_model=stamp_model,
+                node_id=node_id,
+            )
+            logger.info(f"Задача создана: id={job_info.id}, status={job_info.status}")
+            job_info._temp_job_id = temp_job_id
+            self._signals.job_created.emit(job_info)
+        except AuthenticationError:
+            logger.error("Ошибка авторизации при создании задачи")
+            self._signals.job_create_error.emit("auth", "Неверный API ключ.")
+        except PayloadTooLargeError:
+            logger.error("PDF файл слишком большой")
+            self._signals.job_create_error.emit(
+                "size", "PDF файл превышает лимит сервера."
+            )
+        except ServerError as e:
+            logger.error(f"Ошибка сервера: {e}")
+            self._signals.job_create_error.emit("server", f"Сервер недоступен.\n{e}")
+        except Exception as e:
+            logger.error(f"Ошибка создания задачи: {e}", exc_info=True)
+            self._signals.job_create_error.emit("generic", str(e))
+
+    def _delete_job(self, job_id: str):
+        """Удалить задачу и все связанные файлы"""
+        reply = QMessageBox.question(
+            self,
+            "Подтверждение удаления",
+            f"Удалить задачу {job_id[:8]}...?\n\n"
+            "Будут удалены:\n• Запись на сервере\n• Файлы в R2",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        client = self._get_client()
+        if client is None:
+            return
+
+        try:
+            client.delete_job(job_id)
+
+            if hasattr(self, "_optimistic_jobs"):
+                self._optimistic_jobs.pop(job_id, None)
+
+            from app.gui.toast import show_toast
+
+            show_toast(self, "Задача удалена")
+            self._refresh_jobs(manual=True)
+
+        except Exception as e:
+            logger.error(f"Ошибка удаления задачи: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось удалить задачу:\n{e}")
+
+    def _pause_job(self, job_id: str):
+        """Поставить задачу на паузу"""
+        client = self._get_client()
+        if client is None:
+            return
+
+        try:
+            if client.pause_job(job_id):
+                from app.gui.toast import show_toast
+
+                show_toast(self, f"Задача {job_id[:8]}... на паузе")
+                self._refresh_jobs(manual=True)
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось поставить на паузу")
+        except Exception as e:
+            logger.error(f"Ошибка паузы задачи: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось поставить на паузу:\n{e}")
+
+    def _resume_job(self, job_id: str):
+        """Возобновить задачу с паузы"""
+        client = self._get_client()
+        if client is None:
+            return
+
+        try:
+            if client.resume_job(job_id):
+                from app.gui.toast import show_toast
+
+                show_toast(self, f"Задача {job_id[:8]}... возобновлена")
+                self._refresh_jobs(manual=True)
+            else:
+                QMessageBox.warning(self, "Ошибка", "Не удалось возобновить")
+        except Exception as e:
+            logger.error(f"Ошибка возобновления задачи: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось возобновить:\n{e}")
+
+    def _rerun_job(self, job_id: str):
+        """Повторное распознавание с сохранёнными настройками"""
+        if (
+            hasattr(self.main_window, "_current_node_locked")
+            and self.main_window._current_node_locked
+        ):
+            QMessageBox.warning(
+                self,
+                "Документ заблокирован",
+                "Этот документ заблокирован от изменений.\nСначала снимите блокировку.",
+            )
+            return
+
+        from app.gui.toast import show_toast
+
+        show_toast(self, "Проверка изменений...", duration=1500)
+
+        self._executor.submit(self._rerun_job_bg, job_id)
+
+    def _rerun_job_bg(self, job_id: str):
+        """Фоновая повторная отправка на распознавание"""
+        try:
+            import hashlib
+            import json
+
+            from app.remote_ocr_client import AuthenticationError, ServerError
+            from rd_core.r2_storage import R2Storage
+
+            client = self._get_client()
+            if client is None:
+                self._signals.rerun_error.emit(job_id, "Клиент не инициализирован")
+                return
+
+            node_id = getattr(self.main_window, "_current_node_id", None)
+            r2_key = getattr(self.main_window, "_current_r2_key", None)
+
+            if node_id and r2_key:
+                try:
+                    r2 = R2Storage()
+                    self._clean_old_ocr_results(node_id, r2_key, r2)
+                except Exception as e:
+                    logger.warning(f"Не удалось очистить старые OCR результаты: {e}")
+
+            current_blocks = self._get_selected_blocks()
+            if not current_blocks:
+                self._signals.rerun_error.emit(job_id, "Нет блоков для распознавания")
+                return
+
+            current_blocks_data = [block.to_dict() for block in current_blocks]
+            current_hash = hashlib.sha256(
+                json.dumps(
+                    current_blocks_data, sort_keys=True, ensure_ascii=False
+                ).encode()
+            ).hexdigest()
+
+            server_blocks = client.get_job_blocks(job_id)
+            updated_blocks = None
+
+            if server_blocks:
+                server_hash = hashlib.sha256(
+                    json.dumps(
+                        server_blocks, sort_keys=True, ensure_ascii=False
+                    ).encode()
+                ).hexdigest()
+
+                if current_hash == server_hash:
+                    self._signals.rerun_no_changes.emit(job_id)
+                    return
+                else:
+                    updated_blocks = current_blocks
+                    logger.info("Блоки изменились, обновляем на сервере")
+            else:
+                updated_blocks = current_blocks
+
+            if not client.restart_job(job_id, updated_blocks):
+                self._signals.rerun_error.emit(
+                    job_id, "Не удалось перезапустить задачу"
+                )
+                return
+
+            self._signals.rerun_created.emit(job_id, None)
+
+        except AuthenticationError:
+            self._signals.rerun_error.emit(job_id, "Неверный API ключ")
+        except ServerError as e:
+            self._signals.rerun_error.emit(job_id, f"Сервер недоступен: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка повторного распознавания: {e}")
+            self._signals.rerun_error.emit(job_id, str(e))
+
+    def _show_job_details(self, job_id: str):
+        """Показать детальную информацию о задаче"""
+        client = self._get_client()
+        if client is None:
+            return
+
+        try:
+            job_details = client.get_job_details(job_id)
+
+            pdf_path = getattr(self.main_window, "_current_pdf_path", None)
+            if pdf_path:
+                job_details["client_output_dir"] = str(Path(pdf_path).parent)
+
+            from app.gui.job_details_dialog import JobDetailsDialog
+
+            dialog = JobDetailsDialog(job_details, self)
+            dialog.exec()
+        except Exception as e:
+            logger.error(f"Ошибка получения информации о задаче: {e}")
+            QMessageBox.critical(
+                self, "Ошибка", f"Не удалось получить информацию:\n{e}"
+            )

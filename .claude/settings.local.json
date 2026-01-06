@@ -28,7 +28,10 @@
       "Bash(cmd /c \"gh pr list\")",
       "Bash(cmd /c \"where gh\")",
       "Bash(grep:*)",
-      "Bash(paste:*)"
+      "Bash(paste:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(git mv:*)"
     ]
   }
 }

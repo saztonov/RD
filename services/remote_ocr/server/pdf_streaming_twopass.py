@@ -18,7 +18,7 @@ from PIL import Image
 
 from .manifest_models import CropManifestEntry, StripManifestEntry, TwoPassManifest
 from .memory_utils import force_gc, log_memory, log_memory_delta
-from .pdf_streaming import (
+from .pdf_streaming_core import (
     StreamingPDFProcessor,
     merge_crops_vertically,
     split_large_crop,
