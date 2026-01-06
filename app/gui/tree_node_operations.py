@@ -352,7 +352,28 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
 
                         try:
                             r2 = R2Storage()
-                            if r2.rename_object(old_r2_key, new_r2_key):
+                            # Проверяем существование файла в R2 перед переименованием
+                            if not r2.exists(old_r2_key, use_cache=False):
+                                logger.warning(
+                                    f"File not found in R2: {old_r2_key}, updating metadata only"
+                                )
+                                # Файла нет в R2 - обновляем только метаданные
+                                # Но связанные файлы могут существовать
+                                self._rename_related_files(
+                                    old_r2_key, new_r2_key, node.id
+                                )
+                                node.attributes["r2_key"] = new_r2_key
+                                node.attributes["original_name"] = new_name_clean
+                                self.client.update_node(
+                                    node.id,
+                                    name=new_name_clean,
+                                    attributes=node.attributes,
+                                )
+                                self._rename_cache_file(old_r2_key, new_r2_key)
+                                self._update_node_file_r2_key(
+                                    node.id, old_r2_key, new_r2_key
+                                )
+                            elif r2.rename_object(old_r2_key, new_r2_key):
                                 # Переименовываем связанные файлы
                                 self._rename_related_files(
                                     old_r2_key, new_r2_key, node.id
