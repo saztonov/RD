@@ -35,6 +35,15 @@
     "comment": null,
     "sql": "CREATE TRIGGER update_jobs_updated_at BEFORE UPDATE ON public.jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
   },
+  "public.node_files.tr_node_files_count": {
+    "schema": "public",
+    "name": "tr_node_files_count",
+    "table_name": "node_files",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER tr_node_files_count AFTER INSERT OR DELETE OR UPDATE OF node_id ON public.node_files FOR EACH ROW EXECUTE FUNCTION update_node_files_count()"
+  },
   "public.node_files.update_node_files_updated_at": {
     "schema": "public",
     "name": "update_node_files_updated_at",
@@ -70,6 +79,42 @@
     "timing": null,
     "comment": null,
     "sql": "CREATE TRIGGER qa_settings_updated_at BEFORE UPDATE ON public.qa_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+  },
+  "public.tree_nodes.tr_tree_nodes_children_count": {
+    "schema": "public",
+    "name": "tr_tree_nodes_children_count",
+    "table_name": "tree_nodes",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER tr_tree_nodes_children_count AFTER INSERT OR DELETE OR UPDATE OF parent_id ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_parent_children_count()"
+  },
+  "public.tree_nodes.tr_tree_nodes_descendants_count": {
+    "schema": "public",
+    "name": "tr_tree_nodes_descendants_count",
+    "table_name": "tree_nodes",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER tr_tree_nodes_descendants_count AFTER INSERT OR DELETE ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_ancestors_descendants_count()"
+  },
+  "public.tree_nodes.tr_tree_nodes_path_insert": {
+    "schema": "public",
+    "name": "tr_tree_nodes_path_insert",
+    "table_name": "tree_nodes",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER tr_tree_nodes_path_insert BEFORE INSERT ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_tree_node_path_and_depth()"
+  },
+  "public.tree_nodes.tr_tree_nodes_path_update": {
+    "schema": "public",
+    "name": "tr_tree_nodes_path_update",
+    "table_name": "tree_nodes",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER tr_tree_nodes_path_update BEFORE UPDATE OF parent_id ON public.tree_nodes FOR EACH ROW WHEN ((old.parent_id IS DISTINCT FROM new.parent_id)) EXECUTE FUNCTION update_tree_node_path_and_depth()"
   },
   "public.tree_nodes.update_tree_nodes_updated_at": {
     "schema": "public",

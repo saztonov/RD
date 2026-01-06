@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-06T14:25:13.052715
+-- Generated: 2026-01-06T22:20:58.129198
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -450,6 +450,8 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     r2_prefix text,
     node_id uuid,
     status_message text,
+    migrated_to_node boolean DEFAULT false,
+    migrated_at timestamp with time zone,
     CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT jobs_pkey PRIMARY KEY (id)
 );
@@ -457,6 +459,8 @@ COMMENT ON TABLE public.jobs IS 'OCR задачи обработки докум�
 COMMENT ON COLUMN public.jobs.document_id IS 'Хеш PDF файла для идентификации';
 COMMENT ON COLUMN public.jobs.node_id IS 'ID узла дерева документа (для связи OCR результатов с деревом проектов)';
 COMMENT ON COLUMN public.jobs.status_message IS 'Детальное сообщение о текущей операции (отображается в колонке "Детали")';
+COMMENT ON COLUMN public.jobs.migrated_to_node IS 'Флаг: результаты перенесены в node_files';
+COMMENT ON COLUMN public.jobs.migrated_at IS 'Время переноса результатов в node_files';
 
 -- Table: public.node_files
 -- Description: Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)
@@ -472,6 +476,8 @@ CREATE TABLE IF NOT EXISTS public.node_files (
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT node_files_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
+    CONSTRAINT node_files_node_id_r2_key_unique UNIQUE (node_id),
+    CONSTRAINT node_files_node_id_r2_key_unique UNIQUE (r2_key),
     CONSTRAINT node_files_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.node_files IS 'Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)';
@@ -643,6 +649,11 @@ CREATE TABLE IF NOT EXISTS public.tree_nodes (
     pdf_status_message text,
     pdf_status_updated_at timestamp with time zone,
     is_locked boolean DEFAULT false,
+    path text,
+    depth integer DEFAULT 0,
+    children_count integer DEFAULT 0,
+    descendants_count integer DEFAULT 0,
+    files_count integer DEFAULT 0,
     CONSTRAINT tree_nodes_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT tree_nodes_pkey PRIMARY KEY (id)
 );
@@ -650,6 +661,11 @@ COMMENT ON TABLE public.tree_nodes IS 'Дерево проектов - иера�
 COMMENT ON COLUMN public.tree_nodes.node_type IS 'Тип узла: client, project, section, stage, task, document';
 COMMENT ON COLUMN public.tree_nodes.attributes IS 'Дополнительные атрибуты узла (JSON)';
 COMMENT ON COLUMN public.tree_nodes.is_locked IS 'Флаг блокировки документа от изменений (удаление, переименование, изменение блоков, запуск OCR)';
+COMMENT ON COLUMN public.tree_nodes.path IS 'Materialized path: uuid1.uuid2.uuid3 для быстрого поиска предков/потомков';
+COMMENT ON COLUMN public.tree_nodes.depth IS 'Глубина узла от корня (0 = корневой проект)';
+COMMENT ON COLUMN public.tree_nodes.children_count IS 'Количество прямых дочерних узлов (обновляется триггером)';
+COMMENT ON COLUMN public.tree_nodes.descendants_count IS 'Количество всех потомков (обновляется триггером)';
+COMMENT ON COLUMN public.tree_nodes.files_count IS 'Количество файлов в node_files для этого узла (обновляется триггером)';
 
 -- Table: public.user_prompts
 -- Description: User custom prompts for AI conversations
@@ -1005,7 +1021,7 @@ $function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea)
+CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1013,7 +1029,7 @@ AS '$libdir/pgcrypto', $function$pg_armor$function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
+CREATE OR REPLACE FUNCTION extensions.armor(bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1101,19 +1117,19 @@ AS '$libdir/pgcrypto', $function$pg_random_uuid$function$
 
 
 -- Function: extensions.gen_salt
-CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)
- RETURNS text
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$
-
-
--- Function: extensions.gen_salt
 CREATE OR REPLACE FUNCTION extensions.gen_salt(text)
  RETURNS text
  LANGUAGE c
  PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pg_gen_salt$function$
+
+
+-- Function: extensions.gen_salt
+CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)
+ RETURNS text
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$
 
 
 -- Function: extensions.grant_pg_cron_access
@@ -1260,7 +1276,7 @@ $function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1268,7 +1284,7 @@ AS '$libdir/pgcrypto', $function$pg_hmac$function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1340,14 +1356,6 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
- RETURNS bytea
- LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
-
-
--- Function: extensions.pgp_pub_decrypt_bytea
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
@@ -1363,12 +1371,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, 
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
--- Function: extensions.pgp_pub_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
+-- Function: extensions.pgp_pub_decrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_encrypt
@@ -1379,8 +1387,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
+-- Function: extensions.pgp_pub_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
+
+
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1388,7 +1404,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1444,7 +1460,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1452,7 +1468,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1780,6 +1796,104 @@ AS $function$
   $function$
 
 
+-- Function: public.get_tree_ancestors
+CREATE OR REPLACE FUNCTION public.get_tree_ancestors(p_node_id uuid)
+ RETURNS TABLE(id uuid, name text, depth integer)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    node_path text;
+    path_parts text[];
+BEGIN
+    -- Получаем path узла
+    SELECT path INTO node_path FROM tree_nodes WHERE tree_nodes.id = p_node_id;
+
+    IF node_path IS NULL THEN
+        RETURN;
+    END IF;
+
+    -- Парсим path
+    path_parts := string_to_array(node_path, '.');
+
+    -- Возвращаем всех предков (кроме самого узла)
+    RETURN QUERY
+    SELECT t.id, t.name, t.depth
+    FROM tree_nodes t
+    WHERE t.id = ANY(path_parts[1:array_length(path_parts, 1) - 1]::uuid[])
+    ORDER BY t.depth;
+END;
+$function$
+
+
+-- Function: public.get_tree_descendants
+CREATE OR REPLACE FUNCTION public.get_tree_descendants(p_node_id uuid)
+ RETURNS TABLE(id uuid, name text, node_type text, depth integer, path text)
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    RETURN QUERY
+    SELECT t.id, t.name, t.node_type, t.depth, t.path
+    FROM tree_nodes t
+    WHERE t.path LIKE (
+        SELECT tn.path || '.%' FROM tree_nodes tn WHERE tn.id = p_node_id
+    )
+    ORDER BY t.path;
+END;
+$function$
+
+
+-- Function: public.move_tree_node
+CREATE OR REPLACE FUNCTION public.move_tree_node(p_node_id uuid, p_new_parent_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    old_path text;
+    new_parent_path text;
+    new_path text;
+    new_depth integer;
+BEGIN
+    -- Получаем текущий путь узла
+    SELECT path INTO old_path FROM tree_nodes WHERE id = p_node_id;
+
+    IF old_path IS NULL THEN
+        RETURN false;
+    END IF;
+
+    -- Определяем новый путь
+    IF p_new_parent_id IS NULL THEN
+        new_path := p_node_id::text;
+        new_depth := 0;
+    ELSE
+        SELECT path INTO new_parent_path FROM tree_nodes WHERE id = p_new_parent_id;
+
+        IF new_parent_path IS NULL THEN
+            RETURN false;
+        END IF;
+
+        -- Проверяем что не перемещаем в собственного потомка
+        IF new_parent_path LIKE old_path || '.%' THEN
+            RETURN false;
+        END IF;
+
+        new_path := new_parent_path || '.' || p_node_id::text;
+        SELECT depth + 1 INTO new_depth FROM tree_nodes WHERE id = p_new_parent_id;
+    END IF;
+
+    -- Обновляем путь у узла и всех потомков
+    UPDATE tree_nodes
+    SET
+        path = new_path || substring(path from length(old_path) + 1),
+        depth = depth - (SELECT depth FROM tree_nodes WHERE id = p_node_id) + new_depth,
+        parent_id = CASE WHEN id = p_node_id THEN p_new_parent_id ELSE parent_id END,
+        updated_at = now()
+    WHERE path = old_path OR path LIKE old_path || '.%';
+
+    RETURN true;
+END;
+$function$
+
+
 -- Function: public.qa_get_descendants
 CREATE OR REPLACE FUNCTION public.qa_get_descendants(p_client_id text, p_root_ids uuid[], p_node_types text[] DEFAULT NULL::text[])
  RETURNS TABLE(id uuid, parent_id uuid, node_type text, name text, code text, version integer, status text, attributes jsonb, sort_order integer, depth integer)
@@ -1952,6 +2066,56 @@ END;
 $function$
 
 
+-- Function: public.update_ancestors_descendants_count
+CREATE OR REPLACE FUNCTION public.update_ancestors_descendants_count()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    ancestor_ids uuid[];
+    delta integer;
+    path_parts text[];
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        -- Парсим path для получения предков
+        IF NEW.path IS NOT NULL AND NEW.path != NEW.id::text THEN
+            path_parts := string_to_array(NEW.path, '.');
+            -- Убираем последний элемент (сам узел)
+            path_parts := path_parts[1:array_length(path_parts, 1) - 1];
+
+            IF array_length(path_parts, 1) > 0 THEN
+                ancestor_ids := path_parts::uuid[];
+                UPDATE tree_nodes
+                SET descendants_count = descendants_count + 1
+                WHERE id = ANY(ancestor_ids);
+            END IF;
+        END IF;
+        RETURN NEW;
+
+    ELSIF TG_OP = 'DELETE' THEN
+        -- Уменьшаем счётчики у всех предков
+        IF OLD.path IS NOT NULL AND OLD.path != OLD.id::text THEN
+            path_parts := string_to_array(OLD.path, '.');
+            path_parts := path_parts[1:array_length(path_parts, 1) - 1];
+
+            -- Delta = 1 (сам узел) + его потомки
+            delta := 1 + COALESCE(OLD.descendants_count, 0);
+
+            IF array_length(path_parts, 1) > 0 THEN
+                ancestor_ids := path_parts::uuid[];
+                UPDATE tree_nodes
+                SET descendants_count = descendants_count - delta
+                WHERE id = ANY(ancestor_ids);
+            END IF;
+        END IF;
+        RETURN OLD;
+    END IF;
+
+    RETURN NULL;
+END;
+$function$
+
+
 -- Function: public.update_app_settings_timestamp
 CREATE OR REPLACE FUNCTION public.update_app_settings_timestamp()
  RETURNS trigger
@@ -1976,6 +2140,87 @@ END;
 $function$
 
 
+-- Function: public.update_node_files_count
+CREATE OR REPLACE FUNCTION public.update_node_files_count()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE tree_nodes
+        SET files_count = files_count + 1
+        WHERE id = NEW.node_id;
+        RETURN NEW;
+
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE tree_nodes
+        SET files_count = files_count - 1
+        WHERE id = OLD.node_id;
+        RETURN OLD;
+
+    ELSIF TG_OP = 'UPDATE' THEN
+        -- Если изменился node_id
+        IF OLD.node_id IS DISTINCT FROM NEW.node_id THEN
+            UPDATE tree_nodes
+            SET files_count = files_count - 1
+            WHERE id = OLD.node_id;
+
+            UPDATE tree_nodes
+            SET files_count = files_count + 1
+            WHERE id = NEW.node_id;
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    RETURN NULL;
+END;
+$function$
+
+
+-- Function: public.update_parent_children_count
+CREATE OR REPLACE FUNCTION public.update_parent_children_count()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.parent_id IS NOT NULL THEN
+            UPDATE tree_nodes
+            SET children_count = children_count + 1
+            WHERE id = NEW.parent_id;
+        END IF;
+        RETURN NEW;
+
+    ELSIF TG_OP = 'DELETE' THEN
+        IF OLD.parent_id IS NOT NULL THEN
+            UPDATE tree_nodes
+            SET children_count = children_count - 1
+            WHERE id = OLD.parent_id;
+        END IF;
+        RETURN OLD;
+
+    ELSIF TG_OP = 'UPDATE' THEN
+        -- Если изменился parent_id
+        IF OLD.parent_id IS DISTINCT FROM NEW.parent_id THEN
+            IF OLD.parent_id IS NOT NULL THEN
+                UPDATE tree_nodes
+                SET children_count = children_count - 1
+                WHERE id = OLD.parent_id;
+            END IF;
+            IF NEW.parent_id IS NOT NULL THEN
+                UPDATE tree_nodes
+                SET children_count = children_count + 1
+                WHERE id = NEW.parent_id;
+            END IF;
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    RETURN NULL;
+END;
+$function$
+
+
 -- Function: public.update_pdf_status
 CREATE OR REPLACE FUNCTION public.update_pdf_status(p_node_id uuid, p_status text, p_message text DEFAULT NULL::text)
  RETURNS void
@@ -1989,6 +2234,40 @@ BEGIN
         pdf_status_updated_at = NOW(),
         updated_at = NOW()
     WHERE id = p_node_id AND node_type = 'document';
+END;
+$function$
+
+
+-- Function: public.update_tree_node_path_and_depth
+CREATE OR REPLACE FUNCTION public.update_tree_node_path_and_depth()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    parent_path text;
+    parent_depth integer;
+BEGIN
+    IF NEW.parent_id IS NULL THEN
+        -- Корневой узел
+        NEW.path := NEW.id::text;
+        NEW.depth := 0;
+    ELSE
+        -- Получаем path и depth родителя
+        SELECT path, depth INTO parent_path, parent_depth
+        FROM tree_nodes
+        WHERE id = NEW.parent_id;
+
+        IF parent_path IS NULL THEN
+            -- Родитель не найден или ещё не обработан
+            NEW.path := NEW.id::text;
+            NEW.depth := 0;
+        ELSE
+            NEW.path := parent_path || '.' || NEW.id::text;
+            NEW.depth := parent_depth + 1;
+        END IF;
+    END IF;
+
+    RETURN NEW;
 END;
 $function$
 
@@ -3678,6 +3957,9 @@ CREATE TRIGGER update_job_settings_updated_at BEFORE UPDATE ON public.job_settin
 -- Trigger: update_jobs_updated_at on public.jobs
 CREATE TRIGGER update_jobs_updated_at BEFORE UPDATE ON public.jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
+-- Trigger: tr_node_files_count on public.node_files
+CREATE TRIGGER tr_node_files_count AFTER INSERT OR DELETE OR UPDATE OF node_id ON public.node_files FOR EACH ROW EXECUTE FUNCTION update_node_files_count()
+
 -- Trigger: update_node_files_updated_at on public.node_files
 CREATE TRIGGER update_node_files_updated_at BEFORE UPDATE ON public.node_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
@@ -3689,6 +3971,18 @@ CREATE TRIGGER qa_gemini_files_updated_at BEFORE UPDATE ON public.qa_gemini_file
 
 -- Trigger: qa_settings_updated_at on public.qa_settings
 CREATE TRIGGER qa_settings_updated_at BEFORE UPDATE ON public.qa_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+
+-- Trigger: tr_tree_nodes_children_count on public.tree_nodes
+CREATE TRIGGER tr_tree_nodes_children_count AFTER INSERT OR DELETE OR UPDATE OF parent_id ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_parent_children_count()
+
+-- Trigger: tr_tree_nodes_descendants_count on public.tree_nodes
+CREATE TRIGGER tr_tree_nodes_descendants_count AFTER INSERT OR DELETE ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_ancestors_descendants_count()
+
+-- Trigger: tr_tree_nodes_path_insert on public.tree_nodes
+CREATE TRIGGER tr_tree_nodes_path_insert BEFORE INSERT ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_tree_node_path_and_depth()
+
+-- Trigger: tr_tree_nodes_path_update on public.tree_nodes
+CREATE TRIGGER tr_tree_nodes_path_update BEFORE UPDATE OF parent_id ON public.tree_nodes FOR EACH ROW WHEN ((old.parent_id IS DISTINCT FROM new.parent_id)) EXECUTE FUNCTION update_tree_node_path_and_depth()
 
 -- Trigger: update_tree_nodes_updated_at on public.tree_nodes
 CREATE TRIGGER update_tree_nodes_updated_at BEFORE UPDATE ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
@@ -3938,6 +4232,9 @@ CREATE INDEX idx_node_files_type ON public.node_files USING btree (file_type);
 -- Index on public.node_files
 CREATE UNIQUE INDEX idx_node_files_unique_r2 ON public.node_files USING btree (node_id, r2_key);
 
+-- Index on public.node_files
+CREATE UNIQUE INDEX node_files_node_id_r2_key_unique ON public.node_files USING btree (node_id, r2_key);
+
 -- Index on public.qa_artifacts
 CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC);
 
@@ -4002,13 +4299,28 @@ CREATE INDEX idx_tree_nodes_client_id ON public.tree_nodes USING btree (client_i
 CREATE INDEX idx_tree_nodes_client_parent ON public.tree_nodes USING btree (client_id, parent_id);
 
 -- Index on public.tree_nodes
+CREATE INDEX idx_tree_nodes_depth ON public.tree_nodes USING btree (depth);
+
+-- Index on public.tree_nodes
+CREATE INDEX idx_tree_nodes_folders ON public.tree_nodes USING btree (parent_id, sort_order) WHERE (node_type = 'folder'::text);
+
+-- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_is_locked ON public.tree_nodes USING btree (is_locked) WHERE ((node_type = 'document'::text) AND (is_locked = true));
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_parent_id ON public.tree_nodes USING btree (parent_id);
 
 -- Index on public.tree_nodes
+CREATE INDEX idx_tree_nodes_parent_sort ON public.tree_nodes USING btree (parent_id, sort_order, created_at);
+
+-- Index on public.tree_nodes
+CREATE INDEX idx_tree_nodes_path ON public.tree_nodes USING btree (path text_pattern_ops);
+
+-- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_pdf_status ON public.tree_nodes USING btree (pdf_status) WHERE (node_type = 'document'::text);
+
+-- Index on public.tree_nodes
+CREATE INDEX idx_tree_nodes_roots ON public.tree_nodes USING btree (client_id, sort_order) WHERE (parent_id IS NULL);
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_sort ON public.tree_nodes USING btree (parent_id, sort_order);
