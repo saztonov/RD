@@ -10,6 +10,10 @@
 ## ER-диаграмма
 
 ```
+┌─────────────────────────────────────────────────────────────────┐
+│                         JOBS CLUSTER                            │
+├─────────────────────────────────────────────────────────────────┤
+
 ┌─────────────────────┐     ┌─────────────────────┐
 │       jobs          │     │    job_settings     │
 ├─────────────────────┤     ├─────────────────────┤
@@ -17,40 +21,61 @@
 │ client_id    text   │     │ text_model    text  │
 │ document_id  text   │     │ table_model   text  │
 │ document_name text  │     │ image_model   text  │
-│ task_name    text   │     │ created_at timestamptz
-│ status       text   │     │ updated_at timestamptz
-│ progress     real   │     └─────────────────────┘
-│ engine       text   │
-│ r2_prefix    text   │     ┌─────────────────────┐
-│ error_message text  │     │     job_files       │
-│ created_at timestamptz    ├─────────────────────┤
-│ updated_at timestamptz    │ id         uuid PK  │
-└─────────────────────┘◄────│ job_id     uuid FK  │
-                            │ file_type  text     │
-                            │ r2_key     text     │
-                            │ file_name  text     │
-                            │ file_size  bigint   │
-                            │ created_at timestamptz
-                            └─────────────────────┘
-
+│ task_name    text   │     │ stamp_model   text  │
+│ status       text   │     │ created_at timestamptz
+│ progress     real   │     │ updated_at timestamptz
+│ engine       text   │     └─────────────────────┘
+│ r2_prefix    text   │
+│ node_id      uuid FK├─────┐ (связь с tree_nodes)
+│ error_message text  │     │
+│ migrated_to_node bool     │ ◄── v2: флаг миграции
+│ created_at timestamptz    │
+│ updated_at timestamptz    │     ┌─────────────────────┐
+└─────────────────────┘◄────┼─────│     job_files       │
+                            │     ├─────────────────────┤
+                            │     │ id         uuid PK  │
+                            │     │ job_id     uuid FK  │
+                            │     │ file_type  text     │
+                            │     │ r2_key     text     │
+                            │     │ file_name  text     │
+                            │     │ file_size  bigint   │
+                            │     │ created_at timestamptz
+                            │     └─────────────────────┘
+                            │
+├───────────────────────────┴─────────────────────────────────────┤
+│                    TREE & FILES CLUSTER (v2)                    │
+├─────────────────────────────────────────────────────────────────┤
 
 ┌─────────────────────┐     ┌─────────────────────┐
-│    tree_nodes       │     │   tree_documents    │
+│    tree_nodes       │     │     node_files      │
 ├─────────────────────┤     ├─────────────────────┤
 │ id         uuid PK  │◄────│ id         uuid PK  │
 │ parent_id  uuid FK ─┘     │ node_id    uuid FK  │
-│ client_id  text     │     │ file_name  text     │
-│ node_type  text     │     │ r2_key     text     │
-│ name       text     │     │ file_size  bigint   │
-│ code       text     │     │ mime_type  text     │
-│ version    int      │     │ version    int      │
-│ status     text     │     │ created_at timestamptz
-│ attributes jsonb    │     └─────────────────────┘
-│ sort_order int      │
+│ client_id  text     │     │ file_type  text     │
+│ node_type  text     │     │ r2_key     text UK  │
+│ name       text     │     │ file_name  text     │
+│ code       text     │     │ file_size  bigint   │
+│ version    int      │     │ mime_type  text     │
+│ status     text     │     │ metadata   jsonb    │
+│ attributes jsonb    │     │ created_at timestamptz
+│ sort_order int      │     │ updated_at timestamptz
+│ path       text     │ ◄── │ └─────────────────────┘
+│ depth      int      │ v2
+│ children_count int  │
+│ descendants_count int
+│ files_count int     │
+│ pdf_status text     │
+│ is_locked  bool     │
 │ created_at timestamptz
 │ updated_at timestamptz
 └─────────────────────┘
 
+node_type v2: 'folder' | 'document'
+(legacy: project, stage, section, task_folder → folder)
+
+├─────────────────────────────────────────────────────────────────┤
+│                       СПРАВОЧНИКИ                               │
+├─────────────────────────────────────────────────────────────────┤
 
 ┌─────────────────────┐     ┌─────────────────────┐
 │    stage_types      │     │   section_types     │
@@ -189,37 +214,65 @@ CREATE TABLE job_settings (
 
 ### tree_nodes
 
-Иерархия проектов.
+Иерархия проектов с произвольной вложенностью (v2).
 
 ```sql
 CREATE TABLE tree_nodes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     parent_id uuid REFERENCES tree_nodes(id) ON DELETE CASCADE,
     client_id text NOT NULL,
-    node_type text NOT NULL,
+    node_type text NOT NULL,  -- v2: 'folder' или 'document'
     name text NOT NULL,
     code text,
     version integer DEFAULT 1,
     status text DEFAULT 'active',
     attributes jsonb DEFAULT '{}',
     sort_order integer DEFAULT 0,
+
+    -- v2: Новые поля для оптимизации
+    path text,                          -- Materialized path: uuid1.uuid2.uuid3
+    depth integer DEFAULT 0,            -- Глубина от корня (0 = корневой)
+    children_count integer DEFAULT 0,   -- Прямые дочерние узлы
+    descendants_count integer DEFAULT 0,-- Все потомки рекурсивно
+    files_count integer DEFAULT 0,      -- Файлы в node_files для этого узла
+
+    -- Для документов
+    pdf_status text DEFAULT 'unknown',
+    pdf_status_message text,
+    pdf_status_updated_at timestamptz,
+    is_locked boolean DEFAULT false,
+
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
 
-    CHECK (node_type IN ('project', 'stage', 'section', 'task_folder', 'document')),
     CHECK (status IN ('active', 'completed', 'archived'))
 );
 ```
 
-#### Типы узлов (node_type)
+#### Типы узлов (node_type) - v2
 
-| Тип | Уровень | Родитель | Описание |
-|-----|---------|----------|----------|
-| `project` | 0 | NULL | Проект (корневой) |
-| `stage` | 1 | project | Стадия (ПД/РД) |
-| `section` | 2 | stage | Раздел (АР, КР, ОВ...) |
-| `task_folder` | 3 | section | Папка заданий |
-| `document` | 4 | task_folder | Документ PDF |
+| Тип | Описание |
+|-----|----------|
+| `folder` | Папка (произвольная вложенность) |
+| `document` | Документ PDF (листовой узел) |
+
+**Legacy типы** (для обратной совместимости):
+- `project` → `folder`
+- `stage` → `folder`
+- `section` → `folder`
+- `task_folder` → `folder`
+
+Старый тип сохраняется в `attributes.legacy_node_type`.
+
+#### Новые поля v2
+
+| Поле | Описание |
+|------|----------|
+| `path` | Materialized path: `uuid1.uuid2.uuid3` для быстрого обхода |
+| `depth` | Глубина от корня (0 = проект) |
+| `children_count` | Количество прямых дочерних (триггер) |
+| `descendants_count` | Количество всех потомков (триггер) |
+| `files_count` | Файлы в node_files (триггер) |
 
 #### Поле attributes
 
@@ -227,39 +280,84 @@ CREATE TABLE tree_nodes (
 // Для document
 {
   "original_name": "план_этажа.pdf",
-  "r2_key": "documents/uuid/file.pdf",
+  "r2_key": "tree_docs/uuid/file.pdf",
   "file_size": 1234567,
   "mime_type": "application/pdf",
-  "local_path": "C:/path/to/file.pdf"
+  "legacy_node_type": "document"  // Сохранённый старый тип
+}
+
+// Для folder (бывший project/stage/section)
+{
+  "legacy_node_type": "project"   // или "stage", "section", "task_folder"
 }
 ```
 
 #### Индексы
 
 ```sql
+-- Базовые
 CREATE INDEX idx_tree_nodes_parent_id ON tree_nodes(parent_id);
 CREATE INDEX idx_tree_nodes_client_id ON tree_nodes(client_id);
 CREATE INDEX idx_tree_nodes_type ON tree_nodes(node_type);
 CREATE INDEX idx_tree_nodes_sort ON tree_nodes(parent_id, sort_order);
+
+-- v2: Новые индексы для оптимизации
+CREATE INDEX idx_tree_nodes_path ON tree_nodes USING btree (path text_pattern_ops);
+CREATE INDEX idx_tree_nodes_depth ON tree_nodes(depth);
+CREATE INDEX idx_tree_nodes_parent_sort ON tree_nodes(parent_id, sort_order, created_at);
+CREATE INDEX idx_tree_nodes_roots ON tree_nodes(client_id, sort_order) WHERE parent_id IS NULL;
 ```
+
+#### Триггеры v2
+
+- `tr_tree_nodes_path_insert` - вычисляет path/depth при INSERT
+- `tr_tree_nodes_path_update` - обновляет path/depth при UPDATE parent_id
+- `tr_tree_nodes_children_count` - счётчик прямых детей
+- `tr_tree_nodes_descendants_count` - счётчик всех потомков
+- `tr_node_files_count` - счётчик файлов (на node_files)
 
 ---
 
-### tree_documents
+### node_files
 
-Файлы документов (версионирование).
+Файлы узлов дерева (PDF, аннотации, кропы, результаты OCR).
 
 ```sql
-CREATE TABLE tree_documents (
+CREATE TABLE node_files (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     node_id uuid NOT NULL REFERENCES tree_nodes(id) ON DELETE CASCADE,
-    file_name text NOT NULL,
+    file_type text NOT NULL,
     r2_key text NOT NULL,
+    file_name text NOT NULL,
     file_size bigint DEFAULT 0,
-    mime_type text DEFAULT 'application/pdf',
-    version integer DEFAULT 1,
-    created_at timestamptz NOT NULL DEFAULT now()
+    mime_type text DEFAULT 'application/octet-stream',
+    metadata jsonb DEFAULT '{}',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+
+    UNIQUE (node_id, r2_key)
 );
+```
+
+#### Типы файлов (file_type)
+
+| Тип | Описание |
+|-----|----------|
+| `pdf` | Исходный PDF документ |
+| `annotation` | annotation.json с разметкой блоков |
+| `result_json` | result.json — JSON результат OCR |
+| `result_md` | document.md — Markdown результат |
+| `ocr_html` | ocr_result.html — HTML результат |
+| `crop` | Кроп блока (PDF) |
+| `crops_folder` | Папка с кропами |
+
+#### Индексы
+
+```sql
+CREATE INDEX idx_node_files_node_id ON node_files(node_id);
+CREATE INDEX idx_node_files_node_type ON node_files(node_id, file_type);
+CREATE INDEX idx_node_files_r2_key ON node_files(r2_key);
+CREATE INDEX idx_node_files_type ON node_files(file_type);
 ```
 
 ---

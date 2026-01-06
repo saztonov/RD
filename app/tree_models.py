@@ -8,11 +8,29 @@ from typing import Any, Dict, List, Optional
 
 
 class NodeType(str, Enum):
-    PROJECT = "project"
-    STAGE = "stage"
-    SECTION = "section"
-    TASK_FOLDER = "task_folder"
+    """Тип узла дерева (v2: folder/document вместо 5 фиксированных типов)"""
+
+    FOLDER = "folder"
     DOCUMENT = "document"
+
+    # Legacy aliases для обратной совместимости
+    PROJECT = "folder"
+    STAGE = "folder"
+    SECTION = "folder"
+    TASK_FOLDER = "folder"
+
+    @classmethod
+    def from_value(cls, value: str) -> "NodeType":
+        """Конвертирует legacy значения в новые типы."""
+        legacy_map = {
+            "project": cls.FOLDER,
+            "stage": cls.FOLDER,
+            "section": cls.FOLDER,
+            "task_folder": cls.FOLDER,
+            "document": cls.DOCUMENT,
+            "folder": cls.FOLDER,
+        }
+        return legacy_map.get(value, cls.FOLDER)
 
 
 class NodeStatus(str, Enum):
@@ -22,13 +40,21 @@ class NodeStatus(str, Enum):
 
 
 # Определяем какие дочерние типы могут быть у родительского
+# V2: Произвольная вложенность - folder может содержать folder или document
 ALLOWED_CHILDREN: Dict[Optional[NodeType], List[NodeType]] = {
-    None: [NodeType.PROJECT],
-    NodeType.PROJECT: [NodeType.STAGE],
-    NodeType.STAGE: [NodeType.SECTION],
-    NodeType.SECTION: [NodeType.TASK_FOLDER],
-    NodeType.TASK_FOLDER: [NodeType.DOCUMENT],
-    NodeType.DOCUMENT: [],
+    None: [NodeType.FOLDER],  # Корневые узлы - только папки
+    NodeType.FOLDER: [NodeType.FOLDER, NodeType.DOCUMENT],  # Папки могут содержать папки и документы
+    NodeType.DOCUMENT: [],  # Документы - листовые узлы
+}
+
+# Legacy mapping для обратной совместимости (deprecated)
+LEGACY_ALLOWED_CHILDREN: Dict[Optional[str], List[str]] = {
+    None: ["project"],
+    "project": ["stage"],
+    "stage": ["section"],
+    "section": ["task_folder"],
+    "task_folder": ["document"],
+    "document": [],
 }
 
 
@@ -120,13 +146,39 @@ class TreeNode:
     pdf_status_message: Optional[str] = None
     is_locked: bool = False
 
+    # Новые поля v2 для оптимизации
+    path: Optional[str] = None  # Materialized path: uuid1.uuid2.uuid3
+    depth: int = 0  # Глубина от корня (0 = корневой)
+    children_count: int = 0  # Количество прямых дочерних
+    descendants_count: int = 0  # Количество всех потомков
+    files_count: int = 0  # Количество файлов в node_files
+
+    @property
+    def legacy_node_type(self) -> Optional[str]:
+        """Получить legacy тип узла из attributes (для обратной совместимости)."""
+        return self.attributes.get("legacy_node_type")
+
+    @property
+    def is_folder(self) -> bool:
+        """Проверить является ли узел папкой."""
+        return self.node_type == NodeType.FOLDER
+
+    @property
+    def is_document(self) -> bool:
+        """Проверить является ли узел документом."""
+        return self.node_type == NodeType.DOCUMENT
+
     @classmethod
     def from_dict(cls, data: dict) -> "TreeNode":
+        # Конвертируем legacy node_type в новый формат
+        raw_node_type = data["node_type"]
+        node_type = NodeType.from_value(raw_node_type)
+
         return cls(
             id=data["id"],
             parent_id=data.get("parent_id"),
             client_id=data.get("client_id", ""),
-            node_type=NodeType(data["node_type"]),
+            node_type=node_type,
             name=data["name"],
             code=data.get("code"),
             version=data.get("version", 1),
@@ -142,6 +194,12 @@ class TreeNode:
             pdf_status=data.get("pdf_status"),
             pdf_status_message=data.get("pdf_status_message"),
             is_locked=data.get("is_locked", False),
+            # Новые поля v2
+            path=data.get("path"),
+            depth=data.get("depth", 0),
+            children_count=data.get("children_count", 0),
+            descendants_count=data.get("descendants_count", 0),
+            files_count=data.get("files_count", 0),
         )
 
     def to_dict(self) -> dict:
@@ -156,6 +214,12 @@ class TreeNode:
             "status": self.status.value,
             "attributes": self.attributes,
             "sort_order": self.sort_order,
+            # Новые поля v2 (только для чтения, не отправляем при создании)
+            "path": self.path,
+            "depth": self.depth,
+            "children_count": self.children_count,
+            "descendants_count": self.descendants_count,
+            "files_count": self.files_count,
         }
 
     def get_allowed_child_types(self) -> List[NodeType]:

@@ -17,37 +17,21 @@ class TreeContextMenuMixin:
         from app.gui.folder_settings_dialog import get_max_versions
         from app.gui.tree_node_operations import NODE_ICONS
 
-        # Названия типов узлов для UI
-        NODE_TYPE_NAMES = {
-            NodeType.PROJECT: "Проект",
-            NodeType.STAGE: "Стадия",
-            NodeType.SECTION: "Раздел",
-            NodeType.TASK_FOLDER: "Папка заданий",
-            NodeType.DOCUMENT: "Документ",
-        }
-
         item = self.tree.itemAt(pos)
         menu = QMenu(self)
 
         if item:
             node = item.data(0, Qt.UserRole)
             if isinstance(node, TreeNode):
-                allowed = node.get_allowed_child_types()
+                # v2: Для папок показываем "Добавить папку" и "Добавить файл"
+                if node.is_folder:
+                    action = menu.addAction("📁 Добавить папку")
+                    action.setData(("add", NodeType.FOLDER, node))
 
-                for child_type in allowed:
-                    if child_type == NodeType.DOCUMENT:
-                        continue
-                    icon = NODE_ICONS.get(child_type, "+")
-                    action = menu.addAction(
-                        f"{icon} Добавить {NODE_TYPE_NAMES[child_type]}"
-                    )
-                    action.setData(("add", child_type, node))
-
-                if node.node_type == NodeType.TASK_FOLDER:
                     action = menu.addAction("📄 Добавить файл")
                     action.setData(("upload", node))
 
-                if node.node_type == NodeType.DOCUMENT:
+                if node.is_document:
                     # Открыть папку с файлами
                     action = menu.addAction("📂 Открыть папку")
                     action.setData(("open_folder", node))

@@ -27,12 +27,32 @@ logger = logging.getLogger(__name__)
 
 
 NODE_ICONS = {
-    NodeType.PROJECT: "📁",
-    NodeType.STAGE: "🏗",
-    NodeType.SECTION: "📚",
-    NodeType.TASK_FOLDER: "📂",
+    # Новые типы v2
+    NodeType.FOLDER: "📁",
     NodeType.DOCUMENT: "📄",
+    # Legacy aliases (для обратной совместимости с данными в БД)
+    "project": "📁",
+    "stage": "🏗",
+    "section": "📚",
+    "task_folder": "📂",
+    "document": "📄",
+    "folder": "📁",
 }
+
+
+def get_node_icon(node: TreeNode) -> str:
+    """Получить иконку для узла (учитывает legacy_node_type)."""
+    # Сначала проверяем legacy_node_type в attributes
+    legacy_type = node.legacy_node_type
+    if legacy_type and legacy_type in NODE_ICONS:
+        return NODE_ICONS[legacy_type]
+
+    # Используем node_type
+    if node.node_type in NODE_ICONS:
+        return NODE_ICONS[node.node_type]
+
+    # Fallback
+    return "📁" if node.is_folder else "📄"
 
 STATUS_COLORS = {
     NodeStatus.ACTIVE: "#e0e0e0",
@@ -55,11 +75,12 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
         return True
 
     def _create_project(self):
-        """Создать новый проект"""
+        """Создать новый проект (корневая папка)"""
         name, ok = QInputDialog.getText(self, "Новый проект", "Название проекта:")
         if ok and name.strip():
             try:
-                node = self.client.create_node(NodeType.PROJECT, name.strip())
+                # Создаём корневую папку (FOLDER вместо PROJECT)
+                node = self.client.create_node(NodeType.FOLDER, name.strip())
                 item = self._create_tree_item(node)
                 self.tree.addTopLevelItem(item)
                 self._add_placeholder(item, node)

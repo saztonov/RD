@@ -20,14 +20,24 @@ def delete_job_handler(
     job_id: str,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
-    """Удалить задачу и все связанные файлы"""
+    """Удалить задачу и все связанные файлы.
+
+    ВАЖНО: Если у job есть node_id, файлы НЕ удаляются из R2,
+    т.к. они зарегистрированы в node_files и принадлежат документу в дереве.
+    """
     check_api_key(x_api_key)
 
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if job.r2_prefix:
+    # Если job привязан к node, файлы принадлежат node_files - НЕ удаляем из R2
+    if job.node_id:
+        _logger.info(
+            f"Job {job_id} linked to node {job.node_id}, skipping R2 file deletion"
+        )
+    elif job.r2_prefix:
+        # Legacy: job без node_id - удаляем файлы из R2
         try:
             s3_client, bucket_name = get_r2_sync_client()
             r2_prefix = (
