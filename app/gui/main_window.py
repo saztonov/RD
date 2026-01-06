@@ -18,7 +18,7 @@ from app.gui.file_operations import FileOperationsMixin
 from app.gui.menu_setup import MenuSetupMixin
 from app.gui.navigation_manager import NavigationManager
 from app.gui.panels_setup import PanelsSetupMixin
-from app.gui.remote_ocr_panel import RemoteOCRPanel
+from app.gui.remote_ocr.panel import RemoteOCRPanel
 from rd_core.models import BlockType, Document
 from rd_core.pdf_utils import PDFDocument
 

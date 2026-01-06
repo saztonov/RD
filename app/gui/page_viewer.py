@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.gui.page_viewer_blocks import BlockRenderingMixin
-from app.gui.page_viewer_context_menu import ContextMenuMixin
+from app.gui.page_viewer_menus.context_menu import ContextMenuMixin
 from app.gui.page_viewer_mouse import MouseEventsMixin
 from app.gui.page_viewer_polygon import PolygonMixin
 from app.gui.page_viewer_resize import ResizeHandlesMixin

@@ -138,32 +138,3 @@ class PersistentCacheIndex:
         except Exception as e:
             logger.warning(f"Failed to save cache index: {e}")
             return False
-
-
-def create_singleton_getter(cache_class: type, *args, **kwargs):
-    """
-    Создать thread-safe singleton getter для класса кэша.
-
-    Args:
-        cache_class: Класс кэша для создания
-        *args, **kwargs: Аргументы для конструктора
-
-    Returns:
-        Функция-геттер для получения singleton instance
-
-    Usage:
-        get_my_cache = create_singleton_getter(MyCache, max_size=1000)
-        cache = get_my_cache()
-    """
-    instance = None
-    lock = threading.Lock()
-
-    def getter():
-        nonlocal instance
-        if instance is None:
-            with lock:
-                if instance is None:
-                    instance = cache_class(*args, **kwargs)
-        return instance
-
-    return getter

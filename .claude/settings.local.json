@@ -31,7 +31,11 @@
       "Bash(paste:*)",
       "Bash(ls:*)",
       "Bash(wc:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(xargs:*)",
+      "Bash(del \"C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\app\\\\gui\\\\remote_ocr_signals.py\")",
+      "Bash(del \"C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\app\\\\gui\\\\remote_ocr_download.py\")",
+      "Bash(del \"C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\app\\\\gui\\\\remote_ocr_job_operations.py\")"
     ]
   }
 }

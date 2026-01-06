@@ -6,13 +6,12 @@ from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
+from rd_core.models.armor_id import is_armor_id, uuid_to_armor_id
+
 logger = logging.getLogger(__name__)
 
 # Поля штампа, наследуемые на страницы без штампа
 INHERITABLE_STAMP_FIELDS = ("document_code", "project_name", "stage", "organization")
-
-# Алфавит для armor ID
-ARMOR_ALPHABET = "34679ACDEFGHJKLMNPQRTUVWXY"
 
 # HTML шаблон (общий для всех генераторов)
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -65,39 +64,9 @@ def get_block_armor_id(block_id: str) -> str:
     Новые блоки уже имеют ID в формате XXXX-XXXX-XXX.
     Для legacy UUID блоков - конвертируем в armor формат.
     """
-    clean = block_id.replace("-", "")
-    if len(clean) == 11 and all(c in ARMOR_ALPHABET for c in clean):
-        return block_id  # Уже armor ID
-
-    # Legacy: конвертируем UUID в armor формат
-    def num_to_base26(num: int, length: int) -> str:
-        if num == 0:
-            return ARMOR_ALPHABET[0] * length
-        result = []
-        while num > 0:
-            result.append(ARMOR_ALPHABET[num % 26])
-            num //= 26
-        while len(result) < length:
-            result.append(ARMOR_ALPHABET[0])
-        return "".join(reversed(result[-length:]))
-
-    def calculate_checksum(payload: str) -> str:
-        char_map = {c: i for i, c in enumerate(ARMOR_ALPHABET)}
-        v1, v2, v3 = 0, 0, 0
-        for i, char in enumerate(payload):
-            val = char_map.get(char, 0)
-            v1 += val
-            v2 += val * (i + 3)
-            v3 += val * (i + 7) * (i + 1)
-        return ARMOR_ALPHABET[v1 % 26] + ARMOR_ALPHABET[v2 % 26] + ARMOR_ALPHABET[v3 % 26]
-
-    clean = block_id.replace("-", "").lower()
-    hex_prefix = clean[:10]
-    num = int(hex_prefix, 16)
-    payload = num_to_base26(num, 8)
-    checksum = calculate_checksum(payload)
-    full_code = payload + checksum
-    return f"{full_code[:4]}-{full_code[4:8]}-{full_code[8:]}"
+    if is_armor_id(block_id):
+        return block_id
+    return uuid_to_armor_id(block_id)
 
 
 def parse_stamp_json(ocr_text: Optional[str]) -> Optional[Dict]:
