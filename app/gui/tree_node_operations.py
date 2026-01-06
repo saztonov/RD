@@ -235,7 +235,7 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                     if child.data(0, self._get_user_role()) == "placeholder":
                         parent_item.removeChild(child)
 
-                child_item = self._create_tree_item(doc_node)
+                child_item = self._item_builder.create_item(doc_node)
                 parent_item.addChild(child_item)
                 parent_item.setExpanded(True)
                 self.tree.setCurrentItem(child_item)

@@ -4,7 +4,10 @@
 """
 
 import copy
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QLabel, QMainWindow, QProgressBar, QStatusBar
