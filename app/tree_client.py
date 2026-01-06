@@ -741,11 +741,11 @@ class TreeClient:
         Возвращает: pdf_count, md_count, folders_with_pdf
         """
         try:
-            # Получаем все узлы одним запросом
+            # Получаем все узлы одним запросом (limit=10000 для больших деревьев)
             resp = self._request(
                 "get",
                 f"/tree_nodes?client_id=eq.{self.client_id}"
-                "&select=id,node_type,parent_id,attributes",
+                "&select=id,node_type,parent_id,attributes&limit=10000",
             )
             nodes = resp.json()
 
