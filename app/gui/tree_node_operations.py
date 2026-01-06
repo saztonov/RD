@@ -280,6 +280,10 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                 f"{r2_prefix}/{old_stem}_result.json",
                 f"{r2_prefix}/{new_stem}_result.json",
             ),
+            (
+                f"{r2_prefix}/{old_stem}_document.md",
+                f"{r2_prefix}/{new_stem}_document.md",
+            ),
         ]
 
         # Переименовываем файлы в R2
