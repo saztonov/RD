@@ -392,8 +392,9 @@ class JobOperationsMixin:
         reply = QMessageBox.question(
             self,
             "Очистка задач",
-            "Вы уверены, что хотите удалить все задачи?\n"
-            "Это действие нельзя отменить.",
+            "Удалить все задачи из списка?\n\n"
+            "• Файлы документов из дерева проектов сохранятся\n"
+            "• Legacy файлы (без привязки к дереву) будут удалены",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
