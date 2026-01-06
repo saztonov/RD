@@ -14,6 +14,7 @@ from app.ocr_client import (
     RemoteOcrClient,
     ServerError,
 )
+from app.ocr_client.http_pool import get_or_create_client_id as _get_or_create_client_id
 
 __all__ = [
     "RemoteOCRClient",
@@ -23,4 +24,5 @@ __all__ = [
     "AuthenticationError",
     "PayloadTooLargeError",
     "ServerError",
+    "_get_or_create_client_id",
 ]
