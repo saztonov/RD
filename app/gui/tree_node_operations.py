@@ -81,9 +81,9 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
             try:
                 # Создаём корневую папку (FOLDER вместо PROJECT)
                 node = self.client.create_node(NodeType.FOLDER, name.strip())
-                item = self._create_tree_item(node)
+                item = self._item_builder.create_item(node)
                 self.tree.addTopLevelItem(item)
-                self._add_placeholder(item, node)
+                self._item_builder.add_placeholder(item, node)
                 self.tree.setCurrentItem(item)
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
@@ -123,9 +123,9 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                             if child.data(0, self._get_user_role()) == "placeholder":
                                 parent_item.removeChild(child)
 
-                        child_item = self._create_tree_item(node)
+                        child_item = self._item_builder.create_item(node)
                         parent_item.addChild(child_item)
-                        self._add_placeholder(child_item, node)
+                        self._item_builder.add_placeholder(child_item, node)
                         parent_item.setExpanded(True)
                         self.tree.setCurrentItem(child_item)
                 except Exception as e:
