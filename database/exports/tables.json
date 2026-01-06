@@ -2409,13 +2409,6 @@
         "is_nullable": false
       },
       {
-        "name": "client_id",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": false
-      },
-      {
         "name": "document_id",
         "comment": "Хеш PDF файла для идентификации",
         "default": null,
@@ -3507,13 +3500,6 @@
         "is_nullable": true
       },
       {
-        "name": "client_id",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": false
-      },
-      {
         "name": "node_type",
         "comment": "Тип узла: client, project, section, stage, task, document",
         "default": null,
@@ -3669,13 +3655,6 @@
         "comment": "Unique prompt identifier",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
-        "is_nullable": false
-      },
-      {
-        "name": "client_id",
-        "comment": "Client identifier",
-        "default": "'default'::text",
-        "data_type": "text",
         "is_nullable": false
       },
       {

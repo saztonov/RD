@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-06T22:20:58.129198
+-- Generated: 2026-01-06T23:30:06.459113
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -437,7 +437,6 @@ COMMENT ON COLUMN public.job_settings.stamp_model IS 'Модель для рас
 -- Description: OCR задачи обработки документов
 CREATE TABLE IF NOT EXISTS public.jobs (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    client_id text NOT NULL,
     document_id text NOT NULL,
     document_name text NOT NULL,
     task_name text NOT NULL DEFAULT ''::text,
@@ -635,7 +634,6 @@ CREATE TABLE IF NOT EXISTS public.stage_types (
 CREATE TABLE IF NOT EXISTS public.tree_nodes (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     parent_id uuid,
-    client_id text NOT NULL,
     node_type text NOT NULL,
     name text NOT NULL,
     code text,
@@ -671,7 +669,6 @@ COMMENT ON COLUMN public.tree_nodes.files_count IS 'Количество фай�
 -- Description: User custom prompts for AI conversations
 CREATE TABLE IF NOT EXISTS public.user_prompts (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    client_id text NOT NULL DEFAULT 'default'::text,
     title text NOT NULL,
     system_prompt text NOT NULL DEFAULT ''::text,
     user_text text NOT NULL DEFAULT ''::text,
@@ -682,7 +679,6 @@ CREATE TABLE IF NOT EXISTS public.user_prompts (
 );
 COMMENT ON TABLE public.user_prompts IS 'User custom prompts for AI conversations';
 COMMENT ON COLUMN public.user_prompts.id IS 'Unique prompt identifier';
-COMMENT ON COLUMN public.user_prompts.client_id IS 'Client identifier';
 COMMENT ON COLUMN public.user_prompts.title IS 'Prompt title';
 COMMENT ON COLUMN public.user_prompts.system_prompt IS 'System prompt text';
 COMMENT ON COLUMN public.user_prompts.user_text IS 'User prompt text';
@@ -4203,7 +4199,7 @@ CREATE INDEX idx_job_settings_job_id ON public.job_settings USING btree (job_id)
 CREATE UNIQUE INDEX job_settings_job_id_key ON public.job_settings USING btree (job_id);
 
 -- Index on public.jobs
-CREATE INDEX idx_jobs_client_id ON public.jobs USING btree (client_id);
+CREATE INDEX idx_jobs_active_status ON public.jobs USING btree (status, updated_at DESC) WHERE (status = ANY (ARRAY['queued'::text, 'processing'::text]));
 
 -- Index on public.jobs
 CREATE INDEX idx_jobs_created_at ON public.jobs USING btree (created_at DESC);
@@ -4217,6 +4213,9 @@ CREATE INDEX idx_jobs_node_id ON public.jobs USING btree (node_id);
 -- Index on public.jobs
 CREATE INDEX idx_jobs_status ON public.jobs USING btree (status);
 
+-- Index on public.jobs
+CREATE INDEX idx_jobs_updated_at ON public.jobs USING btree (updated_at DESC);
+
 -- Index on public.node_files
 CREATE INDEX idx_node_files_node_id ON public.node_files USING btree (node_id);
 
@@ -4228,9 +4227,6 @@ CREATE INDEX idx_node_files_r2_key ON public.node_files USING btree (r2_key);
 
 -- Index on public.node_files
 CREATE INDEX idx_node_files_type ON public.node_files USING btree (file_type);
-
--- Index on public.node_files
-CREATE UNIQUE INDEX idx_node_files_unique_r2 ON public.node_files USING btree (node_id, r2_key);
 
 -- Index on public.node_files
 CREATE UNIQUE INDEX node_files_node_id_r2_key_unique ON public.node_files USING btree (node_id, r2_key);
@@ -4293,12 +4289,6 @@ CREATE UNIQUE INDEX section_types_code_key ON public.section_types USING btree (
 CREATE UNIQUE INDEX stage_types_code_key ON public.stage_types USING btree (code);
 
 -- Index on public.tree_nodes
-CREATE INDEX idx_tree_nodes_client_id ON public.tree_nodes USING btree (client_id);
-
--- Index on public.tree_nodes
-CREATE INDEX idx_tree_nodes_client_parent ON public.tree_nodes USING btree (client_id, parent_id);
-
--- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_depth ON public.tree_nodes USING btree (depth);
 
 -- Index on public.tree_nodes
@@ -4320,16 +4310,13 @@ CREATE INDEX idx_tree_nodes_path ON public.tree_nodes USING btree (path text_pat
 CREATE INDEX idx_tree_nodes_pdf_status ON public.tree_nodes USING btree (pdf_status) WHERE (node_type = 'document'::text);
 
 -- Index on public.tree_nodes
-CREATE INDEX idx_tree_nodes_roots ON public.tree_nodes USING btree (client_id, sort_order) WHERE (parent_id IS NULL);
+CREATE INDEX idx_tree_nodes_roots ON public.tree_nodes USING btree (sort_order) WHERE (parent_id IS NULL);
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_sort ON public.tree_nodes USING btree (parent_id, sort_order);
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_type ON public.tree_nodes USING btree (node_type);
-
--- Index on public.user_prompts
-CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (client_id);
 
 -- Index on realtime.messages
 CREATE INDEX messages_inserted_at_topic_index ON ONLY realtime.messages USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));

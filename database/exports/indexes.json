@@ -495,13 +495,13 @@
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX job_settings_job_id_key ON public.job_settings USING btree (job_id)"
   },
-  "public.jobs.idx_jobs_client_id": {
+  "public.jobs.idx_jobs_active_status": {
     "schema": "public",
-    "name": "idx_jobs_client_id",
+    "name": "idx_jobs_active_status",
     "table_name": "jobs",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX idx_jobs_client_id ON public.jobs USING btree (client_id)"
+    "sql": "CREATE INDEX idx_jobs_active_status ON public.jobs USING btree (status, updated_at DESC) WHERE (status = ANY (ARRAY['queued'::text, 'processing'::text]))"
   },
   "public.jobs.idx_jobs_created_at": {
     "schema": "public",
@@ -535,6 +535,14 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_jobs_status ON public.jobs USING btree (status)"
   },
+  "public.jobs.idx_jobs_updated_at": {
+    "schema": "public",
+    "name": "idx_jobs_updated_at",
+    "table_name": "jobs",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_jobs_updated_at ON public.jobs USING btree (updated_at DESC)"
+  },
   "public.node_files.idx_node_files_node_id": {
     "schema": "public",
     "name": "idx_node_files_node_id",
@@ -566,14 +574,6 @@
     "is_unique": false,
     "is_primary": false,
     "sql": "CREATE INDEX idx_node_files_type ON public.node_files USING btree (file_type)"
-  },
-  "public.node_files.idx_node_files_unique_r2": {
-    "schema": "public",
-    "name": "idx_node_files_unique_r2",
-    "table_name": "node_files",
-    "is_unique": true,
-    "is_primary": false,
-    "sql": "CREATE UNIQUE INDEX idx_node_files_unique_r2 ON public.node_files USING btree (node_id, r2_key)"
   },
   "public.node_files.node_files_node_id_r2_key_unique": {
     "schema": "public",
@@ -735,22 +735,6 @@
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX stage_types_code_key ON public.stage_types USING btree (code)"
   },
-  "public.tree_nodes.idx_tree_nodes_client_id": {
-    "schema": "public",
-    "name": "idx_tree_nodes_client_id",
-    "table_name": "tree_nodes",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_tree_nodes_client_id ON public.tree_nodes USING btree (client_id)"
-  },
-  "public.tree_nodes.idx_tree_nodes_client_parent": {
-    "schema": "public",
-    "name": "idx_tree_nodes_client_parent",
-    "table_name": "tree_nodes",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_tree_nodes_client_parent ON public.tree_nodes USING btree (client_id, parent_id)"
-  },
   "public.tree_nodes.idx_tree_nodes_depth": {
     "schema": "public",
     "name": "idx_tree_nodes_depth",
@@ -813,7 +797,7 @@
     "table_name": "tree_nodes",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX idx_tree_nodes_roots ON public.tree_nodes USING btree (client_id, sort_order) WHERE (parent_id IS NULL)"
+    "sql": "CREATE INDEX idx_tree_nodes_roots ON public.tree_nodes USING btree (sort_order) WHERE (parent_id IS NULL)"
   },
   "public.tree_nodes.idx_tree_nodes_sort": {
     "schema": "public",
@@ -830,14 +814,6 @@
     "is_unique": false,
     "is_primary": false,
     "sql": "CREATE INDEX idx_tree_nodes_type ON public.tree_nodes USING btree (node_type)"
-  },
-  "public.user_prompts.idx_user_prompts_client_id": {
-    "schema": "public",
-    "name": "idx_user_prompts_client_id",
-    "table_name": "user_prompts",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (client_id)"
   },
   "realtime.messages.messages_inserted_at_topic_index": {
     "schema": "realtime",
