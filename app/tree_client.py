@@ -734,3 +734,47 @@ class TreeClient:
             logger.error(f"Failed to move node {node_id}: {e}")
             # Fallback на старый метод
             return self.move_node(node_id, new_parent_id)
+
+    def get_tree_stats(self) -> Dict[str, int]:
+        """
+        Получить общую статистику дерева для текущего клиента.
+        Возвращает: pdf_count, md_count, folders_with_pdf
+        """
+        try:
+            # Получаем все узлы одним запросом
+            resp = self._request(
+                "get",
+                f"/tree_nodes?client_id=eq.{self.client_id}"
+                "&select=id,node_type,parent_id,attributes",
+            )
+            nodes = resp.json()
+
+            pdf_count = 0
+            md_count = 0
+            parent_ids_with_pdf = set()
+
+            for node in nodes:
+                if node.get("node_type") == "document":
+                    attrs = node.get("attributes") or {}
+                    r2_key = attrs.get("r2_key", "")
+
+                    # Считаем PDF
+                    if r2_key.lower().endswith(".pdf"):
+                        pdf_count += 1
+                        # Запоминаем parent_id для подсчёта папок
+                        parent_id = node.get("parent_id")
+                        if parent_id:
+                            parent_ids_with_pdf.add(parent_id)
+
+                    # Считаем MD (has_annotation или has_ocr_result)
+                    if attrs.get("has_annotation") or attrs.get("has_ocr_result"):
+                        md_count += 1
+
+            return {
+                "pdf_count": pdf_count,
+                "md_count": md_count,
+                "folders_with_pdf": len(parent_ids_with_pdf),
+            }
+        except Exception as e:
+            logger.error(f"Failed to get tree stats: {e}")
+            return {"pdf_count": 0, "md_count": 0, "folders_with_pdf": 0}

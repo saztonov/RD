@@ -166,6 +166,14 @@ class ProjectTreeWidget(
         self.status_label.setStyleSheet("color: #666; font-size: 8pt; padding: 4px;")
         layout.addWidget(self.status_label)
 
+        # Статистика документов
+        self.stats_label = QLabel("")
+        self.stats_label.setStyleSheet(
+            "color: #888; font-size: 8pt; padding: 4px; background-color: #252526; "
+            "border-top: 1px solid #3e3e42;"
+        )
+        layout.addWidget(self.stats_label)
+
     def _create_header(self) -> QWidget:
         """Создать заголовок с кнопками"""
         header = QWidget()
@@ -269,6 +277,7 @@ class ProjectTreeWidget(
             self.status_label.setText(f"Проектов: {len(roots)}")
 
             QTimer.singleShot(100, self._restore_expanded_state)
+            QTimer.singleShot(300, self._update_stats)
             QTimer.singleShot(500, self._start_sync_check)
 
             if not self._pdf_status_manager.is_loaded:
@@ -461,3 +470,20 @@ class ProjectTreeWidget(
     @property
     def _copied_annotation(self) -> Dict:
         return self._annotation_ops._copied_annotation
+
+    def _update_stats(self):
+        """Обновить статистику документов"""
+        try:
+            # Получаем все узлы из БД для подсчёта
+            stats = self.client.get_tree_stats()
+
+            pdf_count = stats.get("pdf_count", 0)
+            md_count = stats.get("md_count", 0)
+            folders_with_pdf = stats.get("folders_with_pdf", 0)
+
+            self.stats_label.setText(
+                f"📄 PDF: {pdf_count}  |  📝 MD: {md_count}  |  📁 Папок с PDF: {folders_with_pdf}"
+            )
+        except Exception as e:
+            logger.debug(f"Failed to update stats: {e}")
+            self.stats_label.setText("")
