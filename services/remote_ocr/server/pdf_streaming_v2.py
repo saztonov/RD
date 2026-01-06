@@ -298,7 +298,7 @@ def pass2_ocr_from_manifest(
     image_backend,
     stamp_backend,
     pdf_path: str,
-    on_progress: Optional[Callable[[int, int], None]] = None,
+    on_progress: Optional[Callable[[int, int, str], None]] = None,
     check_paused: Optional[Callable[[], bool]] = None,
 ) -> None:
     """
@@ -333,11 +333,16 @@ def pass2_ocr_from_manifest(
     global_sem = get_global_ocr_semaphore(settings.max_global_ocr_requests)
     max_workers = settings.ocr_threads_per_job
 
-    def _update_progress():
+    # Храним информацию о последнем обработанном блоке для отображения
+    last_block_info = {"info": ""}
+
+    def _update_progress(block_info: str = None):
         nonlocal processed
         processed += 1
+        if block_info:
+            last_block_info["info"] = block_info
         if on_progress and total_requests > 0:
-            on_progress(processed, total_requests)
+            on_progress(processed, total_requests, last_block_info["info"])
 
     # --- Обработка strips ---
     def _process_strip(strip: StripManifestEntry, strip_idx: int):
@@ -421,7 +426,18 @@ def pass2_ocr_from_manifest(
 
                     text_block_parts[block_id][part_idx] = text
 
-            _update_progress()
+                # Информация о strip: сколько блоков в группе
+                num_blocks = len(strip.block_parts)
+                if num_blocks == 1:
+                    suffix = ""
+                elif num_blocks < 5:
+                    suffix = "а"
+                else:
+                    suffix = "ов"
+                block_info = f"Strip ({num_blocks} блок{suffix})"
+                _update_progress(block_info)
+            else:
+                _update_progress("Strip")
             gc.collect()
 
     # Собираем части TEXT/TABLE блоков
@@ -518,7 +534,17 @@ def pass2_ocr_from_manifest(
 
                 image_block_parts[block_id][part_idx] = text
 
-            _update_progress()
+                # Получаем информацию о блоке (страница, категория)
+                block = blocks_by_id.get(block_id)
+                if block:
+                    page_num = block.page_index + 1
+                    category = getattr(block, "category_code", None) or "image"
+                    block_info = f"Image: {category} (стр. {page_num})"
+                else:
+                    block_info = "Image"
+                _update_progress(block_info)
+            else:
+                _update_progress("Image")
             gc.collect()
 
     # Собираем части IMAGE блоков

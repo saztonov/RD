@@ -446,6 +446,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     error_message text,
+    status_message text,
     engine text DEFAULT ''::text,
     r2_prefix text,
     node_id uuid,
@@ -455,6 +456,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
 COMMENT ON TABLE public.jobs IS 'OCR задачи обработки документов';
 COMMENT ON COLUMN public.jobs.document_id IS 'Хеш PDF файла для идентификации';
 COMMENT ON COLUMN public.jobs.node_id IS 'ID узла дерева документа (для связи OCR результатов с деревом проектов)';
+COMMENT ON COLUMN public.jobs.status_message IS 'Детальное сообщение о текущей операции (отображается в колонке "Детали")';
 
 -- Table: public.node_files
 -- Description: Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)

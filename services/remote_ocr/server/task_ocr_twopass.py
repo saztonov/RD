@@ -40,8 +40,9 @@ def run_two_pass_ocr(
         # PASS 1: Подготовка кропов на диск
         def on_pass1_progress(current, total):
             progress = 0.1 + 0.3 * (current / total)
+            status_msg = f"📦 PASS 1: Подготовка кропов (стр. {current}/{total})"
             if not is_job_paused(job.id):
-                update_job_status(job.id, "processing", progress=progress)
+                update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
 
         manifest = pass1_prepare_crops(
             str(pdf_path),
@@ -58,10 +59,15 @@ def run_two_pass_ocr(
 
         # PASS 2: OCR с загрузкой с диска
         total_strips = len(manifest.strips) if manifest else 0
-        
-        def on_pass2_progress(current, total):
+        total_images = len(manifest.image_blocks) if manifest else 0
+        total_requests = total_strips + total_images
+
+        def on_pass2_progress(current, total, block_info: str = None):
             progress = 0.4 + 0.5 * (current / total)
-            status_msg = f"Обработка {current}/{total_strips} strips"
+            if block_info:
+                status_msg = f"🔍 PASS 2: {block_info} ({current}/{total})"
+            else:
+                status_msg = f"🔍 PASS 2: Распознавание ({current}/{total})"
             if not is_job_paused(job.id):
                 update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
 
