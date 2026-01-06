@@ -83,10 +83,7 @@ class MainWindow(
         # Инициализация менеджеров после создания UI
         self.blocks_tree_manager = BlocksTreeManager(self, self.blocks_tree)
         self.navigation_manager = NavigationManager(self)
-        
-        # Инициализация менеджера соединения
-        self._setup_connection_manager()
-        
+
         # Подключаем сигналы кеша аннотаций
         self._setup_annotation_cache_signals()
 
@@ -95,6 +92,9 @@ class MainWindow(
 
         # Статус-бар для отображения прогресса загрузки
         self._setup_status_bar()
+
+        # Инициализация менеджера соединения (после status bar)
+        self._setup_connection_manager()
 
         # Восстановить настройки окна
         self._restore_settings()
@@ -471,22 +471,41 @@ class MainWindow(
     def _setup_connection_manager(self):
         """Инициализировать менеджер соединения"""
         from app.gui.connection_manager import ConnectionManager, ConnectionStatus
-        
+
         self.connection_manager = ConnectionManager(self)
-        
+
         # Устанавливаем callback для проверки соединения
         def check_connection() -> bool:
-            """Проверить доступность сервера"""
+            """Проверить доступность интернета и сервера"""
+            import socket
+            import httpx
+
+            # 1. Быстрая проверка через Remote OCR сервер
             try:
-                # Переиспользуем клиент из remote_ocr_panel
                 if self.remote_ocr_panel:
                     client = self.remote_ocr_panel._get_client()
-                    if client:
-                        return client.health()
-                return False
+                    if client and client.health():
+                        return True
             except Exception:
-                return False
-        
+                pass
+
+            # 2. Fallback: проверка базового интернета через DNS
+            try:
+                socket.create_connection(("8.8.8.8", 53), timeout=3)
+                return True
+            except (socket.timeout, socket.error, OSError):
+                pass
+
+            # 3. Fallback: проверка через HTTP
+            try:
+                with httpx.Client(timeout=3) as client:
+                    response = client.get("https://www.google.com/generate_204")
+                    return response.status_code == 204
+            except Exception:
+                pass
+
+            return False
+
         self.connection_manager.set_check_callback(check_connection)
         
         # Подключаем сигналы
@@ -498,37 +517,43 @@ class MainWindow(
         self.connection_manager.start_monitoring()
     
     def _on_connection_lost(self):
-        """Обработчик потери соединения"""
+        """Обработчик потери соединения (вызывается только при переходе из CONNECTED)"""
         from app.gui.toast import show_toast
         logger.warning("Соединение потеряно")
         show_toast(
-            self, 
-            "⚠️ Связь с сервером разорвана. Изменения будут синхронизированы при восстановлении подключения.",
+            self,
+            "⚠️ Работа в офлайн режиме. Изменения будут синхронизированы при восстановлении.",
             duration=5000
         )
-        # Обновляем индикатор в статус-баре
-        self._connection_status_label.setText("🔴 Офлайн")
-        self._connection_status_label.setStyleSheet("color: #f44336; font-size: 9pt; font-weight: bold;")
-        self._connection_status_label.setToolTip("Нет подключения к серверу")
-    
+        # UI обновляется через _on_connection_status_changed
+
     def _on_connection_restored(self):
         """Обработчик восстановления соединения"""
         from app.gui.toast import show_toast
+        from app.gui.sync_queue import get_sync_queue
+
         logger.info("Соединение восстановлено")
-        show_toast(self, "✅ Связь с сервером восстановлена. Синхронизация...", duration=3000)
-        # Обновляем индикатор в статус-баре
-        self._connection_status_label.setText("🟢 Онлайн")
-        self._connection_status_label.setStyleSheet("color: #4caf50; font-size: 9pt; font-weight: bold;")
-        self._connection_status_label.setToolTip("Подключено к серверу")
-        
+        queue = get_sync_queue()
+        pending_count = queue.size()
+
+        if pending_count > 0:
+            show_toast(self, f"✅ Онлайн. Синхронизация {pending_count} изменений...", duration=3000)
+        else:
+            show_toast(self, "✅ Онлайн", duration=2000)
+
+        # UI обновляется через _on_connection_status_changed
         # Запускаем синхронизацию отложенных операций
         self._sync_pending_operations()
     
     def _on_connection_status_changed(self, status):
         """Обработчик изменения статуса соединения"""
         from app.gui.connection_manager import ConnectionStatus
-        
-        if status == ConnectionStatus.RECONNECTING:
+
+        if status == ConnectionStatus.CHECKING:
+            self._connection_status_label.setText("⚪ Проверка...")
+            self._connection_status_label.setStyleSheet("color: #888; font-size: 9pt;")
+            self._connection_status_label.setToolTip("Проверка подключения...")
+        elif status == ConnectionStatus.RECONNECTING:
             self._connection_status_label.setText("🟡 Переподключение...")
             self._connection_status_label.setStyleSheet("color: #ff9800; font-size: 9pt; font-weight: bold;")
             self._connection_status_label.setToolTip("Попытка переподключения...")
@@ -536,6 +561,10 @@ class MainWindow(
             self._connection_status_label.setText("🟢 Онлайн")
             self._connection_status_label.setStyleSheet("color: #4caf50; font-size: 9pt; font-weight: bold;")
             self._connection_status_label.setToolTip("Подключено к серверу")
+        elif status == ConnectionStatus.DISCONNECTED:
+            self._connection_status_label.setText("🔴 Офлайн")
+            self._connection_status_label.setStyleSheet("color: #f44336; font-size: 9pt; font-weight: bold;")
+            self._connection_status_label.setToolTip("Нет подключения. Работа в офлайн режиме.")
     
     def _update_sync_queue_indicator(self):
         """Обновить индикатор очереди синхронизации"""
@@ -571,31 +600,38 @@ class MainWindow(
                 from app.gui.sync_queue import SyncOperationType
                 from rd_core.r2_storage import R2Storage
                 from pathlib import Path
-                
+
                 if operation.type == SyncOperationType.UPLOAD_FILE:
                     r2 = R2Storage()
                     local_path = operation.local_path
                     r2_key = operation.r2_key
-                    content_type = operation.data.get("content_type")
-                    
+                    content_type = operation.data.get("content_type") if operation.data else None
+
                     if not Path(local_path).exists():
                         logger.warning(f"Файл не найден для синхронизации: {local_path}")
                         queue.remove_operation(operation.id)
                         return
-                    
+
                     if r2.upload_file(local_path, r2_key, content_type):
                         logger.info(f"Операция синхронизирована: {operation.id}")
+
+                        # Регистрируем файл аннотации в БД
+                        if operation.data and operation.data.get("is_annotation") and operation.node_id:
+                            self._register_synced_annotation(
+                                operation.node_id, r2_key, local_path
+                            )
+
                         queue.remove_operation(operation.id)
-                        
+
                         # Удаляем временный файл если это был временный файл
-                        if operation.data.get("is_temp"):
+                        if operation.data and operation.data.get("is_temp"):
                             try:
                                 Path(local_path).unlink()
                             except Exception:
                                 pass
                     else:
                         queue.mark_failed(operation.id, "Не удалось загрузить файл")
-                        
+
             except Exception as e:
                 logger.error(f"Ошибка синхронизации операции {operation.id}: {e}")
                 queue.mark_failed(operation.id, str(e))
@@ -603,3 +639,31 @@ class MainWindow(
         # Синхронизируем операции параллельно
         with ThreadPoolExecutor(max_workers=3) as executor:
             executor.map(sync_operation, pending)
+
+    def _register_synced_annotation(self, node_id: str, r2_key: str, local_path: str):
+        """Зарегистрировать синхронизированную аннотацию в БД"""
+        try:
+            from pathlib import Path
+            from app.tree_client import FileType, TreeClient
+
+            client = TreeClient()
+            client.upsert_node_file(
+                node_id=node_id,
+                file_type=FileType.ANNOTATION,
+                r2_key=r2_key,
+                file_name=Path(local_path).name,
+                file_size=Path(local_path).stat().st_size,
+                mime_type="application/json"
+            )
+
+            # Обновляем флаг has_annotation
+            node = client.get_node(node_id)
+            if node and not node.attributes.get("has_annotation"):
+                attrs = node.attributes.copy()
+                attrs["has_annotation"] = True
+                client.update_node(node_id, attributes=attrs)
+
+            logger.info(f"Аннотация зарегистрирована в БД: {node_id}")
+
+        except Exception as e:
+            logger.debug(f"Ошибка регистрации аннотации в БД: {e}")

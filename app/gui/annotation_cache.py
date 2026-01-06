@@ -114,47 +114,110 @@ class AnnotationCache(QObject):
         """Синхронизировать с R2 (асинхронно)"""
         if node_id not in self._cache:
             return
-        
+
         del self._dirty[node_id]
-        
+
         document = self._cache[node_id]
         metadata = self._metadata.get(node_id, {})
-        
+
         r2_key = metadata.get("r2_key")
         ann_path = metadata.get("ann_path")
-        
+
         if not r2_key or not ann_path:
             return
-        
+
+        # Проверяем офлайн статус - если офлайн, сразу добавляем в очередь
+        if self._is_offline():
+            ann_r2_key = self._get_annotation_r2_key(r2_key)
+            self._add_to_sync_queue(node_id, ann_path, ann_r2_key)
+            logger.debug(f"Офлайн: добавлена в очередь синхронизация {node_id}")
+            return
+
         # Копируем для фонового потока
         doc_copy = copy.deepcopy(document)
         self._executor.submit(
-            self._background_sync_r2, 
+            self._background_sync_r2,
             node_id, ann_path, doc_copy, r2_key
         )
+
+    def _is_offline(self) -> bool:
+        """Проверить, работаем ли мы в офлайн режиме"""
+        try:
+            # Импортируем здесь чтобы избежать циклических импортов
+            from app.gui.main_window import MainWindow
+            from PySide6.QtWidgets import QApplication
+            from app.gui.connection_manager import ConnectionStatus
+
+            app = QApplication.instance()
+            if app:
+                for widget in app.topLevelWidgets():
+                    if isinstance(widget, MainWindow):
+                        if hasattr(widget, 'connection_manager'):
+                            status = widget.connection_manager.get_status()
+                            return status != ConnectionStatus.CONNECTED
+            return False
+        except Exception:
+            return False
     
-    def _background_sync_r2(self, node_id: str, ann_path: str, doc: Document, 
+    def _background_sync_r2(self, node_id: str, ann_path: str, doc: Document,
                            r2_key: str):
         """Фоновая синхронизация с R2"""
         try:
             # Сначала сохраняем локально (если еще не сохранено)
             AnnotationIO.save_annotation(doc, ann_path)
-            
+
             # Загружаем в R2
             from rd_core.r2_storage import R2Storage
             r2 = R2Storage()
             ann_r2_key = self._get_annotation_r2_key(r2_key)
-            r2.upload_file(ann_path, ann_r2_key)
-            
-            logger.info(f"Annotation synced to R2: {ann_r2_key}")
-            self.synced.emit(node_id)
-            
-            # Регистрируем файл в БД
-            self._register_node_file(node_id, ann_r2_key, ann_path)
-            
+
+            if r2.upload_file(ann_path, ann_r2_key):
+                logger.info(f"Annotation synced to R2: {ann_r2_key}")
+                self.synced.emit(node_id)
+
+                # Регистрируем файл в БД
+                self._register_node_file(node_id, ann_r2_key, ann_path)
+            else:
+                # Ошибка загрузки - добавляем в очередь отложенной синхронизации
+                self._add_to_sync_queue(node_id, ann_path, ann_r2_key)
+                self.sync_failed.emit(node_id, "Не удалось загрузить в R2")
+
         except Exception as e:
             logger.error(f"R2 sync failed for {node_id}: {e}")
+            # Добавляем в очередь для повторной попытки при восстановлении соединения
+            ann_r2_key = self._get_annotation_r2_key(r2_key)
+            self._add_to_sync_queue(node_id, ann_path, ann_r2_key)
             self.sync_failed.emit(node_id, str(e))
+
+    def _add_to_sync_queue(self, node_id: str, ann_path: str, ann_r2_key: str):
+        """Добавить операцию в очередь отложенной синхронизации"""
+        try:
+            from uuid import uuid4
+            from datetime import datetime
+            from app.gui.sync_queue import SyncOperation, SyncOperationType, get_sync_queue
+
+            queue = get_sync_queue()
+
+            # Проверяем, нет ли уже такой операции в очереди
+            for op in queue.get_pending_operations():
+                if op.r2_key == ann_r2_key:
+                    logger.debug(f"Операция уже в очереди: {ann_r2_key}")
+                    return
+
+            operation = SyncOperation(
+                id=str(uuid4()),
+                type=SyncOperationType.UPLOAD_FILE,
+                timestamp=datetime.now().isoformat(),
+                local_path=ann_path,
+                r2_key=ann_r2_key,
+                node_id=node_id,
+                data={"content_type": "application/json", "is_annotation": True}
+            )
+            queue.add_operation(operation)
+            logger.info(f"Добавлена операция в очередь: annotation для {node_id}")
+
+        except Exception as e:
+            logger.error(f"Ошибка добавления в очередь: {e}")
     
     def _register_node_file(self, node_id: str, ann_r2_key: str, ann_path: str):
         """Регистрация файла в БД"""
