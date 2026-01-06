@@ -213,6 +213,23 @@ class JobOperationsMixin:
             f"Отправка задачи на сервер: engine={engine}, blocks={len(selected_blocks)}, image_model={getattr(dialog, 'image_model', None)}, stamp_model={getattr(dialog, 'stamp_model', None)}, node_id={node_id}"
         )
 
+        # Создаём временный ID для немедленного отображения задачи
+        import uuid
+        temp_job_id = f"uploading-{uuid.uuid4().hex[:12]}"
+
+        # Отправляем сигнал для немедленного отображения задачи в UI
+        from app.remote_ocr_client import JobInfo
+        temp_job = JobInfo(
+            id=temp_job_id,
+            status="uploading",
+            progress=0.0,
+            document_id="",
+            document_name=Path(pdf_path).name,
+            task_name=task_name,
+            status_message="Загрузка на сервер...",
+        )
+        self._signals.job_uploading.emit(temp_job)
+
         self._executor.submit(
             self._create_job_bg,
             client,
@@ -225,6 +242,7 @@ class JobOperationsMixin:
             getattr(dialog, "image_model", None),
             getattr(dialog, "stamp_model", None),
             node_id,
+            temp_job_id,  # Передаём временный ID для замены
         )
 
     def _create_job_bg(
@@ -239,6 +257,7 @@ class JobOperationsMixin:
         image_model,
         stamp_model,
         node_id=None,
+        temp_job_id=None,
     ):
         """Фоновое создание задачи"""
         try:
@@ -263,6 +282,8 @@ class JobOperationsMixin:
                 node_id=node_id,
             )
             logger.info(f"Задача создана: id={job_info.id}, status={job_info.status}")
+            # Добавляем temp_job_id к job_info для замены в UI
+            job_info._temp_job_id = temp_job_id
             self._signals.job_created.emit(job_info)
         except AuthenticationError:
             logger.error("Ошибка авторизации при создании задачи")

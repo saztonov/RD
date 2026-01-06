@@ -8,6 +8,7 @@ class WorkerSignals(QObject):
 
     jobs_loaded = Signal(list)
     jobs_error = Signal(str)
+    job_uploading = Signal(object)  # JobInfo с status="uploading" - показывается сразу
     job_created = Signal(object)
     job_create_error = Signal(str, str)  # error_type, message
     # Сигналы для скачивания

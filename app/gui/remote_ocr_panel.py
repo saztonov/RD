@@ -57,6 +57,7 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self._signals = WorkerSignals()
         self._signals.jobs_loaded.connect(self._on_jobs_loaded)
         self._signals.jobs_error.connect(self._on_jobs_error)
+        self._signals.job_uploading.connect(self._on_job_uploading)
         self._signals.job_created.connect(self._on_job_created)
         self._signals.job_create_error.connect(self._on_job_create_error)
         self._signals.download_started.connect(self._on_download_started)
@@ -271,6 +272,7 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
             self.jobs_table.setItem(row, 2, created_item)
 
             status_text = {
+                "uploading": "⬆️ Загрузка...",
                 "draft": "📝 Черновик",
                 "queued": "⏳ В очереди",
                 "processing": "🔄 Обработка",
@@ -324,6 +326,7 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self.jobs_table.setItem(row, 2, created_item)
 
         status_text = {
+            "uploading": "⬆️ Загрузка...",
             "draft": "📝 Черновик",
             "queued": "⏳ В очереди",
             "processing": "🔄 Обработка",
@@ -350,6 +353,56 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         logger.info(
             f"Задача добавлена в таблицу: row={row}, name={display_name}, status={job.status}, total_rows={self.jobs_table.rowCount()}"
         )
+
+    def _replace_job_in_table(self, old_job_id: str, new_job):
+        """Заменить временную задачу на реальную в таблице"""
+        # Ищем строку с временным job_id
+        for row in range(self.jobs_table.rowCount()):
+            item = self.jobs_table.item(row, 0)
+            if item and item.data(Qt.UserRole) == old_job_id:
+                logger.info(f"Найдена временная задача в строке {row}, заменяем на {new_job.id}")
+
+                # Обновляем данные в строке
+                item.setData(Qt.UserRole, new_job.id)
+
+                # Обновляем название
+                display_name = new_job.task_name if new_job.task_name else new_job.document_name
+                self.jobs_table.item(row, 1).setText(display_name)
+
+                # Обновляем время
+                created_at_str = format_datetime_utc3(new_job.created_at) if new_job.created_at else "Только что"
+                self.jobs_table.item(row, 2).setText(created_at_str)
+
+                # Обновляем статус
+                status_text = {
+                    "uploading": "⬆️ Загрузка...",
+                    "draft": "📝 Черновик",
+                    "queued": "⏳ В очереди",
+                    "processing": "🔄 Обработка",
+                    "done": "✅ Готово",
+                    "error": "❌ Ошибка",
+                    "paused": "⏸️ Пауза",
+                }.get(new_job.status, new_job.status)
+                self.jobs_table.item(row, 3).setText(status_text)
+
+                # Обновляем прогресс
+                progress_text = f"{int(new_job.progress * 100)}%"
+                self.jobs_table.item(row, 4).setText(progress_text)
+
+                # Обновляем сообщение о статусе
+                status_msg = new_job.status_message or ""
+                self.jobs_table.item(row, 5).setText(status_msg)
+
+                # Заменяем виджет действий
+                actions_widget = self._create_actions_widget(new_job)
+                self.jobs_table.setCellWidget(row, 6, actions_widget)
+
+                logger.info(f"Задача заменена: {old_job_id} -> {new_job.id}")
+                return
+
+        # Если не нашли - добавляем как новую
+        logger.warning(f"Временная задача {old_job_id} не найдена в таблице, добавляем как новую")
+        self._add_job_to_table(new_job, at_top=True)
 
     def _create_actions_widget(self, job) -> QWidget:
         """Создать виджет с кнопками действий для задачи"""
@@ -402,8 +455,22 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         actions_layout.addStretch()
         return actions_widget
 
+    def _on_job_uploading(self, job_info):
+        """Слот: задача начала загружаться — немедленное отображение в UI"""
+        logger.info(
+            f"Обработка job_uploading signal: temp_id={job_info.id}, status={job_info.status}"
+        )
+
+        # Добавляем временную задачу в оптимистичный список
+        self._optimistic_jobs[job_info.id] = (job_info, time.time())
+        logger.info(f"Временная задача добавлена в оптимистичный список: {job_info.id}")
+
+        # Немедленно добавляем в таблицу
+        self._add_job_to_table(job_info, at_top=True)
+        logger.info(f"Временная задача добавлена в таблицу, строк={self.jobs_table.rowCount()}")
+
     def _on_job_created(self, job_info):
-        """Слот: задача создана — оптимистичное добавление в таблицу"""
+        """Слот: задача создана на сервере — заменяем временную на реальную"""
         logger.info(
             f"Обработка job_created signal: job_id={job_info.id}, status={job_info.status}"
         )
@@ -411,25 +478,42 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
 
         show_toast(self, f"Задача создана: {job_info.id[:8]}...", duration=2500)
 
-        # Добавляем задачу в список оптимистично добавленных с текущим timestamp
+        # Получаем временный ID для замены
+        temp_job_id = getattr(job_info, "_temp_job_id", None)
+
+        # Удаляем временную задачу из оптимистичного списка
+        if temp_job_id and temp_job_id in self._optimistic_jobs:
+            self._optimistic_jobs.pop(temp_job_id, None)
+            logger.info(f"Удалена временная задача из оптимистичного списка: {temp_job_id}")
+
+        # Добавляем реальную задачу в оптимистичный список
         self._optimistic_jobs[job_info.id] = (job_info, time.time())
-        logger.info(f"Задача добавлена в оптимистичный список: {job_info.id}")
+        logger.info(f"Реальная задача добавлена в оптимистичный список: {job_info.id}")
 
         # Устанавливаем быстрый интервал обновления для скорейшей синхронизации
         if self.refresh_timer.interval() > 2000:
             self.refresh_timer.setInterval(2000)
             logger.info("Установлен быстрый интервал обновления: 2000ms")
 
-        # Немедленно добавляем в таблицу
-        logger.info(f"Добавление задачи в таблицу (оптимистично)")
-        self._add_job_to_table(job_info, at_top=True)
-        logger.info(f"Задача добавлена в таблицу, строк={self.jobs_table.rowCount()}")
+        # Заменяем временную задачу на реальную в таблице
+        if temp_job_id:
+            self._replace_job_in_table(temp_job_id, job_info)
+        else:
+            # Fallback: просто добавляем в таблицу
+            self._add_job_to_table(job_info, at_top=True)
+        logger.info(f"Задача обновлена в таблице, строк={self.jobs_table.rowCount()}")
 
     def _on_job_create_error(self, error_type: str, message: str):
         """Слот: ошибка создания задачи"""
-        # Очищаем оптимистичный список при ошибке создания
-        self._optimistic_jobs.clear()
-        
+        # Удаляем временные задачи (uploading) из таблицы и оптимистичного списка
+        uploading_ids = [
+            job_id for job_id, (job_info, _) in self._optimistic_jobs.items()
+            if job_info.status == "uploading"
+        ]
+        for job_id in uploading_ids:
+            self._optimistic_jobs.pop(job_id, None)
+            self._remove_job_from_table(job_id)
+
         titles = {
             "auth": "Ошибка авторизации",
             "size": "Файл слишком большой",
@@ -437,6 +521,15 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
             "generic": "Ошибка",
         }
         QMessageBox.critical(self, titles.get(error_type, "Ошибка"), message)
+
+    def _remove_job_from_table(self, job_id: str):
+        """Удалить задачу из таблицы по ID"""
+        for row in range(self.jobs_table.rowCount()):
+            item = self.jobs_table.item(row, 0)
+            if item and item.data(Qt.UserRole) == job_id:
+                self.jobs_table.removeRow(row)
+                logger.info(f"Задача {job_id} удалена из таблицы")
+                return
 
     def _get_selected_blocks(self):
         """Получить все блоки для OCR"""
