@@ -741,20 +741,23 @@ class TreeClient:
         Возвращает: pdf_count, md_count, folders_with_pdf
         """
         try:
-            # Получаем все узлы одним запросом (limit=10000 для больших деревьев)
+            # Получаем ВСЕ узлы без фильтра по client_id (для отладки)
             resp = self._request(
                 "get",
-                f"/tree_nodes?client_id=eq.{self.client_id}"
-                "&select=id,node_type,parent_id,attributes&limit=10000",
+                "/tree_nodes?select=id,node_type,parent_id,attributes&limit=10000",
             )
             nodes = resp.json()
+
+            logger.info(f"get_tree_stats: total nodes from DB = {len(nodes)}")
 
             pdf_count = 0
             md_count = 0
             parent_ids_with_pdf = set()
+            doc_count = 0
 
             for node in nodes:
                 if node.get("node_type") == "document":
+                    doc_count += 1
                     attrs = node.get("attributes") or {}
                     r2_key = attrs.get("r2_key", "")
 
@@ -769,6 +772,11 @@ class TreeClient:
                     # Считаем MD (has_annotation или has_ocr_result)
                     if attrs.get("has_annotation") or attrs.get("has_ocr_result"):
                         md_count += 1
+
+            logger.info(
+                f"get_tree_stats: doc_count={doc_count}, pdf_count={pdf_count}, "
+                f"md_count={md_count}, folders_with_pdf={len(parent_ids_with_pdf)}"
+            )
 
             return {
                 "pdf_count": pdf_count,
