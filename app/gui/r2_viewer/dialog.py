@@ -372,26 +372,30 @@ class R2FilesDialog(QDialog):
 
     def _cleanup_after_delete(self, deleted_keys: list):
         """Очистить локальные файлы и Supabase после удаления"""
-        if deleted_keys and self.local_folder:
-            from app.gui.folder_settings_dialog import get_projects_dir
+        if not deleted_keys:
+            return
 
-            projects_dir = get_projects_dir()
-            if projects_dir:
-                for r2_key in deleted_keys:
-                    try:
-                        if r2_key.startswith("tree_docs/"):
-                            rel_path = r2_key[len("tree_docs/"):]
-                        else:
-                            rel_path = r2_key
+        # Удаляем локальные файлы
+        from app.gui.folder_settings_dialog import get_projects_dir
 
-                        local_file = Path(projects_dir) / "cache" / rel_path
-                        if local_file.exists():
-                            local_file.unlink()
-                            logger.info(f"Deleted local file: {local_file}")
-                    except Exception as e:
-                        logger.warning(f"Failed to delete local file {r2_key}: {e}")
+        projects_dir = get_projects_dir()
+        if projects_dir:
+            for r2_key in deleted_keys:
+                try:
+                    if r2_key.startswith("tree_docs/"):
+                        rel_path = r2_key[len("tree_docs/"):]
+                    else:
+                        rel_path = r2_key
 
-        if deleted_keys and self.node_id:
+                    local_file = Path(projects_dir) / "cache" / rel_path
+                    if local_file.exists():
+                        local_file.unlink()
+                        logger.info(f"Deleted local file: {local_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete local file {r2_key}: {e}")
+
+        # Удаляем записи из Supabase
+        if self.node_id:
             try:
                 from app.tree_client import TreeClient
 
