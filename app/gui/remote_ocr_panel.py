@@ -651,6 +651,21 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         if not node:
             return
 
+        # Инвалидируем кэш метаданных R2 для этого документа
+        # Сервер мог загрузить новые файлы (annotation, ocr_html, result_json)
+        try:
+            from rd_core.r2_metadata_cache import get_metadata_cache
+
+            # Получаем R2 prefix документа
+            r2_key = getattr(node, "r2_key", None)
+            if r2_key:
+                from pathlib import PurePosixPath
+                prefix = str(PurePosixPath(r2_key).parent) + "/"
+                get_metadata_cache().invalidate_prefix(prefix)
+                logger.debug(f"Invalidated R2 metadata cache for prefix: {prefix}")
+        except Exception as e:
+            logger.warning(f"Failed to invalidate R2 metadata cache: {e}")
+
         # Обновляем отображение элемента (документы не имеют дочерних узлов)
         tree._start_sync_check()
         logger.info(f"Refreshed document in tree: {node_id}")

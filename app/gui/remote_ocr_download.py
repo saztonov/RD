@@ -47,6 +47,7 @@ class DownloadMixin:
         """Фоновое скачивание результата в папку текущего документа."""
         try:
             from rd_core.r2_storage import R2Storage
+            from rd_core.r2_metadata_cache import get_metadata_cache
 
             r2 = R2Storage()
 
@@ -65,8 +66,14 @@ class DownloadMixin:
 
             actual_prefix = job_details.get("result_prefix") or r2_prefix
 
-            # Скачиваем _ocr.html, _result.json и _document.md
+            # Инвалидируем кэш метаданных для префикса перед скачиванием
+            # Сервер мог создать новые файлы, которых нет в кэше
+            get_metadata_cache().invalidate_prefix(actual_prefix + "/")
+            logger.debug(f"Invalidated metadata cache for prefix: {actual_prefix}/")
+
+            # Скачиваем _annotation.json, _ocr.html, _result.json и _document.md
             files_to_download = [
+                (f"{doc_stem}_annotation.json", f"{pdf_stem}_annotation.json"),
                 (f"{doc_stem}_ocr.html", f"{pdf_stem}_ocr.html"),
                 (f"{doc_stem}_result.json", f"{pdf_stem}_result.json"),
                 (f"{doc_stem}_document.md", f"{pdf_stem}_document.md"),
@@ -79,8 +86,10 @@ class DownloadMixin:
                 remote_key = f"{actual_prefix}/{remote_name}"
                 local_path = extract_path / local_name
                 try:
-                    if r2.exists(remote_key):
-                        r2.download_file(remote_key, str(local_path))
+                    # Проверяем без кэша (свежие данные с сервера)
+                    if r2.exists(remote_key, use_cache=False):
+                        # Скачиваем без дискового кэша (сервер мог обновить файл)
+                        r2.download_file(remote_key, str(local_path), use_cache=False)
                         logger.info(f"Скачан: {local_path}")
                     else:
                         logger.warning(f"Файл не найден: {remote_key}")
