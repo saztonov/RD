@@ -205,7 +205,8 @@ class BlockVerificationDialog(QDialog):
         self._worker: Optional[VerificationWorker] = None
 
         self.setWindowTitle(f"Верификация блоков: {node_name}")
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(650, 550)
+        self.resize(700, 700)  # Начальный размер больше минимального
         self.setModal(True)
 
         self._setup_ui()
@@ -410,6 +411,14 @@ class BlockVerificationDialog(QDialog):
 
         self.verdict_group.show()
         self.copy_btn.show()
+
+        # Подстраиваем размер под содержимое
+        self.adjustSize()
+        # Убеждаемся что размер не меньше минимального
+        if self.width() < 700:
+            self.resize(700, self.height())
+        if self.height() < 650:
+            self.resize(self.width(), 650)
 
     def _copy_report(self):
         """Скопировать отчёт в буфер обмена"""
