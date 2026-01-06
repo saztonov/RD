@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(python app/main.py:*)",
+      "Bash(where:*)",
+      "Bash(py:*)",
+      "Bash(python3:*)",
+      "Bash(dir \"C:\\\\Users\\\\Usr\\\\AppData\\\\Local\\\\Programs\\\\Python\")",
+      "Bash(dir \"C:\\\\Python*\")",
+      "Bash(dir \"C:\\\\Program Files\\\\Python*\")",
+      "Bash(Get-Command python* -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -Property Name, Source)",
+      "Bash(pip install:*)",
+      "Bash(python -m app.main:*)",
+      "Bash(python:*)",
+      "Bash(dir:*)",
+      "Bash(del \"\\\\?\\\\C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\nul\")",
+      "Bash(cmd /c 'del \"\"\\\\\\\\?\\\\C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\nul\"\"')",
+      "Bash(cmd //c \"del /f /q nul\")",
+      "Bash(git add:*)",
+      "Bash(git restore:*)",
+      "Bash(git commit:*)",
+      "Bash(gh api:*)",
+      "Bash(git config:*)",
+      "Bash(git push)"
+    ]
+  }
+}
