@@ -51,20 +51,12 @@ def _get_tree_client() -> httpx.Client:
     return _tree_http_client
 
 
-def _get_client_id() -> str:
-    """Получить client_id"""
-    from app.remote_ocr_client import _get_or_create_client_id
-
-    return _get_or_create_client_id()
-
-
 @dataclass
 class TreeClient:
     """Клиент для работы с деревом проектов"""
 
     supabase_url: str = field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))
     supabase_key: str = field(default_factory=lambda: os.getenv("SUPABASE_KEY", ""))
-    client_id: str = field(default_factory=_get_client_id)
     timeout: float = 30.0
 
     def _headers(self) -> dict:
@@ -332,7 +324,6 @@ class TreeClient:
         payload = {
             "id": node_id,
             "parent_id": parent_id,
-            "client_id": self.client_id,
             "node_type": node_type_str,
             "name": name,
             "code": code,

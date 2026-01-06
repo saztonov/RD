@@ -131,7 +131,6 @@ class TreeNode:
 
     id: str
     parent_id: Optional[str]
-    client_id: str
     node_type: NodeType
     name: str
     code: Optional[str] = None
@@ -177,7 +176,6 @@ class TreeNode:
         return cls(
             id=data["id"],
             parent_id=data.get("parent_id"),
-            client_id=data.get("client_id", ""),
             node_type=node_type,
             name=data["name"],
             code=data.get("code"),
@@ -206,7 +204,6 @@ class TreeNode:
         return {
             "id": self.id,
             "parent_id": self.parent_id,
-            "client_id": self.client_id,
             "node_type": self.node_type.value,
             "name": self.name,
             "code": self.code,

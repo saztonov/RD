@@ -18,13 +18,9 @@ JOBS_CACHE_TTL = 5
 JOBS_CACHE_PREFIX = "jobs:list:"
 
 
-def _get_jobs_cache_key(client_id: Optional[str], document_id: Optional[str]) -> str:
+def _get_jobs_cache_key(document_id: Optional[str]) -> str:
     """Формирует ключ кеша для list_jobs"""
-    if client_id and document_id:
-        return f"{JOBS_CACHE_PREFIX}{client_id}:{document_id}"
-    elif client_id:
-        return f"{JOBS_CACHE_PREFIX}client:{client_id}"
-    elif document_id:
+    if document_id:
         return f"{JOBS_CACHE_PREFIX}doc:{document_id}"
     return f"{JOBS_CACHE_PREFIX}all"
 
@@ -42,7 +38,6 @@ def _invalidate_jobs_cache() -> None:
 
 
 def create_job(
-    client_id: str,
     document_id: str,
     document_name: str,
     task_name: str,
@@ -57,7 +52,6 @@ def create_job(
 
     job = Job(
         id=job_id,
-        client_id=client_id,
         document_id=document_id,
         document_name=document_name,
         task_name=task_name,
@@ -74,7 +68,6 @@ def create_job(
     client = get_client()
     insert_data = {
         "id": job.id,
-        "client_id": job.client_id,
         "document_id": job.document_id,
         "document_name": job.document_name,
         "task_name": job.task_name,
@@ -118,11 +111,9 @@ def get_job(
     return job
 
 
-def list_jobs(
-    client_id: Optional[str] = None, document_id: Optional[str] = None
-) -> List[Job]:
+def list_jobs(document_id: Optional[str] = None) -> List[Job]:
     """Получить список задач (с Redis кешированием)"""
-    cache_key = _get_jobs_cache_key(client_id, document_id)
+    cache_key = _get_jobs_cache_key(document_id)
 
     # Проверяем кеш
     try:
@@ -138,11 +129,7 @@ def list_jobs(
     client = get_client()
     query = client.table("jobs").select("*")
 
-    if client_id and document_id:
-        query = query.eq("client_id", client_id).eq("document_id", document_id)
-    elif client_id:
-        query = query.eq("client_id", client_id)
-    elif document_id:
+    if document_id:
         query = query.eq("document_id", document_id)
 
     result = query.order("created_at", desc=True).execute()
@@ -303,7 +290,6 @@ def is_job_paused(job_id: str) -> bool:
 def _row_to_job(row: dict) -> Job:
     return Job(
         id=row["id"],
-        client_id=row["client_id"],
         document_id=row["document_id"],
         document_name=row["document_name"],
         task_name=row.get("task_name", ""),

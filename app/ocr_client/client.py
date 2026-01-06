@@ -18,7 +18,7 @@ from app.ocr_client.exceptions import (
     RemoteOCRError,
     ServerError,
 )
-from app.ocr_client.http_pool import get_or_create_client_id, get_remote_ocr_client
+from app.ocr_client.http_pool import get_remote_ocr_client
 from app.ocr_client.models import JobInfo
 from rd_core.models import Block
 
@@ -37,7 +37,6 @@ class RemoteOCRClient:
     api_key: Optional[str] = field(
         default_factory=lambda: os.getenv("REMOTE_OCR_API_KEY")
     )
-    client_id: str = field(default_factory=get_or_create_client_id)
     timeout: float = 120.0
     upload_timeout: float = 600.0  # Для POST /jobs - большие PDF
     max_retries: int = 3
@@ -46,8 +45,7 @@ class RemoteOCRClient:
         """Логирование конфигурации при инициализации"""
         logger.info(
             f"RemoteOCRClient initialized: base_url={self.base_url}, "
-            f"api_key={'***' if self.api_key else 'None'}, "
-            f"client_id={self.client_id[:8]}..."
+            f"api_key={'***' if self.api_key else 'None'}"
         )
 
     def _headers(self) -> dict:
@@ -224,7 +222,6 @@ class RemoteOCRClient:
         client = get_remote_ocr_client(self.base_url, self.upload_timeout)
         with open(pdf_path, "rb") as pdf_file:
             form_data = {
-                "client_id": self.client_id,
                 "document_id": document_id,
                 "document_name": document_name,
                 "task_name": task_name,
@@ -267,21 +264,18 @@ class RemoteOCRClient:
         )
 
     def list_jobs(
-        self, document_id: Optional[str] = None, all_clients: bool = True
+        self, document_id: Optional[str] = None
     ) -> List[JobInfo]:
         """
         Получить список задач
 
         Args:
             document_id: опционально фильтр по document_id
-            all_clients: если True - возвращает задачи всех пользователей
 
         Returns:
             Список задач
         """
         params = {}
-        if not all_clients:
-            params["client_id"] = self.client_id
         if document_id:
             params["document_id"] = document_id
 

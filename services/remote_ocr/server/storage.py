@@ -80,7 +80,6 @@ def job_to_dict(job: Job) -> dict:
 
     return {
         "id": job.id,
-        "client_id": job.client_id,
         "document_id": job.document_id,
         "document_name": job.document_name,
         "task_name": job.task_name,

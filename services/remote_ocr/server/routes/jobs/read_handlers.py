@@ -24,14 +24,13 @@ _logger = logging.getLogger(__name__)
 
 
 def list_jobs_handler(
-    client_id: Optional[str] = None,
     document_id: Optional[str] = None,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> list:
     """Получить список задач"""
     check_api_key(x_api_key)
 
-    jobs = list_jobs(client_id, document_id)
+    jobs = list_jobs(document_id)
     return [
         {
             "id": j.id,

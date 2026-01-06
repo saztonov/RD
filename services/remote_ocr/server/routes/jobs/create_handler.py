@@ -27,7 +27,6 @@ _logger = logging.getLogger(__name__)
 
 
 async def create_job_handler(
-    client_id: str = Form(...),
     document_id: str = Form(...),
     document_name: str = Form(...),
     task_name: str = Form(""),
@@ -49,7 +48,7 @@ async def create_job_handler(
 
     blocks_json = (await blocks_file.read()).decode("utf-8")
     _logger.info(
-        f"POST /jobs: client_id={client_id}, document_id={document_id[:16]}..., node_id={node_id}"
+        f"POST /jobs: document_id={document_id[:16]}..., node_id={node_id}"
     )
 
     try:
@@ -87,7 +86,6 @@ async def create_job_handler(
         r2_prefix = f"ocr_jobs/{job_id}"
 
     job = create_job(
-        client_id=client_id,
         document_id=document_id,
         document_name=document_name,
         task_name=task_name,
