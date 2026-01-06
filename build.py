@@ -92,8 +92,8 @@ with open(spec_file, "w", encoding="utf-8") as f:
 
 print(f"[OK] Spec updated with {len(env_vars)} safe vars (secrets excluded)")
 print(f"[OK] Runtime hook: {hook_file}")
-print("\n⚠️  ВАЖНО: Секретные ключи НЕ внедрены в exe!")
-print("Создайте .env файл рядом с CoreStructure.exe с содержимым:")
+print("\n[!] Secrets NOT embedded in exe!")
+print("Create .env file next to CoreStructure.exe with:")
 print("  REMOTE_OCR_API_KEY=your_key_here")
 print("\nRunning PyInstaller...")
 
