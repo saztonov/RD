@@ -155,3 +155,4 @@ database/backups/
 database/dumps/
 *.sql.gz
 *.dump
+nul
