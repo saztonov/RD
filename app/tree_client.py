@@ -234,6 +234,35 @@ class TreeClient:
 
         return result
 
+    def get_pdf_statuses_batch_fresh(self, node_ids: list[str]) -> dict[str, tuple[str, str]]:
+        """
+        Получить статусы для нескольких документов напрямую из БД (без кеша).
+        Используется для автоматического обновления статусов.
+
+        Returns:
+            Словарь {node_id: (status, message)}
+        """
+        if not node_ids:
+            return {}
+
+        result = {}
+
+        # Загружаем батчем напрямую из БД
+        ids_str = ",".join(f'"{nid}"' for nid in node_ids)
+        resp = self._request(
+            "get",
+            f"/tree_nodes?id=in.({ids_str})&select=id,pdf_status,pdf_status_message",
+        )
+        data = resp.json()
+
+        for row in data:
+            node_id = row["id"]
+            status = row.get("pdf_status") or "unknown"
+            message = row.get("pdf_status_message") or ""
+            result[node_id] = (status, message)
+
+        return result
+
     def update_pdf_status(self, node_id: str, status: str, message: str = None):
         """Обновить статус PDF документа и инвалидировать кеш"""
         try:

@@ -49,7 +49,7 @@ class ConnectionManager(QObject):
         super().__init__(parent)
         self._info = ConnectionInfo(status=ConnectionStatus.CONNECTED)
         self._check_callback: Optional[Callable[[], bool]] = None
-        self._check_interval = 5000  # 5 секунд
+        self._check_interval = 15000  # 15 сек (было 5)
         self._check_timer = QTimer(self)
         self._check_timer.timeout.connect(self._check_connection)
         self._lock = threading.Lock()

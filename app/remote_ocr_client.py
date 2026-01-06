@@ -389,6 +389,43 @@ class RemoteOCRClient:
             for j in data
         ]
 
+    def get_jobs_changes(self, since: str) -> tuple[List[JobInfo], str]:
+        """
+        Получить задачи, изменённые после указанного времени.
+
+        Используется для incremental polling - запрашиваем только изменения
+        вместо полного списка.
+
+        Args:
+            since: ISO timestamp для фильтрации
+
+        Returns:
+            Кортеж (список изменённых задач, server_time для следующего запроса)
+        """
+        params = {"since": since}
+        logger.debug(f"get_jobs_changes: GET {self.base_url}/jobs/changes params={params}")
+        resp = self._request_with_retry("get", "/jobs/changes", params=params)
+        data = resp.json()
+
+        jobs = [
+            JobInfo(
+                id=j["id"],
+                status=j["status"],
+                progress=j["progress"],
+                document_id=j["document_id"],
+                document_name=j["document_name"],
+                task_name=j.get("task_name", ""),
+                created_at=j.get("created_at", ""),
+                updated_at=j.get("updated_at", ""),
+                error_message=j.get("error_message"),
+                node_id=j.get("node_id"),
+                status_message=j.get("status_message"),
+            )
+            for j in data.get("jobs", [])
+        ]
+
+        return jobs, data.get("server_time", "")
+
     def get_job(self, job_id: str) -> JobInfo:
         """Получить информацию о задаче"""
         resp = self._request_with_retry("get", f"/jobs/{job_id}")

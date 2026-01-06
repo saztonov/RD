@@ -28,6 +28,7 @@ from .storage_jobs import (
     get_job,
     is_job_paused,
     list_jobs,
+    list_jobs_changed_since,
     pause_job,
     reset_job_for_restart,
     resume_job,

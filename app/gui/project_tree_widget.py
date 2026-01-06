@@ -96,12 +96,17 @@ class ProjectTreeWidget(
         """Настроить автообновление дерева"""
         self._auto_refresh_timer = QTimer(self)
         self._auto_refresh_timer.timeout.connect(self._auto_refresh_tree)
-        self._auto_refresh_timer.start(10000)  # Каждые 10 секунд
+        self._auto_refresh_timer.start(30000)  # Каждые 30 сек (было 10)
 
         # Таймер для очистки истёкших записей кеша
         self._cache_cleanup_timer = QTimer(self)
         self._cache_cleanup_timer.timeout.connect(self._cleanup_pdf_cache)
         self._cache_cleanup_timer.start(60000)  # Каждую минуту
+
+        # Таймер для автоматического обновления статусов PDF
+        self._pdf_status_refresh_timer = QTimer(self)
+        self._pdf_status_refresh_timer.timeout.connect(self._auto_refresh_pdf_statuses)
+        self._pdf_status_refresh_timer.start(30000)  # Каждые 30 сек (было 5)
 
     def _auto_refresh_tree(self):
         """Автоматическое обновление дерева (проверка изменений)"""
@@ -503,6 +508,76 @@ class ProjectTreeWidget(
                 logger.debug(f"Cleaned {cleaned} expired PDF status cache entries")
         except Exception as e:
             logger.error(f"PDF cache cleanup failed: {e}")
+
+    def _auto_refresh_pdf_statuses(self):
+        """Автоматическое обновление статусов PDF документов (без полного обновления дерева)"""
+        if self._loading or not self._pdf_statuses_loaded:
+            return
+
+        try:
+            # Собираем ID всех документов в дереве
+            doc_ids = []
+            for node_id, item in self._node_map.items():
+                node = item.data(0, Qt.UserRole)
+                if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
+                    doc_ids.append(node_id)
+
+            if not doc_ids:
+                return
+
+            # Получаем свежие статусы из БД (без кеша)
+            fresh_statuses = self.client.get_pdf_statuses_batch_fresh(doc_ids)
+
+            # Получаем кеш для обновления
+            from app.gui.pdf_status_cache import get_pdf_status_cache
+            cache = get_pdf_status_cache()
+
+            # Обновляем только изменившиеся статусы
+            updated_count = 0
+            for node_id in doc_ids:
+                item = self._node_map.get(node_id)
+                if not item:
+                    continue
+
+                node = item.data(0, Qt.UserRole)
+                if not isinstance(node, TreeNode) or node.node_type != NodeType.DOCUMENT:
+                    continue
+
+                # Получаем новый статус
+                new_status, new_message = fresh_statuses.get(node_id, ("unknown", ""))
+                old_status = node.pdf_status or "unknown"
+
+                # Обновляем кеш для всех статусов
+                cache.set(node_id, new_status, new_message)
+
+                # Если статус изменился - обновляем отображение
+                if new_status != old_status:
+                    node.pdf_status = new_status
+                    node.pdf_status_message = new_message
+
+                    # Обновляем текст элемента дерева
+                    icon = NODE_ICONS.get(node.node_type, "📄")
+                    status_icon = self._get_pdf_status_icon(new_status)
+                    lock_icon = "🔒" if node.is_locked else ""
+                    version_tag = f"[v{node.version}]" if node.version else "[v1]"
+
+                    display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+                    item.setText(0, display_name)
+                    item.setData(0, Qt.UserRole + 1, version_tag)
+
+                    if new_message:
+                        item.setToolTip(0, new_message)
+                    else:
+                        item.setToolTip(0, "")
+
+                    updated_count += 1
+                    logger.debug(f"PDF status updated: {node.name} {old_status} -> {new_status}")
+
+            if updated_count > 0:
+                logger.info(f"Auto-refreshed {updated_count} PDF status(es)")
+
+        except Exception as e:
+            logger.debug(f"Auto-refresh PDF statuses failed: {e}")
 
     def _add_placeholder(self, item: QTreeWidgetItem, node: TreeNode):
         """Добавить placeholder для lazy loading"""

@@ -36,9 +36,9 @@ logger = logging.getLogger(__name__)
 class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
     """Dock-панель для Remote OCR задач"""
 
-    POLL_INTERVAL_PROCESSING = 5000
-    POLL_INTERVAL_IDLE = 30000
-    POLL_INTERVAL_ERROR = 60000
+    POLL_INTERVAL_PROCESSING = 15000   # 15 сек (было 5) - активные задачи
+    POLL_INTERVAL_IDLE = 60000         # 60 сек (было 30) - нет активных задач
+    POLL_INTERVAL_ERROR = 120000       # 120 сек (было 60) - при ошибках
 
     def __init__(self, main_window: "MainWindow", parent=None):
         super().__init__("Remote OCR Jobs", parent)
@@ -71,6 +71,8 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
         self._download_dialog: Optional[QProgressDialog] = None
         self._downloaded_jobs: set = set()  # Уже скачанные задачи
         self._optimistic_jobs: dict = {}  # Оптимистично добавленные задачи {job_id: (JobInfo, timestamp)}
+        self._last_server_time: Optional[str] = None  # Для incremental polling
+        self._jobs_cache: dict = {}  # Кеш задач для incremental обновления {job_id: JobInfo}
 
         self._setup_ui()
         self._setup_timer()
@@ -163,17 +165,23 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
 
         if manual:
             self.status_label.setText("🔄 Загрузка...")
-
-        self._executor.submit(self._fetch_jobs_bg)
+            # При ручном обновлении - полный список
+            self._executor.submit(self._fetch_jobs_bg)
+        elif self._last_server_time and self._jobs_cache:
+            # Incremental polling - только изменения
+            self._executor.submit(self._fetch_changes_bg)
+        else:
+            # Первая загрузка - полный список
+            self._executor.submit(self._fetch_jobs_bg)
 
     def _fetch_jobs_bg(self):
-        """Фоновая загрузка списка задач"""
+        """Фоновая загрузка полного списка задач"""
         client = self._get_client()
         if client is None:
             self._signals.jobs_error.emit("Ошибка клиента")
             return
         try:
-            logger.debug(f"Fetching jobs from {client.base_url}")
+            logger.debug(f"Fetching full jobs list from {client.base_url}")
             jobs = client.list_jobs(document_id=None)
             logger.debug(f"Fetched {len(jobs)} jobs")
             self._signals.jobs_loaded.emit(jobs)
@@ -184,15 +192,55 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
             )
             self._signals.jobs_error.emit(str(e))
 
+    def _fetch_changes_bg(self):
+        """Фоновая загрузка только изменений (incremental polling)"""
+        client = self._get_client()
+        if client is None:
+            self._signals.jobs_error.emit("Ошибка клиента")
+            return
+        try:
+            logger.debug(f"Fetching job changes since {self._last_server_time}")
+            changed_jobs, server_time = client.get_jobs_changes(self._last_server_time)
+            logger.debug(f"Fetched {len(changed_jobs)} changed jobs")
+
+            # Обновляем кеш изменёнными задачами
+            for job in changed_jobs:
+                self._jobs_cache[job.id] = job
+
+            # Обновляем server_time
+            if server_time:
+                self._last_server_time = server_time
+
+            # Отправляем полный список из кеша
+            all_jobs = list(self._jobs_cache.values())
+            # Сортируем по времени создания (новые первыми)
+            all_jobs.sort(key=lambda j: j.created_at, reverse=True)
+            self._signals.jobs_loaded.emit(all_jobs)
+        except Exception as e:
+            logger.error(f"Ошибка получения изменений: {e}", exc_info=True)
+            # При ошибке incremental - пробуем полную загрузку
+            self._last_server_time = None
+            self._jobs_cache.clear()
+            self._signals.jobs_error.emit(str(e))
+
     def _on_jobs_loaded(self, jobs):
         """Слот: список задач получен"""
+        from datetime import datetime
+
         self._is_fetching = False
-        
+
+        # При первой полной загрузке (ручное обновление или первый запуск)
+        # инициализируем кеш и server_time
+        if self._is_manual_refresh or not self._last_server_time:
+            self._jobs_cache = {j.id: j for j in jobs}
+            self._last_server_time = datetime.utcnow().isoformat()
+            logger.debug(f"Jobs cache initialized with {len(self._jobs_cache)} jobs")
+
         # Добавляем оптимистично добавленные задачи, которых ещё нет в ответе сервера
         jobs_ids = {j.id for j in jobs}
         merged_jobs = list(jobs)
         current_time = time.time()
-        
+
         for job_id, (job_info, timestamp) in list(self._optimistic_jobs.items()):
             if job_id in jobs_ids:
                 # Задача уже в списке от сервера - удаляем из оптимистичного списка
@@ -206,7 +254,7 @@ class RemoteOCRPanel(JobOperationsMixin, DownloadMixin, QDockWidget):
                 # Задачи ещё нет на сервере - добавляем в начало списка
                 logger.debug(f"Задача {job_id[:8]}... ещё не на сервере, добавляем оптимистично")
                 merged_jobs.insert(0, job_info)
-        
+
         self._update_table(merged_jobs)
         self.status_label.setText("🟢 Подключено")
         self._consecutive_errors = 0

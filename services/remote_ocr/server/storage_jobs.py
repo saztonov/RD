@@ -1,15 +1,44 @@
 """CRUD операции для задач OCR"""
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime
 from typing import Any, List, Optional
 
+from .queue_checker import _get_redis_client
 from .storage_client import get_client
 from .storage_models import Job, JobFile, JobSettings
 
 logger = logging.getLogger(__name__)
+
+# Redis кеш для list_jobs() - TTL 5 секунд
+JOBS_CACHE_TTL = 5
+JOBS_CACHE_PREFIX = "jobs:list:"
+
+
+def _get_jobs_cache_key(client_id: Optional[str], document_id: Optional[str]) -> str:
+    """Формирует ключ кеша для list_jobs"""
+    if client_id and document_id:
+        return f"{JOBS_CACHE_PREFIX}{client_id}:{document_id}"
+    elif client_id:
+        return f"{JOBS_CACHE_PREFIX}client:{client_id}"
+    elif document_id:
+        return f"{JOBS_CACHE_PREFIX}doc:{document_id}"
+    return f"{JOBS_CACHE_PREFIX}all"
+
+
+def _invalidate_jobs_cache() -> None:
+    """Инвалидирует весь кеш list_jobs"""
+    try:
+        client = _get_redis_client()
+        keys = client.keys(f"{JOBS_CACHE_PREFIX}*")
+        if keys:
+            client.delete(*keys)
+            logger.debug(f"Invalidated {len(keys)} jobs cache keys")
+    except Exception as e:
+        logger.warning(f"Failed to invalidate jobs cache: {e}")
 
 
 def create_job(
@@ -62,6 +91,7 @@ def create_job(
 
     client.table("jobs").insert(insert_data).execute()
 
+    _invalidate_jobs_cache()
     return job
 
 
@@ -91,7 +121,20 @@ def get_job(
 def list_jobs(
     client_id: Optional[str] = None, document_id: Optional[str] = None
 ) -> List[Job]:
-    """Получить список задач"""
+    """Получить список задач (с Redis кешированием)"""
+    cache_key = _get_jobs_cache_key(client_id, document_id)
+
+    # Проверяем кеш
+    try:
+        redis_client = _get_redis_client()
+        cached = redis_client.get(cache_key)
+        if cached:
+            jobs_data = json.loads(cached)
+            return [_row_to_job(row) for row in jobs_data]
+    except Exception as e:
+        logger.debug(f"Cache miss or error: {e}")
+
+    # Запрос к БД
     client = get_client()
     query = client.table("jobs").select("*")
 
@@ -103,6 +146,27 @@ def list_jobs(
         query = query.eq("document_id", document_id)
 
     result = query.order("created_at", desc=True).execute()
+
+    # Сохраняем в кеш
+    try:
+        redis_client = _get_redis_client()
+        redis_client.setex(cache_key, JOBS_CACHE_TTL, json.dumps(result.data))
+    except Exception as e:
+        logger.debug(f"Failed to cache jobs: {e}")
+
+    return [_row_to_job(row) for row in result.data]
+
+
+def list_jobs_changed_since(since: str) -> List[Job]:
+    """Получить задачи, изменённые после указанного времени (ISO timestamp)"""
+    client = get_client()
+    result = (
+        client.table("jobs")
+        .select("*")
+        .gt("updated_at", since)
+        .order("updated_at", desc=True)
+        .execute()
+    )
     return [_row_to_job(row) for row in result.data]
 
 
@@ -130,6 +194,7 @@ def update_job_status(
 
     client = get_client()
     client.table("jobs").update(updates).eq("id", job_id).execute()
+    _invalidate_jobs_cache()
 
 
 def update_job_engine(job_id: str, engine: str) -> None:
@@ -158,6 +223,7 @@ def delete_job(job_id: str) -> bool:
     """Удалить задачу из БД (каскадно удалит files и settings)"""
     client = get_client()
     result = client.table("jobs").delete().eq("id", job_id).execute()
+    _invalidate_jobs_cache()
     return len(result.data) > 0
 
 
@@ -178,6 +244,7 @@ def reset_job_for_restart(job_id: str) -> bool:
         .eq("id", job_id)
         .execute()
     )
+    _invalidate_jobs_cache()
     return len(result.data) > 0
 
 
@@ -195,6 +262,7 @@ def pause_job(job_id: str) -> bool:
     )
 
     if result.data:
+        _invalidate_jobs_cache()
         return True
 
     result = (
@@ -205,6 +273,8 @@ def pause_job(job_id: str) -> bool:
         .execute()
     )
 
+    if result.data:
+        _invalidate_jobs_cache()
     return len(result.data) > 0
 
 
@@ -219,6 +289,8 @@ def resume_job(job_id: str) -> bool:
         .eq("status", "paused")
         .execute()
     )
+    if result.data:
+        _invalidate_jobs_cache()
     return len(result.data) > 0
 
 

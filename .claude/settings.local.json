@@ -23,7 +23,10 @@
       "Bash(git commit:*)",
       "Bash(gh api:*)",
       "Bash(git config:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(gh pr list:*)",
+      "Bash(cmd /c \"gh pr list\")",
+      "Bash(cmd /c \"where gh\")"
     ]
   }
 }

@@ -3,9 +3,10 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, UploadFile
 
 from services.remote_ocr.server.queue_checker import check_queue_capacity
 from services.remote_ocr.server.routes.common import (
@@ -27,6 +28,7 @@ from services.remote_ocr.server.storage import (
     get_node_pdf_r2_key,
     job_to_dict,
     list_jobs,
+    list_jobs_changed_since,
     pause_job,
     reset_job_for_restart,
     resume_job,
@@ -252,6 +254,39 @@ def list_jobs_endpoint(
         }
         for j in jobs
     ]
+
+
+@router.get("/changes")
+def get_jobs_changes_endpoint(
+    since: str = Query(..., description="ISO timestamp для фильтрации изменений"),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Получить задачи, изменённые после указанного времени.
+
+    Используется для incremental polling - клиент запрашивает только изменения
+    вместо полного списка задач.
+    """
+    check_api_key(x_api_key)
+
+    jobs = list_jobs_changed_since(since)
+    return {
+        "jobs": [
+            {
+                "id": j.id,
+                "status": j.status,
+                "progress": j.progress,
+                "document_name": j.document_name,
+                "task_name": j.task_name,
+                "document_id": j.document_id,
+                "created_at": j.created_at,
+                "updated_at": j.updated_at,
+                "error_message": j.error_message,
+                "node_id": j.node_id,
+            }
+            for j in jobs
+        ],
+        "server_time": datetime.utcnow().isoformat(),
+    }
 
 
 @router.get("/{job_id}")

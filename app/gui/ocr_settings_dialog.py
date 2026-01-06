@@ -52,6 +52,9 @@ class OCRSettings:
     # Datalab API
     datalab_max_rpm: int = 180
     datalab_max_concurrent: int = 5
+    datalab_poll_interval: int = 3
+    datalab_poll_max_attempts: int = 90
+    datalab_max_retries: int = 3
 
     # Двухпроходный алгоритм
     use_two_pass_ocr: bool = True
@@ -243,6 +246,22 @@ class OCRSettingsDialog(QDialog):
         self.datalab_max_concurrent_spin.setToolTip("Параллельных запросов к Datalab")
         form2.addRow("Параллельных:", self.datalab_max_concurrent_spin)
 
+        self.datalab_poll_interval_spin = QSpinBox()
+        self.datalab_poll_interval_spin.setRange(1, 120)
+        self.datalab_poll_interval_spin.setSuffix(" сек")
+        self.datalab_poll_interval_spin.setToolTip("Интервал между проверками статуса задачи в Datalab")
+        form2.addRow("Интервал polling:", self.datalab_poll_interval_spin)
+
+        self.datalab_poll_max_attempts_spin = QSpinBox()
+        self.datalab_poll_max_attempts_spin.setRange(1, 500)
+        self.datalab_poll_max_attempts_spin.setToolTip("Максимум попыток проверки статуса (90 × 3сек = ~4.5 мин)")
+        form2.addRow("Макс. попыток polling:", self.datalab_poll_max_attempts_spin)
+
+        self.datalab_max_retries_spin = QSpinBox()
+        self.datalab_max_retries_spin.setRange(0, 10)
+        self.datalab_max_retries_spin.setToolTip("Количество повторов при ошибке Datalab API")
+        form2.addRow("Повторов при ошибке:", self.datalab_max_retries_spin)
+
         layout.addWidget(group2)
         layout.addStretch()
 
@@ -385,6 +404,9 @@ class OCRSettingsDialog(QDialog):
         self.ocr_request_timeout_spin.setValue(s.ocr_request_timeout)
         self.datalab_max_rpm_spin.setValue(s.datalab_max_rpm)
         self.datalab_max_concurrent_spin.setValue(s.datalab_max_concurrent)
+        self.datalab_poll_interval_spin.setValue(s.datalab_poll_interval)
+        self.datalab_poll_max_attempts_spin.setValue(s.datalab_poll_max_attempts)
+        self.datalab_max_retries_spin.setValue(s.datalab_max_retries)
 
         # Algorithm
         self.use_two_pass_check.setChecked(s.use_two_pass_ocr)
@@ -416,6 +438,9 @@ class OCRSettingsDialog(QDialog):
             ocr_request_timeout=self.ocr_request_timeout_spin.value(),
             datalab_max_rpm=self.datalab_max_rpm_spin.value(),
             datalab_max_concurrent=self.datalab_max_concurrent_spin.value(),
+            datalab_poll_interval=self.datalab_poll_interval_spin.value(),
+            datalab_poll_max_attempts=self.datalab_poll_max_attempts_spin.value(),
+            datalab_max_retries=self.datalab_max_retries_spin.value(),
             # Algorithm
             use_two_pass_ocr=self.use_two_pass_check.isChecked(),
             crop_png_compress=self.crop_png_compress_spin.value(),
