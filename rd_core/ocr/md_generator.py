@@ -340,7 +340,7 @@ def generate_md_from_pages(
                 block_type = block.block_type.value.upper()
 
                 # Заголовок блока (H3)
-                header_parts = [f"### БЛОК [{block_type}]: {armor_code}"]
+                header_parts = [f"### BLOCK [{block_type}]: {armor_code}"]
 
                 # Метаданные - компактно в одну строку под заголовком
                 meta_parts = []
@@ -484,7 +484,7 @@ def generate_md_from_result(
             block_count += 1
 
             # Заголовок блока (H3)
-            header_parts = [f"### БЛОК [{block_type}]: {block_id}"]
+            header_parts = [f"### BLOCK [{block_type}]: {block_id}"]
 
             # Метаданные - компактно в одну строку под заголовком
             meta_parts = []

@@ -169,9 +169,9 @@ class VerificationWorker(QThread):
         self.progress.emit("Загрузка document.md...")
         md_content = r2.download_text(md_r2_key)
         if md_content:
-            # Ищем маркеры BLOCK:XXXX-XXXX-XXX (без пробела)
+            # Ищем маркеры в формате: ### BLOCK [TYPE]: XXXX-XXXX-XXX
             block_pattern = re.compile(
-                r"BLOCK:([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3})"
+                r"###\s+BLOCK\s+\[[A-Z]+\]:\s*([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3})"
             )
             for match in block_pattern.finditer(md_content):
                 result.document_md_blocks.add(match.group(1))
