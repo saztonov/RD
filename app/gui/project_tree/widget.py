@@ -546,18 +546,26 @@ class ProjectTreeWidget(
                 self.status_label.setText("⚠ Узел уже на границе")
                 return
 
+            current_node = siblings[current_idx]
             swap_node = siblings[swap_idx]
 
-            # Меняем sort_order местами
-            current_sort = node.sort_order
+            # Меняем sort_order местами (используем свежие данные из siblings)
+            current_sort = current_node.sort_order
             swap_sort = swap_node.sort_order
 
-            # Если sort_order одинаковые, создаём разницу
+            # Если sort_order одинаковые, назначаем новые значения на основе позиций
             if current_sort == swap_sort:
-                swap_sort = current_sort + direction
-
-            self.client.update_node(node.id, sort_order=swap_sort)
-            self.client.update_node(swap_node.id, sort_order=current_sort)
+                # Назначаем sort_order = позиция * 10 для всех siblings
+                for i, sibling in enumerate(siblings):
+                    new_order = i * 10
+                    if sibling.sort_order != new_order:
+                        self.client.update_node(sibling.id, sort_order=new_order)
+                # После нормализации, меняем местами нужные узлы
+                self.client.update_node(current_node.id, sort_order=swap_idx * 10)
+                self.client.update_node(swap_node.id, sort_order=current_idx * 10)
+            else:
+                self.client.update_node(current_node.id, sort_order=swap_sort)
+                self.client.update_node(swap_node.id, sort_order=current_sort)
 
             # Обновляем дерево, сохраняя состояние раскрытия
             self._refresh_tree()
