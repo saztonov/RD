@@ -70,12 +70,20 @@ class TreeItemBuilder:
     def _format_document(self, node: TreeNode, icon: str) -> tuple:
         """Форматировать отображение документа"""
         from app.gui.project_tree.pdf_status_manager import PDFStatusManager
+        from app.gui.project_tree.reconciliation_manager import get_reconciliation_manager
 
         version_tag = f"[v{node.version}]" if node.version else "[v1]"
         status_icon = PDFStatusManager.get_status_icon(node.pdf_status or "unknown")
         lock_icon = "🔒" if node.is_locked else ""
 
-        display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+        # Иконка сверки R2/Supabase
+        try:
+            recon_manager = get_reconciliation_manager()
+            recon_icon = recon_manager.get_status_icon(node.id)
+        except (ValueError, Exception):
+            recon_icon = ""
+
+        display_name = f"{icon} {node.name} {lock_icon} {status_icon} {recon_icon}".strip()
         return display_name, version_tag
 
     def _format_task_folder(self, node: TreeNode, icon: str) -> tuple:
@@ -111,13 +119,21 @@ def update_document_item(
         message: Сообщение статуса
     """
     from app.gui.project_tree.pdf_status_manager import PDFStatusManager
+    from app.gui.project_tree.reconciliation_manager import get_reconciliation_manager
 
     icon = NODE_ICONS.get(node.node_type, "📄")
     status_icon = PDFStatusManager.get_status_icon(status)
     lock_icon = "🔒" if node.is_locked else ""
     version_tag = f"[v{node.version}]" if node.version else "[v1]"
 
-    display_name = f"{icon} {node.name} {lock_icon} {status_icon}".strip()
+    # Иконка сверки R2/Supabase
+    try:
+        recon_manager = get_reconciliation_manager()
+        recon_icon = recon_manager.get_status_icon(node.id)
+    except (ValueError, Exception):
+        recon_icon = ""
+
+    display_name = f"{icon} {node.name} {lock_icon} {status_icon} {recon_icon}".strip()
     item.setText(0, display_name)
     item.setData(0, Qt.UserRole + 1, version_tag)
 
