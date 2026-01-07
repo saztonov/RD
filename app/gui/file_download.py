@@ -70,16 +70,18 @@ class FileDownloadMixin:
         local_path = Path(projects_dir) / "cache" / rel_path
         local_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Если файл уже есть - открываем сразу
-        if local_path.exists():
+        # Всегда собираем список файлов для скачивания (включая OCR результаты)
+        tasks = self._build_download_tasks(
+            node_id, r2_key, str(local_path), projects_dir
+        )
+
+        # Если нет файлов для скачивания - открываем PDF сразу
+        if not tasks:
             self._current_r2_key = r2_key
             self._current_node_id = node_id
-            # Проверяем блокировку документа
             self._update_lock_status(node_id)
-            # Устанавливаем режим read_only в page_viewer
             if hasattr(self, "page_viewer"):
                 self.page_viewer.read_only = self._current_node_locked
-            # Отключаем кнопки перемещения блоков для заблокированных документов
             if hasattr(self, "move_block_up_btn"):
                 self.move_block_up_btn.setEnabled(not self._current_node_locked)
             if hasattr(self, "move_block_down_btn"):
@@ -91,11 +93,6 @@ class FileDownloadMixin:
 
         # Помечаем загрузку как активную
         self._active_downloads.add(r2_key)
-
-        # Собираем список файлов для скачивания
-        tasks = self._build_download_tasks(
-            node_id, r2_key, str(local_path), projects_dir
-        )
 
         # Сохраняем данные для открытия после завершения загрузки
         self._pending_download_node_id = node_id
@@ -137,31 +134,52 @@ class FileDownloadMixin:
     def _build_download_tasks(
         self, node_id: str, r2_key: str, local_path: str, projects_dir: str
     ) -> list:
-        """Собрать список задач для скачивания (PDF + полный пакет если распознано)"""
-        from pathlib import PurePosixPath
+        """Собрать список задач для скачивания (PDF + аннотации + OCR результаты).
 
+        Скачиваемые файлы:
+        - PDF документ
+        - Аннотации (_annotation.json)
+        - OCR результаты (_ocr.html, _result.json, _document.md)
+
+        Кропы НЕ скачиваются для экономии места.
+        """
         from app.tree_client import FileType, TreeClient
 
         tasks = []
 
-        # Основной PDF
-        tasks.append(
-            TransferTask(
-                transfer_type=TransferType.DOWNLOAD,
-                local_path=local_path,
-                r2_key=r2_key,
-                node_id=node_id,
+        # Основной PDF - только если не существует локально
+        if not Path(local_path).exists():
+            tasks.append(
+                TransferTask(
+                    transfer_type=TransferType.DOWNLOAD,
+                    local_path=local_path,
+                    r2_key=r2_key,
+                    node_id=node_id,
+                )
             )
-        )
 
-        # Проверяем есть ли дополнительные файлы (аннотации, кропы)
+        # Типы файлов для скачивания (без кропов)
+        download_file_types = {
+            FileType.ANNOTATION,
+            FileType.OCR_HTML,
+            FileType.RESULT_JSON,
+            FileType.RESULT_MD,
+        }
+
+        # Проверяем есть ли дополнительные файлы в node_files
         try:
             client = TreeClient()
             node_files = client.get_node_files(node_id)
 
             for nf in node_files:
-                # Пропускаем сам PDF
+                # Пропускаем PDF и кропы
                 if nf.file_type == FileType.PDF:
+                    continue
+                if nf.file_type in (FileType.CROP, FileType.CROPS_FOLDER):
+                    continue
+
+                # Скачиваем только нужные типы файлов
+                if nf.file_type not in download_file_types:
                     continue
 
                 # Формируем локальный путь для файла
@@ -185,37 +203,7 @@ class FileDownloadMixin:
                         node_id=node_id,
                     )
                 )
-
-            # Также пробуем скачать кропы из папки crops/
-            pdf_stem = Path(local_path).stem
-            r2_prefix = str(PurePosixPath(r2_key).parent)
-            crops_prefix = f"{r2_prefix}/crops/{pdf_stem}/"
-
-            from rd_core.r2_storage import R2Storage
-
-            r2 = R2Storage()
-            crop_keys = r2.list_files(crops_prefix)
-
-            for crop_key in crop_keys:
-                if crop_key.startswith("tree_docs/"):
-                    rel = crop_key[len("tree_docs/") :]
-                else:
-                    rel = crop_key
-
-                crop_local = Path(projects_dir) / "cache" / rel
-                crop_local.parent.mkdir(parents=True, exist_ok=True)
-
-                if crop_local.exists():
-                    continue
-
-                tasks.append(
-                    TransferTask(
-                        transfer_type=TransferType.DOWNLOAD,
-                        local_path=str(crop_local),
-                        r2_key=crop_key,
-                        node_id=node_id,
-                    )
-                )
+                logger.debug(f"Added download task: {nf.file_type.value} -> {file_local_path}")
 
         except Exception as e:
             logger.warning(f"Failed to get additional files for download: {e}")

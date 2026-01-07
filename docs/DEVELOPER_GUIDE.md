@@ -94,7 +94,7 @@ text = extract_text_pdfplumber(
 ### Remote OCR Client
 
 ```python
-from app.remote_ocr_client import RemoteOCRClient
+from app.ocr_client import RemoteOCRClient
 
 client = RemoteOCRClient()
 
