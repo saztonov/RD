@@ -279,7 +279,11 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
         self._upload_worker = None
 
     def _rename_related_files(self, old_r2_key: str, new_r2_key: str, node_id: str):
-        """Переименовать связанные файлы (annotation.json, ocr.html, result.json)"""
+        """Переименовать связанные файлы (annotation.json, ocr.html, result.json)
+
+        ВАЖНО: Переименовывает файлы в локальном кэше НЕЗАВИСИМО от наличия в R2,
+        чтобы избежать потери аннотаций при работе в офлайн режиме.
+        """
         from pathlib import PurePosixPath
 
         from rd_core.r2_storage import R2Storage
@@ -307,18 +311,22 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
             ),
         ]
 
-        # Переименовываем файлы в R2
+        # Переименовываем файлы
         for old_key, new_key in related_files:
+            # ВСЕГДА переименовываем в локальном кэше (даже если файла нет в R2)
+            # Это критически важно для сохранения аннотаций при работе в офлайн режиме
+            self._rename_cache_file(old_key, new_key)
+
+            # Переименовываем в R2 если файл там существует
             if r2.exists(old_key):
                 try:
                     if r2.rename_object(old_key, new_key):
                         logger.info(f"Renamed in R2: {old_key} → {new_key}")
-                        # Переименовываем в локальном кэше
-                        self._rename_cache_file(old_key, new_key)
-                        # Обновляем запись в node_files если существует
-                        self._update_node_file_r2_key(node_id, old_key, new_key)
                 except Exception as e:
-                    logger.error(f"Failed to rename {old_key}: {e}")
+                    logger.error(f"Failed to rename in R2 {old_key}: {e}")
+
+            # Обновляем запись в node_files если существует
+            self._update_node_file_r2_key(node_id, old_key, new_key)
 
     def _update_node_file_r2_key(self, node_id: str, old_r2_key: str, new_r2_key: str):
         """Обновить r2_key в таблице node_files"""
@@ -357,6 +365,26 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                         f"Элемент с именем '{new_name_clean}' уже существует в этой папке",
                     )
                     return
+
+                # Для документов проверяем и добавляем расширение .pdf
+                if node.node_type == NodeType.DOCUMENT:
+                    # Проверяем что имя заканчивается на .pdf (регистронезависимо)
+                    if not new_name_clean.lower().endswith(".pdf"):
+                        # Автоматически добавляем расширение .pdf
+                        new_name_clean = f"{new_name_clean}.pdf"
+                        logger.info(
+                            f"Added .pdf extension to document name: {new_name_clean}"
+                        )
+                        # Повторная проверка уникальности после добавления расширения
+                        if node.parent_id and not self._check_name_unique(
+                            node.parent_id, new_name_clean, node.id
+                        ):
+                            QMessageBox.warning(
+                                self,
+                                "Ошибка",
+                                f"Элемент с именем '{new_name_clean}' уже существует в этой папке",
+                            )
+                            return
 
                 # Для документов переименовываем файл в R2
                 if node.node_type == NodeType.DOCUMENT:
