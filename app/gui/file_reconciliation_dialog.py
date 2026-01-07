@@ -116,14 +116,28 @@ class ReconciliationWorker(QThread):
                         file_name=key.rsplit("/", 1)[-1] if "/" in key else key,
                     ))
                 elif in_db and not in_r2:
-                    # Сирота в БД - запись есть, файла нет
                     db_info = db_keys_map[key]
+                    file_type = db_info["file_type"]
+
+                    # Специальная обработка для crops_folder - это виртуальная запись
+                    # В R2 папки не существуют как объекты, проверяем наличие файлов в папке
+                    if file_type == "crops_folder":
+                        # Проверяем есть ли файлы с этим префиксом в R2
+                        folder_prefix = key if key.endswith("/") else key + "/"
+                        has_files_in_folder = any(
+                            r2_key.startswith(folder_prefix) for r2_key in r2_keys_map.keys()
+                        )
+                        if has_files_in_folder:
+                            # Папка "существует" через файлы внутри - это не сирота
+                            continue
+
+                    # Сирота в БД - запись есть, файла нет
                     discrepancies.append(FileDiscrepancy(
                         r2_key=key,
                         discrepancy_type=DiscrepancyType.ORPHAN_DB,
                         db_size=db_info["file_size"],
                         db_file_id=db_info["id"],
-                        file_type=db_info["file_type"],
+                        file_type=file_type,
                         file_name=db_info["file_name"],
                     ))
                 elif in_r2 and in_db:
