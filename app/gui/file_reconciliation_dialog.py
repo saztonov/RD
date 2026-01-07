@@ -67,26 +67,7 @@ class ReconciliationWorker(QThread):
 
             discrepancies: List[FileDiscrepancy] = []
 
-            # Получаем r2_key документа для определения префикса
-            r2_key = self.node.attributes.get("r2_key", "")
-            if not r2_key:
-                self.error.emit("Документ не имеет r2_key")
-                return
-
-            # Определяем префикс - папку документа в R2
-            # r2_key обычно: tree_docs/{node_id}/filename.pdf
-            prefix = "/".join(r2_key.rsplit("/", 1)[:-1]) + "/" if "/" in r2_key else f"tree_docs/{self.node.id}/"
-
-            self.progress.emit(f"Сканирование R2 по префиксу: {prefix}")
-
-            # Получаем список файлов из R2
-            r2 = R2Storage()
-            r2_files = r2.list_objects_with_metadata(prefix, use_cache=False)
-            r2_keys_map: Dict[str, dict] = {f["Key"]: f for f in r2_files}
-
-            self.progress.emit(f"Найдено файлов в R2: {len(r2_files)}")
-
-            # Получаем записи из Supabase
+            # Получаем записи из Supabase СНАЧАЛА
             self.progress.emit("Загрузка записей из Supabase...")
             db_files = self.client.get_node_files(self.node.id)
             db_keys_map: Dict[str, dict] = {}
@@ -100,6 +81,34 @@ class ReconciliationWorker(QThread):
 
             self.progress.emit(f"Найдено записей в Supabase: {len(db_files)}")
 
+            # Собираем уникальные префиксы из r2_key записей БД
+            # Это гарантирует, что мы найдём все файлы документа
+            prefixes: Set[str] = set()
+
+            # Основной префикс по node_id документа
+            main_prefix = f"tree_docs/{self.node.id}/"
+            prefixes.add(main_prefix)
+
+            # Добавляем префиксы из существующих записей
+            for r2_key in db_keys_map.keys():
+                if "/" in r2_key:
+                    # Извлекаем директорию из r2_key
+                    dir_prefix = "/".join(r2_key.rsplit("/", 1)[:-1]) + "/"
+                    prefixes.add(dir_prefix)
+
+            self.progress.emit(f"Сканирование R2 по {len(prefixes)} префикс(ам)...")
+
+            # Получаем список файлов из R2 по всем префиксам
+            r2 = R2Storage()
+            r2_keys_map: Dict[str, dict] = {}
+
+            for prefix in prefixes:
+                r2_files = r2.list_objects_with_metadata(prefix, use_cache=False)
+                for f in r2_files:
+                    r2_keys_map[f["Key"]] = f
+
+            self.progress.emit(f"Найдено файлов в R2: {len(r2_keys_map)}")
+
             # Сравниваем
             all_keys: Set[str] = set(r2_keys_map.keys()) | set(db_keys_map.keys())
 
@@ -109,6 +118,11 @@ class ReconciliationWorker(QThread):
 
                 if in_r2 and not in_db:
                     # Сирота в R2 - файл есть, записи нет
+                    # Но учитываем только файлы из папки ЭТОГО документа (main_prefix)
+                    # Файлы из других папок могут принадлежать другим документам
+                    if not key.startswith(main_prefix):
+                        continue
+
                     discrepancies.append(FileDiscrepancy(
                         r2_key=key,
                         discrepancy_type=DiscrepancyType.ORPHAN_R2,
