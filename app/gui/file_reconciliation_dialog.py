@@ -156,9 +156,12 @@ class ReconciliationWorker(QThread):
                     ))
                 elif in_r2 and in_db:
                     # Проверяем размер
-                    r2_size = r2_keys_map[key].get("Size", 0)
-                    db_size = db_keys_map[key]["file_size"]
-                    if r2_size != db_size and db_size > 0:
+                    r2_size = r2_keys_map[key].get("Size", 0) or 0
+                    db_size = db_keys_map[key]["file_size"] or 0
+
+                    # Сравниваем только если оба размера известны и отличаются
+                    # Игнорируем если db_size=0 (не заполнен) или r2_size=0
+                    if db_size > 0 and r2_size > 0 and r2_size != db_size:
                         db_info = db_keys_map[key]
                         discrepancies.append(FileDiscrepancy(
                             r2_key=key,
@@ -418,12 +421,13 @@ class FileReconciliationDialog(QDialog):
             db_size_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             table.setItem(row, 4, db_size_item)
 
-            # Подсветка несовпадения размеров
+            # Подсветка несовпадения размеров (жёлтый фон + тёмный текст для видимости)
             if item.discrepancy_type == DiscrepancyType.SIZE_MISMATCH:
                 for col in range(5):
                     cell = table.item(row, col)
                     if cell:
                         cell.setBackground(QColor("#fff3cd"))
+                        cell.setForeground(QColor("#333333"))  # Тёмный текст
 
         if label:
             label.setText(f"Записей: {len(items)}")
