@@ -478,6 +478,12 @@ class ProjectTreeWidget(
         dialog = NodeFilesDialog(node, self.client, self)
         dialog.exec()
 
+    def _reconcile_files(self, node: TreeNode):
+        """Открыть диалог сверки файлов R2/Supabase"""
+        from app.gui.file_reconciliation_dialog import FileReconciliationDialog
+        dialog = FileReconciliationDialog(node, self.client, self)
+        dialog.exec()
+
     # Сохранение состояния
     def _save_expanded_state(self):
         try:

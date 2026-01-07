@@ -93,11 +93,16 @@ class TreeContextMenuMixin:
                         action = menu.addAction("🔍 Верификация блоков")
                         action.setData(("verify_blocks", node))
 
+                    # Сверка файлов R2/Supabase (только для документов с r2_key)
+                    if r2_key:
+                        action = menu.addAction("🔄 Сверка R2/Supabase")
+                        action.setData(("reconcile_files", node))
+
                 # Посмотреть на R2
                 menu.addSeparator()
                 action = menu.addAction("☁️ Посмотреть на R2")
                 action.setData(("view_on_r2", node))
-                
+
                 action = menu.addAction("🗄️ Показать в Supabase")
                 action.setData(("view_in_supabase", node))
 
@@ -186,3 +191,6 @@ class TreeContextMenuMixin:
         elif action == "move_down":
             node = data[1]
             self._move_node_down(node)
+        elif action == "reconcile_files":
+            node = data[1]
+            self._reconcile_files(node)
