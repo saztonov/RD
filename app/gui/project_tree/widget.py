@@ -521,59 +521,107 @@ class ProjectTreeWidget(
     def _move_node(self, node: TreeNode, direction: int):
         """Переместить узел в указанном направлении (-1 = вверх, 1 = вниз)"""
         try:
-            # Получаем соседние узлы (с тем же parent_id)
+            # Находим элемент в дереве
+            current_item = self._node_map.get(node.id)
+            if not current_item:
+                return
+
+            # Определяем родителя и индекс
+            parent_item = current_item.parent()
+            if parent_item:
+                current_idx = parent_item.indexOfChild(current_item)
+                child_count = parent_item.childCount()
+            else:
+                current_idx = self.tree.indexOfTopLevelItem(current_item)
+                child_count = self.tree.topLevelItemCount()
+
+            # Проверяем границы
+            swap_idx = current_idx + direction
+            if swap_idx < 0 or swap_idx >= child_count:
+                self.status_label.setText("⚠ Узел уже на границе")
+                return
+
+            # Получаем соседние узлы из БД для обновления sort_order
             if node.parent_id:
                 siblings = self.client.get_children(node.parent_id)
             else:
                 siblings = self.client.get_root_nodes()
 
-            if len(siblings) < 2:
-                return  # Нечего перемещать
-
-            # Находим индекс текущего узла
-            current_idx = None
-            for i, sibling in enumerate(siblings):
+            # Находим узлы в списке siblings
+            current_node = None
+            swap_node = None
+            for sibling in siblings:
                 if sibling.id == node.id:
-                    current_idx = i
-                    break
+                    current_node = sibling
+                elif swap_idx < current_idx and sibling.id == self._get_sibling_id(parent_item, swap_idx):
+                    swap_node = sibling
+                elif swap_idx > current_idx and sibling.id == self._get_sibling_id(parent_item, swap_idx):
+                    swap_node = sibling
 
-            if current_idx is None:
+            if not current_node or not swap_node:
+                # Fallback: найти по индексам в siblings
+                for i, sibling in enumerate(siblings):
+                    if sibling.id == node.id:
+                        db_current_idx = i
+                        break
+                db_swap_idx = db_current_idx + direction
+                if 0 <= db_swap_idx < len(siblings):
+                    current_node = siblings[db_current_idx]
+                    swap_node = siblings[db_swap_idx]
+
+            if not current_node or not swap_node:
+                self._refresh_tree()
                 return
 
-            # Определяем соседа для обмена
-            swap_idx = current_idx + direction
-            if swap_idx < 0 or swap_idx >= len(siblings):
-                self.status_label.setText("⚠ Узел уже на границе")
-                return
-
-            current_node = siblings[current_idx]
-            swap_node = siblings[swap_idx]
-
-            # Меняем sort_order местами (используем свежие данные из siblings)
+            # Обновляем sort_order в БД
             current_sort = current_node.sort_order
             swap_sort = swap_node.sort_order
 
-            # Если sort_order одинаковые, назначаем новые значения на основе позиций
             if current_sort == swap_sort:
-                # Назначаем sort_order = позиция * 10 для всех siblings
+                # Нормализуем sort_order для всех siblings
                 for i, sibling in enumerate(siblings):
                     new_order = i * 10
                     if sibling.sort_order != new_order:
                         self.client.update_node(sibling.id, sort_order=new_order)
-                # После нормализации, меняем местами нужные узлы
-                self.client.update_node(current_node.id, sort_order=swap_idx * 10)
-                self.client.update_node(swap_node.id, sort_order=current_idx * 10)
+                # Пересчитываем индексы после нормализации
+                for i, sibling in enumerate(siblings):
+                    if sibling.id == node.id:
+                        db_current_idx = i
+                        break
+                db_swap_idx = db_current_idx + direction
+                self.client.update_node(current_node.id, sort_order=db_swap_idx * 10)
+                self.client.update_node(swap_node.id, sort_order=db_current_idx * 10)
             else:
                 self.client.update_node(current_node.id, sort_order=swap_sort)
                 self.client.update_node(swap_node.id, sort_order=current_sort)
 
-            # Обновляем дерево, сохраняя состояние раскрытия
-            self._refresh_tree()
+            # Локально меняем элементы местами в дереве (без полной перезагрузки)
+            if parent_item:
+                item = parent_item.takeChild(current_idx)
+                parent_item.insertChild(swap_idx, item)
+            else:
+                item = self.tree.takeTopLevelItem(current_idx)
+                self.tree.insertTopLevelItem(swap_idx, item)
+
+            # Выделяем перемещённый элемент
+            self.tree.setCurrentItem(item)
             self.status_label.setText("✓ Узел перемещён")
 
         except Exception as e:
             logger.error(f"Failed to move node: {e}")
             self.status_label.setText(f"Ошибка перемещения: {e}")
+
+    def _get_sibling_id(self, parent_item, idx: int) -> str:
+        """Получить ID узла по индексу в родителе"""
+        if parent_item:
+            child = parent_item.child(idx)
+        else:
+            child = self.tree.topLevelItem(idx)
+        if child:
+            node = child.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode):
+                return node.id
+        return ""
 
     # Свойство для доступа к скопированной аннотации (для контекстного меню)
     @property
