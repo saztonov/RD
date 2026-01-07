@@ -185,25 +185,32 @@ app/gui/
 │
 ├── page_viewer.py          # PageViewer (QGraphicsView)
 ├── page_viewer_blocks.py   # BlockRenderingMixin
-├── page_viewer_mouse.py    # MouseEventsMixin  
+├── page_viewer_mouse.py    # MouseEventsMixin
 ├── page_viewer_polygon.py  # PolygonMixin
 ├── page_viewer_resize.py   # ResizeHandlesMixin
-├── page_viewer_context_menu.py
 │
 ├── blocks_tree_manager.py  # Дерево блоков текущей страницы
 ├── navigation_manager.py   # Навигация + зум
 ├── prompt_manager.py       # Загрузка промптов из R2
 │
-├── remote_ocr_panel.py     # Панель Remote OCR
-├── remote_ocr_download.py  # DownloadMixin
-├── remote_ocr_job_operations.py
-├── remote_ocr_draft.py     # DraftMixin
-├── remote_ocr_editor.py    # EditorMixin
-├── remote_ocr_signals.py   # WorkerSignals
+├── remote_ocr/             # Панель Remote OCR
+│   ├── panel.py            # RemoteOCRPanel - основной UI
+│   ├── job_operations.py   # Операции с задачами
+│   ├── download_mixin.py   # Скачивание результатов
+│   ├── polling_controller.py # Polling статуса задач
+│   ├── result_handler.py   # Обработка результатов
+│   ├── table_manager.py    # Управление таблицей задач
+│   └── signals.py          # Qt сигналы
 │
-├── project_tree_widget.py  # Дерево проектов (Supabase)
-├── tree_node_operations.py # TreeNodeOperationsMixin
-└── create_node_dialog.py   # Диалог создания узла
+├── project_tree/           # Дерево проектов (Supabase)
+│   ├── widget.py           # ProjectTreeWidget
+│   ├── tree_item_builder.py # Создание элементов
+│   ├── annotation_operations.py # Операции с аннотациями
+│   ├── pdf_status_manager.py # Статусы PDF
+│   └── r2_viewer_integration.py # Интеграция с R2
+│
+└── dialogs/                # Диалоговые окна
+    └── create_node_dialog.py # Диалог создания узла
 ```
 
 ### MainWindow
@@ -254,38 +261,44 @@ class PageViewer(ContextMenuMixin, MouseEventsMixin,
 
 ### RemoteOCRPanel
 
-Dock-панель для управления OCR-задачами:
+Dock-панель для управления OCR-задачами (`app/gui/remote_ocr/panel.py`):
 
 ```python
-class RemoteOCRPanel(EditorMixin, DraftMixin,
-                     JobOperationsMixin, DownloadMixin, QDockWidget):
-
-    POLL_INTERVAL_PROCESSING = 5000   # 5 сек при активных задачах
-    POLL_INTERVAL_IDLE = 30000        # 30 сек в режиме ожидания
+class RemoteOCRPanel(QDockWidget):
+    # Компоненты через композицию:
+    # - JobOperationsMixin (job_operations.py)
+    # - DownloadMixin (download_mixin.py)
+    # - PollingController (polling_controller.py)
+    # - TableManager (table_manager.py)
+    # - ResultHandler (result_handler.py)
 
     def _create_job(self):
         """Создать новую OCR-задачу"""
 
-    def _save_draft(self):
-        """Сохранить черновик (PDF + разметка) без OCR"""
+    def _start_polling(self):
+        """Запустить polling статусов"""
 
-    def _open_job_in_editor(self, job_id):
-        """Открыть результат в редакторе"""
+    def _download_result(self, job_id):
+        """Скачать результат OCR"""
 ```
 
 ### ProjectTreeWidget
 
-Виджет дерева проектов с lazy loading:
+Виджет дерева проектов с lazy loading (`app/gui/project_tree/widget.py`):
 
 ```python
-class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
+class ProjectTreeWidget(QWidget):
     document_selected = Signal(str, str)  # node_id, r2_key
     file_uploaded = Signal(str)           # local_path
 
+    # Вспомогательные модули:
+    # - tree_item_builder.py - создание элементов дерева
+    # - annotation_operations.py - работа с аннотациями
+    # - pdf_status_manager.py - статусы PDF документов
+    # - r2_viewer_integration.py - интеграция с R2 просмотрщиком
+
     def _on_item_expanded(self, item):
         """Lazy loading — загрузка дочерних при раскрытии"""
-        if item.data(0, Qt.UserRole) == "placeholder":
-            self._load_children(item, node)
 ```
 
 ---
@@ -296,18 +309,29 @@ class ProjectTreeWidget(TreeNodeOperationsMixin, QWidget):
 
 ```
 services/remote_ocr/server/
-├── main.py          # FastAPI приложение
-├── settings.py      # Конфигурация из env
-├── storage.py       # Supabase CRUD для jobs
-├── tasks.py         # Celery задача run_ocr_task
-├── celery_app.py    # Конфигурация Celery
-├── rate_limiter.py  # Rate limiting для Datalab API
-├── worker_pdf.py    # Работа с PDF (pdfplumber)
-├── worker_prompts.py # Промпты и парсинг ответов
-└── routes/
-    ├── common.py    # Общие утилиты
-    ├── jobs.py      # Роуты /jobs/*
-    └── drafts.py    # Роуты /jobs/draft
+├── main.py              # FastAPI приложение
+├── settings.py          # Конфигурация из env
+├── celery_app.py        # Конфигурация Celery
+├── tasks.py             # Celery задача run_ocr_task
+├── rate_limiter.py      # Rate limiting для Datalab API
+├── worker_pdf.py        # Работа с PDF
+│
+├── routes/              # API endpoints
+│   ├── jobs/            # CRUD для задач
+│   │   ├── router.py
+│   │   ├── create_handler.py
+│   │   ├── read_handlers.py
+│   │   └── update_handlers.py
+│   ├── storage.py       # R2 операции
+│   └── tree.py          # Tree API
+│
+├── storage/             # Supabase CRUD
+│   ├── storage.py       # Основные операции
+│   └── storage_*.py     # Специфичные модули
+│
+└── node_storage/        # Хранение файлов узлов
+    ├── repository.py
+    └── file_manager.py
 ```
 
 ### Жизненный цикл задачи
