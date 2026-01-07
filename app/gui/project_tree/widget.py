@@ -207,16 +207,14 @@ class ProjectTreeWidget(
             QPushButton:pressed { background-color: #0e639c; }
         """
 
-        self.refresh_btn = self._create_icon_btn("↻", "Обновить", self._refresh_tree, icon_btn_style)
-        self.expand_all_btn = self._create_icon_btn("▼", "Развернуть все", self._expand_all, icon_btn_style)
-        self.collapse_all_btn = self._create_icon_btn("▲", "Свернуть все", self._collapse_all, icon_btn_style)
-        self.sync_check_btn = self._create_icon_btn("🔄", "Проверить синхронизацию", self._start_sync_check, icon_btn_style)
+        self.expand_btn = self._create_icon_btn("▼", "Развернуть (выбранную папку или всё)", self._expand_selected, icon_btn_style)
+        self.collapse_btn = self._create_icon_btn("▲", "Свернуть (выбранную папку или всё)", self._collapse_selected, icon_btn_style)
+        self.sync_btn = self._create_icon_btn("🔄", "Синхронизация", self._sync_and_refresh, icon_btn_style)
 
         btns_layout.addWidget(self.create_btn)
-        btns_layout.addWidget(self.refresh_btn)
-        btns_layout.addWidget(self.expand_all_btn)
-        btns_layout.addWidget(self.collapse_all_btn)
-        btns_layout.addWidget(self.sync_check_btn)
+        btns_layout.addWidget(self.expand_btn)
+        btns_layout.addWidget(self.collapse_btn)
+        btns_layout.addWidget(self.sync_btn)
         header_layout.addLayout(btns_layout)
 
         return header
@@ -248,11 +246,56 @@ class ProjectTreeWidget(
         except Exception as e:
             logger.error(f"Failed to load types: {e}")
 
-    def _expand_all(self):
+    def _expand_selected(self):
+        """Развернуть выбранную папку рекурсивно или всё дерево"""
+        item = self.tree.currentItem()
+        if item:
+            node = item.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode) and node.is_folder:
+                self._expand_item_recursively(item)
+                return
+        # Если ничего не выбрано или выбран документ - развернуть всё
         self.tree.expandAll()
 
-    def _collapse_all(self):
+    def _collapse_selected(self):
+        """Свернуть выбранную папку рекурсивно или всё дерево"""
+        item = self.tree.currentItem()
+        if item:
+            node = item.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode) and node.is_folder:
+                self._collapse_item_recursively(item)
+                return
+        # Если ничего не выбрано или выбран документ - свернуть всё
         self.tree.collapseAll()
+
+    def _expand_item_recursively(self, item: QTreeWidgetItem):
+        """Рекурсивно развернуть элемент и всех его детей"""
+        # Сначала раскрываем этот элемент (загружает детей через lazy loading)
+        item.setExpanded(True)
+
+        # Затем рекурсивно раскрываем всех детей
+        for i in range(item.childCount()):
+            child = item.child(i)
+            child_node = child.data(0, Qt.UserRole)
+            if isinstance(child_node, TreeNode) and child_node.is_folder:
+                self._expand_item_recursively(child)
+
+    def _collapse_item_recursively(self, item: QTreeWidgetItem):
+        """Рекурсивно свернуть элемент и всех его детей"""
+        # Сначала сворачиваем всех детей
+        for i in range(item.childCount()):
+            child = item.child(i)
+            child_node = child.data(0, Qt.UserRole)
+            if isinstance(child_node, TreeNode) and child_node.is_folder:
+                self._collapse_item_recursively(child)
+
+        # Затем сворачиваем сам элемент
+        item.setExpanded(False)
+
+    def _sync_and_refresh(self):
+        """Синхронизация: обновить дерево и проверить синхронизацию"""
+        self._refresh_tree()
+        QTimer.singleShot(500, self._start_sync_check)
 
     def _refresh_tree(self):
         """Обновить дерево"""
@@ -465,6 +508,64 @@ class ProjectTreeWidget(
 
         for i in range(self.tree.topLevelItemCount()):
             expand_recursive(self.tree.topLevelItem(i))
+
+    # Перемещение узлов вверх/вниз
+    def _move_node_up(self, node: TreeNode):
+        """Переместить узел вверх (уменьшить sort_order)"""
+        self._move_node(node, direction=-1)
+
+    def _move_node_down(self, node: TreeNode):
+        """Переместить узел вниз (увеличить sort_order)"""
+        self._move_node(node, direction=1)
+
+    def _move_node(self, node: TreeNode, direction: int):
+        """Переместить узел в указанном направлении (-1 = вверх, 1 = вниз)"""
+        try:
+            # Получаем соседние узлы (с тем же parent_id)
+            if node.parent_id:
+                siblings = self.client.get_children(node.parent_id)
+            else:
+                siblings = self.client.get_root_nodes()
+
+            if len(siblings) < 2:
+                return  # Нечего перемещать
+
+            # Находим индекс текущего узла
+            current_idx = None
+            for i, sibling in enumerate(siblings):
+                if sibling.id == node.id:
+                    current_idx = i
+                    break
+
+            if current_idx is None:
+                return
+
+            # Определяем соседа для обмена
+            swap_idx = current_idx + direction
+            if swap_idx < 0 or swap_idx >= len(siblings):
+                self.status_label.setText("⚠ Узел уже на границе")
+                return
+
+            swap_node = siblings[swap_idx]
+
+            # Меняем sort_order местами
+            current_sort = node.sort_order
+            swap_sort = swap_node.sort_order
+
+            # Если sort_order одинаковые, создаём разницу
+            if current_sort == swap_sort:
+                swap_sort = current_sort + direction
+
+            self.client.update_node(node.id, sort_order=swap_sort)
+            self.client.update_node(swap_node.id, sort_order=current_sort)
+
+            # Обновляем дерево, сохраняя состояние раскрытия
+            self._refresh_tree()
+            self.status_label.setText("✓ Узел перемещён")
+
+        except Exception as e:
+            logger.error(f"Failed to move node: {e}")
+            self.status_label.setText(f"Ошибка перемещения: {e}")
 
     # Свойство для доступа к скопированной аннотации (для контекстного меню)
     @property

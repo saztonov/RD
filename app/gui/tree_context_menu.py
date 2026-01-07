@@ -31,6 +31,13 @@ class TreeContextMenuMixin:
                     action = menu.addAction("📄 Добавить файл")
                     action.setData(("upload", node))
 
+                # Перемещение вверх/вниз (для всех узлов)
+                menu.addSeparator()
+                action = menu.addAction("⬆️ Переместить вверх")
+                action.setData(("move_up", node))
+                action = menu.addAction("⬇️ Переместить вниз")
+                action.setData(("move_down", node))
+
                 if node.is_document:
                     # Открыть папку с файлами
                     action = menu.addAction("📂 Открыть папку")
@@ -173,3 +180,9 @@ class TreeContextMenuMixin:
         elif action == "view_in_supabase":
             node = data[1]
             self._view_in_supabase(node)
+        elif action == "move_up":
+            node = data[1]
+            self._move_node_up(node)
+        elif action == "move_down":
+            node = data[1]
+            self._move_node_down(node)
