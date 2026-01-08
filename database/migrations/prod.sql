@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-07T10:32:44.730580
+-- Generated: 2026-01-08T22:23:33.525334
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -499,6 +499,21 @@ CREATE TABLE IF NOT EXISTS public.qa_artifacts (
     CONSTRAINT qa_artifacts_pkey PRIMARY KEY (id)
 );
 
+-- Table: public.qa_clients
+CREATE TABLE IF NOT EXISTS public.qa_clients (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    client_id text NOT NULL,
+    api_token uuid NOT NULL DEFAULT gen_random_uuid(),
+    name text,
+    default_model text DEFAULT 'gemini-3-flash-preview'::text,
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_clients_api_token_key UNIQUE (api_token),
+    CONSTRAINT qa_clients_client_id_key UNIQUE (client_id),
+    CONSTRAINT qa_clients_pkey PRIMARY KEY (id)
+);
+
 -- Table: public.qa_conversation_context_files
 -- Description: Хранит файлы контекста диалога и их статус загрузки в Gemini Files API
 CREATE TABLE IF NOT EXISTS public.qa_conversation_context_files (
@@ -573,10 +588,46 @@ CREATE TABLE IF NOT EXISTS public.qa_gemini_files (
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     expires_at timestamp with time zone,
+    token_count bigint,
     CONSTRAINT qa_gemini_files_gemini_name_key UNIQUE (gemini_name),
     CONSTRAINT qa_gemini_files_pkey PRIMARY KEY (id),
     CONSTRAINT qa_gemini_files_source_node_file_id_fkey FOREIGN KEY (source_node_file_id) REFERENCES public.node_files(id)
 );
+COMMENT ON COLUMN public.qa_gemini_files.token_count IS 'Token count calculated by tiktoken';
+
+-- Table: public.qa_jobs
+-- Description: Tracks async LLM job processing for client-server architecture
+CREATE TABLE IF NOT EXISTS public.qa_jobs (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL,
+    client_id text NOT NULL,
+    user_text text NOT NULL,
+    system_prompt text DEFAULT ''::text,
+    user_text_template text DEFAULT ''::text,
+    model_name text NOT NULL,
+    thinking_level text NOT NULL DEFAULT 'low'::text,
+    thinking_budget integer,
+    file_refs jsonb DEFAULT '[]'::jsonb,
+    status text NOT NULL DEFAULT 'queued'::text,
+    progress real DEFAULT 0,
+    result_message_id uuid,
+    result_text text,
+    result_actions jsonb DEFAULT '[]'::jsonb,
+    result_is_final boolean DEFAULT false,
+    error_message text,
+    retry_count integer DEFAULT 0,
+    max_retries integer DEFAULT 3,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_jobs_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
+    CONSTRAINT qa_jobs_pkey PRIMARY KEY (id),
+    CONSTRAINT qa_jobs_result_message_id_fkey FOREIGN KEY (result_message_id) REFERENCES public.qa_messages(id)
+);
+COMMENT ON TABLE public.qa_jobs IS 'Tracks async LLM job processing for client-server architecture';
+COMMENT ON COLUMN public.qa_jobs.status IS 'Job status: queued, processing, completed, failed';
+COMMENT ON COLUMN public.qa_jobs.result_message_id IS 'FK to the assistant message created when job completes';
 
 -- Table: public.qa_messages
 CREATE TABLE IF NOT EXISTS public.qa_messages (
@@ -588,25 +639,6 @@ CREATE TABLE IF NOT EXISTS public.qa_messages (
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT qa_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
     CONSTRAINT qa_messages_pkey PRIMARY KEY (id)
-);
-
--- Table: public.qa_settings
-CREATE TABLE IF NOT EXISTS public.qa_settings (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    client_id text NOT NULL,
-    gemini_api_key text,
-    supabase_url text,
-    supabase_anon_key text,
-    r2_account_id text,
-    r2_access_key_id text,
-    r2_secret_access_key text,
-    r2_bucket_name text,
-    default_model text DEFAULT 'gemini-3-flash-preview'::text,
-    settings jsonb DEFAULT '{}'::jsonb,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_settings_client_id_key UNIQUE (client_id),
-    CONSTRAINT qa_settings_pkey PRIMARY KEY (id)
 );
 
 -- Table: public.section_types
@@ -675,6 +707,7 @@ CREATE TABLE IF NOT EXISTS public.user_prompts (
     r2_key text,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    client_id text NOT NULL DEFAULT 'default'::text,
     CONSTRAINT user_prompts_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.user_prompts IS 'User custom prompts for AI conversations';
@@ -683,6 +716,7 @@ COMMENT ON COLUMN public.user_prompts.title IS 'Prompt title';
 COMMENT ON COLUMN public.user_prompts.system_prompt IS 'System prompt text';
 COMMENT ON COLUMN public.user_prompts.user_text IS 'User prompt text';
 COMMENT ON COLUMN public.user_prompts.r2_key IS 'R2 storage key for full content';
+COMMENT ON COLUMN public.user_prompts.client_id IS 'Client identifier for multi-tenant support';
 
 -- Table: realtime.schema_migrations
 CREATE TABLE IF NOT EXISTS realtime.schema_migrations (
@@ -2274,7 +2308,7 @@ CREATE OR REPLACE FUNCTION public.update_updated_at_column()
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = now();
     RETURN NEW;
 END;
 $function$
@@ -3959,14 +3993,17 @@ CREATE TRIGGER tr_node_files_count AFTER INSERT OR DELETE OR UPDATE OF node_id O
 -- Trigger: update_node_files_updated_at on public.node_files
 CREATE TRIGGER update_node_files_updated_at BEFORE UPDATE ON public.node_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
+-- Trigger: qa_clients_updated_at on public.qa_clients
+CREATE TRIGGER qa_clients_updated_at BEFORE UPDATE ON public.qa_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+
 -- Trigger: qa_conversations_updated_at on public.qa_conversations
 CREATE TRIGGER qa_conversations_updated_at BEFORE UPDATE ON public.qa_conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
 -- Trigger: qa_gemini_files_updated_at on public.qa_gemini_files
 CREATE TRIGGER qa_gemini_files_updated_at BEFORE UPDATE ON public.qa_gemini_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
--- Trigger: qa_settings_updated_at on public.qa_settings
-CREATE TRIGGER qa_settings_updated_at BEFORE UPDATE ON public.qa_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+-- Trigger: qa_jobs_updated_at on public.qa_jobs
+CREATE TRIGGER qa_jobs_updated_at BEFORE UPDATE ON public.qa_jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
 -- Trigger: tr_tree_nodes_children_count on public.tree_nodes
 CREATE TRIGGER tr_tree_nodes_children_count AFTER INSERT OR DELETE OR UPDATE OF parent_id ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_parent_children_count()
@@ -3982,6 +4019,9 @@ CREATE TRIGGER tr_tree_nodes_path_update BEFORE UPDATE OF parent_id ON public.tr
 
 -- Trigger: update_tree_nodes_updated_at on public.tree_nodes
 CREATE TRIGGER update_tree_nodes_updated_at BEFORE UPDATE ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+
+-- Trigger: user_prompts_updated_at on public.user_prompts
+CREATE TRIGGER user_prompts_updated_at BEFORE UPDATE ON public.user_prompts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
 -- Trigger: tr_check_filters on realtime.subscription
 CREATE TRIGGER tr_check_filters BEFORE INSERT OR UPDATE ON realtime.subscription FOR EACH ROW EXECUTE FUNCTION realtime.subscription_check_filters()
@@ -4234,6 +4274,18 @@ CREATE UNIQUE INDEX node_files_node_id_r2_key_unique ON public.node_files USING 
 -- Index on public.qa_artifacts
 CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC);
 
+-- Index on public.qa_clients
+CREATE INDEX idx_qa_clients_api_token ON public.qa_clients USING btree (api_token);
+
+-- Index on public.qa_clients
+CREATE INDEX idx_qa_clients_client_id ON public.qa_clients USING btree (client_id);
+
+-- Index on public.qa_clients
+CREATE UNIQUE INDEX qa_clients_api_token_key ON public.qa_clients USING btree (api_token);
+
+-- Index on public.qa_clients
+CREATE UNIQUE INDEX qa_clients_client_id_key ON public.qa_clients USING btree (client_id);
+
 -- Index on public.qa_conversation_context_files
 CREATE INDEX idx_qa_context_files_conversation ON public.qa_conversation_context_files USING btree (conversation_id);
 
@@ -4273,14 +4325,20 @@ CREATE INDEX idx_qa_gemini_files_client_expires ON public.qa_gemini_files USING 
 -- Index on public.qa_gemini_files
 CREATE UNIQUE INDEX qa_gemini_files_gemini_name_key ON public.qa_gemini_files USING btree (gemini_name);
 
+-- Index on public.qa_jobs
+CREATE INDEX qa_jobs_client_id_idx ON public.qa_jobs USING btree (client_id);
+
+-- Index on public.qa_jobs
+CREATE INDEX qa_jobs_conversation_id_idx ON public.qa_jobs USING btree (conversation_id);
+
+-- Index on public.qa_jobs
+CREATE INDEX qa_jobs_created_at_idx ON public.qa_jobs USING btree (created_at DESC);
+
+-- Index on public.qa_jobs
+CREATE INDEX qa_jobs_status_idx ON public.qa_jobs USING btree (status);
+
 -- Index on public.qa_messages
 CREATE INDEX idx_qa_messages_conversation_created ON public.qa_messages USING btree (conversation_id, created_at);
-
--- Index on public.qa_settings
-CREATE INDEX idx_qa_settings_client ON public.qa_settings USING btree (client_id);
-
--- Index on public.qa_settings
-CREATE UNIQUE INDEX qa_settings_client_id_key ON public.qa_settings USING btree (client_id);
 
 -- Index on public.section_types
 CREATE UNIQUE INDEX section_types_code_key ON public.section_types USING btree (code);
@@ -4317,6 +4375,9 @@ CREATE INDEX idx_tree_nodes_sort ON public.tree_nodes USING btree (parent_id, so
 
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_type ON public.tree_nodes USING btree (node_type);
+
+-- Index on public.user_prompts
+CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (client_id);
 
 -- Index on realtime.messages
 CREATE INDEX messages_inserted_at_topic_index ON ONLY realtime.messages USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));

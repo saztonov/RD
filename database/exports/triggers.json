@@ -53,6 +53,15 @@
     "comment": null,
     "sql": "CREATE TRIGGER update_node_files_updated_at BEFORE UPDATE ON public.node_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
   },
+  "public.qa_clients.qa_clients_updated_at": {
+    "schema": "public",
+    "name": "qa_clients_updated_at",
+    "table_name": "qa_clients",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER qa_clients_updated_at BEFORE UPDATE ON public.qa_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+  },
   "public.qa_conversations.qa_conversations_updated_at": {
     "schema": "public",
     "name": "qa_conversations_updated_at",
@@ -71,14 +80,14 @@
     "comment": null,
     "sql": "CREATE TRIGGER qa_gemini_files_updated_at BEFORE UPDATE ON public.qa_gemini_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
   },
-  "public.qa_settings.qa_settings_updated_at": {
+  "public.qa_jobs.qa_jobs_updated_at": {
     "schema": "public",
-    "name": "qa_settings_updated_at",
-    "table_name": "qa_settings",
+    "name": "qa_jobs_updated_at",
+    "table_name": "qa_jobs",
     "event": null,
     "timing": null,
     "comment": null,
-    "sql": "CREATE TRIGGER qa_settings_updated_at BEFORE UPDATE ON public.qa_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+    "sql": "CREATE TRIGGER qa_jobs_updated_at BEFORE UPDATE ON public.qa_jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
   },
   "public.tree_nodes.tr_tree_nodes_children_count": {
     "schema": "public",
@@ -124,6 +133,15 @@
     "timing": null,
     "comment": null,
     "sql": "CREATE TRIGGER update_tree_nodes_updated_at BEFORE UPDATE ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
+  },
+  "public.user_prompts.user_prompts_updated_at": {
+    "schema": "public",
+    "name": "user_prompts_updated_at",
+    "table_name": "user_prompts",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER user_prompts_updated_at BEFORE UPDATE ON public.user_prompts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()"
   },
   "realtime.subscription.tr_check_filters": {
     "schema": "realtime",

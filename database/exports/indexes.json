@@ -591,6 +591,38 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC)"
   },
+  "public.qa_clients.idx_qa_clients_api_token": {
+    "schema": "public",
+    "name": "idx_qa_clients_api_token",
+    "table_name": "qa_clients",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_clients_api_token ON public.qa_clients USING btree (api_token)"
+  },
+  "public.qa_clients.idx_qa_clients_client_id": {
+    "schema": "public",
+    "name": "idx_qa_clients_client_id",
+    "table_name": "qa_clients",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_clients_client_id ON public.qa_clients USING btree (client_id)"
+  },
+  "public.qa_clients.qa_clients_api_token_key": {
+    "schema": "public",
+    "name": "qa_clients_api_token_key",
+    "table_name": "qa_clients",
+    "is_unique": true,
+    "is_primary": false,
+    "sql": "CREATE UNIQUE INDEX qa_clients_api_token_key ON public.qa_clients USING btree (api_token)"
+  },
+  "public.qa_clients.qa_clients_client_id_key": {
+    "schema": "public",
+    "name": "qa_clients_client_id_key",
+    "table_name": "qa_clients",
+    "is_unique": true,
+    "is_primary": false,
+    "sql": "CREATE UNIQUE INDEX qa_clients_client_id_key ON public.qa_clients USING btree (client_id)"
+  },
   "public.qa_conversation_context_files.idx_qa_context_files_conversation": {
     "schema": "public",
     "name": "idx_qa_context_files_conversation",
@@ -695,6 +727,38 @@
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX qa_gemini_files_gemini_name_key ON public.qa_gemini_files USING btree (gemini_name)"
   },
+  "public.qa_jobs.qa_jobs_client_id_idx": {
+    "schema": "public",
+    "name": "qa_jobs_client_id_idx",
+    "table_name": "qa_jobs",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX qa_jobs_client_id_idx ON public.qa_jobs USING btree (client_id)"
+  },
+  "public.qa_jobs.qa_jobs_conversation_id_idx": {
+    "schema": "public",
+    "name": "qa_jobs_conversation_id_idx",
+    "table_name": "qa_jobs",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX qa_jobs_conversation_id_idx ON public.qa_jobs USING btree (conversation_id)"
+  },
+  "public.qa_jobs.qa_jobs_created_at_idx": {
+    "schema": "public",
+    "name": "qa_jobs_created_at_idx",
+    "table_name": "qa_jobs",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX qa_jobs_created_at_idx ON public.qa_jobs USING btree (created_at DESC)"
+  },
+  "public.qa_jobs.qa_jobs_status_idx": {
+    "schema": "public",
+    "name": "qa_jobs_status_idx",
+    "table_name": "qa_jobs",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX qa_jobs_status_idx ON public.qa_jobs USING btree (status)"
+  },
   "public.qa_messages.idx_qa_messages_conversation_created": {
     "schema": "public",
     "name": "idx_qa_messages_conversation_created",
@@ -702,22 +766,6 @@
     "is_unique": false,
     "is_primary": false,
     "sql": "CREATE INDEX idx_qa_messages_conversation_created ON public.qa_messages USING btree (conversation_id, created_at)"
-  },
-  "public.qa_settings.idx_qa_settings_client": {
-    "schema": "public",
-    "name": "idx_qa_settings_client",
-    "table_name": "qa_settings",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_settings_client ON public.qa_settings USING btree (client_id)"
-  },
-  "public.qa_settings.qa_settings_client_id_key": {
-    "schema": "public",
-    "name": "qa_settings_client_id_key",
-    "table_name": "qa_settings",
-    "is_unique": true,
-    "is_primary": false,
-    "sql": "CREATE UNIQUE INDEX qa_settings_client_id_key ON public.qa_settings USING btree (client_id)"
   },
   "public.section_types.section_types_code_key": {
     "schema": "public",
@@ -814,6 +862,14 @@
     "is_unique": false,
     "is_primary": false,
     "sql": "CREATE INDEX idx_tree_nodes_type ON public.tree_nodes USING btree (node_type)"
+  },
+  "public.user_prompts.idx_user_prompts_client_id": {
+    "schema": "public",
+    "name": "idx_user_prompts_client_id",
+    "table_name": "user_prompts",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (client_id)"
   },
   "realtime.messages.messages_inserted_at_topic_index": {
     "schema": "realtime",

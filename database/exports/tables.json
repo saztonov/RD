@@ -2741,6 +2741,95 @@
       }
     ]
   },
+  "public.qa_clients": {
+    "schema": "public",
+    "name": "qa_clients",
+    "comment": null,
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "api_token",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "default_model",
+        "comment": null,
+        "default": "'gemini-3-flash-preview'::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "is_active",
+        "comment": null,
+        "default": "true",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_clients_api_token_key",
+        "type": "UNIQUE",
+        "column": "api_token",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_clients_client_id_key",
+        "type": "UNIQUE",
+        "column": "client_id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_clients_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
   "public.qa_conversation_context_files": {
     "schema": "public",
     "name": "qa_conversation_context_files",
@@ -3154,6 +3243,13 @@
         "default": null,
         "data_type": "timestamp with time zone",
         "is_nullable": true
+      },
+      {
+        "name": "token_count",
+        "comment": "Token count calculated by tiktoken",
+        "default": null,
+        "data_type": "bigint",
+        "is_nullable": true
       }
     ],
     "constraints": [
@@ -3178,6 +3274,200 @@
         "type": "FOREIGN KEY",
         "column": "source_node_file_id",
         "foreign_table": "node_files",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      }
+    ]
+  },
+  "public.qa_jobs": {
+    "schema": "public",
+    "name": "qa_jobs",
+    "comment": "Tracks async LLM job processing for client-server architecture",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "conversation_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "user_text",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "system_prompt",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "user_text_template",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "model_name",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "thinking_level",
+        "comment": null,
+        "default": "'low'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "thinking_budget",
+        "comment": null,
+        "default": null,
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "file_refs",
+        "comment": null,
+        "default": "'[]'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "status",
+        "comment": "Job status: queued, processing, completed, failed",
+        "default": "'queued'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "progress",
+        "comment": null,
+        "default": "0",
+        "data_type": "real",
+        "is_nullable": true
+      },
+      {
+        "name": "result_message_id",
+        "comment": "FK to the assistant message created when job completes",
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "result_text",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "result_actions",
+        "comment": null,
+        "default": "'[]'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "result_is_final",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "error_message",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "retry_count",
+        "comment": null,
+        "default": "0",
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "max_retries",
+        "comment": null,
+        "default": "3",
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "started_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "completed_at",
+        "comment": null,
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_jobs_conversation_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "conversation_id",
+        "foreign_table": "qa_conversations",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_jobs_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "qa_jobs_result_message_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "result_message_id",
+        "foreign_table": "qa_messages",
         "foreign_column": "id",
         "foreign_table_schema": "public"
       }
@@ -3252,122 +3542,6 @@
         "name": "qa_messages_role_check",
         "type": "CHECK",
         "column": "role",
-        "foreign_table": null,
-        "foreign_column": null,
-        "foreign_table_schema": null
-      }
-    ]
-  },
-  "public.qa_settings": {
-    "schema": "public",
-    "name": "qa_settings",
-    "comment": null,
-    "columns": [
-      {
-        "name": "id",
-        "comment": null,
-        "default": "gen_random_uuid()",
-        "data_type": "uuid",
-        "is_nullable": false
-      },
-      {
-        "name": "client_id",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": false
-      },
-      {
-        "name": "gemini_api_key",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "supabase_url",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "supabase_anon_key",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "r2_account_id",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "r2_access_key_id",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "r2_secret_access_key",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "r2_bucket_name",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "default_model",
-        "comment": null,
-        "default": "'gemini-3-flash-preview'::text",
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "settings",
-        "comment": null,
-        "default": "'{}'::jsonb",
-        "data_type": "jsonb",
-        "is_nullable": true
-      },
-      {
-        "name": "created_at",
-        "comment": null,
-        "default": "now()",
-        "data_type": "timestamp with time zone",
-        "is_nullable": false
-      },
-      {
-        "name": "updated_at",
-        "comment": null,
-        "default": "now()",
-        "data_type": "timestamp with time zone",
-        "is_nullable": false
-      }
-    ],
-    "constraints": [
-      {
-        "name": "qa_settings_client_id_key",
-        "type": "UNIQUE",
-        "column": "client_id",
-        "foreign_table": null,
-        "foreign_column": null,
-        "foreign_table_schema": null
-      },
-      {
-        "name": "qa_settings_pkey",
-        "type": "PRIMARY KEY",
-        "column": "id",
         "foreign_table": null,
         "foreign_column": null,
         "foreign_table_schema": null
@@ -3697,6 +3871,13 @@
         "comment": null,
         "default": "now()",
         "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": "Client identifier for multi-tenant support",
+        "default": "'default'::text",
+        "data_type": "text",
         "is_nullable": false
       }
     ],
