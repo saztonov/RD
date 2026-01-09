@@ -6,12 +6,13 @@ from typing import List, Optional
 @dataclass
 class JobFile:
     id: str
-    job_id: str
-    file_type: str  # pdf|blocks|annotation|result_md|result_zip|crop
+    job_id: str  # Ссылка на задачу (каскадное удаление при удалении job)
+    file_type: str  # pdf|blocks|annotation|result_md|result_zip|crop|ocr_html|result
     r2_key: str
     file_name: str
     file_size: int
     created_at: str
+    metadata: Optional[dict] = None  # Для кропов: block_id, page_index, coords_norm, block_type
 
 
 @dataclass

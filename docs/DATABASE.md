@@ -39,6 +39,7 @@
                             │     │ r2_key     text     │
                             │     │ file_name  text     │
                             │     │ file_size  bigint   │
+                            │     │ metadata   jsonb    │ ◄── для кропов: block_id, coords
                             │     │ created_at timestamptz
                             │     └─────────────────────┘
                             │
@@ -161,9 +162,26 @@ CREATE TABLE job_files (
     r2_key text NOT NULL,
     file_name text NOT NULL,
     file_size bigint DEFAULT 0,
+    metadata jsonb DEFAULT '{}',
     created_at timestamptz NOT NULL DEFAULT now()
 );
 ```
+
+**Важно:** При удалении задачи (job) все связанные записи из `job_files` удаляются каскадно.
+Данные в `node_files` при этом **не затрагиваются** (они связаны с `tree_nodes`, а не с `jobs`).
+
+#### Поля
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | uuid | Первичный ключ |
+| `job_id` | uuid | Ссылка на задачу (NOT NULL, каскадное удаление) |
+| `file_type` | text | Тип файла (см. таблицу ниже) |
+| `r2_key` | text | Полный путь к файлу в R2 |
+| `file_name` | text | Имя файла |
+| `file_size` | bigint | Размер файла в байтах |
+| `metadata` | jsonb | Метаданные файла (для кропов: block_id, page_index, coords_norm, block_type) |
+| `created_at` | timestamptz | Дата создания |
 
 #### Типы файлов (file_type)
 
@@ -172,15 +190,29 @@ CREATE TABLE job_files (
 | `pdf` | Исходный PDF документ |
 | `blocks` | blocks.json с координатами блоков |
 | `annotation` | annotation.json с полной разметкой |
-| `result_md` | result.md — результат OCR |
-| `result_zip` | result.zip — архив с результатами |
+| `result` | result.json — JSON результат OCR |
+| `result_md` | document.md — Markdown результат OCR |
+| `ocr_html` | ocr_result.html — HTML результат |
 | `crop` | Кроп блока (PDF) |
+
+#### Метаданные для кропов (file_type='crop')
+
+```json
+{
+  "block_id": "uuid-блока",
+  "page_index": 0,
+  "coords_norm": {"x1": 0.1, "y1": 0.2, "x2": 0.9, "y2": 0.8},
+  "block_type": "text|table|image"
+}
+```
 
 #### Индексы
 
 ```sql
 CREATE INDEX idx_job_files_job_id ON job_files(job_id);
 CREATE INDEX idx_job_files_type ON job_files(file_type);
+CREATE INDEX idx_job_files_metadata ON job_files USING gin (metadata);
+CREATE INDEX idx_job_files_block_id ON job_files((metadata->>'block_id')) WHERE file_type = 'crop';
 ```
 
 ---

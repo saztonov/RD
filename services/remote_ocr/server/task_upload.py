@@ -12,28 +12,47 @@ from .task_helpers import get_r2_storage
 logger = logging.getLogger(__name__)
 
 
-def _get_stamp_block_ids(work_dir: Path) -> set:
-    """Получить ID блоков-штампов из annotation.json."""
+def _load_blocks_metadata(work_dir: Path) -> tuple:
+    """Загрузить метаданные блоков из annotation.json.
+
+    Returns:
+        Tuple: (stamp_ids: set, blocks_by_id: dict)
+            - stamp_ids: ID блоков-штампов для исключения
+            - blocks_by_id: словарь {block_id: metadata} для кропов
+    """
     annotation_path = work_dir / "annotation.json"
     if not annotation_path.exists():
-        return set()
+        return set(), {}
 
     try:
         with open(annotation_path, "r", encoding="utf-8") as f:
             ann = json.load(f)
 
         stamp_ids = set()
+        blocks_by_id = {}
+
         for page in ann.get("pages", []):
+            page_index = page.get("page_index", 0)
             for blk in page.get("blocks", []):
-                if (
-                    blk.get("block_type") == "image"
-                    and blk.get("category_code") == "stamp"
-                ):
-                    stamp_ids.add(blk.get("id"))
-        return stamp_ids
+                block_id = blk.get("id")
+                block_type = blk.get("block_type", "")
+
+                # Собираем ID штампов
+                if block_type == "image" and blk.get("category_code") == "stamp":
+                    stamp_ids.add(block_id)
+
+                # Собираем метаданные для всех блоков
+                blocks_by_id[block_id] = {
+                    "block_id": block_id,
+                    "page_index": page_index,
+                    "coords_norm": blk.get("coords_norm"),
+                    "block_type": block_type,
+                }
+
+        return stamp_ids, blocks_by_id
     except Exception as e:
-        logger.warning(f"Ошибка чтения annotation.json для фильтрации штампов: {e}")
-        return set()
+        logger.warning(f"Ошибка чтения annotation.json: {e}")
+        return set(), {}
 
 
 def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str:
@@ -43,6 +62,7 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     Иначе - в ocr_jobs/{job_id}/ (обратная совместимость)
 
     Использует batch upload для параллельной загрузки всех файлов.
+    Для кропов сохраняет metadata с информацией о блоке (block_id, page_index, coords_norm, block_type).
     """
     r2 = get_r2_storage()
 
@@ -61,8 +81,11 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
 
     doc_stem = Path(job.document_name).stem
 
+    # Загружаем метаданные блоков из annotation.json
+    stamp_ids, blocks_by_id = _load_blocks_metadata(work_dir)
+
     # Собираем все файлы для batch upload
-    # Формат: (local_path, r2_key, content_type, file_type, filename, size)
+    # Формат: (local_path, r2_key, content_type, file_type, filename, size, metadata)
     files_to_upload = []
 
     # annotation.json -> {doc_stem}_annotation.json
@@ -73,7 +96,7 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         r2_key = f"{r2_prefix}/{annotation_filename}"
         files_to_upload.append((
             str(annotation_path), r2_key, None,
-            "annotation", annotation_filename, annotation_path.stat().st_size
+            "annotation", annotation_filename, annotation_path.stat().st_size, None
         ))
 
     # ocr_result.html -> {doc_stem}_ocr.html
@@ -83,7 +106,7 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         r2_key = f"{r2_prefix}/{html_filename}"
         files_to_upload.append((
             str(html_path), r2_key, None,
-            "ocr_html", html_filename, html_path.stat().st_size
+            "ocr_html", html_filename, html_path.stat().st_size, None
         ))
 
     # result.json -> {doc_stem}_result.json
@@ -93,7 +116,7 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         r2_key = f"{r2_prefix}/{result_filename}"
         files_to_upload.append((
             str(result_path), r2_key, None,
-            "result", result_filename, result_path.stat().st_size
+            "result", result_filename, result_path.stat().st_size, None
         ))
 
     # document.md -> {doc_stem}_document.md
@@ -103,15 +126,13 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         r2_key = f"{r2_prefix}/{md_filename}"
         files_to_upload.append((
             str(md_path), r2_key, None,
-            "result_md", md_filename, md_path.stat().st_size
+            "result_md", md_filename, md_path.stat().st_size, None
         ))
     else:
         logger.warning(f"document.md не найден для загрузки в R2: {md_path}")
 
     # crops/ (проверяем оба варианта: crops и crops_final)
     # Исключаем блоки-штампы (category_code='stamp')
-    stamp_ids = _get_stamp_block_ids(work_dir)
-
     for crops_subdir in ["crops", "crops_final"]:
         crops_path = work_dir / crops_subdir
         if crops_path.exists():
@@ -123,9 +144,11 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
                         continue
 
                     r2_key = f"{r2_prefix}/crops/{crop_file.name}"
+                    # Получаем metadata для кропа из annotation.json
+                    crop_metadata = blocks_by_id.get(block_id)
                     files_to_upload.append((
                         str(crop_file), r2_key, None,
-                        "crop", crop_file.name, crop_file.stat().st_size
+                        "crop", crop_file.name, crop_file.stat().st_size, crop_metadata
                     ))
 
     # Batch upload всех файлов
@@ -137,9 +160,9 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
 
         # Регистрируем успешно загруженные файлы в БД
         success_count = 0
-        for i, (local_path, r2_key, ct, file_type, filename, size) in enumerate(files_to_upload):
+        for i, (local_path, r2_key, ct, file_type, filename, size, metadata) in enumerate(files_to_upload):
             if results[i]:
-                add_job_file(job.id, file_type, r2_key, filename, size)
+                add_job_file(job.id, file_type, r2_key, filename, size, metadata)
                 success_count += 1
             else:
                 logger.error(f"Не удалось загрузить файл в R2: {r2_key}")
