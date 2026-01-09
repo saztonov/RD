@@ -27,19 +27,19 @@
     "comment": "Deprecated. Use auth.jwt() -> 'sub' instead.",
     "sql": "CREATE OR REPLACE FUNCTION auth.uid()\n RETURNS uuid\n LANGUAGE sql\n STABLE\nAS $function$\n  select \n  coalesce(\n    nullif(current_setting('request.jwt.claim.sub', true), ''),\n    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')\n  )::uuid\n$function$\n"
   },
-  "extensions.armor(bytea, text[], text[])": {
-    "schema": "extensions",
-    "name": "armor",
-    "arguments": "bytea, text[], text[]",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_armor$function$\n"
-  },
   "extensions.armor(bytea)": {
     "schema": "extensions",
     "name": "armor",
     "arguments": "bytea",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.armor(bytea)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_armor$function$\n"
+  },
+  "extensions.armor(bytea, text[], text[])": {
+    "schema": "extensions",
+    "name": "armor",
+    "arguments": "bytea, text[], text[]",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_armor$function$\n"
   },
   "extensions.crypt(text, text)": {
     "schema": "extensions",
@@ -69,19 +69,19 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.decrypt_iv(bytea, bytea, bytea, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_decrypt_iv$function$\n"
   },
-  "extensions.digest(bytea, text)": {
-    "schema": "extensions",
-    "name": "digest",
-    "arguments": "bytea, text",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.digest(bytea, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_digest$function$\n"
-  },
   "extensions.digest(text, text)": {
     "schema": "extensions",
     "name": "digest",
     "arguments": "text, text",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.digest(text, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_digest$function$\n"
+  },
+  "extensions.digest(bytea, text)": {
+    "schema": "extensions",
+    "name": "digest",
+    "arguments": "bytea, text",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.digest(bytea, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_digest$function$\n"
   },
   "extensions.encrypt(bytea, bytea, text)": {
     "schema": "extensions",
@@ -111,19 +111,19 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.gen_random_uuid()\n RETURNS uuid\n LANGUAGE c\n PARALLEL SAFE\nAS '$libdir/pgcrypto', $function$pg_random_uuid$function$\n"
   },
-  "extensions.gen_salt(text)": {
-    "schema": "extensions",
-    "name": "gen_salt",
-    "arguments": "text",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.gen_salt(text)\n RETURNS text\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_gen_salt$function$\n"
-  },
   "extensions.gen_salt(text, integer)": {
     "schema": "extensions",
     "name": "gen_salt",
     "arguments": "text, integer",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)\n RETURNS text\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$\n"
+  },
+  "extensions.gen_salt(text)": {
+    "schema": "extensions",
+    "name": "gen_salt",
+    "arguments": "text",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.gen_salt(text)\n RETURNS text\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pg_gen_salt$function$\n"
   },
   "extensions.grant_pg_cron_access()": {
     "schema": "extensions",
@@ -265,19 +265,19 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$\n"
   },
-  "extensions.pgp_sym_decrypt(bytea, text)": {
-    "schema": "extensions",
-    "name": "pgp_sym_decrypt",
-    "arguments": "bytea, text",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$\n"
-  },
   "extensions.pgp_sym_decrypt(bytea, text, text)": {
     "schema": "extensions",
     "name": "pgp_sym_decrypt",
     "arguments": "bytea, text, text",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$\n"
+  },
+  "extensions.pgp_sym_decrypt(bytea, text)": {
+    "schema": "extensions",
+    "name": "pgp_sym_decrypt",
+    "arguments": "bytea, text",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)\n RETURNS text\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$\n"
   },
   "extensions.pgp_sym_decrypt_bytea(bytea, text)": {
     "schema": "extensions",
@@ -293,13 +293,6 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text, text)\n RETURNS bytea\n LANGUAGE c\n IMMUTABLE PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$\n"
   },
-  "extensions.pgp_sym_encrypt(text, text, text)": {
-    "schema": "extensions",
-    "name": "pgp_sym_encrypt",
-    "arguments": "text, text, text",
-    "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$\n"
-  },
   "extensions.pgp_sym_encrypt(text, text)": {
     "schema": "extensions",
     "name": "pgp_sym_encrypt",
@@ -307,12 +300,12 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$\n"
   },
-  "extensions.pgp_sym_encrypt_bytea(bytea, text, text)": {
+  "extensions.pgp_sym_encrypt(text, text, text)": {
     "schema": "extensions",
-    "name": "pgp_sym_encrypt_bytea",
-    "arguments": "bytea, text, text",
+    "name": "pgp_sym_encrypt",
+    "arguments": "text, text, text",
     "comment": null,
-    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$\n"
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$\n"
   },
   "extensions.pgp_sym_encrypt_bytea(bytea, text)": {
     "schema": "extensions",
@@ -320,6 +313,13 @@
     "arguments": "bytea, text",
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$\n"
+  },
+  "extensions.pgp_sym_encrypt_bytea(bytea, text, text)": {
+    "schema": "extensions",
+    "name": "pgp_sym_encrypt_bytea",
+    "arguments": "bytea, text, text",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)\n RETURNS bytea\n LANGUAGE c\n PARALLEL SAFE STRICT\nAS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$\n"
   },
   "extensions.pgrst_ddl_watch()": {
     "schema": "extensions",
@@ -468,6 +468,13 @@
     "comment": null,
     "sql": "CREATE OR REPLACE FUNCTION pgbouncer.get_auth(p_usename text)\n RETURNS TABLE(username text, password text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  BEGIN\n      RAISE DEBUG 'PgBouncer auth request: %', p_usename;\n\n      RETURN QUERY\n      SELECT\n          rolname::text,\n          CASE WHEN rolvaliduntil < now()\n              THEN null\n              ELSE rolpassword::text\n          END\n      FROM pg_authid\n      WHERE rolname=$1 and rolcanlogin;\n  END;\n  $function$\n"
   },
+  "public.get_app_setting(setting_key text, default_value text)": {
+    "schema": "public",
+    "name": "get_app_setting",
+    "arguments": "setting_key text, default_value text",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.get_app_setting(setting_key text, default_value text DEFAULT NULL::text)\n RETURNS text\n LANGUAGE plpgsql\nAS $function$\r\nDECLARE\r\n    result text;\r\nBEGIN\r\n    SELECT value INTO result FROM public.qa_app_settings WHERE key = setting_key;\r\n    RETURN COALESCE(result, default_value);\r\nEND;\r\n$function$\n"
+  },
   "public.get_tree_ancestors(p_node_id uuid)": {
     "schema": "public",
     "name": "get_tree_ancestors",
@@ -509,6 +516,13 @@
     "arguments": "",
     "comment": "Пересчитывает статусы всех PDF документов на основе данных node_files",
     "sql": "CREATE OR REPLACE FUNCTION public.recalculate_all_pdf_statuses()\n RETURNS TABLE(node_id uuid, old_status text, new_status text, status_message text)\n LANGUAGE plpgsql\nAS $function$\r\nDECLARE\r\n    doc RECORD;\r\n    v_status TEXT;\r\n    v_message TEXT;\r\n    v_has_ann_r2 BOOLEAN;\r\n    v_has_ocr_r2 BOOLEAN;\r\n    v_has_res_r2 BOOLEAN;\r\n    v_has_ann_db BOOLEAN;\r\n    v_has_ocr_db BOOLEAN;\r\n    v_has_res_db BOOLEAN;\r\n    v_r2_key TEXT;\r\n    v_ann_key TEXT;\r\n    v_ocr_key TEXT;\r\n    v_res_key TEXT;\r\nBEGIN\r\n    -- Обходим все документы\r\n    FOR doc IN \r\n        SELECT id, attributes->>'r2_key' as r2_key, pdf_status\r\n        FROM tree_nodes \r\n        WHERE node_type = 'document'\r\n    LOOP\r\n        v_r2_key := doc.r2_key;\r\n        \r\n        IF v_r2_key IS NULL OR v_r2_key = '' THEN\r\n            v_status := 'unknown';\r\n            v_message := 'Нет R2 ключа';\r\n        ELSE\r\n            -- Формируем ключи для связанных файлов\r\n            v_ann_key := regexp_replace(v_r2_key, '\\.pdf$', '_annotation.json', 'i');\r\n            v_ocr_key := regexp_replace(v_r2_key, '\\.pdf$', '_ocr.html', 'i');\r\n            v_res_key := regexp_replace(v_r2_key, '\\.pdf$', '_result.json', 'i');\r\n            \r\n            -- Проверяем наличие в node_files\r\n            SELECT \r\n                bool_or(file_type = 'annotation') AS has_ann,\r\n                bool_or(file_type = 'ocr_html') AS has_ocr,\r\n                bool_or(file_type = 'result_json') AS has_res\r\n            INTO v_has_ann_db, v_has_ocr_db, v_has_res_db\r\n            FROM node_files\r\n            WHERE node_id = doc.id;\r\n            \r\n            -- Определяем статус на основе наличия файлов в БД\r\n            IF v_has_ann_db AND v_has_ocr_db AND v_has_res_db THEN\r\n                v_status := 'complete';\r\n                v_message := 'Все файлы на месте';\r\n            ELSIF NOT v_has_ann_db THEN\r\n                v_status := 'missing_blocks';\r\n                v_message := 'Отсутствует annotation.json';\r\n            ELSE\r\n                v_status := 'missing_files';\r\n                v_message := '';\r\n                IF NOT v_has_ocr_db THEN\r\n                    v_message := v_message || 'ocr.html не в Supabase; ';\r\n                END IF;\r\n                IF NOT v_has_res_db THEN\r\n                    v_message := v_message || 'result.json не в Supabase; ';\r\n                END IF;\r\n            END IF;\r\n        END IF;\r\n        \r\n        -- Обновляем статус\r\n        UPDATE tree_nodes\r\n        SET \r\n            pdf_status = v_status,\r\n            pdf_status_message = v_message,\r\n            pdf_status_updated_at = NOW()\r\n        WHERE id = doc.id;\r\n        \r\n        -- Возвращаем результат\r\n        node_id := doc.id;\r\n        old_status := doc.pdf_status;\r\n        new_status := v_status;\r\n        status_message := v_message;\r\n        RETURN NEXT;\r\n    END LOOP;\r\nEND;\r\n$function$\n"
+  },
+  "public.set_app_setting(setting_key text, setting_value text)": {
+    "schema": "public",
+    "name": "set_app_setting",
+    "arguments": "setting_key text, setting_value text",
+    "comment": null,
+    "sql": "CREATE OR REPLACE FUNCTION public.set_app_setting(setting_key text, setting_value text)\n RETURNS void\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    UPDATE public.qa_app_settings\r\n    SET value = setting_value, updated_at = now()\r\n    WHERE key = setting_key;\r\nEND;\r\n$function$\n"
   },
   "public.update_ancestors_descendants_count()": {
     "schema": "public",

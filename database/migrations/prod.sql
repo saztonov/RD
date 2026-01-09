@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-08T22:23:33.525334
+-- Generated: 2026-01-09T23:46:57.404968
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -410,10 +410,12 @@ CREATE TABLE IF NOT EXISTS public.job_files (
     file_name text NOT NULL,
     file_size bigint DEFAULT 0,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
+    metadata jsonb DEFAULT '{}'::jsonb,
     CONSTRAINT job_files_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id),
     CONSTRAINT job_files_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.job_files IS 'Файлы связанные с OCR задачами';
+COMMENT ON COLUMN public.job_files.metadata IS 'Метаданные файла (для кропов: block_id, page_index, coords_norm, block_type)';
 
 -- Table: public.job_settings
 -- Description: Настройки моделей для OCR задач
@@ -483,6 +485,21 @@ COMMENT ON TABLE public.node_files IS 'Все файлы привязанные 
 COMMENT ON COLUMN public.node_files.file_type IS 'Тип файла: pdf, annotation, result_md, result_zip, crop, image, ocr_html, result_json, crops_folder';
 COMMENT ON COLUMN public.node_files.r2_key IS 'Ключ объекта в R2 storage';
 COMMENT ON COLUMN public.node_files.metadata IS 'Метаданные: version, page_index для кропов и т.д.';
+
+-- Table: public.qa_app_settings
+-- Description: Global application settings (credentials, defaults, etc.)
+CREATE TABLE IF NOT EXISTS public.qa_app_settings (
+    key text NOT NULL,
+    value text,
+    value_type text NOT NULL DEFAULT 'string'::text,
+    description text,
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_app_settings_pkey PRIMARY KEY (key)
+);
+COMMENT ON TABLE public.qa_app_settings IS 'Global application settings (credentials, defaults, etc.)';
+COMMENT ON COLUMN public.qa_app_settings.key IS 'Setting key (e.g., gemini_api_key, max_history_pairs)';
+COMMENT ON COLUMN public.qa_app_settings.value IS 'Setting value as text (convert based on value_type)';
+COMMENT ON COLUMN public.qa_app_settings.value_type IS 'Type hint: string, int, bool, json';
 
 -- Table: public.qa_artifacts
 CREATE TABLE IF NOT EXISTS public.qa_artifacts (
@@ -621,6 +638,7 @@ CREATE TABLE IF NOT EXISTS public.qa_jobs (
     started_at timestamp with time zone,
     completed_at timestamp with time zone,
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    context_catalog text DEFAULT ''::text,
     CONSTRAINT qa_jobs_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
     CONSTRAINT qa_jobs_pkey PRIMARY KEY (id),
     CONSTRAINT qa_jobs_result_message_id_fkey FOREIGN KEY (result_message_id) REFERENCES public.qa_messages(id)
@@ -628,6 +646,7 @@ CREATE TABLE IF NOT EXISTS public.qa_jobs (
 COMMENT ON TABLE public.qa_jobs IS 'Tracks async LLM job processing for client-server architecture';
 COMMENT ON COLUMN public.qa_jobs.status IS 'Job status: queued, processing, completed, failed';
 COMMENT ON COLUMN public.qa_jobs.result_message_id IS 'FK to the assistant message created when job completes';
+COMMENT ON COLUMN public.qa_jobs.context_catalog IS 'JSON string with available context items (crops) for agentic requests';
 
 -- Table: public.qa_messages
 CREATE TABLE IF NOT EXISTS public.qa_messages (
@@ -640,6 +659,39 @@ CREATE TABLE IF NOT EXISTS public.qa_messages (
     CONSTRAINT qa_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
     CONSTRAINT qa_messages_pkey PRIMARY KEY (id)
 );
+
+-- Table: public.qa_model_traces
+-- Description: Stores model call traces for the Model Inspector
+CREATE TABLE IF NOT EXISTS public.qa_model_traces (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    ts timestamp with time zone NOT NULL DEFAULT now(),
+    conversation_id uuid NOT NULL,
+    client_id text NOT NULL DEFAULT 'default'::text,
+    model text NOT NULL,
+    thinking_level text NOT NULL DEFAULT 'low'::text,
+    system_prompt text DEFAULT ''::text,
+    user_text text NOT NULL,
+    input_files jsonb DEFAULT '[]'::jsonb,
+    response_json jsonb,
+    parsed_actions jsonb DEFAULT '[]'::jsonb,
+    latency_ms real,
+    errors jsonb DEFAULT '[]'::jsonb,
+    is_final boolean DEFAULT false,
+    assistant_text text DEFAULT ''::text,
+    full_thoughts text DEFAULT ''::text,
+    input_tokens integer,
+    output_tokens integer,
+    total_tokens integer,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT qa_model_traces_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
+    CONSTRAINT qa_model_traces_pkey PRIMARY KEY (id)
+);
+COMMENT ON TABLE public.qa_model_traces IS 'Stores model call traces for the Model Inspector';
+COMMENT ON COLUMN public.qa_model_traces.ts IS 'Timestamp when the request was initiated';
+COMMENT ON COLUMN public.qa_model_traces.input_files IS 'Array of file refs: [{name, uri, mime_type, display_name}]';
+COMMENT ON COLUMN public.qa_model_traces.response_json IS 'Raw JSON response from model';
+COMMENT ON COLUMN public.qa_model_traces.parsed_actions IS 'Parsed actions from model response';
+COMMENT ON COLUMN public.qa_model_traces.errors IS 'Array of error messages if any';
 
 -- Table: public.section_types
 CREATE TABLE IF NOT EXISTS public.section_types (
@@ -717,6 +769,90 @@ COMMENT ON COLUMN public.user_prompts.system_prompt IS 'System prompt text';
 COMMENT ON COLUMN public.user_prompts.user_text IS 'User prompt text';
 COMMENT ON COLUMN public.user_prompts.r2_key IS 'R2 storage key for full content';
 COMMENT ON COLUMN public.user_prompts.client_id IS 'Client identifier for multi-tenant support';
+
+-- Table: realtime.messages_2026_01_07
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_07 (
+    topic text NOT NULL,
+    extension text NOT NULL,
+    payload jsonb,
+    event text,
+    private boolean DEFAULT false,
+    updated_at timestamp without time zone NOT NULL DEFAULT now(),
+    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT messages_2026_01_07_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_07_pkey PRIMARY KEY (inserted_at)
+);
+
+-- Table: realtime.messages_2026_01_08
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_08 (
+    topic text NOT NULL,
+    extension text NOT NULL,
+    payload jsonb,
+    event text,
+    private boolean DEFAULT false,
+    updated_at timestamp without time zone NOT NULL DEFAULT now(),
+    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT messages_2026_01_08_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_08_pkey PRIMARY KEY (inserted_at)
+);
+
+-- Table: realtime.messages_2026_01_09
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_09 (
+    topic text NOT NULL,
+    extension text NOT NULL,
+    payload jsonb,
+    event text,
+    private boolean DEFAULT false,
+    updated_at timestamp without time zone NOT NULL DEFAULT now(),
+    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT messages_2026_01_09_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_09_pkey PRIMARY KEY (inserted_at)
+);
+
+-- Table: realtime.messages_2026_01_10
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_10 (
+    topic text NOT NULL,
+    extension text NOT NULL,
+    payload jsonb,
+    event text,
+    private boolean DEFAULT false,
+    updated_at timestamp without time zone NOT NULL DEFAULT now(),
+    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT messages_2026_01_10_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_10_pkey PRIMARY KEY (inserted_at)
+);
+
+-- Table: realtime.messages_2026_01_11
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_11 (
+    topic text NOT NULL,
+    extension text NOT NULL,
+    payload jsonb,
+    event text,
+    private boolean DEFAULT false,
+    updated_at timestamp without time zone NOT NULL DEFAULT now(),
+    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT messages_2026_01_11_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_11_pkey PRIMARY KEY (inserted_at)
+);
+
+-- Table: realtime.messages_2026_01_12
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_12 (
+    topic text NOT NULL,
+    extension text NOT NULL,
+    payload jsonb,
+    event text,
+    private boolean DEFAULT false,
+    updated_at timestamp without time zone NOT NULL DEFAULT now(),
+    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT messages_2026_01_12_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_12_pkey PRIMARY KEY (inserted_at)
+);
 
 -- Table: realtime.schema_migrations
 CREATE TABLE IF NOT EXISTS realtime.schema_migrations (
@@ -1051,7 +1187,7 @@ $function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
+CREATE OR REPLACE FUNCTION extensions.armor(bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1059,7 +1195,7 @@ AS '$libdir/pgcrypto', $function$pg_armor$function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea)
+CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1099,7 +1235,7 @@ AS '$libdir/pgcrypto', $function$pg_decrypt_iv$function$
 
 
 -- Function: extensions.digest
-CREATE OR REPLACE FUNCTION extensions.digest(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.digest(text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1107,7 +1243,7 @@ AS '$libdir/pgcrypto', $function$pg_digest$function$
 
 
 -- Function: extensions.digest
-CREATE OR REPLACE FUNCTION extensions.digest(text, text)
+CREATE OR REPLACE FUNCTION extensions.digest(bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1147,19 +1283,19 @@ AS '$libdir/pgcrypto', $function$pg_random_uuid$function$
 
 
 -- Function: extensions.gen_salt
-CREATE OR REPLACE FUNCTION extensions.gen_salt(text)
- RETURNS text
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pg_gen_salt$function$
-
-
--- Function: extensions.gen_salt
 CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)
  RETURNS text
  LANGUAGE c
  PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$
+
+
+-- Function: extensions.gen_salt
+CREATE OR REPLACE FUNCTION extensions.gen_salt(text)
+ RETURNS text
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pg_gen_salt$function$
 
 
 -- Function: extensions.grant_pg_cron_access
@@ -1442,7 +1578,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1450,7 +1586,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1474,14 +1610,6 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)
- RETURNS bytea
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
-
-
--- Function: extensions.pgp_sym_encrypt
 CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
  RETURNS bytea
  LANGUAGE c
@@ -1489,8 +1617,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
 AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
 
 
+-- Function: extensions.pgp_sym_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
+
+
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1498,7 +1634,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1826,6 +1962,20 @@ AS $function$
   $function$
 
 
+-- Function: public.get_app_setting
+CREATE OR REPLACE FUNCTION public.get_app_setting(setting_key text, default_value text DEFAULT NULL::text)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    result text;
+BEGIN
+    SELECT value INTO result FROM public.qa_app_settings WHERE key = setting_key;
+    RETURN COALESCE(result, default_value);
+END;
+$function$
+
+
 -- Function: public.get_tree_ancestors
 CREATE OR REPLACE FUNCTION public.get_tree_ancestors(p_node_id uuid)
  RETURNS TABLE(id uuid, name text, depth integer)
@@ -2092,6 +2242,19 @@ BEGIN
         status_message := v_message;
         RETURN NEXT;
     END LOOP;
+END;
+$function$
+
+
+-- Function: public.set_app_setting
+CREATE OR REPLACE FUNCTION public.set_app_setting(setting_key text, setting_value text)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    UPDATE public.qa_app_settings
+    SET value = setting_value, updated_at = now()
+    WHERE key = setting_key;
 END;
 $function$
 
@@ -4227,7 +4390,13 @@ CREATE INDEX idx_image_categories_is_default ON public.image_categories USING bt
 CREATE UNIQUE INDEX image_categories_code_key ON public.image_categories USING btree (code);
 
 -- Index on public.job_files
+CREATE INDEX idx_job_files_block_id ON public.job_files USING btree (((metadata ->> 'block_id'::text))) WHERE (file_type = 'crop'::text);
+
+-- Index on public.job_files
 CREATE INDEX idx_job_files_job_id ON public.job_files USING btree (job_id);
+
+-- Index on public.job_files
+CREATE INDEX idx_job_files_metadata ON public.job_files USING gin (metadata);
 
 -- Index on public.job_files
 CREATE INDEX idx_job_files_type ON public.job_files USING btree (file_type);
@@ -4270,6 +4439,9 @@ CREATE INDEX idx_node_files_type ON public.node_files USING btree (file_type);
 
 -- Index on public.node_files
 CREATE UNIQUE INDEX node_files_node_id_r2_key_unique ON public.node_files USING btree (node_id, r2_key);
+
+-- Index on public.qa_app_settings
+CREATE INDEX idx_qa_app_settings_key ON public.qa_app_settings USING btree (key);
 
 -- Index on public.qa_artifacts
 CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC);
@@ -4340,6 +4512,15 @@ CREATE INDEX qa_jobs_status_idx ON public.qa_jobs USING btree (status);
 -- Index on public.qa_messages
 CREATE INDEX idx_qa_messages_conversation_created ON public.qa_messages USING btree (conversation_id, created_at);
 
+-- Index on public.qa_model_traces
+CREATE INDEX qa_model_traces_client_id_idx ON public.qa_model_traces USING btree (client_id);
+
+-- Index on public.qa_model_traces
+CREATE INDEX qa_model_traces_conversation_id_idx ON public.qa_model_traces USING btree (conversation_id);
+
+-- Index on public.qa_model_traces
+CREATE INDEX qa_model_traces_ts_idx ON public.qa_model_traces USING btree (ts DESC);
+
 -- Index on public.section_types
 CREATE UNIQUE INDEX section_types_code_key ON public.section_types USING btree (code);
 
@@ -4381,6 +4562,24 @@ CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (clie
 
 -- Index on realtime.messages
 CREATE INDEX messages_inserted_at_topic_index ON ONLY realtime.messages USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+
+-- Index on realtime.messages_2026_01_07
+CREATE INDEX messages_2026_01_07_inserted_at_topic_idx ON realtime.messages_2026_01_07 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+
+-- Index on realtime.messages_2026_01_08
+CREATE INDEX messages_2026_01_08_inserted_at_topic_idx ON realtime.messages_2026_01_08 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+
+-- Index on realtime.messages_2026_01_09
+CREATE INDEX messages_2026_01_09_inserted_at_topic_idx ON realtime.messages_2026_01_09 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+
+-- Index on realtime.messages_2026_01_10
+CREATE INDEX messages_2026_01_10_inserted_at_topic_idx ON realtime.messages_2026_01_10 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+
+-- Index on realtime.messages_2026_01_11
+CREATE INDEX messages_2026_01_11_inserted_at_topic_idx ON realtime.messages_2026_01_11 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+
+-- Index on realtime.messages_2026_01_12
+CREATE INDEX messages_2026_01_12_inserted_at_topic_idx ON realtime.messages_2026_01_12 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
 -- Index on realtime.subscription
 CREATE INDEX ix_realtime_subscription_entity ON realtime.subscription USING btree (entity);

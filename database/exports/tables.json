@@ -2286,6 +2286,13 @@
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
+      },
+      {
+        "name": "metadata",
+        "comment": "Метаданные файла (для кропов: block_id, page_index, coords_norm, block_type)",
+        "default": "'{}'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
       }
     ],
     "constraints": [
@@ -2639,6 +2646,58 @@
         "name": "node_files_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.qa_app_settings": {
+    "schema": "public",
+    "name": "qa_app_settings",
+    "comment": "Global application settings (credentials, defaults, etc.)",
+    "columns": [
+      {
+        "name": "key",
+        "comment": "Setting key (e.g., gemini_api_key, max_history_pairs)",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "value",
+        "comment": "Setting value as text (convert based on value_type)",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "value_type",
+        "comment": "Type hint: string, int, bool, json",
+        "default": "'string'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "description",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_app_settings_pkey",
+        "type": "PRIMARY KEY",
+        "column": "key",
         "foreign_table": null,
         "foreign_column": null,
         "foreign_table_schema": null
@@ -3444,6 +3503,13 @@
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
+      },
+      {
+        "name": "context_catalog",
+        "comment": "JSON string with available context items (crops) for agentic requests",
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
       }
     ],
     "constraints": [
@@ -3542,6 +3608,171 @@
         "name": "qa_messages_role_check",
         "type": "CHECK",
         "column": "role",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "public.qa_model_traces": {
+    "schema": "public",
+    "name": "qa_model_traces",
+    "comment": "Stores model call traces for the Model Inspector",
+    "columns": [
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "ts",
+        "comment": "Timestamp when the request was initiated",
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "conversation_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "client_id",
+        "comment": null,
+        "default": "'default'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "model",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "thinking_level",
+        "comment": null,
+        "default": "'low'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "system_prompt",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "user_text",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "input_files",
+        "comment": "Array of file refs: [{name, uri, mime_type, display_name}]",
+        "default": "'[]'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "response_json",
+        "comment": "Raw JSON response from model",
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "parsed_actions",
+        "comment": "Parsed actions from model response",
+        "default": "'[]'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "latency_ms",
+        "comment": null,
+        "default": null,
+        "data_type": "real",
+        "is_nullable": true
+      },
+      {
+        "name": "errors",
+        "comment": "Array of error messages if any",
+        "default": "'[]'::jsonb",
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "is_final",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "assistant_text",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "full_thoughts",
+        "comment": null,
+        "default": "''::text",
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "input_tokens",
+        "comment": null,
+        "default": null,
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "output_tokens",
+        "comment": null,
+        "default": null,
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "total_tokens",
+        "comment": null,
+        "default": null,
+        "data_type": "integer",
+        "is_nullable": true
+      },
+      {
+        "name": "created_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "qa_model_traces_conversation_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "conversation_id",
+        "foreign_table": "qa_conversations",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "qa_model_traces_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
         "foreign_table": null,
         "foreign_column": null,
         "foreign_table_schema": null
@@ -3886,6 +4117,492 @@
         "name": "user_prompts_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.messages_2026_01_07": {
+    "schema": "realtime",
+    "name": "messages_2026_01_07",
+    "comment": null,
+    "columns": [
+      {
+        "name": "topic",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "extension",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "payload",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "event",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "private",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "inserted_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "messages_2026_01_07_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "messages_2026_01_07_pkey",
+        "type": "PRIMARY KEY",
+        "column": "inserted_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.messages_2026_01_08": {
+    "schema": "realtime",
+    "name": "messages_2026_01_08",
+    "comment": null,
+    "columns": [
+      {
+        "name": "topic",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "extension",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "payload",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "event",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "private",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "inserted_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "messages_2026_01_08_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "messages_2026_01_08_pkey",
+        "type": "PRIMARY KEY",
+        "column": "inserted_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.messages_2026_01_09": {
+    "schema": "realtime",
+    "name": "messages_2026_01_09",
+    "comment": null,
+    "columns": [
+      {
+        "name": "topic",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "extension",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "payload",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "event",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "private",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "inserted_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "messages_2026_01_09_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "messages_2026_01_09_pkey",
+        "type": "PRIMARY KEY",
+        "column": "inserted_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.messages_2026_01_10": {
+    "schema": "realtime",
+    "name": "messages_2026_01_10",
+    "comment": null,
+    "columns": [
+      {
+        "name": "topic",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "extension",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "payload",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "event",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "private",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "inserted_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "messages_2026_01_10_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "messages_2026_01_10_pkey",
+        "type": "PRIMARY KEY",
+        "column": "inserted_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.messages_2026_01_11": {
+    "schema": "realtime",
+    "name": "messages_2026_01_11",
+    "comment": null,
+    "columns": [
+      {
+        "name": "topic",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "extension",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "payload",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "event",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "private",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "inserted_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "messages_2026_01_11_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "messages_2026_01_11_pkey",
+        "type": "PRIMARY KEY",
+        "column": "inserted_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.messages_2026_01_12": {
+    "schema": "realtime",
+    "name": "messages_2026_01_12",
+    "comment": null,
+    "columns": [
+      {
+        "name": "topic",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "extension",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "payload",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "event",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "private",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "inserted_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "messages_2026_01_12_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "messages_2026_01_12_pkey",
+        "type": "PRIMARY KEY",
+        "column": "inserted_at",
         "foreign_table": null,
         "foreign_column": null,
         "foreign_table_schema": null

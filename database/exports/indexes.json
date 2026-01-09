@@ -463,6 +463,14 @@
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX image_categories_code_key ON public.image_categories USING btree (code)"
   },
+  "public.job_files.idx_job_files_block_id": {
+    "schema": "public",
+    "name": "idx_job_files_block_id",
+    "table_name": "job_files",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_job_files_block_id ON public.job_files USING btree (((metadata ->> 'block_id'::text))) WHERE (file_type = 'crop'::text)"
+  },
   "public.job_files.idx_job_files_job_id": {
     "schema": "public",
     "name": "idx_job_files_job_id",
@@ -470,6 +478,14 @@
     "is_unique": false,
     "is_primary": false,
     "sql": "CREATE INDEX idx_job_files_job_id ON public.job_files USING btree (job_id)"
+  },
+  "public.job_files.idx_job_files_metadata": {
+    "schema": "public",
+    "name": "idx_job_files_metadata",
+    "table_name": "job_files",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_job_files_metadata ON public.job_files USING gin (metadata)"
   },
   "public.job_files.idx_job_files_type": {
     "schema": "public",
@@ -582,6 +598,14 @@
     "is_unique": true,
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX node_files_node_id_r2_key_unique ON public.node_files USING btree (node_id, r2_key)"
+  },
+  "public.qa_app_settings.idx_qa_app_settings_key": {
+    "schema": "public",
+    "name": "idx_qa_app_settings_key",
+    "table_name": "qa_app_settings",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_qa_app_settings_key ON public.qa_app_settings USING btree (key)"
   },
   "public.qa_artifacts.idx_qa_artifacts_conversation_created": {
     "schema": "public",
@@ -767,6 +791,30 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_qa_messages_conversation_created ON public.qa_messages USING btree (conversation_id, created_at)"
   },
+  "public.qa_model_traces.qa_model_traces_client_id_idx": {
+    "schema": "public",
+    "name": "qa_model_traces_client_id_idx",
+    "table_name": "qa_model_traces",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX qa_model_traces_client_id_idx ON public.qa_model_traces USING btree (client_id)"
+  },
+  "public.qa_model_traces.qa_model_traces_conversation_id_idx": {
+    "schema": "public",
+    "name": "qa_model_traces_conversation_id_idx",
+    "table_name": "qa_model_traces",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX qa_model_traces_conversation_id_idx ON public.qa_model_traces USING btree (conversation_id)"
+  },
+  "public.qa_model_traces.qa_model_traces_ts_idx": {
+    "schema": "public",
+    "name": "qa_model_traces_ts_idx",
+    "table_name": "qa_model_traces",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX qa_model_traces_ts_idx ON public.qa_model_traces USING btree (ts DESC)"
+  },
   "public.section_types.section_types_code_key": {
     "schema": "public",
     "name": "section_types_code_key",
@@ -878,6 +926,54 @@
     "is_unique": false,
     "is_primary": false,
     "sql": "CREATE INDEX messages_inserted_at_topic_index ON ONLY realtime.messages USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+  },
+  "realtime.messages_2026_01_07.messages_2026_01_07_inserted_at_topic_idx": {
+    "schema": "realtime",
+    "name": "messages_2026_01_07_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_07",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX messages_2026_01_07_inserted_at_topic_idx ON realtime.messages_2026_01_07 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+  },
+  "realtime.messages_2026_01_08.messages_2026_01_08_inserted_at_topic_idx": {
+    "schema": "realtime",
+    "name": "messages_2026_01_08_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_08",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX messages_2026_01_08_inserted_at_topic_idx ON realtime.messages_2026_01_08 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+  },
+  "realtime.messages_2026_01_09.messages_2026_01_09_inserted_at_topic_idx": {
+    "schema": "realtime",
+    "name": "messages_2026_01_09_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_09",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX messages_2026_01_09_inserted_at_topic_idx ON realtime.messages_2026_01_09 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+  },
+  "realtime.messages_2026_01_10.messages_2026_01_10_inserted_at_topic_idx": {
+    "schema": "realtime",
+    "name": "messages_2026_01_10_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_10",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX messages_2026_01_10_inserted_at_topic_idx ON realtime.messages_2026_01_10 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+  },
+  "realtime.messages_2026_01_11.messages_2026_01_11_inserted_at_topic_idx": {
+    "schema": "realtime",
+    "name": "messages_2026_01_11_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_11",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX messages_2026_01_11_inserted_at_topic_idx ON realtime.messages_2026_01_11 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+  },
+  "realtime.messages_2026_01_12.messages_2026_01_12_inserted_at_topic_idx": {
+    "schema": "realtime",
+    "name": "messages_2026_01_12_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_12",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX messages_2026_01_12_inserted_at_topic_idx ON realtime.messages_2026_01_12 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
   "realtime.subscription.ix_realtime_subscription_entity": {
     "schema": "realtime",
