@@ -380,6 +380,7 @@ CREATE TABLE node_files (
 | `result_json` | result.json — JSON результат OCR |
 | `result_md` | document.md — Markdown результат |
 | `ocr_html` | ocr_result.html — HTML результат |
+| `qa_manifest` | qa_manifest.json — манифест для Q&A приложения |
 | `crop` | Кроп блока (PDF) |
 | `crops_folder` | Папка с кропами |
 

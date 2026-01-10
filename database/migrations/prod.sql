@@ -483,7 +483,7 @@ CREATE TABLE IF NOT EXISTS public.node_files (
     CONSTRAINT node_files_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.node_files IS 'Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)';
-COMMENT ON COLUMN public.node_files.file_type IS 'Тип файла: pdf, annotation, result_md, result_zip, crop, image, ocr_html, result_json, crops_folder';
+COMMENT ON COLUMN public.node_files.file_type IS 'Тип файла: pdf, annotation, result_md, result_zip, crop, image, ocr_html, result_json, crops_folder, qa_manifest';
 COMMENT ON COLUMN public.node_files.r2_key IS 'Ключ объекта в R2 storage';
 COMMENT ON COLUMN public.node_files.metadata IS 'Метаданные: version, page_index для кропов и т.д.';
 

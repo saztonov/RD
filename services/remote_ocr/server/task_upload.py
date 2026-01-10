@@ -121,6 +121,15 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     else:
         logger.warning(f"document.md не найден для загрузки в R2: {md_path}")
 
+    # qa_manifest.json (для Q&A приложения)
+    qa_manifest_path = work_dir / "qa_manifest.json"
+    if qa_manifest_path.exists():
+        r2_key = f"{r2_prefix}/qa_manifest.json"
+        files_to_upload.append((
+            str(qa_manifest_path), r2_key, "application/json",
+            "qa_manifest", "qa_manifest.json", qa_manifest_path.stat().st_size, None
+        ))
+
     # crops/ (проверяем оба варианта: crops и crops_final)
     # Исключаем блоки-штампы (category_code='stamp')
     for crops_subdir in ["crops", "crops_final"]:

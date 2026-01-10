@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def _delete_old_ocr_entries(node_id: str) -> int:
     """Удалить старые записи OCR результатов из node_files (кроме pdf)."""
     client = get_client()
-    ocr_file_types = ["result_json", "annotation", "ocr_html", "result_md", "crop", "crops_folder"]
+    ocr_file_types = ["result_json", "annotation", "ocr_html", "result_md", "qa_manifest", "crop", "crops_folder"]
 
     try:
         result = client.table("node_files").delete().eq("node_id", node_id).in_(
@@ -160,9 +160,26 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
             metadata={"ocr_run_id": job_id},
         )
         registered += 1
-        logger.info(f"✅ Зарегистрирован document.md в node_files (file_type=result_md)")
+        logger.info(f"Зарегистрирован document.md в node_files (file_type=result_md)")
     else:
-        logger.warning(f"⚠️ document.md не найден для регистрации: {document_md}")
+        logger.warning(f"document.md не найден для регистрации: {document_md}")
+
+    # qa_manifest.json (для Q&A приложения)
+    qa_manifest = work_path / "qa_manifest.json"
+    if qa_manifest.exists():
+        r2_key = f"{job_r2_prefix}/qa_manifest.json"
+        files_info["qa_manifest"] = f"ocr_runs/{job_id}/qa_manifest.json"
+        add_node_file(
+            node_id,
+            "qa_manifest",
+            r2_key,
+            "qa_manifest.json",
+            qa_manifest.stat().st_size,
+            "application/json",
+            metadata={"ocr_run_id": job_id},
+        )
+        registered += 1
+        logger.info(f"Зарегистрирован qa_manifest.json в node_files")
 
     # Собираем все кропы из crops/ и crops_final/
     all_crop_files: List[Path] = []

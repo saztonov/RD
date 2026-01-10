@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from .ocr_result_merger import merge_ocr_results
+from .qa_manifest import generate_qa_manifest
 from .storage import Job, get_node_full_path
 
 logger = logging.getLogger(__name__)
@@ -129,11 +130,24 @@ def generate_results(
     # Верификация и повторное распознавание пропущенных блоков
     if datalab_backend and result_path.exists():
         from .block_verification import verify_and_retry_missing_blocks
-        
+
         try:
             logger.info("Запуск верификации блоков...")
             verify_and_retry_missing_blocks(result_path, pdf_path, work_dir, datalab_backend)
         except Exception as e:
             logger.warning(f"Ошибка верификации блоков: {e}", exc_info=True)
+
+    # Генерация QA манифеста (для Q&A приложения)
+    try:
+        qa_manifest_path = generate_qa_manifest(
+            work_dir=work_dir,
+            r2_prefix=r2_prefix,
+            job_id=str(job.id),
+            node_id=job.node_id,
+        )
+        if qa_manifest_path:
+            logger.info(f"QA manifest сгенерирован: {qa_manifest_path}")
+    except Exception as e:
+        logger.warning(f"Ошибка генерации QA manifest: {e}", exc_info=True)
 
     return r2_prefix
