@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 from .ocr_result_merger import merge_ocr_results
-from .storage import Job, get_node_full_path, get_node_pdf_r2_key
+from .storage import Job, get_node_full_path
 
 logger = logging.getLogger(__name__)
 
@@ -67,30 +67,21 @@ def generate_results(
             Page(page_number=page_idx, width=width, height=height, blocks=page_blocks)
         )
 
-    # Вычисляем r2_prefix
+    # Вычисляем r2_prefix (изолированный для каждой задачи)
     if job.node_id:
-        pdf_r2_key = get_node_pdf_r2_key(job.node_id)
-        if pdf_r2_key:
-            from pathlib import PurePosixPath
-
-            r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
-        else:
-            r2_prefix = f"tree_docs/{job.node_id}"
+        r2_prefix = f"tree_docs/{job.node_id}/ocr_runs/{job.id}"
     else:
         r2_prefix = job.r2_prefix
-
-    # Извлекаем путь для ссылок
-    if r2_prefix.startswith("tree_docs/"):
-        project_name = r2_prefix[len("tree_docs/") :]
-    else:
-        project_name = job.node_id if job.node_id else job.id
 
     # Получаем полный путь из дерева проектов (используется в HTML и JSON)
     if job.node_id:
         full_path = get_node_full_path(job.node_id)
         doc_name = full_path if full_path else pdf_path.name
+        # project_name для HTML генераторов (для ссылок на кропы в HTML)
+        project_name = f"{job.node_id}/ocr_runs/{job.id}"
     else:
         doc_name = pdf_path.name
+        project_name = job.id
 
     # annotation.json (для хранения разметки блоков)
     annotation_path = work_dir / "annotation.json"
@@ -128,7 +119,8 @@ def generate_results(
             annotation_path,
             html_path,
             result_path,
-            project_name=project_name,
+            r2_prefix=r2_prefix,
+            job_id=str(job.id),
             doc_name=doc_name,
         )
     except Exception as e:

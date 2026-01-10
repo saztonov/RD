@@ -13,14 +13,61 @@ from services.remote_ocr.server.node_storage.file_manager import (
     add_node_file,
     get_node_pdf_r2_key,
 )
+from services.remote_ocr.server.storage_client import get_client
 
 logger = logging.getLogger(__name__)
 
 
-def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
+def _delete_old_ocr_entries(node_id: str) -> int:
+    """Удалить старые записи OCR результатов из node_files (кроме pdf)."""
+    client = get_client()
+    ocr_file_types = ["result_json", "annotation", "ocr_html", "result_md", "crop", "crops_folder"]
+
+    try:
+        result = client.table("node_files").delete().eq("node_id", node_id).in_(
+            "file_type", ocr_file_types
+        ).execute()
+        deleted_count = len(result.data) if result.data else 0
+        if deleted_count > 0:
+            logger.info(f"Deleted {deleted_count} old OCR entries for node {node_id}")
+        return deleted_count
+    except Exception as e:
+        logger.warning(f"Failed to delete old OCR entries: {e}")
+        return 0
+
+
+def _write_latest_ocr_run(node_id: str, job_id: str, files_info: Dict[str, str]) -> bool:
+    """Записать latest_ocr_run.json в R2."""
+    try:
+        from services.remote_ocr.server.task_helpers import get_r2_storage
+
+        r2 = get_r2_storage()
+        now = datetime.utcnow().isoformat() + "Z"
+
+        latest_run = {
+            "job_id": job_id,
+            "created_at": now,
+            "files": files_info
+        }
+
+        latest_key = f"tree_docs/{node_id}/latest_ocr_run.json"
+        content = json.dumps(latest_run, ensure_ascii=False, indent=2)
+        r2.upload_text(content, latest_key, content_type="application/json")
+
+        logger.info(f"Written latest_ocr_run.json to {latest_key}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to write latest_ocr_run.json: {e}")
+        return False
+
+
+def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_dir) -> int:
     """Зарегистрировать все OCR результаты в node_files.
 
-    Файлы загружены в папку исходного PDF (parent dir от pdf_r2_key).
+    Файлы загружены в изолированную папку задачи:
+      tree_docs/{node_id}/ocr_runs/{job_id}/
+
+    Удаляет старые записи OCR из node_files и записывает latest_ocr_run.json.
     Кропы сохраняются с метаданными блоков (block_id, page_index, coords, block_type).
     """
     if not node_id:
@@ -29,16 +76,14 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
     work_path = Path(work_dir)
     now = datetime.utcnow().isoformat()
 
-    # Получаем r2_key исходного PDF и используем его родительскую папку
-    pdf_r2_key = get_node_pdf_r2_key(node_id)
-    if pdf_r2_key:
-        tree_prefix = str(PurePosixPath(pdf_r2_key).parent)
-    else:
-        tree_prefix = f"tree_docs/{node_id}"
+    # Изолированная папка для этой задачи
+    job_r2_prefix = f"tree_docs/{node_id}/ocr_runs/{job_id}"
+
+    # Удаляем старые OCR записи из node_files (кроме pdf)
+    _delete_old_ocr_entries(node_id)
 
     registered = 0
-
-    doc_stem = Path(doc_name).stem
+    files_info: Dict[str, str] = {}
 
     # Загружаем annotation.json для получения метаданных блоков
     blocks_by_id: Dict[str, dict] = {}
@@ -53,67 +98,71 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
         except Exception as e:
             logger.warning(f"Failed to load annotation.json for metadata: {e}")
 
-    # result.json -> {doc_stem}_result.json
+    # result.json (упрощённое имя в изолированной папке)
     result_json = work_path / "result.json"
     if result_json.exists():
-        json_filename = f"{doc_stem}_result.json"
+        r2_key = f"{job_r2_prefix}/result.json"
+        files_info["result"] = f"ocr_runs/{job_id}/result.json"
         add_node_file(
             node_id,
             "result_json",
-            f"{tree_prefix}/{json_filename}",
-            json_filename,
+            r2_key,
+            "result.json",
             result_json.stat().st_size,
             "application/json",
+            metadata={"ocr_run_id": job_id},
         )
         registered += 1
 
-    # annotation.json -> {doc_stem}_annotation.json
+    # annotation.json
     if annotation_path.exists():
-        annotation_filename = f"{doc_stem}_annotation.json"
+        r2_key = f"{job_r2_prefix}/annotation.json"
+        files_info["annotation"] = f"ocr_runs/{job_id}/annotation.json"
         add_node_file(
             node_id,
             "annotation",
-            f"{tree_prefix}/{annotation_filename}",
-            annotation_filename,
+            r2_key,
+            "annotation.json",
             annotation_path.stat().st_size,
             "application/json",
+            metadata={"ocr_run_id": job_id},
         )
         registered += 1
 
-    # ocr_result.html -> {doc_stem}_ocr.html
+    # ocr.html
     ocr_html = work_path / "ocr_result.html"
     if ocr_html.exists():
-        ocr_filename = f"{doc_stem}_ocr.html"
+        r2_key = f"{job_r2_prefix}/ocr.html"
+        files_info["ocr_html"] = f"ocr_runs/{job_id}/ocr.html"
         add_node_file(
             node_id,
             "ocr_html",
-            f"{tree_prefix}/{ocr_filename}",
-            ocr_filename,
+            r2_key,
+            "ocr.html",
             ocr_html.stat().st_size,
             "text/html",
+            metadata={"ocr_run_id": job_id},
         )
         registered += 1
 
-    # document.md -> {doc_stem}_document.md (file_type=result_md)
+    # document.md
     document_md = work_path / "document.md"
     if document_md.exists():
-        md_filename = f"{doc_stem}_document.md"
+        r2_key = f"{job_r2_prefix}/document.md"
+        files_info["document_md"] = f"ocr_runs/{job_id}/document.md"
         add_node_file(
             node_id,
             "result_md",
-            f"{tree_prefix}/{md_filename}",
-            md_filename,
+            r2_key,
+            "document.md",
             document_md.stat().st_size,
             "text/markdown",
+            metadata={"ocr_run_id": job_id},
         )
         registered += 1
-        logger.info(
-            f"✅ Зарегистрирован document.md в node_files: {md_filename} (file_type=result_md)"
-        )
+        logger.info(f"✅ Зарегистрирован document.md в node_files (file_type=result_md)")
     else:
-        logger.warning(
-            f"⚠️ document.md не найден для регистрации в node_files: {document_md}"
-        )
+        logger.warning(f"⚠️ document.md не найден для регистрации: {document_md}")
 
     # Собираем все кропы из crops/ и crops_final/
     all_crop_files: List[Path] = []
@@ -128,14 +177,16 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
 
     # Регистрируем папку кропов как сущность
     if all_crop_files:
+        r2_key = f"{job_r2_prefix}/crops/"
+        files_info["crops"] = f"ocr_runs/{job_id}/crops/"
         add_node_file(
             node_id,
             "crops_folder",
-            f"{tree_prefix}/crops/",
+            r2_key,
             "crops",
             0,
             "inode/directory",
-            metadata={"crops_count": len(all_crop_files), "created_at": now},
+            metadata={"crops_count": len(all_crop_files), "created_at": now, "ocr_run_id": job_id},
         )
         registered += 1
 
@@ -147,7 +198,7 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
         add_node_file(
             node_id,
             "crop",
-            f"{tree_prefix}/crops/{crop_file.name}",
+            f"{job_r2_prefix}/crops/{crop_file.name}",
             crop_file.name,
             crop_file.stat().st_size,
             "application/pdf",
@@ -156,12 +207,16 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
                 "page_index": block_data.get("page_index"),
                 "coords_norm": block_data.get("coords_norm"),
                 "block_type": block_data.get("block_type"),
+                "ocr_run_id": job_id,
             },
         )
         registered += 1
 
+    # Записываем latest_ocr_run.json в R2
+    _write_latest_ocr_run(node_id, job_id, files_info)
+
     logger.info(
-        f"Registered {registered} OCR result files for node {node_id} ({len(all_crop_files)} crops)"
+        f"Registered {registered} OCR result files for node {node_id}, job {job_id} ({len(all_crop_files)} crops)"
     )
     return registered
 

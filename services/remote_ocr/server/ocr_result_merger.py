@@ -1,6 +1,7 @@
 """Объединение OCR результатов: annotation.json + ocr_result.html -> result.json"""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -25,19 +26,20 @@ from .ocr_html_parser import build_segments_from_html
 logger = logging.getLogger(__name__)
 
 
-def _build_crop_url(block_id: str, r2_public_url: str, project_name: str) -> str:
-    """Сформировать URL кропа для блока."""
-    return f"{r2_public_url}/tree_docs/{project_name}/crops/{block_id}.pdf"
+def _build_crop_url(block_id: str, r2_public_url: str, r2_prefix: str) -> str:
+    """Сформировать URL кропа для блока используя реальный r2_prefix."""
+    return f"{r2_public_url}/{r2_prefix}/crops/{block_id}.pdf"
 
 
 def merge_ocr_results(
     annotation_path: Path,
     ocr_html_path: Path,
     output_path: Path,
-    project_name: Optional[str] = None,
+    r2_prefix: Optional[str] = None,
     r2_public_url: Optional[str] = None,
     score_cutoff: int = 90,
     doc_name: Optional[str] = None,
+    job_id: Optional[str] = None,
 ) -> bool:
     """
     Объединить annotation.json и ocr_result.html в result.json.
@@ -47,6 +49,11 @@ def merge_ocr_results(
     - ocr_json: распарсенный JSON из ocr_text (для IMAGE блоков)
     - crop_url: ссылка на кроп (для IMAGE блоков)
     - ocr_meta: {method, match_score, marker_text_sample}
+
+    Добавляет метаданные OCR run:
+    - ocr_run_id: ID задачи
+    - annotation_sha256: хеш исходной аннотации
+    - schema_version: версия схемы результата
 
     Returns:
         True если успешно, False при ошибке
@@ -84,6 +91,15 @@ def merge_ocr_results(
         )
 
         result = deepcopy(ann)
+
+        # Добавляем метаданные OCR run
+        if job_id:
+            result["ocr_run_id"] = job_id
+        result["schema_version"] = "1.0"
+        # Вычисляем SHA256 исходной аннотации
+        with open(annotation_path, "rb") as f:
+            result["annotation_sha256"] = hashlib.sha256(f.read()).hexdigest()
+
         missing = []
         matched = 0
 
@@ -115,9 +131,9 @@ def merge_ocr_results(
 
                     # Добавляем ссылку на кроп (кроме штампов)
                     if blk.get("category_code") != "stamp":
-                        if project_name:
+                        if r2_prefix:
                             blk["crop_url"] = _build_crop_url(
-                                bid, r2_public_url, project_name
+                                bid, r2_public_url, r2_prefix
                             )
                         elif blk.get("image_file"):
                             crop_name = Path(blk["image_file"]).name

@@ -63,25 +63,29 @@ async def create_job_handler(
     pdf_needs_upload = False
 
     if node_id:
+        from pathlib import PurePosixPath
+
         pdf_r2_key = get_node_pdf_r2_key(node_id)
         if pdf_r2_key:
-            from pathlib import PurePosixPath
-
             try:
                 s3_check, bucket_check = get_r2_sync_client()
                 s3_check.head_object(Bucket=bucket_check, Key=pdf_r2_key)
             except Exception:
                 _logger.warning(f"PDF not found in R2, will upload: {pdf_r2_key}")
                 pdf_needs_upload = True
-            r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
+            # PDF остаётся в родительской папке node
+            pdf_parent = str(PurePosixPath(pdf_r2_key).parent)
         else:
             node_info = get_node_info(node_id)
             if node_info and node_info.get("parent_id"):
-                r2_prefix = f"tree_docs/{node_info['parent_id']}"
+                pdf_parent = f"tree_docs/{node_info['parent_id']}"
             else:
-                r2_prefix = f"tree_docs/{node_id}"
-            pdf_r2_key = f"{r2_prefix}/{document_name}"
+                pdf_parent = f"tree_docs/{node_id}"
+            pdf_r2_key = f"{pdf_parent}/{document_name}"
             pdf_needs_upload = True
+
+        # r2_prefix теперь изолирован для каждой задачи
+        r2_prefix = f"tree_docs/{node_id}/ocr_runs/{job_id}"
     else:
         r2_prefix = f"ocr_jobs/{job_id}"
 
@@ -108,13 +112,9 @@ async def create_job_handler(
         s3_client, bucket_name = get_r2_sync_client()
 
         if node_id:
-            from pathlib import PurePosixPath
-
-            doc_stem = PurePosixPath(document_name).stem
-
             if pdf_needs_upload:
                 pdf_content = await pdf.read()
-                pdf_key = pdf_r2_key or f"{r2_prefix}/{document_name}"
+                pdf_key = pdf_r2_key or f"{pdf_parent}/{document_name}"
                 s3_client.put_object(
                     Bucket=bucket_name,
                     Key=pdf_key,
@@ -137,10 +137,11 @@ async def create_job_handler(
             else:
                 pdf_key = pdf_r2_key
 
+            # Blocks сохраняются в изолированной папке задачи
             blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode(
                 "utf-8"
             )
-            blocks_key = f"{r2_prefix}/{doc_stem}_annotation.json"
+            blocks_key = f"{r2_prefix}/annotation.json"
             s3_client.put_object(
                 Bucket=bucket_name,
                 Key=blocks_key,
@@ -151,7 +152,7 @@ async def create_job_handler(
                 job.id,
                 "blocks",
                 blocks_key,
-                f"{doc_stem}_annotation.json",
+                "annotation.json",
                 len(blocks_bytes),
             )
             add_job_file(job.id, "pdf", pdf_key, document_name, 0)

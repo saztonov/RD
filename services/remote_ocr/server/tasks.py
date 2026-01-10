@@ -165,8 +165,8 @@ def run_ocr_task(self, job_id: str) -> dict:
         # Регистрация OCR результатов в node_files
         if job.node_id:
             update_job_status(job.id, "processing", progress=0.98, status_message="📝 Регистрация файлов...")
-            registered_count = register_ocr_results_to_node(job.node_id, job.document_name, work_dir)
-            logger.info(f"✅ Зарегистрировано {registered_count} файлов в node_files для node {job.node_id}")
+            registered_count = register_ocr_results_to_node(job.node_id, str(job.id), job.document_name, work_dir)
+            logger.info(f"✅ Зарегистрировано {registered_count} файлов в node_files для node {job.node_id}, job {job.id}")
 
             # Обновляем статус PDF документа
             try:

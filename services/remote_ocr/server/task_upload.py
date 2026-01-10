@@ -58,7 +58,8 @@ def _load_blocks_metadata(work_dir: Path) -> tuple:
 def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str:
     """Загрузить результаты в R2 и записать в БД.
 
-    Если есть node_id - загружаем в папку где лежит PDF (parent dir от pdf_r2_key)
+    Если есть node_id - загружаем в изолированную папку задачи:
+      tree_docs/{node_id}/ocr_runs/{job_id}/
     Иначе - в ocr_jobs/{job_id}/ (обратная совместимость)
 
     Использует batch upload для параллельной загрузки всех файлов.
@@ -69,17 +70,10 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     # Определяем prefix для загрузки (если не передан)
     if r2_prefix is None:
         if job.node_id:
-            pdf_r2_key = get_node_pdf_r2_key(job.node_id)
-            if pdf_r2_key:
-                from pathlib import PurePosixPath
-
-                r2_prefix = str(PurePosixPath(pdf_r2_key).parent)
-            else:
-                r2_prefix = f"tree_docs/{job.node_id}"
+            # Изолированная папка для каждой задачи
+            r2_prefix = f"tree_docs/{job.node_id}/ocr_runs/{job.id}"
         else:
             r2_prefix = job.r2_prefix
-
-    doc_stem = Path(job.document_name).stem
 
     # Загружаем метаданные блоков из annotation.json
     stamp_ids, blocks_by_id = _load_blocks_metadata(work_dir)
@@ -88,45 +82,41 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     # Формат: (local_path, r2_key, content_type, file_type, filename, size, metadata)
     files_to_upload = []
 
-    # annotation.json -> {doc_stem}_annotation.json
+    # annotation.json (упрощённое имя в изолированной папке)
     annotation_path = work_dir / "annotation.json"
     if annotation_path.exists():
         delete_job_files(job.id, ["blocks"])
-        annotation_filename = f"{doc_stem}_annotation.json"
-        r2_key = f"{r2_prefix}/{annotation_filename}"
+        r2_key = f"{r2_prefix}/annotation.json"
         files_to_upload.append((
             str(annotation_path), r2_key, None,
-            "annotation", annotation_filename, annotation_path.stat().st_size, None
+            "annotation", "annotation.json", annotation_path.stat().st_size, None
         ))
 
-    # ocr_result.html -> {doc_stem}_ocr.html
+    # ocr.html (упрощённое имя)
     html_path = work_dir / "ocr_result.html"
     if html_path.exists():
-        html_filename = f"{doc_stem}_ocr.html"
-        r2_key = f"{r2_prefix}/{html_filename}"
+        r2_key = f"{r2_prefix}/ocr.html"
         files_to_upload.append((
             str(html_path), r2_key, None,
-            "ocr_html", html_filename, html_path.stat().st_size, None
+            "ocr_html", "ocr.html", html_path.stat().st_size, None
         ))
 
-    # result.json -> {doc_stem}_result.json
+    # result.json (упрощённое имя)
     result_path = work_dir / "result.json"
     if result_path.exists():
-        result_filename = f"{doc_stem}_result.json"
-        r2_key = f"{r2_prefix}/{result_filename}"
+        r2_key = f"{r2_prefix}/result.json"
         files_to_upload.append((
             str(result_path), r2_key, None,
-            "result", result_filename, result_path.stat().st_size, None
+            "result", "result.json", result_path.stat().st_size, None
         ))
 
-    # document.md -> {doc_stem}_document.md
+    # document.md (упрощённое имя)
     md_path = work_dir / "document.md"
     if md_path.exists():
-        md_filename = f"{doc_stem}_document.md"
-        r2_key = f"{r2_prefix}/{md_filename}"
+        r2_key = f"{r2_prefix}/document.md"
         files_to_upload.append((
             str(md_path), r2_key, None,
-            "result_md", md_filename, md_path.stat().st_size, None
+            "result_md", "document.md", md_path.stat().st_size, None
         ))
     else:
         logger.warning(f"document.md не найден для загрузки в R2: {md_path}")
