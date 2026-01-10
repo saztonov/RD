@@ -365,3 +365,234 @@ def get_page_dimensions_streaming(pdf_path: str) -> Dict[int, Tuple[int, int]]:
             if d:
                 dims[i] = d
     return dims
+
+
+def calculate_adaptive_dpi(
+    clip_width_pt: float,
+    clip_height_pt: float,
+    target_dpi: int = 300,
+    max_dimension: int = 4000,
+    min_dpi: int = 150,
+) -> Tuple[int, int, int]:
+    """
+    Рассчитать адаптивный DPI для ограничения размера выходного изображения.
+
+    Args:
+        clip_width_pt: Ширина области в PDF points
+        clip_height_pt: Высота области в PDF points
+        target_dpi: Целевой DPI (по умолчанию 300)
+        max_dimension: Максимальный размер по длинной стороне в пикселях
+        min_dpi: Минимальный DPI (для сохранения мелкого шрифта)
+
+    Returns:
+        (effective_dpi, output_width, output_height)
+    """
+    scale = target_dpi / 72.0
+    width_px = int(clip_width_pt * scale)
+    height_px = int(clip_height_pt * scale)
+
+    max_side = max(width_px, height_px)
+    if max_side <= max_dimension:
+        return target_dpi, width_px, height_px
+
+    # Уменьшаем DPI чтобы вписаться в max_dimension
+    scale_factor = max_dimension / max_side
+    effective_dpi = max(min_dpi, int(target_dpi * scale_factor))
+
+    new_scale = effective_dpi / 72.0
+    output_width = int(clip_width_pt * new_scale)
+    output_height = int(clip_height_pt * new_scale)
+
+    return effective_dpi, output_width, output_height
+
+
+def apply_ocr_preprocessing(
+    img: Image.Image,
+    contrast: float = 1.3,
+    to_grayscale: bool = True,
+) -> Image.Image:
+    """
+    Применить OCR-препроцессинг к изображению.
+
+    Args:
+        img: Исходное изображение (PIL.Image)
+        contrast: Коэффициент усиления контраста (1.0 = без изменений)
+        to_grayscale: Конвертировать в grayscale
+
+    Returns:
+        Обработанное изображение
+    """
+    from PIL import ImageEnhance
+
+    result = img
+
+    # Конвертация в grayscale
+    if to_grayscale and img.mode != "L":
+        result = img.convert("L")
+
+    # Усиление контраста
+    if contrast != 1.0:
+        enhancer = ImageEnhance.Contrast(result)
+        result = enhancer.enhance(contrast)
+
+    return result
+
+
+def render_block_crop(
+    pdf_path: str,
+    page_index: int,
+    coords_norm: Tuple[float, float, float, float],
+    target_dpi: int = 300,
+    max_dimension: int = 4000,
+    min_dpi: int = 150,
+    padding_pt: float = 2.0,
+    ocr_prep: Optional[str] = None,
+    ocr_prep_contrast: float = 1.3,
+    polygon_points: Optional[List[Tuple[float, float]]] = None,
+    polygon_coords_px: Optional[Tuple[int, int, int, int]] = None,
+) -> Optional[Image.Image]:
+    """
+    Рендерить кроп блока напрямую через clip (без рендеринга всей страницы).
+
+    Args:
+        pdf_path: Путь к PDF файлу
+        page_index: Индекс страницы (0-based)
+        coords_norm: Нормализованные координаты (x1, y1, x2, y2) в диапазоне 0..1
+        target_dpi: Целевой DPI (будет уменьшен если кроп превышает max_dimension)
+        max_dimension: Максимальный размер в пикселях по длинной стороне
+        min_dpi: Минимальный DPI (для сохранения мелкого шрифта)
+        padding_pt: Отступ в PDF points
+        ocr_prep: Режим OCR-препроцессинга ("text", "table") или None
+        ocr_prep_contrast: Коэффициент контраста для OCR-prep
+        polygon_points: Точки полигона для маски (нормализованные к bbox)
+        polygon_coords_px: Оригинальные пиксельные координаты полигона
+
+    Returns:
+        PIL.Image.Image кроп или None при ошибке
+    """
+    try:
+        doc = fitz.open(pdf_path)
+        if page_index < 0 or page_index >= len(doc):
+            doc.close()
+            return None
+
+        page = doc[page_index]
+        rect = page.rect
+        rotation = page.rotation
+
+        nx1, ny1, nx2, ny2 = coords_norm
+
+        # Конвертируем coords_norm в PDF points (паттерн из crop_block_to_pdf)
+        x1_pt = max(rect.x0, rect.x0 + nx1 * rect.width - padding_pt)
+        y1_pt = max(rect.y0, rect.y0 + ny1 * rect.height - padding_pt)
+        x2_pt = min(rect.x1, rect.x0 + nx2 * rect.width + padding_pt)
+        y2_pt = min(rect.y1, rect.y0 + ny2 * rect.height + padding_pt)
+
+        clip_rect = fitz.Rect(x1_pt, y1_pt, x2_pt, y2_pt)
+
+        # Обработка поворота страницы
+        if rotation != 0:
+            clip_rect = clip_rect * page.derotation_matrix
+            clip_rect.normalize()
+
+        clip_width_pt = clip_rect.width
+        clip_height_pt = clip_rect.height
+
+        # Адаптивный DPI
+        effective_dpi, output_width, output_height = calculate_adaptive_dpi(
+            clip_width_pt, clip_height_pt, target_dpi, max_dimension, min_dpi
+        )
+
+        if effective_dpi != target_dpi:
+            logger.info(
+                f"Adaptive DPI: {target_dpi} -> {effective_dpi} "
+                f"(clip {clip_width_pt:.0f}x{clip_height_pt:.0f}pt -> {output_width}x{output_height}px)"
+            )
+
+        # Рендерим только clip область
+        zoom = effective_dpi / 72.0
+        mat = fitz.Matrix(zoom, zoom)
+
+        if rotation != 0:
+            mat = mat * page.derotation_matrix
+
+        pix = page.get_pixmap(matrix=mat, clip=clip_rect)
+
+        # Создаём PIL Image
+        if pix.alpha:
+            mode = "RGBA"
+        else:
+            mode = "RGB"
+
+        img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+        pix = None
+        doc.close()
+
+        # Применяем маску полигона если нужно
+        if polygon_points and polygon_coords_px:
+            img = _apply_polygon_mask_to_crop(
+                img, polygon_points, polygon_coords_px, (img.width, img.height)
+            )
+
+        # Применяем OCR-препроцессинг если нужно
+        if ocr_prep in ("text", "table"):
+            img = apply_ocr_preprocessing(
+                img, contrast=ocr_prep_contrast, to_grayscale=True
+            )
+
+        return img
+
+    except Exception as e:
+        logger.error(f"render_block_crop error: {e}")
+        return None
+
+
+def _apply_polygon_mask_to_crop(
+    img: Image.Image,
+    polygon_points: List[Tuple[float, float]],
+    polygon_coords_px: Tuple[int, int, int, int],
+    crop_size: Tuple[int, int],
+) -> Image.Image:
+    """
+    Применить маску полигона к кропу, заполняя область вне полигона белым.
+
+    Args:
+        img: Исходное изображение
+        polygon_points: Точки полигона в оригинальных пиксельных координатах
+        polygon_coords_px: Bounding box полигона (x1, y1, x2, y2)
+        crop_size: Размер кропа (width, height)
+
+    Returns:
+        Изображение с маской
+    """
+    orig_x1, orig_y1, orig_x2, orig_y2 = polygon_coords_px
+    bbox_w = orig_x2 - orig_x1
+    bbox_h = orig_y2 - orig_y1
+    crop_w, crop_h = crop_size
+
+    if bbox_w == 0 or bbox_h == 0:
+        return img
+
+    # Нормализуем точки полигона к координатам кропа
+    adjusted_points = []
+    for px, py in polygon_points:
+        norm_px = (px - orig_x1) / bbox_w
+        norm_py = (py - orig_y1) / bbox_h
+        adjusted_points.append((norm_px * crop_w, norm_py * crop_h))
+
+    # Создаём и применяем маску
+    mask = Image.new("L", (crop_w, crop_h), 0)
+    ImageDraw.Draw(mask).polygon(adjusted_points, fill=255)
+
+    # Конвертируем в RGB если нужно
+    if img.mode == "L":
+        result = Image.new("L", (crop_w, crop_h), 255)
+    else:
+        if img.mode == "RGBA":
+            img = img.convert("RGB")
+        result = Image.new("RGB", (crop_w, crop_h), (255, 255, 255))
+
+    result.paste(img, mask=mask)
+    mask.close()
+
+    return result

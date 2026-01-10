@@ -186,6 +186,28 @@ class Settings:
         )
     )
 
+    # ===== CLIP-РЕНДЕРИНГ (для больших листов A0/A1) =====
+    max_crop_dimension: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "max_crop_dimension", "MAX_CROP_DIMENSION", 4000, int
+        )
+    )
+    min_crop_dpi: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "min_crop_dpi", "MIN_CROP_DPI", 150, int
+        )
+    )
+    ocr_prep_enabled: bool = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "ocr_prep_enabled", "OCR_PREP_ENABLED", False, bool
+        )
+    )
+    ocr_prep_contrast: float = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "ocr_prep_contrast", "OCR_PREP_CONTRAST", 1.3, float
+        )
+    )
+
     # ===== ОЧЕРЕДЬ =====
     poll_interval: float = field(
         default_factory=lambda: _get_setting(

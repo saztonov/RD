@@ -21,6 +21,7 @@ from .memory_utils import force_gc, log_memory, log_memory_delta
 from .pdf_streaming_core import (
     StreamingPDFProcessor,
     merge_crops_vertically,
+    render_block_crop,
     split_large_crop,
 )
 from .settings import settings
@@ -44,9 +45,9 @@ def pass1_prepare_crops(
     PASS 1: Вырезать все кропы и сохранить на диск.
 
     Группирует TEXT/TABLE блоки в strips, IMAGE блоки сохраняет отдельно.
-    Память освобождается после каждой страницы.
+    Использует clip-рендеринг для эффективной обработки больших листов (A0/A1).
     """
-    from rd_core.models import BlockType
+    from rd_core.models import BlockType, ShapeType
 
     os.makedirs(crops_dir, exist_ok=True)
     strips_dir = os.path.join(crops_dir, "strips")
@@ -83,7 +84,24 @@ def pass1_prepare_crops(
 
             for block in page_blocks:
                 try:
-                    crop = processor.crop_block_image(block, padding)
+                    # Используем clip-рендеринг для эффективной обработки больших листов
+                    ocr_prep_mode = None
+                    if settings.ocr_prep_enabled and block.block_type != BlockType.IMAGE:
+                        ocr_prep_mode = "text"
+
+                    crop = render_block_crop(
+                        pdf_path=pdf_path,
+                        page_index=block.page_index,
+                        coords_norm=block.coords_norm,
+                        target_dpi=settings.pdf_render_dpi,
+                        max_dimension=settings.max_crop_dimension,
+                        min_dpi=settings.min_crop_dpi,
+                        padding_pt=padding,
+                        ocr_prep=ocr_prep_mode,
+                        ocr_prep_contrast=settings.ocr_prep_contrast,
+                        polygon_points=block.polygon_points if block.shape_type == ShapeType.POLYGON else None,
+                        polygon_coords_px=block.coords_px if block.shape_type == ShapeType.POLYGON else None,
+                    )
                     if not crop:
                         continue
 
