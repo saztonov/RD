@@ -156,3 +156,4 @@ database/dumps/
 *.sql.gz
 *.dump
 nul
+.claude/settings.local.json
