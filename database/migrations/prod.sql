@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-09T23:46:57.404968
+-- Generated: 2026-01-10T13:19:11.939141
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -415,6 +415,7 @@ CREATE TABLE IF NOT EXISTS public.job_files (
     CONSTRAINT job_files_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.job_files IS 'Файлы связанные с OCR задачами';
+COMMENT ON COLUMN public.job_files.job_id IS 'Ссылка на задачу (каскадное удаление при удалении job)';
 COMMENT ON COLUMN public.job_files.metadata IS 'Метаданные файла (для кропов: block_id, page_index, coords_norm, block_type)';
 
 -- Table: public.job_settings
@@ -606,11 +607,13 @@ CREATE TABLE IF NOT EXISTS public.qa_gemini_files (
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     expires_at timestamp with time zone,
     token_count bigint,
+    crop_index jsonb,
     CONSTRAINT qa_gemini_files_gemini_name_key UNIQUE (gemini_name),
     CONSTRAINT qa_gemini_files_pkey PRIMARY KEY (id),
     CONSTRAINT qa_gemini_files_source_node_file_id_fkey FOREIGN KEY (source_node_file_id) REFERENCES public.node_files(id)
 );
 COMMENT ON COLUMN public.qa_gemini_files.token_count IS 'Token count calculated by tiktoken';
+COMMENT ON COLUMN public.qa_gemini_files.crop_index IS 'JSON array: [{context_item_id, crop_id, r2_key, r2_url}] для agentic loop';
 
 -- Table: public.qa_jobs
 -- Description: Tracks async LLM job processing for client-server architecture
@@ -852,6 +855,20 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_12 (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     CONSTRAINT messages_2026_01_12_pkey PRIMARY KEY (id),
     CONSTRAINT messages_2026_01_12_pkey PRIMARY KEY (inserted_at)
+);
+
+-- Table: realtime.messages_2026_01_13
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_13 (
+    topic text NOT NULL,
+    extension text NOT NULL,
+    payload jsonb,
+    event text,
+    private boolean DEFAULT false,
+    updated_at timestamp without time zone NOT NULL DEFAULT now(),
+    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT messages_2026_01_13_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_13_pkey PRIMARY KEY (inserted_at)
 );
 
 -- Table: realtime.schema_migrations
@@ -1187,7 +1204,7 @@ $function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea)
+CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1195,7 +1212,7 @@ AS '$libdir/pgcrypto', $function$pg_armor$function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
+CREATE OR REPLACE FUNCTION extensions.armor(bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1442,7 +1459,7 @@ $function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1450,7 +1467,7 @@ AS '$libdir/pgcrypto', $function$pg_hmac$function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1498,7 +1515,7 @@ AS '$libdir/pgcrypto', $function$pgp_key_id_w$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1506,7 +1523,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1530,14 +1547,6 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
- RETURNS bytea
- LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
-
-
--- Function: extensions.pgp_pub_decrypt_bytea
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
@@ -1545,12 +1554,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
--- Function: extensions.pgp_pub_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
+-- Function: extensions.pgp_pub_decrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
  RETURNS bytea
  LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_encrypt
@@ -1561,12 +1570,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
--- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
+-- Function: extensions.pgp_pub_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
@@ -1577,8 +1586,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
+-- Function: extensions.pgp_pub_encrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
+
+
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1586,7 +1603,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1610,14 +1627,6 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
- RETURNS bytea
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
-
-
--- Function: extensions.pgp_sym_encrypt
 CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)
  RETURNS bytea
  LANGUAGE c
@@ -1625,8 +1634,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)
 AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
 
 
+-- Function: extensions.pgp_sym_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
+
+
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1634,7 +1651,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -2080,59 +2097,23 @@ CREATE OR REPLACE FUNCTION public.qa_get_descendants(p_client_id text, p_root_id
  LANGUAGE plpgsql
  STABLE
 AS $function$
-BEGIN
-    RETURN QUERY
-    WITH RECURSIVE descendants AS (
-        -- Base: root nodes
-        SELECT 
-            t.id,
-            t.parent_id,
-            t.node_type,
-            t.name,
-            t.code,
-            t.version,
-            t.status,
-            t.attributes,
-            t.sort_order,
-            0 AS depth
-        FROM public.tree_nodes t
-        WHERE t.client_id = p_client_id
-          AND t.id = ANY(p_root_ids)
-        
-        UNION ALL
-        
-        -- Recursive: children
-        SELECT 
-            t.id,
-            t.parent_id,
-            t.node_type,
-            t.name,
-            t.code,
-            t.version,
-            t.status,
-            t.attributes,
-            t.sort_order,
-            d.depth + 1
-        FROM public.tree_nodes t
-        INNER JOIN descendants d ON t.parent_id = d.id
-        WHERE t.client_id = p_client_id
-    )
-    SELECT 
-        d.id,
-        d.parent_id,
-        d.node_type,
-        d.name,
-        d.code,
-        d.version,
-        d.status,
-        d.attributes,
-        d.sort_order,
-        d.depth
-    FROM descendants d
-    WHERE (p_node_types IS NULL OR d.node_type = ANY(p_node_types))
-    ORDER BY d.depth, d.sort_order, d.name;
-END;
-$function$
+    BEGIN
+        RETURN QUERY
+        WITH RECURSIVE descendants AS (
+            SELECT t.id, t.parent_id, t.node_type, t.name, t.code, t.version, t.status, t.attributes, t.sort_order, 0 AS depth
+            FROM public.tree_nodes t
+            WHERE t.id = ANY(p_root_ids)
+            UNION ALL
+            SELECT t.id, t.parent_id, t.node_type, t.name, t.code, t.version, t.status, t.attributes, t.sort_order, d.depth + 1
+            FROM public.tree_nodes t
+            INNER JOIN descendants d ON t.parent_id = d.id
+        )
+        SELECT d.id, d.parent_id, d.node_type, d.name, d.code, d.version, d.status, d.attributes, d.sort_order, d.depth
+        FROM descendants d
+        WHERE (p_node_types IS NULL OR d.node_type = ANY(p_node_types))
+        ORDER BY d.depth, d.sort_order, d.name;
+    END;
+  $function$
 
 
 -- Function: public.qa_list_conversations_with_stats
@@ -4580,6 +4561,9 @@ CREATE INDEX messages_2026_01_11_inserted_at_topic_idx ON realtime.messages_2026
 
 -- Index on realtime.messages_2026_01_12
 CREATE INDEX messages_2026_01_12_inserted_at_topic_idx ON realtime.messages_2026_01_12 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+
+-- Index on realtime.messages_2026_01_13
+CREATE INDEX messages_2026_01_13_inserted_at_topic_idx ON realtime.messages_2026_01_13 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
 -- Index on realtime.subscription
 CREATE INDEX ix_realtime_subscription_entity ON realtime.subscription USING btree (entity);

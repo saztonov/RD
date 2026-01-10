@@ -2247,7 +2247,7 @@
       },
       {
         "name": "job_id",
-        "comment": null,
+        "comment": "Ссылка на задачу (каскадное удаление при удалении job)",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
@@ -3308,6 +3308,13 @@
         "comment": "Token count calculated by tiktoken",
         "default": null,
         "data_type": "bigint",
+        "is_nullable": true
+      },
+      {
+        "name": "crop_index",
+        "comment": "JSON array: [{context_item_id, crop_id, r2_key, r2_url}] для agentic loop",
+        "default": null,
+        "data_type": "jsonb",
         "is_nullable": true
       }
     ],
@@ -4601,6 +4608,87 @@
       },
       {
         "name": "messages_2026_01_12_pkey",
+        "type": "PRIMARY KEY",
+        "column": "inserted_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.messages_2026_01_13": {
+    "schema": "realtime",
+    "name": "messages_2026_01_13",
+    "comment": null,
+    "columns": [
+      {
+        "name": "topic",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "extension",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "payload",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "event",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "private",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "inserted_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "messages_2026_01_13_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "messages_2026_01_13_pkey",
         "type": "PRIMARY KEY",
         "column": "inserted_at",
         "foreign_table": null,

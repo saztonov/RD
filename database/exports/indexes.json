@@ -975,6 +975,14 @@
     "is_primary": false,
     "sql": "CREATE INDEX messages_2026_01_12_inserted_at_topic_idx ON realtime.messages_2026_01_12 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
+  "realtime.messages_2026_01_13.messages_2026_01_13_inserted_at_topic_idx": {
+    "schema": "realtime",
+    "name": "messages_2026_01_13_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_13",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX messages_2026_01_13_inserted_at_topic_idx ON realtime.messages_2026_01_13 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+  },
   "realtime.subscription.ix_realtime_subscription_entity": {
     "schema": "realtime",
     "name": "ix_realtime_subscription_entity",
