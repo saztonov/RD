@@ -29,6 +29,7 @@ from .storage_jobs import (
     is_job_paused,
     list_jobs,
     list_jobs_changed_since,
+    log_db_metrics,
     pause_job,
     reset_job_for_restart,
     resume_job,

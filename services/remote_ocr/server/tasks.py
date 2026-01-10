@@ -12,7 +12,7 @@ from .celery_app import celery_app
 from .memory_utils import force_gc, log_memory, log_memory_delta
 from .rate_limiter import get_datalab_limiter
 from .settings import settings
-from .storage import Job, get_job, register_ocr_results_to_node, update_job_status
+from .storage import Job, get_job, log_db_metrics, register_ocr_results_to_node, update_job_status
 from .task_helpers import check_paused, create_empty_result, download_job_files
 from .task_ocr_twopass import run_two_pass_ocr
 from .task_results import generate_results
@@ -199,6 +199,9 @@ def run_ocr_task(self, job_id: str) -> dict:
 
         # Очищаем кэш размеров страниц
         clear_page_size_cache()
+
+        # Логирование метрик DB calls
+        log_db_metrics(job_id)
 
         # Финальная сборка мусора
         force_gc("финальная")

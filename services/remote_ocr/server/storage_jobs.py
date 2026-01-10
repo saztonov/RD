@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from datetime import datetime
 from typing import Any, List, Optional
@@ -16,6 +17,21 @@ logger = logging.getLogger(__name__)
 # Redis кеш для list_jobs() - TTL 5 секунд
 JOBS_CACHE_TTL = 5
 JOBS_CACHE_PREFIX = "jobs:list:"
+
+# Rate limiting для update_job_status
+PROGRESS_UPDATE_INTERVAL = 3.0  # секунд
+PROGRESS_UPDATE_THRESHOLD = 0.05  # 5%
+LAST_UPDATE_KEY = "job:{job_id}:last_update"
+
+# Redis кеш для is_job_paused
+PAUSED_CACHE_KEY = "job:{job_id}:paused"
+PAUSED_CACHE_TTL = 60  # секунд
+
+# Метрики DB calls
+DB_CALLS_KEY = "job:{job_id}:db_calls"
+
+# Финальные статусы (всегда писать в БД)
+FINAL_STATUSES = {"done", "error", "paused"}
 
 
 def _get_jobs_cache_key(document_id: Optional[str]) -> str:
@@ -35,6 +51,69 @@ def _invalidate_jobs_cache() -> None:
             logger.debug(f"Invalidated {len(keys)} jobs cache keys")
     except Exception as e:
         logger.warning(f"Failed to invalidate jobs cache: {e}")
+
+
+def _increment_db_calls(job_id: str, count: int = 1) -> None:
+    """Инкремент счётчика DB calls для job"""
+    try:
+        redis_client = _get_redis_client()
+        redis_client.incrby(DB_CALLS_KEY.format(job_id=job_id), count)
+    except Exception:
+        pass
+
+
+def log_db_metrics(job_id: str) -> None:
+    """Логировать метрики DB calls и очистить счётчик"""
+    try:
+        redis_client = _get_redis_client()
+        key = DB_CALLS_KEY.format(job_id=job_id)
+        count = redis_client.get(key) or 0
+        logger.info(f"Job {job_id}: {count} DB calls total")
+        redis_client.delete(key)
+        # Очистка связанных ключей
+        redis_client.delete(LAST_UPDATE_KEY.format(job_id=job_id))
+        redis_client.delete(PAUSED_CACHE_KEY.format(job_id=job_id))
+    except Exception as e:
+        logger.debug(f"Failed to log DB metrics: {e}")
+
+
+def _should_update_progress(job_id: str, new_progress: float, status: str) -> bool:
+    """Проверить, нужно ли обновлять прогресс в БД (rate limiting)"""
+    # Финальные статусы - всегда пишем
+    if status in FINAL_STATUSES:
+        return True
+
+    try:
+        redis_client = _get_redis_client()
+        key = LAST_UPDATE_KEY.format(job_id=job_id)
+        cached = redis_client.get(key)
+
+        if cached:
+            data = json.loads(cached)
+            last_time = data.get("time", 0)
+            last_progress = data.get("progress", 0)
+
+            time_delta = time.time() - last_time
+            progress_delta = abs(new_progress - last_progress)
+
+            # Пропустить если прошло мало времени И дельта мала
+            if time_delta < PROGRESS_UPDATE_INTERVAL and progress_delta < PROGRESS_UPDATE_THRESHOLD:
+                return False
+
+        return True
+    except Exception:
+        return True  # При ошибке - писать
+
+
+def _update_progress_cache(job_id: str, progress: float) -> None:
+    """Обновить кеш последнего обновления прогресса"""
+    try:
+        redis_client = _get_redis_client()
+        key = LAST_UPDATE_KEY.format(job_id=job_id)
+        data = json.dumps({"time": time.time(), "progress": progress})
+        redis_client.setex(key, 300, data)  # TTL 5 минут
+    except Exception:
+        pass
 
 
 def create_job(
@@ -164,8 +243,14 @@ def update_job_status(
     error_message: Optional[str] = None,
     r2_prefix: Optional[str] = None,
     status_message: Optional[str] = None,
+    force: bool = False,
 ) -> None:
-    """Обновить статус задачи"""
+    """Обновить статус задачи (с rate limiting для progress)"""
+    # Rate limiting: проверить нужно ли писать
+    if not force and progress is not None:
+        if not _should_update_progress(job_id, progress, status):
+            return  # Пропустить обновление
+
     now = datetime.utcnow().isoformat()
 
     updates: dict[str, Any] = {"status": status, "updated_at": now}
@@ -181,7 +266,12 @@ def update_job_status(
 
     client = get_client()
     client.table("jobs").update(updates).eq("id", job_id).execute()
+    _increment_db_calls(job_id)
     _invalidate_jobs_cache()
+
+    # Обновить кеш прогресса
+    if progress is not None:
+        _update_progress_cache(job_id, progress)
 
 
 def update_job_engine(job_id: str, engine: str) -> None:
@@ -250,6 +340,7 @@ def pause_job(job_id: str) -> bool:
 
     if result.data:
         _invalidate_jobs_cache()
+        _set_paused_cache(job_id, True)
         return True
 
     result = (
@@ -262,6 +353,7 @@ def pause_job(job_id: str) -> bool:
 
     if result.data:
         _invalidate_jobs_cache()
+        _set_paused_cache(job_id, True)
     return len(result.data) > 0
 
 
@@ -278,13 +370,44 @@ def resume_job(job_id: str) -> bool:
     )
     if result.data:
         _invalidate_jobs_cache()
+        _set_paused_cache(job_id, False)
     return len(result.data) > 0
 
 
+def _set_paused_cache(job_id: str, paused: bool) -> None:
+    """Установить кеш статуса паузы"""
+    try:
+        redis_client = _get_redis_client()
+        key = PAUSED_CACHE_KEY.format(job_id=job_id)
+        if paused:
+            redis_client.setex(key, PAUSED_CACHE_TTL, "1")
+        else:
+            redis_client.delete(key)
+    except Exception:
+        pass
+
+
 def is_job_paused(job_id: str) -> bool:
-    """Проверить, поставлена ли задача на паузу"""
+    """Проверить, поставлена ли задача на паузу (с Redis кешем)"""
+    # Сначала проверяем Redis кеш
+    try:
+        redis_client = _get_redis_client()
+        key = PAUSED_CACHE_KEY.format(job_id=job_id)
+        cached = redis_client.get(key)
+        if cached is not None:
+            return cached == "1"
+    except Exception:
+        pass
+
+    # Cache miss - запрос к БД
     job = get_job(job_id)
-    return job.status == "paused" if job else False
+    paused = job.status == "paused" if job else False
+    _increment_db_calls(job_id)
+
+    # Сохранить в кеш
+    _set_paused_cache(job_id, paused)
+
+    return paused
 
 
 def _row_to_job(row: dict) -> Job:
