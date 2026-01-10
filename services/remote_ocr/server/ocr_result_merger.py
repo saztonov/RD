@@ -12,6 +12,7 @@ from typing import Optional
 from rd_core.ocr.generator_common import (
     HTML_FOOTER,
     INHERITABLE_STAMP_FIELDS,
+    build_linked_blocks_index_dict,
     collect_inheritable_stamp_data_dict,
     format_stamp_parts,
     get_block_armor_id,
@@ -144,6 +145,25 @@ def merge_ocr_results(
                 else:
                     missing.append(bid)
 
+        # Маркировка linked блоков для дедупликации (export_mode="qa")
+        linked_index = build_linked_blocks_index_dict(result.get("pages", []))
+        for page in result.get("pages", []):
+            for blk in page.get("blocks", []):
+                bid = blk["id"]
+                # Маркируем TEXT блоки в linked парах как derived
+                if bid in linked_index["derived_ids"]:
+                    blk["derived"] = True
+                # Добавляем linked_block_clean_ocr_text для IMAGE блоков
+                linked_text = linked_index["linked_ocr_text"].get(bid)
+                if linked_text:
+                    blk["linked_block_clean_ocr_text"] = linked_text
+
+        if linked_index["derived_ids"]:
+            logger.info(
+                f"Linked blocks: {len(linked_index['derived_ids'])} derived, "
+                f"{len(linked_index['linked_ocr_text'])} with linked_ocr_text"
+            )
+
         # Собираем общие данные штампа (используем общую функцию)
         inherited_stamp = collect_inheritable_stamp_data_dict(result.get("pages", []))
 
@@ -166,7 +186,7 @@ def merge_ocr_results(
         # Регенерируем HTML из разделённых ocr_html
         regenerate_html_from_result(result, ocr_html_path, doc_name=doc_name)
 
-        # Регенерируем MD из разделённых ocr_html
+        # Регенерируем MD из разделённых ocr_html (с дедупликацией linked блоков)
         md_path = output_path.parent / "document.md"
         regenerate_md_from_result(result, md_path, doc_name=doc_name)
 
@@ -178,7 +198,9 @@ def merge_ocr_results(
 
 
 def regenerate_md_from_result(
-    result: dict, output_path: Path, doc_name: Optional[str] = None
+    result: dict,
+    output_path: Path,
+    doc_name: Optional[str] = None,
 ) -> None:
     """Регенерировать Markdown файл из result.json."""
     from rd_core.ocr.md_generator import generate_md_from_result
@@ -195,9 +217,13 @@ def regenerate_html_from_result(
     """
     Регенерировать HTML файл из result.json с правильно разделёнными блоками.
     Использует ocr_html (уже разделённый по маркерам) вместо ocr_text.
+    Linked TEXT блоки (derived) пропускаются, их текст добавляется к IMAGE блокам.
     """
     if not doc_name:
         doc_name = result.get("pdf_path", "OCR Result")
+
+    # Построить индекс linked блоков для дедупликации
+    linked_index = build_linked_blocks_index_dict(result.get("pages", []))
 
     # Используем общий HTML шаблон
     html_parts = [get_html_header(doc_name)]
@@ -212,6 +238,11 @@ def regenerate_html_from_result(
                 continue
 
             block_id = blk.get("id", "")
+
+            # Пропускаем derived блоки (linked TEXT блоки)
+            if block_id in linked_index["derived_ids"]:
+                continue
+
             block_type = blk.get("block_type", "text")
             ocr_html = blk.get("ocr_html", "")
             stamp_data = blk.get("stamp_data")
@@ -260,6 +291,14 @@ def regenerate_html_from_result(
             # Санитизируем HTML от мусорных артефактов datalab
             if ocr_html:
                 html_parts.append(sanitize_html(ocr_html))
+
+            # Добавляем linked_block_clean_ocr_text для IMAGE блоков
+            linked_text = linked_index["linked_ocr_text"].get(block_id)
+            if linked_text:
+                html_parts.append(
+                    f'<p><b>Текст из связанного блока:</b> {linked_text}</p>'
+                )
+
             html_parts.append("</div></div>")
 
     html_parts.append(HTML_FOOTER)

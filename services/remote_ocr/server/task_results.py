@@ -99,7 +99,7 @@ def generate_results(
     except Exception as e:
         logger.warning(f"Ошибка генерации HTML: {e}")
 
-    # Генерация компактного Markdown файла (оптимизирован для LLM)
+    # Генерация компактного Markdown файла (оптимизирован для LLM, с дедупликацией linked блоков)
     md_path = work_dir / "document.md"
     try:
         generate_md_from_pages(

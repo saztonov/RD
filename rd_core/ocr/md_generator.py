@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from .generator_common import (
     DATALAB_IMG_PATTERN,
     DATALAB_MD_IMG_PATTERN,
+    build_linked_blocks_index,
+    build_linked_blocks_index_dict,
     collect_block_groups,
     collect_inheritable_stamp_data,
     extract_image_ocr_data,
@@ -304,6 +306,7 @@ def generate_md_from_pages(
     """
     Генерация компактного Markdown файла (_document.md) из OCR результатов.
     Группировка по страницам, оптимизация для LLM.
+    Linked TEXT блоки (derived) пропускаются, их текст добавляется к IMAGE блокам.
 
     Args:
         pages: список Page объектов с блоками
@@ -325,6 +328,13 @@ def generate_md_from_pages(
 
         # Собираем данные штампа
         inherited_stamp_data = collect_inheritable_stamp_data(pages)
+
+        # Построить индекс linked блоков для дедупликации
+        linked_index = build_linked_blocks_index(pages)
+        if linked_index["derived_ids"]:
+            logger.info(
+                f"Linked blocks: {len(linked_index['derived_ids'])} derived (пропущены)"
+            )
 
         md_parts = []
 
@@ -383,6 +393,10 @@ def generate_md_from_pages(
                 if getattr(block, "category_code", None) == "stamp":
                     continue
 
+                # Пропускаем derived блоки (linked TEXT блоки)
+                if block.id in linked_index["derived_ids"]:
+                    continue
+
                 block_count += 1
                 armor_code = get_block_armor_id(block.id)
                 block_type = block.block_type.value.upper()
@@ -414,6 +428,11 @@ def generate_md_from_pages(
                 if content:
                     md_parts.append(content)
 
+                # Добавляем linked_block_clean_ocr_text для IMAGE блоков
+                linked_text = linked_index["linked_ocr_text"].get(block.id)
+                if linked_text:
+                    md_parts.append(f"\n**Текст из связанного блока:** {linked_text}")
+
                 md_parts.append("")
 
         # Записываем файл
@@ -429,11 +448,14 @@ def generate_md_from_pages(
 
 
 def generate_md_from_result(
-    result: dict, output_path: Path, doc_name: Optional[str] = None
+    result: dict,
+    output_path: Path,
+    doc_name: Optional[str] = None,
 ) -> None:
     """
     Генерировать Markdown файл из result.json с правильно разделёнными блоками.
     Группировка по страницам.
+    Linked TEXT блоки (derived) пропускаются, их текст добавляется к IMAGE блокам.
 
     Args:
         result: словарь с результатами OCR (pages, blocks)
@@ -442,6 +464,13 @@ def generate_md_from_result(
     """
     if not doc_name:
         doc_name = result.get("pdf_path", "OCR Result")
+
+    # Построить индекс linked блоков для дедупликации
+    linked_index = build_linked_blocks_index_dict(result.get("pages", []))
+    if linked_index["derived_ids"]:
+        logger.info(
+            f"Linked blocks (result): {len(linked_index['derived_ids'])} derived (пропущены)"
+        )
 
     md_parts = []
 
@@ -525,6 +554,11 @@ def generate_md_from_result(
                 continue
 
             block_id = blk.get("id", "")
+
+            # Пропускаем derived блоки (linked TEXT блоки)
+            if block_id in linked_index["derived_ids"]:
+                continue
+
             block_type = blk.get("block_type", "text").upper()
             ocr_html = blk.get("ocr_html", "")
             ocr_text = blk.get("ocr_text", "")
@@ -563,6 +597,11 @@ def generate_md_from_result(
                 md_parts.append(content)
             else:
                 md_parts.append("*(нет данных)*")
+
+            # Добавляем linked_block_clean_ocr_text для IMAGE блоков
+            linked_text = linked_index["linked_ocr_text"].get(block_id)
+            if linked_text:
+                md_parts.append(f"\n**Текст из связанного блока:** {linked_text}")
 
             md_parts.append("")
 
