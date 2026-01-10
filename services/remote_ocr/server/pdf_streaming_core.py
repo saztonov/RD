@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import gc
 import logging
+import os
 from typing import Dict, List, Optional, Tuple
 
 import fitz
@@ -25,6 +26,10 @@ MAX_IMAGE_PIXELS = 400_000_000
 
 # Увеличиваем лимит PIL
 Image.MAX_IMAGE_PIXELS = 500_000_000
+
+# Путь к bundled шрифту
+_FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+BUNDLED_FONT_PATH = os.path.join(_FONT_DIR, "DejaVuSansMono.ttf")
 
 
 class StreamingPDFProcessor:
@@ -228,7 +233,7 @@ class StreamingPDFProcessor:
                 shape.finish(color=None, fill=(1, 1, 1), even_odd=True)
                 shape.commit()
 
-            new_doc.save(output_path, deflate=True, garbage=4)
+            new_doc.save(output_path, deflate=True, garbage=4, clean=True)
             new_doc.close()
 
             return output_path
@@ -284,9 +289,9 @@ def create_block_separator(
         font = ImageFont.truetype("arial.ttf", 36)
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype("DejaVuSansMono.ttf", 36)
+            font = ImageFont.truetype(BUNDLED_FONT_PATH, 36)
         except (IOError, OSError):
-            font = ImageFont.load_default(size=36)
+            font = ImageFont.load_default()
 
     bbox = draw.textbbox((0, 0), text, font=font)
     text_height = bbox[3] - bbox[1]
