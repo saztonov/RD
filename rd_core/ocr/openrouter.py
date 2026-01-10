@@ -1,10 +1,11 @@
 """OpenRouter OCR Backend"""
 import logging
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Union
 
 from PIL import Image
 
-from rd_core.ocr.utils import image_to_base64, image_to_pdf_base64
+from rd_core.ocr.utils import image_to_base64, image_to_pdf_base64, pdf_file_to_base64
 
 logger = logging.getLogger(__name__)
 
@@ -210,4 +211,133 @@ class OpenRouterBackend:
             return "[Ошибка: превышен таймаут запроса]"
         except Exception as e:
             logger.error(f"Ошибка OpenRouter OCR: {e}", exc_info=True)
+            return f"[Ошибка OpenRouter OCR: {e}]"
+
+    def supports_native_pdf(self) -> bool:
+        """Проверить, поддерживает ли модель прямой ввод PDF (только Gemini-3)."""
+        return "gemini-3" in self.model_name.lower()
+
+    def recognize_pdf(
+        self,
+        pdf_path: Union[str, Path],
+        prompt: Optional[dict] = None,
+        json_mode: bool = None,
+    ) -> str:
+        """
+        Распознать текст напрямую из PDF файла.
+        Только для моделей Gemini-3.
+
+        Args:
+            pdf_path: путь к PDF файлу
+            prompt: dict с ключами 'system' и 'user' (опционально)
+            json_mode: принудительный JSON режим вывода
+
+        Returns:
+            Распознанный текст
+        """
+        if not self.supports_native_pdf():
+            raise NotImplementedError(
+                f"Модель {self.model_name} не поддерживает прямой ввод PDF"
+            )
+
+        try:
+            pdf_path = Path(pdf_path)
+            if not pdf_path.exists():
+                return f"[Ошибка: PDF файл не найден: {pdf_path}]"
+
+            if self._provider_order is None:
+                self._provider_order = self._fetch_cheapest_providers() or []
+
+            if prompt and isinstance(prompt, dict):
+                system_prompt = prompt.get("system", "") or self.DEFAULT_SYSTEM
+                user_prompt = prompt.get("user", "") or self.DEFAULT_USER
+            else:
+                system_prompt = self.DEFAULT_SYSTEM
+                user_prompt = self.DEFAULT_USER
+
+            if json_mode is None:
+                prompt_text = (system_prompt + user_prompt).lower()
+                json_mode = "json" in prompt_text and (
+                    "верни" in prompt_text or "return" in prompt_text
+                )
+
+            # Читаем PDF файл напрямую
+            file_b64 = pdf_file_to_base64(str(pdf_path))
+            media_type = "application/pdf"
+
+            payload = {
+                "model": self.model_name,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{media_type};base64,{file_b64}"
+                                },
+                            },
+                        ],
+                    },
+                ],
+                "max_tokens": 16384,
+                "temperature": 0.0,
+                "top_p": 0.9,
+            }
+
+            if json_mode:
+                payload["response_format"] = {"type": "json_object"}
+
+            # Gemini-3 специфичные параметры
+            payload["transforms"] = {"media_resolution": "MEDIA_RESOLUTION_HIGH"}
+
+            if self._provider_order:
+                payload["provider"] = {"order": self._provider_order}
+
+            response = self.session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=120,
+            )
+
+            if response.status_code != 200:
+                error_detail = response.text[:500] if response.text else "No details"
+                logger.error(
+                    f"OpenRouter API error: {response.status_code} - {error_detail}"
+                )
+
+                if response.status_code == 403:
+                    try:
+                        err_json = response.json()
+                        err_msg = err_json.get("error", {}).get(
+                            "message", "Доступ запрещён"
+                        )
+                    except:
+                        err_msg = "Проверьте API ключ и баланс на openrouter.ai"
+                    return f"[Ошибка OpenRouter 403: {err_msg}]"
+                elif response.status_code == 401:
+                    return "[Ошибка OpenRouter 401: Неверный API ключ]"
+                elif response.status_code == 429:
+                    return "[Ошибка OpenRouter 429: Превышен лимит запросов]"
+                elif response.status_code == 402:
+                    return "[Ошибка OpenRouter 402: Недостаточно кредитов]"
+
+                return f"[Ошибка OpenRouter API: {response.status_code}]"
+
+            result = response.json()
+            text = result["choices"][0]["message"]["content"].strip()
+            logger.debug(f"OpenRouter OCR (native PDF): распознано {len(text)} символов")
+            return text
+
+        except self.requests.exceptions.Timeout:
+            logger.error("OpenRouter OCR: превышен таймаут")
+            return "[Ошибка: превышен таймаут запроса]"
+        except Exception as e:
+            logger.error(f"Ошибка OpenRouter OCR (native PDF): {e}", exc_info=True)
             return f"[Ошибка OpenRouter OCR: {e}]"

@@ -156,6 +156,11 @@ def pass1_prepare_crops(
                         if result:
                             image_pdf_paths[block.id] = result
                             block.image_file = result
+                            # Обновляем первую часть entry с путём к PDF
+                            for entry in image_block_entries:
+                                if entry.block_id == block.id and entry.part_idx == 0:
+                                    entry.pdf_crop_path = result
+                                    break
 
                 except Exception as e:
                     logger.error(f"PASS1: ошибка блока {block.id}: {e}")
@@ -490,42 +495,56 @@ def pass2_ocr_from_manifest(
             return None
 
         try:
-            with Image.open(entry.crop_path) as crop:
-                pdfplumber_text = extract_pdfplumber_text_for_block(
-                    pdf_path, block.page_index, block.coords_norm
-                )
+            # Извлекаем pdfplumber текст (не требует изображения)
+            pdfplumber_text = extract_pdfplumber_text_for_block(
+                pdf_path, block.page_index, block.coords_norm
+            )
 
-                # Получаем category_id и category_code из блока
-                category_id = getattr(block, "category_id", None)
-                category_code = getattr(block, "category_code", None)
+            # Получаем category_id и category_code из блока
+            category_id = getattr(block, "category_id", None)
+            category_code = getattr(block, "category_code", None)
 
-                prompt_data = fill_image_prompt_variables(
-                    prompt_data=block.prompt,
-                    doc_name=Path(pdf_path).name,
-                    page_index=block.page_index,
-                    block_id=block.id,
-                    hint=getattr(block, "hint", None),
-                    pdfplumber_text=pdfplumber_text,
-                    category_id=category_id,
-                    category_code=category_code,
-                )
+            prompt_data = fill_image_prompt_variables(
+                prompt_data=block.prompt,
+                doc_name=Path(pdf_path).name,
+                page_index=block.page_index,
+                block_id=block.id,
+                hint=getattr(block, "hint", None),
+                pdfplumber_text=pdfplumber_text,
+                category_id=category_id,
+                category_code=category_code,
+            )
 
-                # Выбираем backend в зависимости от кода блока
-                block_code = getattr(block, "code", None)
-                backend = stamp_backend if block_code == "stamp" else image_backend
+            # Выбираем backend в зависимости от кода блока
+            block_code = getattr(block, "code", None)
+            backend = stamp_backend if block_code == "stamp" else image_backend
 
-                logger.info(f"PASS2: начало обработки IMAGE блока {entry.block_id}")
+            logger.info(f"PASS2: начало обработки IMAGE блока {entry.block_id}")
 
-                global_sem.acquire()
-                try:
-                    text = backend.recognize(crop, prompt=prompt_data)
-                finally:
-                    global_sem.release()
+            # Проверяем возможность использования native PDF
+            use_native_pdf = (
+                entry.pdf_crop_path
+                and entry.total_parts == 1  # Только одночастные блоки
+                and os.path.exists(entry.pdf_crop_path)
+                and hasattr(backend, "supports_native_pdf")
+                and backend.supports_native_pdf()
+            )
 
-                logger.info(f"PASS2: завершена обработка IMAGE блока {entry.block_id}")
+            global_sem.acquire()
+            try:
+                if use_native_pdf:
+                    logger.info(f"PASS2: native PDF для {entry.block_id}")
+                    text = backend.recognize_pdf(entry.pdf_crop_path, prompt=prompt_data)
+                else:
+                    with Image.open(entry.crop_path) as crop:
+                        text = backend.recognize(crop, prompt=prompt_data)
+            finally:
+                global_sem.release()
 
-                text = inject_pdfplumber_to_ocr_text(text, pdfplumber_text)
-                block.pdfplumber_text = pdfplumber_text
+            logger.info(f"PASS2: завершена обработка IMAGE блока {entry.block_id}")
+
+            text = inject_pdfplumber_to_ocr_text(text, pdfplumber_text)
+            block.pdfplumber_text = pdfplumber_text
 
             return entry.block_id, text, entry.part_idx, entry.total_parts
 

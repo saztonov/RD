@@ -46,3 +46,21 @@ def image_to_pdf_base64(image: Image.Image) -> str:
 
     image.save(buffer, format="PDF", resolution=300.0)
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
+def pdf_file_to_base64(path: str) -> str:
+    """
+    Прочитать PDF файл и вернуть base64 строку.
+
+    Args:
+        path: Путь к PDF файлу
+
+    Returns:
+        Base64 строка содержимого PDF
+
+    Raises:
+        FileNotFoundError: если файл не существует
+        IOError: если файл не может быть прочитан
+    """
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")

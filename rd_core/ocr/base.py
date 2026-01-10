@@ -1,5 +1,6 @@
 """Базовый интерфейс для OCR движков"""
-from typing import Optional, Protocol
+from pathlib import Path
+from typing import Optional, Protocol, Union
 
 from PIL import Image
 
@@ -24,3 +25,34 @@ class OCRBackend(Protocol):
             Распознанный текст
         """
         ...
+
+    def supports_native_pdf(self) -> bool:
+        """
+        Проверить, поддерживает ли backend прямой ввод PDF.
+
+        Returns:
+            True если recognize_pdf() доступен, иначе False
+        """
+        return False
+
+    def recognize_pdf(
+        self,
+        pdf_path: Union[str, Path],
+        prompt: Optional[dict] = None,
+        json_mode: bool = None,
+    ) -> str:
+        """
+        Распознать текст напрямую из PDF файла (опционально).
+
+        Args:
+            pdf_path: путь к PDF файлу
+            prompt: dict с ключами 'system' и 'user' (опционально)
+            json_mode: принудительный JSON режим вывода
+
+        Returns:
+            Распознанный текст
+
+        Raises:
+            NotImplementedError: если backend не поддерживает native PDF
+        """
+        raise NotImplementedError("Этот backend не поддерживает прямой ввод PDF")
