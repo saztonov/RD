@@ -90,6 +90,37 @@ def get_job_handler(
     return job_to_dict(job)
 
 
+def _add_job_settings_and_r2_files(result: dict, job) -> dict:
+    """Добавить настройки и R2 файлы к результату"""
+    if job.settings:
+        result["job_settings"] = {
+            "text_model": job.settings.text_model,
+            "table_model": job.settings.table_model,
+            "image_model": job.settings.image_model,
+            "stamp_model": job.settings.stamp_model,
+        }
+    else:
+        result["job_settings"] = {}
+
+    r2_public_url = os.getenv("R2_PUBLIC_URL")
+    if r2_public_url and job.r2_prefix:
+        base_url = r2_public_url.rstrip("/")
+        result["r2_base_url"] = f"{base_url}/{job.r2_prefix}"
+        result["r2_files"] = [
+            {
+                "name": f.file_name,
+                "path": f.r2_key.replace(f"{job.r2_prefix}/", ""),
+                "icon": get_file_icon(f.file_type),
+            }
+            for f in job.files
+        ]
+    else:
+        result["r2_base_url"] = None
+        result["r2_files"] = []
+
+    return result
+
+
 def get_job_details_handler(
     job_id: str,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -103,11 +134,27 @@ def get_job_details_handler(
 
     result = job_to_dict(job)
 
-    # Вычисляем общее время работы задачи
+    # Используем сохранённую статистику из БД если есть
+    if job.block_stats:
+        # Добавляем время обработки из started_at/completed_at
+        if job.started_at and job.completed_at:
+            try:
+                started = datetime.fromisoformat(job.started_at.replace("Z", "+00:00"))
+                completed = datetime.fromisoformat(job.completed_at.replace("Z", "+00:00"))
+                processing_time = (completed - started).total_seconds()
+                job.block_stats["processing_time_seconds"] = processing_time
+                total_blocks = job.block_stats.get("total", 0)
+                if total_blocks > 0:
+                    job.block_stats["avg_time_per_block"] = processing_time / total_blocks
+            except Exception as e:
+                _logger.warning(f"Failed to calculate processing time: {e}")
+        result["block_stats"] = job.block_stats
+        return _add_job_settings_and_r2_files(result, job)
+
+    # Fallback: вычисляем на лету для старых задач
     total_time_seconds = None
     if job.created_at and job.updated_at:
         try:
-            # Парсим ISO формат дат
             created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
             updated = datetime.fromisoformat(job.updated_at.replace("Z", "+00:00"))
             total_time_seconds = (updated - created).total_seconds()
@@ -178,34 +225,7 @@ def get_job_details_handler(
         # Если нет блоков, но есть время - добавляем только время
         result["block_stats"] = {"total_time_seconds": total_time_seconds}
 
-    if job.settings:
-        result["job_settings"] = {
-            "text_model": job.settings.text_model,
-            "table_model": job.settings.table_model,
-            "image_model": job.settings.image_model,
-            "stamp_model": job.settings.stamp_model,
-        }
-    else:
-        result["job_settings"] = {}
-
-    r2_public_url = os.getenv("R2_PUBLIC_URL")
-    if r2_public_url and job.r2_prefix:
-        base_url = r2_public_url.rstrip("/")
-        result["r2_base_url"] = f"{base_url}/{job.r2_prefix}"
-
-        result["r2_files"] = [
-            {
-                "name": f.file_name,
-                "path": f.r2_key.replace(f"{job.r2_prefix}/", ""),
-                "icon": get_file_icon(f.file_type),
-            }
-            for f in job.files
-        ]
-    else:
-        result["r2_base_url"] = None
-        result["r2_files"] = []
-
-    return result
+    return _add_job_settings_and_r2_files(result, job)
 
 
 def download_result_handler(

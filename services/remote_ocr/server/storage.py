@@ -33,7 +33,9 @@ from .storage_jobs import (
     pause_job,
     reset_job_for_restart,
     resume_job,
+    update_job_completed,
     update_job_engine,
+    update_job_started,
     update_job_status,
     update_job_task_name,
 )
@@ -95,6 +97,8 @@ def job_to_dict(job: Job) -> dict:
         "progress": job.progress,
         "created_at": job.created_at,
         "updated_at": job.updated_at,
+        "started_at": job.started_at,
+        "completed_at": job.completed_at,
         "error_message": job.error_message,
         "engine": job.engine,
         "r2_prefix": job.r2_prefix,
@@ -102,4 +106,5 @@ def job_to_dict(job: Job) -> dict:
         "result_prefix": result_prefix,
         "ocr_result_prefix": ocr_result_prefix,
         "status_message": job.status_message,
+        "block_stats": job.block_stats,
     }

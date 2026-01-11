@@ -12,7 +12,7 @@ from .celery_app import celery_app
 from .memory_utils import force_gc, log_memory, log_memory_delta
 from .rate_limiter import CompatRateLimiter
 from .settings import settings
-from .storage import Job, get_job, log_db_metrics, register_ocr_results_to_node, update_job_status
+from .storage import Job, get_job, log_db_metrics, register_ocr_results_to_node, update_job_status, update_job_started, update_job_completed
 from .task_helpers import check_paused, create_empty_result, download_job_files
 from .task_ocr_twopass import run_two_pass_ocr
 from .task_results import generate_results
@@ -38,7 +38,8 @@ def run_ocr_task(self, job_id: str) -> dict:
         if check_paused(job.id):
             return {"status": "paused"}
 
-        # Обновляем статус на processing
+        # Обновляем статус на processing и фиксируем время старта
+        update_job_started(job.id)
         update_job_status(job.id, "processing", progress=0.05, status_message="📥 Инициализация задачи...")
 
         # Создаём временную директорию
@@ -190,15 +191,34 @@ def run_ocr_task(self, job_id: str) -> dict:
             except Exception as e:
                 logger.warning(f"Failed to update PDF status: {e}")
 
-        update_job_status(job.id, "done", progress=1.0, status_message="✅ Завершено успешно")
-        logger.info(f"Задача {job.id} завершена успешно")
+        # Подсчёт статистики блоков
+        text_count = sum(1 for b in blocks if b.block_type.value == "text")
+        table_count = sum(1 for b in blocks if b.block_type.value == "table")
+        image_blocks = [b for b in blocks if b.block_type.value == "image"]
+        stamp_count = sum(1 for b in image_blocks if getattr(b, "category_code", None) == "stamp")
+        image_count = len(image_blocks) - stamp_count
+
+        block_stats = {
+            "total": total_blocks,
+            "text": text_count,
+            "table": table_count,
+            "image": image_count,
+            "stamp": stamp_count,
+            "grouped": text_count + table_count,
+        }
+
+        # Завершаем задачу с сохранением статистики
+        update_job_completed(job.id, block_stats=block_stats)
+        update_job_status(job.id, "done", progress=1.0, status_message="✅ Завершено успешно", force=True)
+        logger.info(f"Задача {job.id} завершена успешно. Статистика: {block_stats}")
 
         return {"status": "done", "job_id": job_id}
 
     except Exception as e:
         error_msg = f"{e}\n{traceback.format_exc()}"
         logger.error(f"Ошибка обработки задачи {job_id}: {error_msg}")
-        update_job_status(job_id, "error", error_message=str(e), status_message="❌ Ошибка обработки")
+        update_job_completed(job_id, error_message=str(e))
+        update_job_status(job_id, "error", error_message=str(e), status_message="❌ Ошибка обработки", force=True)
         return {"status": "error", "message": str(e)}
 
     finally:

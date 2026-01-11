@@ -118,10 +118,10 @@ class JobDetailsDialog(QDialog):
             stamp_count = block_stats.get("stamp", 0)
             grouped_count = block_stats.get("grouped", text_count + table_count)
 
-            # Общее время работы
-            total_time = block_stats.get("total_time_seconds")
-            if total_time:
-                blocks_layout.addRow("⏱ Общее время:", QLabel(self._format_duration(total_time)))
+            # Время обработки (processing_time_seconds или total_time_seconds для обратной совместимости)
+            processing_time = block_stats.get("processing_time_seconds") or block_stats.get("total_time_seconds")
+            if processing_time:
+                blocks_layout.addRow("⏱ Время обработки:", QLabel(self._format_duration(processing_time)))
 
             blocks_layout.addRow("Всего блоков:", QLabel(str(total)))
 
@@ -181,13 +181,50 @@ class JobDetailsDialog(QDialog):
         created_at = self.job_details.get("created_at", "")
         if created_at:
             created_str = format_datetime_utc3(created_at)
-            time_layout.addRow("Дата создания (МСК):", QLabel(created_str))
+            time_layout.addRow("Создание задачи (МСК):", QLabel(created_str))
 
-        # Дата обновления
+        # Дата начала обработки
+        started_at = self.job_details.get("started_at", "")
+        if started_at:
+            started_str = format_datetime_utc3(started_at)
+            time_layout.addRow("Начало обработки (МСК):", QLabel(started_str))
+
+        # Дата завершения
+        completed_at = self.job_details.get("completed_at", "")
+        if completed_at:
+            completed_str = format_datetime_utc3(completed_at)
+            time_layout.addRow("Завершение (МСК):", QLabel(completed_str))
+
+        # Время обработки (из block_stats или вычисляем)
+        processing_time = block_stats.get("processing_time_seconds") if block_stats else None
+        if processing_time:
+            time_layout.addRow("⏱ Время обработки:", QLabel(self._format_duration(processing_time)))
+        elif started_at and completed_at:
+            try:
+                started_dt = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                completed_dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+                processing_time = (completed_dt - started_dt).total_seconds()
+                time_layout.addRow("⏱ Время обработки:", QLabel(self._format_duration(processing_time)))
+            except Exception:
+                pass
+
+        # Прошло времени (для активных задач)
+        if status in ("queued", "processing") and created_at:
+            try:
+                created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                elapsed = (now - created_dt).total_seconds()
+                elapsed_label = QLabel(self._format_duration(elapsed))
+                elapsed_label.setStyleSheet("color: #ffa500;")  # Оранжевый для активных
+                time_layout.addRow("⏳ Прошло времени:", elapsed_label)
+            except Exception:
+                pass
+
+        # Дата обновления (только если отличается от завершения)
         updated_at = self.job_details.get("updated_at", "")
-        if updated_at:
+        if updated_at and updated_at != completed_at:
             updated_str = format_datetime_utc3(updated_at)
-            time_layout.addRow("Последнее обновление (МСК):", QLabel(updated_str))
+            time_layout.addRow("Последнее обновление:", QLabel(updated_str))
 
         # Прогнозная дата окончания (только для processing)
         if status == "processing" and progress > 0:

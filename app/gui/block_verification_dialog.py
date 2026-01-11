@@ -115,7 +115,6 @@ class VerificationWorker(QThread):
             latest_run_key = f"tree_docs/{node_id}/latest_ocr_run.json"
             latest_run_content = r2.download_text(latest_run_key)
             if latest_run_content:
-                import json
                 try:
                     latest_run = json.loads(latest_run_content)
                     job_id = latest_run.get("job_id")

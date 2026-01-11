@@ -413,6 +413,49 @@ def is_job_paused(job_id: str) -> bool:
     return paused
 
 
+def update_job_started(job_id: str) -> None:
+    """Установить время начала обработки задачи"""
+    now = datetime.utcnow().isoformat()
+    client = get_client()
+    client.table("jobs").update({
+        "started_at": now,
+        "status": "processing",
+        "updated_at": now,
+    }).eq("id", job_id).execute()
+    _increment_db_calls(job_id)
+    _invalidate_jobs_cache()
+
+
+def update_job_completed(
+    job_id: str,
+    block_stats: Optional[dict] = None,
+    error_message: Optional[str] = None,
+) -> None:
+    """Установить время завершения и статистику задачи"""
+    now = datetime.utcnow().isoformat()
+
+    status = "error" if error_message else "done"
+    updates: dict[str, Any] = {
+        "completed_at": now,
+        "status": status,
+        "progress": 1.0 if status == "done" else None,
+        "updated_at": now,
+    }
+
+    if block_stats:
+        updates["block_stats"] = json.dumps(block_stats) if isinstance(block_stats, dict) else block_stats
+    if error_message:
+        updates["error_message"] = error_message
+
+    # Удаляем None значения
+    updates = {k: v for k, v in updates.items() if v is not None}
+
+    client = get_client()
+    client.table("jobs").update(updates).eq("id", job_id).execute()
+    _increment_db_calls(job_id)
+    _invalidate_jobs_cache()
+
+
 def _row_to_job(row: dict) -> Job:
     return Job(
         id=row["id"],
@@ -429,4 +472,7 @@ def _row_to_job(row: dict) -> Job:
         r2_prefix=row.get("r2_prefix", ""),
         node_id=row.get("node_id"),
         status_message=row.get("status_message"),
+        started_at=row.get("started_at"),
+        completed_at=row.get("completed_at"),
+        block_stats=row.get("block_stats"),
     )
