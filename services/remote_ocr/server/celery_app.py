@@ -63,6 +63,5 @@ celery_app.conf.update(
     # Регистрация задач
     imports=[
         "services.remote_ocr.server.tasks",
-        "services.remote_ocr.server.tasks_queued",
     ],
 )
