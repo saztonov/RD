@@ -68,6 +68,7 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+/.claude
 
 # PyInstaller
 *.manifest
@@ -156,4 +157,5 @@ database/dumps/
 *.sql.gz
 *.dump
 nul
+.claude/settings.local.json
 .claude/settings.local.json
