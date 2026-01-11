@@ -25,6 +25,80 @@ from services.remote_ocr.server.tasks import run_ocr_task
 
 _logger = logging.getLogger(__name__)
 
+# Streaming configuration
+_CHUNK_SIZE = 8 * 1024 * 1024  # 8 MB
+
+
+async def _stream_upload_pdf(
+    upload_file: UploadFile,
+    s3_client,
+    bucket_name: str,
+    r2_key: str,
+) -> int:
+    """Streaming upload PDF в R2 без загрузки в память.
+
+    Returns:
+        int: размер файла в байтах
+    """
+    # Получаем размер файла
+    await upload_file.seek(0, 2)  # SEEK_END
+    file_size = await upload_file.tell()
+    await upload_file.seek(0)
+
+    if file_size < _CHUNK_SIZE:
+        # Маленький файл - простой upload
+        content = await upload_file.read()
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=r2_key,
+            Body=content,
+            ContentType="application/pdf",
+        )
+    else:
+        # Большой файл - multipart upload
+        response = s3_client.create_multipart_upload(
+            Bucket=bucket_name,
+            Key=r2_key,
+            ContentType="application/pdf",
+        )
+        upload_id = response["UploadId"]
+        parts = []
+        part_number = 1
+
+        try:
+            while True:
+                chunk = await upload_file.read(_CHUNK_SIZE)
+                if not chunk:
+                    break
+                part_response = s3_client.upload_part(
+                    Bucket=bucket_name,
+                    Key=r2_key,
+                    UploadId=upload_id,
+                    PartNumber=part_number,
+                    Body=chunk,
+                )
+                parts.append({
+                    "PartNumber": part_number,
+                    "ETag": part_response["ETag"],
+                })
+                part_number += 1
+
+            s3_client.complete_multipart_upload(
+                Bucket=bucket_name,
+                Key=r2_key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+        except Exception:
+            s3_client.abort_multipart_upload(
+                Bucket=bucket_name,
+                Key=r2_key,
+                UploadId=upload_id,
+            )
+            raise
+
+    return file_size
+
 
 async def create_job_handler(
     document_id: str = Form(...),
@@ -113,24 +187,18 @@ async def create_job_handler(
 
         if node_id:
             if pdf_needs_upload:
-                pdf_content = await pdf.read()
                 pdf_key = pdf_r2_key or f"{pdf_parent}/{document_name}"
-                s3_client.put_object(
-                    Bucket=bucket_name,
-                    Key=pdf_key,
-                    Body=pdf_content,
-                    ContentType="application/pdf",
+                pdf_size = await _stream_upload_pdf(
+                    pdf, s3_client, bucket_name, pdf_key
                 )
-                _logger.info(
-                    f"Uploaded PDF to R2: {pdf_key} ({len(pdf_content)} bytes)"
-                )
+                _logger.info(f"Uploaded PDF to R2: {pdf_key} ({pdf_size} bytes)")
 
                 add_node_file(
                     node_id,
                     "pdf",
                     pdf_key,
                     document_name,
-                    len(pdf_content),
+                    pdf_size,
                     "application/pdf",
                 )
                 update_node_r2_key(node_id, pdf_key)
@@ -157,15 +225,9 @@ async def create_job_handler(
             )
             add_job_file(job.id, "pdf", pdf_key, document_name, 0)
         else:
-            pdf_content = await pdf.read()
             pdf_key = f"{r2_prefix}/document.pdf"
-            s3_client.put_object(
-                Bucket=bucket_name,
-                Key=pdf_key,
-                Body=pdf_content,
-                ContentType="application/pdf",
-            )
-            add_job_file(job.id, "pdf", pdf_key, "document.pdf", len(pdf_content))
+            pdf_size = await _stream_upload_pdf(pdf, s3_client, bucket_name, pdf_key)
+            add_job_file(job.id, "pdf", pdf_key, "document.pdf", pdf_size)
 
             blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode(
                 "utf-8"

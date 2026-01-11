@@ -13,6 +13,7 @@ requests>=2.32.0
 # R2 Storage (async + sync)
 boto3>=1.40.0
 aioboto3>=14.0.0
+aiofiles>=24.0.0
 
 # Supabase
 supabase>=2.10.0
