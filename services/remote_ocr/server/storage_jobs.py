@@ -117,6 +117,7 @@ def _update_progress_cache(job_id: str, progress: float) -> None:
 
 
 def create_job(
+    client_id: str,
     document_id: str,
     document_name: str,
     task_name: str,
@@ -131,6 +132,7 @@ def create_job(
 
     job = Job(
         id=job_id,
+        client_id=client_id,
         document_id=document_id,
         document_name=document_name,
         task_name=task_name,
@@ -147,6 +149,7 @@ def create_job(
     client = get_client()
     insert_data = {
         "id": job.id,
+        "client_id": job.client_id,
         "document_id": job.document_id,
         "document_name": job.document_name,
         "task_name": job.task_name,
@@ -413,6 +416,7 @@ def is_job_paused(job_id: str) -> bool:
 def _row_to_job(row: dict) -> Job:
     return Job(
         id=row["id"],
+        client_id=row.get("client_id", ""),
         document_id=row["document_id"],
         document_name=row["document_name"],
         task_name=row.get("task_name", ""),

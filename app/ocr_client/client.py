@@ -12,6 +12,7 @@ from typing import List, Optional
 
 import httpx
 
+from app.client_id import get_client_id
 from app.ocr_client.exceptions import (
     AuthenticationError,
     PayloadTooLargeError,
@@ -222,6 +223,7 @@ class RemoteOCRClient:
         client = get_remote_ocr_client(self.base_url, self.upload_timeout)
         with open(pdf_path, "rb") as pdf_file:
             form_data = {
+                "client_id": get_client_id(),
                 "document_id": document_id,
                 "document_name": document_name,
                 "task_name": task_name,

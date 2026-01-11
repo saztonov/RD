@@ -101,6 +101,7 @@ async def _stream_upload_pdf(
 
 
 async def create_job_handler(
+    client_id: str = Form(...),
     document_id: str = Form(...),
     document_name: str = Form(...),
     task_name: str = Form(""),
@@ -164,6 +165,7 @@ async def create_job_handler(
         r2_prefix = f"ocr_jobs/{job_id}"
 
     job = create_job(
+        client_id=client_id,
         document_id=document_id,
         document_name=document_name,
         task_name=task_name,

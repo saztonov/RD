@@ -6,8 +6,8 @@ python-dotenv>=1.0.0
 httpx>=0.28.0
 
 # rd_core зависимости
-PyMuPDF>=1.25.0
-Pillow>=11.0.0
+PyMuPDF>=1.26.7
+Pillow>=12.0.0
 requests>=2.32.0
 
 # R2 Storage (async + sync) - версии зафиксированы для ускорения сборки Docker

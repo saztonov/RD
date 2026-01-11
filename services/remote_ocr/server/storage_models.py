@@ -27,6 +27,7 @@ class JobSettings:
 @dataclass
 class Job:
     id: str
+    client_id: str  # Идентификатор клиента
     document_id: str
     document_name: str
     task_name: str
