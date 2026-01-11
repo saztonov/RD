@@ -8,12 +8,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Stack: PySide6 (Qt 6), FastAPI, Celery + Redis, Supabase (PostgreSQL), Cloudflare R2.
 
+Python 3.11+ required.
+
 ## Commands
+
+### Setup
+```bash
+pip install -r requirements.txt
+```
 
 ### Desktop Client
 ```bash
 python app/main.py                    # Run application
 python build.py                        # Build executable → dist/CoreStructure.exe
+```
+
+### Tests
+```bash
+pytest                                # Run all tests
+pytest tests/test_crop_determinism.py  # Run single test file
+pytest -v                             # Verbose output
 ```
 
 ### Remote OCR Server
@@ -55,7 +69,6 @@ Desktop Client (PySide6)
 | `rd_core/ocr/` | OCR backends (OpenRouter, Datalab). Protocol: `base.py` |
 | `services/remote_ocr/server/` | FastAPI server + Celery tasks |
 | `database/migrations/` | SQL migration files |
-| `docs/` | Full documentation |
 
 ### Architectural Patterns
 
@@ -65,7 +78,11 @@ Desktop Client (PySide6)
 
 **Context Manager (PDF)**: `PDFDocument` in `rd_core/pdf_utils.py` uses `__enter__`/`__exit__` for resource cleanup.
 
-### Data Models (`rd_core/models.py`)
+**ArmorID (Block IDs)**: OCR-resistant ID format `XXXX-XXXX-XXX` using 26-character alphabet. See `rd_core/models/armor_id.py`. Use `generate_armor_id()` for new blocks.
+
+**Offline Mode**: App queues operations when disconnected. `ConnectionManager` monitors connectivity, `SyncQueue` stores pending operations. Auto-syncs on reconnection.
+
+### Data Models (`rd_core/models/`)
 
 ```python
 Block      # Annotation unit: id, page_index, coords_px, coords_norm, block_type, shape_type, polygon_points, ocr_text
@@ -73,7 +90,7 @@ Document   # Collection of pages
 Page       # Page with blocks list
 ```
 
-Block types: `TEXT`, `TABLE`, `IMAGE`. Shape types: `RECTANGLE`, `POLYGON`.
+Block types: `TEXT`, `TABLE`, `IMAGE`. Shape types: `RECTANGLE`, `POLYGON`. Block source: `MANUAL`, `OCR`.
 
 ### Database Tables (Supabase)
 
@@ -112,10 +129,3 @@ Required `.env` variables:
 ## Code Style
 
 From `.cursorrules`: Be maximally concise. Code only in code blocks. Changes as minimal diff. No explanations unless asked. If text needed - max 5 points, each ≤ 12 words.
-
-## Documentation
-
-- `docs/ARCHITECTURE.md` - Full technical documentation
-- `docs/DEVELOPER_GUIDE.md` - Code examples and patterns
-- `docs/DATABASE.md` - Complete DB schema
-- `docs/REMOTE_OCR_SERVER.md` - Server API reference
