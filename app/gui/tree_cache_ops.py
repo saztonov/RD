@@ -168,6 +168,7 @@ class TreeCacheOperationsMixin:
                     get_annotation_r2_key(r2_key),  # аннотация
                     f"{r2_prefix}/{pdf_stem}_ocr.html",  # OCR HTML
                     f"{r2_prefix}/{pdf_stem}_result.json",  # result JSON
+                    f"{r2_prefix}/{pdf_stem}_document.md",  # document MD
                 ]
 
                 # Удаляем папку crops по префиксу (кропы лежат как {node_id}/crops/{block_id}.pdf)
@@ -175,6 +176,16 @@ class TreeCacheOperationsMixin:
                 deleted_crops = r2.delete_by_prefix(crops_prefix)
                 if deleted_crops:
                     logger.info(f"Deleted {deleted_crops} crops from R2")
+
+                # Удаляем папку ocr_runs/ (новая структура OCR результатов)
+                ocr_runs_prefix = f"tree_docs/{node.id}/ocr_runs/"
+                deleted_ocr_runs = r2.delete_by_prefix(ocr_runs_prefix)
+                if deleted_ocr_runs:
+                    logger.info(f"Deleted {deleted_ocr_runs} files from ocr_runs/ in R2")
+
+                # Удаляем latest_ocr_run.json
+                latest_ocr_run_key = f"tree_docs/{node.id}/latest_ocr_run.json"
+                files_to_delete.append(latest_ocr_run_key)
 
                 # Пакетное удаление основных файлов
                 deleted_keys, errors = r2.delete_objects_batch(files_to_delete)
@@ -230,6 +241,15 @@ class TreeCacheOperationsMixin:
                 except Exception as e:
                     logger.error(f"Failed to delete result.json from cache: {e}")
 
+            # Удаляем _document.md
+            document_md_file = cache_file.parent / f"{pdf_stem}_document.md"
+            if document_md_file.exists():
+                try:
+                    document_md_file.unlink()
+                    logger.info(f"Deleted document.md from cache: {document_md_file}")
+                except Exception as e:
+                    logger.error(f"Failed to delete document.md from cache: {e}")
+
             # Удаляем папку crops (кропы лежат в {node_id}/crops/)
             crops_folder = cache_file.parent / "crops"
             if crops_folder.exists():
@@ -238,6 +258,15 @@ class TreeCacheOperationsMixin:
                     logger.info(f"Deleted crops folder from cache: {crops_folder}")
                 except Exception as e:
                     logger.error(f"Failed to delete crops folder: {e}")
+
+            # Удаляем папку ocr_runs/ (новая структура OCR результатов)
+            ocr_runs_folder = cache_file.parent / "ocr_runs"
+            if ocr_runs_folder.exists():
+                try:
+                    shutil.rmtree(ocr_runs_folder, ignore_errors=True)
+                    logger.info(f"Deleted ocr_runs folder from cache: {ocr_runs_folder}")
+                except Exception as e:
+                    logger.error(f"Failed to delete ocr_runs folder: {e}")
 
             # Удаляем пустую родительскую папку
             if cache_file.parent.exists() and not any(cache_file.parent.iterdir()):

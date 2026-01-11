@@ -95,15 +95,16 @@ class R2ViewerIntegration:
             )
 
     def _get_r2_prefix(self, node: TreeNode) -> str:
-        """Определить R2 префикс для узла"""
-        if node.node_type == NodeType.DOCUMENT:
-            r2_key = node.attributes.get("r2_key", "")
-            if r2_key:
-                return str(PurePosixPath(r2_key).parent) + "/"
-            else:
-                return f"tree_docs/{node.id}/"
-        else:
-            return f"tree_docs/{node.id}/"
+        """Определить R2 префикс для узла.
+
+        Для документов используем tree_docs/{node_id}/ чтобы видеть:
+        - PDF файл (если он там)
+        - OCR результаты в папке ocr_runs/{job_id}/
+        - Другие связанные файлы
+        """
+        # Для любого типа узла используем tree_docs/{node_id}/
+        # Это гарантирует отображение всех файлов включая ocr_runs/
+        return f"tree_docs/{node.id}/"
 
     def _get_local_folder(self, node: TreeNode, r2_prefix: str):
         """Определить локальную папку для кэша"""

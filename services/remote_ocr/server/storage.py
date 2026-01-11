@@ -68,13 +68,20 @@ from .storage_settings import get_job_settings, save_job_settings
 
 def job_to_dict(job: Job) -> dict:
     """Конвертировать Job в dict для JSON ответа"""
-    # Вычисляем result_prefix - папка где лежат результаты OCR
+    from pathlib import PurePosixPath
+
+    # ocr_result_prefix - папка где лежат результаты OCR (изолированная папка задачи)
+    # Формат: tree_docs/{node_id}/ocr_runs/{job_id}/
+    if job.node_id:
+        ocr_result_prefix = f"tree_docs/{job.node_id}/ocr_runs/{job.id}"
+    else:
+        ocr_result_prefix = job.r2_prefix
+
+    # result_prefix (legacy) - папка PDF документа для обратной совместимости
     result_prefix = job.r2_prefix
     if job.node_id:
         pdf_r2_key = get_node_pdf_r2_key(job.node_id)
         if pdf_r2_key:
-            from pathlib import PurePosixPath
-
             result_prefix = str(PurePosixPath(pdf_r2_key).parent)
         else:
             result_prefix = f"tree_docs/{job.node_id}"
@@ -93,5 +100,6 @@ def job_to_dict(job: Job) -> dict:
         "r2_prefix": job.r2_prefix,
         "node_id": job.node_id,
         "result_prefix": result_prefix,
+        "ocr_result_prefix": ocr_result_prefix,
         "status_message": job.status_message,
     }

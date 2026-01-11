@@ -56,32 +56,35 @@ class DownloadMixin:
             # Получаем информацию о задаче
             client = self._get_client()
             job_details = client.get_job_details(job_id) if client else {}
-            doc_name = job_details.get("document_name", "result.pdf")
-            doc_stem = Path(doc_name).stem
 
-            # Получаем имя PDF из main_window
+            # Получаем имя PDF из main_window для локальных имен файлов
             pdf_path = getattr(self.main_window, "_current_pdf_path", None)
-            pdf_stem = Path(pdf_path).stem if pdf_path else doc_stem
+            doc_name = job_details.get("document_name", "result.pdf")
+            pdf_stem = Path(pdf_path).stem if pdf_path else Path(doc_name).stem
 
-            actual_prefix = job_details.get("result_prefix") or r2_prefix
+            # Используем ocr_result_prefix (изолированная папка задачи) с простыми именами
+            # Формат: tree_docs/{node_id}/ocr_runs/{job_id}/result.json
+            ocr_prefix = job_details.get("ocr_result_prefix") or r2_prefix
 
             # Инвалидируем кэш метаданных для префикса перед скачиванием
-            get_metadata_cache().invalidate_prefix(actual_prefix + "/")
-            logger.debug(f"Invalidated metadata cache for prefix: {actual_prefix}/")
+            get_metadata_cache().invalidate_prefix(ocr_prefix + "/")
+            logger.debug(f"Invalidated metadata cache for prefix: {ocr_prefix}/")
 
-            # Скачиваем _annotation.json, _ocr.html, _result.json и _document.md
+            # OCR результаты хранятся с простыми именами в изолированной папке задачи
+            # Локально сохраняем с префиксом pdf_stem для удобства пользователя
             files_to_download = [
-                (f"{doc_stem}_annotation.json", f"{pdf_stem}_annotation.json"),
-                (f"{doc_stem}_ocr.html", f"{pdf_stem}_ocr.html"),
-                (f"{doc_stem}_result.json", f"{pdf_stem}_result.json"),
-                (f"{doc_stem}_document.md", f"{pdf_stem}_document.md"),
+                ("annotation.json", f"{pdf_stem}_annotation.json"),
+                ("ocr.html", f"{pdf_stem}_ocr.html"),
+                ("result.json", f"{pdf_stem}_result.json"),
+                ("document.md", f"{pdf_stem}_document.md"),
             ]
 
             self._signals.download_started.emit(job_id, len(files_to_download))
 
+            downloaded_count = 0
             for idx, (remote_name, local_name) in enumerate(files_to_download, 1):
                 self._signals.download_progress.emit(job_id, idx, local_name)
-                remote_key = f"{actual_prefix}/{remote_name}"
+                remote_key = f"{ocr_prefix}/{remote_name}"
                 local_path = extract_path / local_name
                 try:
                     # Проверяем без кэша (свежие данные с сервера)
@@ -89,12 +92,13 @@ class DownloadMixin:
                         # Скачиваем без дискового кэша (сервер мог обновить файл)
                         r2.download_file(remote_key, str(local_path), use_cache=False)
                         logger.info(f"Скачан: {local_path}")
+                        downloaded_count += 1
                     else:
                         logger.warning(f"Файл не найден: {remote_key}")
                 except Exception as e:
                     logger.warning(f"Не удалось скачать {remote_key}: {e}")
 
-            logger.info(f"✅ Результат скачан: {extract_dir}")
+            logger.info(f"✅ Результат скачан: {extract_dir} ({downloaded_count} файлов)")
             self._signals.download_finished.emit(job_id, extract_dir)
 
         except Exception as e:
