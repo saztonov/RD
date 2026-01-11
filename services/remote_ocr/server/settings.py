@@ -230,5 +230,59 @@ class Settings:
         )
     )
 
+    # ===== RATE LIMITING (распределённый на Redis) =====
+    rate_limit_datalab_rpm: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "rate_limit_datalab_rpm", "RATE_LIMIT_DATALAB_RPM", 180, int
+        )
+    )
+    rate_limit_datalab_concurrent: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings,
+            "rate_limit_datalab_concurrent",
+            "RATE_LIMIT_DATALAB_CONCURRENT",
+            5,
+            int,
+        )
+    )
+    rate_limit_openrouter_rpm: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "rate_limit_openrouter_rpm", "RATE_LIMIT_OPENROUTER_RPM", 60, int
+        )
+    )
+    rate_limit_openrouter_concurrent: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings,
+            "rate_limit_openrouter_concurrent",
+            "RATE_LIMIT_OPENROUTER_CONCURRENT",
+            8,
+            int,
+        )
+    )
+    rate_limit_client_rpm: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "rate_limit_client_rpm", "RATE_LIMIT_CLIENT_RPM", 30, int
+        )
+    )
+    rate_limit_client_concurrent: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings,
+            "rate_limit_client_concurrent",
+            "RATE_LIMIT_CLIENT_CONCURRENT",
+            4,
+            int,
+        )
+    )
+    rate_limit_backoff_base: float = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "rate_limit_backoff_base", "RATE_LIMIT_BACKOFF_BASE", 5.0, float
+        )
+    )
+    rate_limit_backoff_max: float = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "rate_limit_backoff_max", "RATE_LIMIT_BACKOFF_MAX", 60.0, float
+        )
+    )
+
 
 settings = Settings()

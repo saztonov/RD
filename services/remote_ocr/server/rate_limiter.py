@@ -1,11 +1,22 @@
-"""Глобальный rate limiter для Datalab API и OpenRouter"""
+"""Глобальный rate limiter для Datalab API и OpenRouter
+
+DEPRECATED: Этот модуль использует threading-based rate limiting,
+который не работает между процессами Celery.
+Используйте redis_rate_limiter.py для распределённого rate limiting.
+"""
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
+import warnings
+from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Флаг для отката на legacy rate limiter
+USE_LEGACY_RATE_LIMITER = os.getenv("USE_LEGACY_RATE_LIMITER", "").lower() in ("1", "true", "yes")
 
 # Глобальный семафор для ограничения ВСЕХ параллельных OCR запросов
 _global_ocr_semaphore: threading.Semaphore | None = None
@@ -134,8 +145,19 @@ _limiter_lock = threading.Lock()
 
 
 def get_datalab_limiter() -> DatalabRateLimiter:
-    """Получить глобальный rate limiter (lazy initialization)"""
+    """
+    Получить глобальный rate limiter (lazy initialization).
+
+    DEPRECATED: Используйте CompatRateLimiter("datalab") для распределённого rate limiting.
+    """
     global _global_limiter
+
+    if not USE_LEGACY_RATE_LIMITER:
+        warnings.warn(
+            "get_datalab_limiter() is deprecated, use CompatRateLimiter('datalab')",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     if _global_limiter is None:
         with _limiter_lock:
@@ -148,3 +170,133 @@ def get_datalab_limiter() -> DatalabRateLimiter:
                 )
 
     return _global_limiter
+
+
+class CompatRateLimiter:
+    """
+    Обратно-совместимый wrapper для Redis rate limiter.
+
+    Предоставляет старый API acquire(timeout)/release() для совместимости
+    с существующим кодом, делегируя в RedisRateLimiter.
+
+    Usage:
+        limiter = CompatRateLimiter("datalab", {"job_id": "123"})
+        if limiter.acquire():
+            try:
+                # ... API call ...
+            finally:
+                limiter.release()
+    """
+
+    def __init__(
+        self,
+        engine: str,
+        context: Optional[dict] = None,
+    ):
+        """
+        Args:
+            engine: OCR движок ("datalab", "openrouter", "client")
+            context: дополнительный контекст (job_id, model_name)
+        """
+        self._engine = engine
+        self._context = context or {}
+        self._slot_id: Optional[str] = None
+        self._use_legacy = USE_LEGACY_RATE_LIMITER
+
+        # Lazy init для избежания circular imports
+        self._redis_limiter = None
+        self._legacy_limiter = None
+
+    def _get_limiter(self):
+        """Получить limiter (lazy init)"""
+        if self._use_legacy:
+            if self._legacy_limiter is None:
+                if self._engine == "datalab":
+                    self._legacy_limiter = get_datalab_limiter()
+                else:
+                    # Для других движков используем глобальный семафор
+                    self._legacy_limiter = None
+            return self._legacy_limiter
+        else:
+            if self._redis_limiter is None:
+                from .redis_rate_limiter import get_redis_rate_limiter
+
+                self._redis_limiter = get_redis_rate_limiter()
+            return self._redis_limiter
+
+    def acquire(self, timeout: float = 300.0) -> bool:
+        """
+        Получить разрешение на запрос.
+
+        Args:
+            timeout: максимальное время ожидания в секундах
+
+        Returns:
+            True если разрешение получено, False если таймаут
+        """
+        if self._use_legacy:
+            limiter = self._get_limiter()
+            if limiter:
+                return limiter.acquire(timeout=timeout)
+            # Fallback: используем глобальный семафор
+            sem = get_global_ocr_semaphore()
+            return sem.acquire(timeout=timeout)
+        else:
+            limiter = self._get_limiter()
+            result = limiter.acquire(
+                engine=self._engine,
+                timeout=timeout,
+                context=self._context,
+            )
+            if result.success:
+                self._slot_id = result.slot_id
+            return result.success
+
+    def release(self) -> None:
+        """Освободить слот после завершения запроса"""
+        if self._use_legacy:
+            limiter = self._get_limiter()
+            if limiter:
+                limiter.release()
+            else:
+                # Fallback: используем глобальный семафор
+                sem = get_global_ocr_semaphore()
+                try:
+                    sem.release()
+                except ValueError:
+                    pass
+        else:
+            if self._slot_id:
+                limiter = self._get_limiter()
+                limiter.release(self._engine, slot_id=self._slot_id)
+                self._slot_id = None
+
+    def report_429(self, retry_after: Optional[int] = None) -> None:
+        """
+        Сообщить о получении 429 от API.
+
+        Args:
+            retry_after: значение из заголовка Retry-After (секунды)
+        """
+        if not self._use_legacy:
+            limiter = self._get_limiter()
+            limiter.report_429(self._engine, retry_after)
+
+    def get_stats(self) -> dict:
+        """Получить статистику использования"""
+        if self._use_legacy:
+            limiter = self._get_limiter()
+            if limiter and hasattr(limiter, "get_stats"):
+                return limiter.get_stats()
+            return {}
+        else:
+            limiter = self._get_limiter()
+            status = limiter.get_status(self._engine)
+            return {
+                "engine": status.engine,
+                "current_concurrent": status.current_concurrent,
+                "max_concurrent": status.max_concurrent,
+                "requests_in_window": status.requests_in_window,
+                "max_rpm": status.max_requests_per_window,
+                "backoff_until": status.backoff_until,
+            }

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .celery_app import celery_app
 from .memory_utils import force_gc, log_memory, log_memory_delta
-from .rate_limiter import get_datalab_limiter
+from .rate_limiter import CompatRateLimiter
 from .settings import settings
 from .storage import Job, get_job, log_db_metrics, register_ocr_results_to_node, update_job_status
 from .task_helpers import check_paused, create_empty_result, download_job_files
@@ -89,9 +89,12 @@ def run_ocr_task(self, job_id: str) -> dict:
         stamp_model = (job_settings.stamp_model if job_settings else "") or ""
 
         engine = job.engine or "openrouter"
-        datalab_limiter = get_datalab_limiter() if engine == "datalab" else None
+
+        # Создаём rate limiter с контекстом job_id
+        job_context = {"job_id": job.id}
 
         if engine == "datalab" and settings.datalab_api_key:
+            datalab_limiter = CompatRateLimiter("datalab", job_context)
             strip_backend = create_ocr_engine(
                 "datalab",
                 api_key=settings.datalab_api_key,
@@ -102,10 +105,12 @@ def run_ocr_task(self, job_id: str) -> dict:
             )
         elif settings.openrouter_api_key:
             strip_model = text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
+            openrouter_limiter = CompatRateLimiter("openrouter", job_context)
             strip_backend = create_ocr_engine(
                 "openrouter",
                 api_key=settings.openrouter_api_key,
                 model_name=strip_model,
+                rate_limiter=openrouter_limiter,
             )
         else:
             strip_backend = create_ocr_engine("dummy")
@@ -118,8 +123,12 @@ def run_ocr_task(self, job_id: str) -> dict:
                 or "qwen/qwen3-vl-30b-a3b-instruct"
             )
             logger.info(f"IMAGE модель: {img_model}")
+            image_limiter = CompatRateLimiter("openrouter", job_context)
             image_backend = create_ocr_engine(
-                "openrouter", api_key=settings.openrouter_api_key, model_name=img_model
+                "openrouter",
+                api_key=settings.openrouter_api_key,
+                model_name=img_model,
+                rate_limiter=image_limiter,
             )
 
             stmp_model = (
@@ -130,8 +139,12 @@ def run_ocr_task(self, job_id: str) -> dict:
                 or "qwen/qwen3-vl-30b-a3b-instruct"
             )
             logger.info(f"STAMP модель: {stmp_model}")
+            stamp_limiter = CompatRateLimiter("openrouter", job_context)
             stamp_backend = create_ocr_engine(
-                "openrouter", api_key=settings.openrouter_api_key, model_name=stmp_model
+                "openrouter",
+                api_key=settings.openrouter_api_key,
+                model_name=stmp_model,
+                rate_limiter=stamp_limiter,
             )
         else:
             image_backend = create_ocr_engine("dummy")

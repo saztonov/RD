@@ -30,11 +30,12 @@ services:
       - redis_data:/data
     mem_limit: 256m
 
+  # Legacy worker (обрабатывает очередь celery - старые задачи)
   worker:
     build:
       context: .
       dockerfile: services/remote_ocr/Dockerfile
-    command: celery -A services.remote_ocr.server.celery_app worker --loglevel=info --concurrency=1
+    command: celery -A services.remote_ocr.server.celery_app worker -Q celery --loglevel=info --concurrency=1
     env_file:
       - .env
     environment:
@@ -48,6 +49,106 @@ services:
         limits:
           cpus: '2.0'
           memory: 4G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Координатор OCR задач (очередь ocr_meta)
+  worker-meta:
+    build:
+      context: .
+      dockerfile: services/remote_ocr/Dockerfile
+    command: celery -A services.remote_ocr.server.celery_app worker -Q ocr_meta --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REMOTE_OCR_DATA_DIR=/data
+    depends_on:
+      - redis
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Обработка TEXT/TABLE блоков (очередь ocr_text)
+  worker-text:
+    build:
+      context: .
+      dockerfile: services/remote_ocr/Dockerfile
+    command: celery -A services.remote_ocr.server.celery_app worker -Q ocr_text --loglevel=info --concurrency=4
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REMOTE_OCR_DATA_DIR=/data
+    depends_on:
+      - redis
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Обработка IMAGE блоков (очередь ocr_image)
+  worker-image:
+    build:
+      context: .
+      dockerfile: services/remote_ocr/Dockerfile
+    command: celery -A services.remote_ocr.server.celery_app worker -Q ocr_image --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REMOTE_OCR_DATA_DIR=/data
+    depends_on:
+      - redis
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Обработка STAMP блоков (очередь ocr_stamp)
+  worker-stamp:
+    build:
+      context: .
+      dockerfile: services/remote_ocr/Dockerfile
+    command: celery -A services.remote_ocr.server.celery_app worker -Q ocr_stamp --loglevel=info --concurrency=1
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REMOTE_OCR_DATA_DIR=/data
+    depends_on:
+      - redis
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
     logging:
       driver: "json-file"
       options:

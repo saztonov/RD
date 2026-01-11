@@ -330,7 +330,6 @@ def pass2_ocr_from_manifest(
     Параллельная обработка с ограничением потоков.
     Результаты записываются в block.ocr_text
     """
-    from .rate_limiter import get_global_ocr_semaphore
     from .worker_pdf import extract_pdfplumber_text_for_block
     from .worker_prompts import (
         build_strip_prompt,
@@ -353,7 +352,6 @@ def pass2_ocr_from_manifest(
     image_block_parts: Dict[str, Dict[int, str]] = {}
     image_block_total_parts: Dict[str, int] = {}
 
-    global_sem = get_global_ocr_semaphore(settings.max_global_ocr_requests)
     max_workers = settings.ocr_threads_per_job
 
     # Храним информацию о последнем обработанном блоке для отображения
@@ -396,13 +394,10 @@ def pass2_ocr_from_manifest(
                     f"PASS2: начало обработки strip {strip.strip_id} ({len(strip.block_parts)} блоков): {block_ids}"
                 )
 
-                global_sem.acquire()
-                try:
-                    response_text = strip_backend.recognize(
-                        merged_image, prompt=prompt_data
-                    )
-                finally:
-                    global_sem.release()
+                # Rate limiting теперь внутри backend.recognize()
+                response_text = strip_backend.recognize(
+                    merged_image, prompt=prompt_data
+                )
 
                 response_len = len(response_text) if response_text else 0
                 logger.info(f"PASS2: завершена обработка strip {strip.strip_id}, ответ {response_len} символов")
@@ -530,16 +525,13 @@ def pass2_ocr_from_manifest(
                 and backend.supports_native_pdf()
             )
 
-            global_sem.acquire()
-            try:
-                if use_native_pdf:
-                    logger.info(f"PASS2: native PDF для {entry.block_id}")
-                    text = backend.recognize_pdf(entry.pdf_crop_path, prompt=prompt_data)
-                else:
-                    with Image.open(entry.crop_path) as crop:
-                        text = backend.recognize(crop, prompt=prompt_data)
-            finally:
-                global_sem.release()
+            # Rate limiting теперь внутри backend.recognize()
+            if use_native_pdf:
+                logger.info(f"PASS2: native PDF для {entry.block_id}")
+                text = backend.recognize_pdf(entry.pdf_crop_path, prompt=prompt_data)
+            else:
+                with Image.open(entry.crop_path) as crop:
+                    text = backend.recognize(crop, prompt=prompt_data)
 
             logger.info(f"PASS2: завершена обработка IMAGE блока {entry.block_id}")
 

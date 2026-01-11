@@ -137,6 +137,12 @@ RULES:
                             )
 
                         if response.status_code == 429:
+                            # Сообщаем rate limiter о 429
+                            if self.rate_limiter and hasattr(self.rate_limiter, "report_429"):
+                                retry_after = response.headers.get("Retry-After")
+                                self.rate_limiter.report_429(
+                                    int(retry_after) if retry_after else None
+                                )
                             wait_time = min(60, (2**retry) * 10)
                             logger.warning(
                                 f"Datalab API 429: ждём {wait_time}с (попытка {retry + 1}/{self.max_retries})"
@@ -184,6 +190,12 @@ RULES:
                         )
 
                         if poll_response.status_code == 429:
+                            # Сообщаем rate limiter о 429
+                            if self.rate_limiter and hasattr(self.rate_limiter, "report_429"):
+                                retry_after = poll_response.headers.get("Retry-After")
+                                self.rate_limiter.report_429(
+                                    int(retry_after) if retry_after else None
+                                )
                             logger.warning("Datalab: 429 при поллинге, ждём 30с")
                             time.sleep(30)
                             continue

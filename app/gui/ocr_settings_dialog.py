@@ -69,6 +69,16 @@ class OCRSettings:
     max_queue_size: int = 100
     default_task_priority: int = 5
 
+    # Rate Limiting (распределённый на Redis)
+    rate_limit_datalab_rpm: int = 180
+    rate_limit_datalab_concurrent: int = 5
+    rate_limit_openrouter_rpm: int = 60
+    rate_limit_openrouter_concurrent: int = 8
+    rate_limit_client_rpm: int = 30
+    rate_limit_client_concurrent: int = 4
+    rate_limit_backoff_base: float = 5.0
+    rate_limit_backoff_max: float = 60.0
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -113,6 +123,9 @@ class OCRSettingsDialog(QDialog):
 
         # Вкладка: Очередь
         tabs.addTab(self._create_queue_tab(), "📋 Очередь")
+
+        # Вкладка: Rate Limit
+        tabs.addTab(self._create_rate_limit_tab(), "⏱️ Rate Limit")
 
         layout.addWidget(tabs)
 
@@ -363,6 +376,101 @@ class OCRSettingsDialog(QDialog):
 
         return widget
 
+    def _create_rate_limit_tab(self) -> QWidget:
+        """Вкладка настроек Rate Limiting"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Группа: Datalab API
+        group1 = QGroupBox("Datalab API")
+        form1 = QFormLayout(group1)
+
+        self.rate_datalab_rpm_spin = QSpinBox()
+        self.rate_datalab_rpm_spin.setRange(10, 500)
+        self.rate_datalab_rpm_spin.setSuffix(" req/min")
+        self.rate_datalab_rpm_spin.setToolTip("Максимум запросов в минуту к Datalab API")
+        form1.addRow("RPM лимит:", self.rate_datalab_rpm_spin)
+
+        self.rate_datalab_concurrent_spin = QSpinBox()
+        self.rate_datalab_concurrent_spin.setRange(1, 20)
+        self.rate_datalab_concurrent_spin.setToolTip("Максимум параллельных запросов к Datalab")
+        form1.addRow("Параллельных:", self.rate_datalab_concurrent_spin)
+
+        layout.addWidget(group1)
+
+        # Группа: OpenRouter API
+        group2 = QGroupBox("OpenRouter API")
+        form2 = QFormLayout(group2)
+
+        self.rate_openrouter_rpm_spin = QSpinBox()
+        self.rate_openrouter_rpm_spin.setRange(10, 500)
+        self.rate_openrouter_rpm_spin.setSuffix(" req/min")
+        self.rate_openrouter_rpm_spin.setToolTip("Максимум запросов в минуту к OpenRouter API")
+        form2.addRow("RPM лимит:", self.rate_openrouter_rpm_spin)
+
+        self.rate_openrouter_concurrent_spin = QSpinBox()
+        self.rate_openrouter_concurrent_spin.setRange(1, 30)
+        self.rate_openrouter_concurrent_spin.setToolTip("Максимум параллельных запросов к OpenRouter")
+        form2.addRow("Параллельных:", self.rate_openrouter_concurrent_spin)
+
+        layout.addWidget(group2)
+
+        # Группа: Лимит на пользователя (fairness)
+        group3 = QGroupBox("Лимит на пользователя (fairness)")
+        form3 = QFormLayout(group3)
+
+        self.rate_client_rpm_spin = QSpinBox()
+        self.rate_client_rpm_spin.setRange(5, 200)
+        self.rate_client_rpm_spin.setSuffix(" req/min")
+        self.rate_client_rpm_spin.setToolTip(
+            "Лимит запросов на одного пользователя.\n"
+            "Обеспечивает честное распределение ресурсов."
+        )
+        form3.addRow("RPM на пользователя:", self.rate_client_rpm_spin)
+
+        self.rate_client_concurrent_spin = QSpinBox()
+        self.rate_client_concurrent_spin.setRange(1, 10)
+        self.rate_client_concurrent_spin.setToolTip("Максимум параллельных запросов на пользователя")
+        form3.addRow("Параллельных на user:", self.rate_client_concurrent_spin)
+
+        layout.addWidget(group3)
+
+        # Группа: Backoff при 429 ошибках
+        group4 = QGroupBox("Backoff при 429 ошибках")
+        form4 = QFormLayout(group4)
+
+        self.rate_backoff_base_spin = QDoubleSpinBox()
+        self.rate_backoff_base_spin.setRange(1.0, 30.0)
+        self.rate_backoff_base_spin.setSuffix(" сек")
+        self.rate_backoff_base_spin.setDecimals(1)
+        self.rate_backoff_base_spin.setToolTip(
+            "Начальная задержка при получении 429 от API.\n"
+            "Экспоненциально увеличивается при повторных ошибках."
+        )
+        form4.addRow("Базовая задержка:", self.rate_backoff_base_spin)
+
+        self.rate_backoff_max_spin = QDoubleSpinBox()
+        self.rate_backoff_max_spin.setRange(10.0, 300.0)
+        self.rate_backoff_max_spin.setSuffix(" сек")
+        self.rate_backoff_max_spin.setDecimals(1)
+        self.rate_backoff_max_spin.setToolTip("Максимальная задержка при экспоненциальном backoff")
+        form4.addRow("Макс. задержка:", self.rate_backoff_max_spin)
+
+        layout.addWidget(group4)
+
+        # Информация
+        info = QLabel(
+            "ℹ️ Rate limiting распределён через Redis.\n"
+            "Лимиты применяются ко всему кластеру воркеров."
+        )
+        info.setStyleSheet("color: #888; font-size: 11px; padding: 10px;")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        layout.addStretch()
+
+        return widget
+
     def _load_settings(self):
         """Загрузить настройки из Supabase"""
         try:
@@ -421,6 +529,16 @@ class OCRSettingsDialog(QDialog):
         self.max_queue_size_spin.setValue(s.max_queue_size)
         self.default_priority_spin.setValue(s.default_task_priority)
 
+        # Rate Limit
+        self.rate_datalab_rpm_spin.setValue(s.rate_limit_datalab_rpm)
+        self.rate_datalab_concurrent_spin.setValue(s.rate_limit_datalab_concurrent)
+        self.rate_openrouter_rpm_spin.setValue(s.rate_limit_openrouter_rpm)
+        self.rate_openrouter_concurrent_spin.setValue(s.rate_limit_openrouter_concurrent)
+        self.rate_client_rpm_spin.setValue(s.rate_limit_client_rpm)
+        self.rate_client_concurrent_spin.setValue(s.rate_limit_client_concurrent)
+        self.rate_backoff_base_spin.setValue(s.rate_limit_backoff_base)
+        self.rate_backoff_max_spin.setValue(s.rate_limit_backoff_max)
+
     def _update_settings_from_ui(self):
         """Обновить настройки из UI"""
         self.settings = OCRSettings(
@@ -452,6 +570,15 @@ class OCRSettingsDialog(QDialog):
             poll_max_interval=self.poll_max_interval_spin.value(),
             max_queue_size=self.max_queue_size_spin.value(),
             default_task_priority=self.default_priority_spin.value(),
+            # Rate Limit
+            rate_limit_datalab_rpm=self.rate_datalab_rpm_spin.value(),
+            rate_limit_datalab_concurrent=self.rate_datalab_concurrent_spin.value(),
+            rate_limit_openrouter_rpm=self.rate_openrouter_rpm_spin.value(),
+            rate_limit_openrouter_concurrent=self.rate_openrouter_concurrent_spin.value(),
+            rate_limit_client_rpm=self.rate_client_rpm_spin.value(),
+            rate_limit_client_concurrent=self.rate_client_concurrent_spin.value(),
+            rate_limit_backoff_base=self.rate_backoff_base_spin.value(),
+            rate_limit_backoff_max=self.rate_backoff_max_spin.value(),
         )
 
     def _save_settings(self):

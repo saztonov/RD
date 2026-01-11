@@ -19,10 +19,14 @@ class OpenRouterBackend:
     DEFAULT_USER = "Распознай содержимое изображения."
 
     def __init__(
-        self, api_key: str, model_name: str = "qwen/qwen3-vl-30b-a3b-instruct"
+        self,
+        api_key: str,
+        model_name: str = "qwen/qwen3-vl-30b-a3b-instruct",
+        rate_limiter=None,
     ):
         self.api_key = api_key
         self.model_name = model_name
+        self.rate_limiter = rate_limiter
         self._provider_order: Optional[List[str]] = None
         try:
             import requests
@@ -109,6 +113,11 @@ class OpenRouterBackend:
         self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None
     ) -> str:
         """Распознать текст через OpenRouter API"""
+        # Rate limiting
+        if self.rate_limiter:
+            if not self.rate_limiter.acquire():
+                return "[Ошибка: таймаут ожидания rate limiter]"
+
         try:
             if self._provider_order is None:
                 self._provider_order = self._fetch_cheapest_providers() or []
@@ -195,6 +204,12 @@ class OpenRouterBackend:
                 elif response.status_code == 401:
                     return "[Ошибка OpenRouter 401: Неверный API ключ]"
                 elif response.status_code == 429:
+                    # Сообщаем rate limiter о 429
+                    if self.rate_limiter and hasattr(self.rate_limiter, "report_429"):
+                        retry_after = response.headers.get("Retry-After")
+                        self.rate_limiter.report_429(
+                            int(retry_after) if retry_after else None
+                        )
                     return "[Ошибка OpenRouter 429: Превышен лимит запросов]"
                 elif response.status_code == 402:
                     return "[Ошибка OpenRouter 402: Недостаточно кредитов]"
@@ -212,6 +227,9 @@ class OpenRouterBackend:
         except Exception as e:
             logger.error(f"Ошибка OpenRouter OCR: {e}", exc_info=True)
             return f"[Ошибка OpenRouter OCR: {e}]"
+        finally:
+            if self.rate_limiter:
+                self.rate_limiter.release()
 
     def supports_native_pdf(self) -> bool:
         """Проверить, поддерживает ли модель прямой ввод PDF (только Gemini-3)."""
@@ -239,6 +257,11 @@ class OpenRouterBackend:
             raise NotImplementedError(
                 f"Модель {self.model_name} не поддерживает прямой ввод PDF"
             )
+
+        # Rate limiting
+        if self.rate_limiter:
+            if not self.rate_limiter.acquire():
+                return "[Ошибка: таймаут ожидания rate limiter]"
 
         try:
             pdf_path = Path(pdf_path)
@@ -324,6 +347,12 @@ class OpenRouterBackend:
                 elif response.status_code == 401:
                     return "[Ошибка OpenRouter 401: Неверный API ключ]"
                 elif response.status_code == 429:
+                    # Сообщаем rate limiter о 429
+                    if self.rate_limiter and hasattr(self.rate_limiter, "report_429"):
+                        retry_after = response.headers.get("Retry-After")
+                        self.rate_limiter.report_429(
+                            int(retry_after) if retry_after else None
+                        )
                     return "[Ошибка OpenRouter 429: Превышен лимит запросов]"
                 elif response.status_code == 402:
                     return "[Ошибка OpenRouter 402: Недостаточно кредитов]"
@@ -341,3 +370,6 @@ class OpenRouterBackend:
         except Exception as e:
             logger.error(f"Ошибка OpenRouter OCR (native PDF): {e}", exc_info=True)
             return f"[Ошибка OpenRouter OCR: {e}]"
+        finally:
+            if self.rate_limiter:
+                self.rate_limiter.release()
