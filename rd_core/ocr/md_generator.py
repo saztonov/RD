@@ -235,10 +235,101 @@ def _html_to_markdown(html: str) -> str:
 
 
 def _format_image_ocr_md(data: dict) -> str:
-    """Форматировать данные OCR изображения в компактный Markdown."""
+    """Форматировать данные OCR изображения в компактный Markdown.
+
+    Поддерживает два формата:
+    1. Старый формат: content_summary, detailed_description, clean_ocr_text
+    2. Новый формат: analysis.raw_text, personnel, axes, project_details
+    """
     img_data = extract_image_ocr_data(data)
     parts = []
 
+    # Новый формат: raw_text уже содержит готовый markdown
+    if img_data.get("raw_text"):
+        return img_data["raw_text"]
+
+    # Новый формат: структурированные данные
+    has_new_format = any(
+        img_data.get(k) for k in ["organization", "personnel", "sheet_info", "project_details", "axes"]
+    )
+
+    if has_new_format:
+        # Организация
+        if img_data.get("organization"):
+            parts.append(f"**Организация:** {img_data['organization']}")
+
+        # Персонал
+        if img_data.get("personnel"):
+            personnel_lines = ["**Исполнители:**"]
+            for person in img_data["personnel"]:
+                if isinstance(person, dict):
+                    role = person.get("role", "")
+                    name = person.get("name", "")
+                    date = person.get("date", "")
+                    if role and name:
+                        line = f"- {role}: {name}"
+                        if date:
+                            line += f" ({date})"
+                        personnel_lines.append(line)
+            if len(personnel_lines) > 1:
+                parts.append("\n".join(personnel_lines))
+
+        # Информация о листе
+        if img_data.get("sheet_info"):
+            si = img_data["sheet_info"]
+            current = si.get("current_sheet", "")
+            total = si.get("total_sheets", "")
+            if current or total:
+                parts.append(f"**Лист:** {current} из {total}")
+
+        # Детали проекта
+        if img_data.get("project_details"):
+            pd = img_data["project_details"]
+            if pd.get("main_object"):
+                floors = pd.get("floors", "")
+                obj_str = pd["main_object"]
+                if floors:
+                    obj_str += f" ({floors} эт.)"
+                parts.append(f"**Объект:** {obj_str}")
+            if pd.get("additional_structures"):
+                structs = pd["additional_structures"]
+                struct_strs = [f"{s.get('id', '')} ({s.get('floors', '')} эт.)" for s in structs if isinstance(s, dict)]
+                if struct_strs:
+                    parts.append(f"**Доп. строения:** {', '.join(struct_strs)}")
+
+        # Оси
+        if img_data.get("axes"):
+            axes = img_data["axes"]
+            axis_parts = []
+            if axes.get("horizontal"):
+                axis_parts.append(f"горизонтальные: {', '.join(str(a) for a in axes['horizontal'])}")
+            if axes.get("vertical"):
+                axis_parts.append(f"вертикальные: {', '.join(str(a) for a in axes['vertical'])}")
+            if axis_parts:
+                parts.append(f"**Оси:** {'; '.join(axis_parts)}")
+
+        # Разрезы
+        if img_data.get("sections"):
+            sections = img_data["sections"]
+            sect_strs = [f"{s.get('label', '')} ({s.get('orientation', '')})" for s in sections if isinstance(s, dict)]
+            if sect_strs:
+                parts.append(f"**Разрезы:** {', '.join(sect_strs)}")
+
+        # Примечания
+        if img_data.get("notes_fragment"):
+            notes = img_data["notes_fragment"]
+            if isinstance(notes, list):
+                parts.append(f"**Примечания:** {'; '.join(notes)}")
+            else:
+                parts.append(f"**Примечания:** {notes}")
+
+        # Сырой текст как fallback
+        if not parts and img_data.get("raw_pdfplumber_text"):
+            parts.append(f"**Текст:** {img_data['raw_pdfplumber_text']}")
+
+        return "\n".join(parts) if parts else img_data.get("raw_pdfplumber_text", "")
+
+    # Старый формат
     # Заголовок: [ИЗОБРАЖЕНИЕ] Тип: XXX | Оси: XXX
     header_parts = ["**[ИЗОБРАЖЕНИЕ]**"]
     if img_data.get("zone_name") and img_data["zone_name"] != "Не определено":
@@ -269,6 +360,66 @@ def _format_image_ocr_md(data: dict) -> str:
     return "\n".join(parts) if parts else ""
 
 
+def _format_generic_json_md(data: dict, max_depth: int = 3) -> str:
+    """Универсальный fallback для форматирования любого JSON в Markdown.
+
+    Рекурсивно извлекает текстовые значения из JSON и форматирует их.
+
+    Args:
+        data: JSON данные (dict или list)
+        max_depth: максимальная глубина рекурсии
+
+    Returns:
+        Отформатированный текст
+    """
+    if max_depth <= 0:
+        return ""
+
+    parts = []
+
+    def extract_text_values(obj, depth: int = 0, prefix: str = "") -> list:
+        """Рекурсивно извлечь текстовые значения."""
+        result = []
+        if depth > max_depth:
+            return result
+
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                # Пропускаем служебные поля
+                if key in ("doc_metadata", "image", "uri", "mime_type"):
+                    continue
+
+                if isinstance(value, str) and value.strip():
+                    # Форматируем ключ
+                    formatted_key = key.replace("_", " ").title()
+                    result.append(f"**{formatted_key}:** {value.strip()}")
+                elif isinstance(value, (dict, list)):
+                    nested = extract_text_values(value, depth + 1, key)
+                    result.extend(nested)
+                elif isinstance(value, (int, float)) and key not in ("page",):
+                    formatted_key = key.replace("_", " ").title()
+                    result.append(f"**{formatted_key}:** {value}")
+
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, str) and item.strip():
+                    result.append(f"- {item.strip()}")
+                elif isinstance(item, dict):
+                    # Форматируем элемент списка
+                    item_parts = []
+                    for k, v in item.items():
+                        if isinstance(v, str) and v.strip():
+                            item_parts.append(f"{k}: {v}")
+                    if item_parts:
+                        result.append(f"- {', '.join(item_parts)}")
+
+        return result
+
+    parts = extract_text_values(data)
+
+    return "\n".join(parts) if parts else ""
+
+
 def _process_ocr_content(ocr_text: str) -> str:
     """Обработать содержимое блока и конвертировать в Markdown."""
     if not ocr_text:
@@ -286,10 +437,20 @@ def _process_ocr_content(ocr_text: str) -> str:
     if text.startswith("{") or text.startswith("["):
         try:
             parsed = json_module.loads(text)
-            if isinstance(parsed, dict) and is_image_ocr_json(parsed):
-                return _format_image_ocr_md(parsed)
-            # Fallback для другого JSON
-            return json_module.dumps(parsed, ensure_ascii=False, separators=(',', ':'))
+            if isinstance(parsed, dict):
+                if is_image_ocr_json(parsed):
+                    return _format_image_ocr_md(parsed)
+                # Универсальный fallback для любого JSON
+                formatted = _format_generic_json_md(parsed)
+                if formatted:
+                    return formatted
+            elif isinstance(parsed, list):
+                # Для списков тоже используем fallback
+                formatted = _format_generic_json_md({"items": parsed})
+                if formatted:
+                    return formatted
+            # Если ничего не извлеклось - возвращаем как есть (но не сырой JSON)
+            return ""
         except json_module.JSONDecodeError:
             pass
 
