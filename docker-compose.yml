@@ -14,7 +14,7 @@ services:
     depends_on:
       - redis
     restart: always
-    mem_limit: 512m
+    mem_limit: 768m
     logging:
       driver: "json-file"
       options:
@@ -46,7 +46,7 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 4G
+          memory: 3G
     logging:
       driver: "json-file"
       options:
@@ -96,7 +96,7 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 2G
+          memory: 4G
     logging:
       driver: "json-file"
       options:
@@ -121,7 +121,7 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 2G
+          memory: 3G
     logging:
       driver: "json-file"
       options:
@@ -146,7 +146,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 1G
+          memory: 768m
     logging:
       driver: "json-file"
       options:
