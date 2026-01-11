@@ -6,9 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-# Зависимости для PyMuPDF
+# Зависимости для PyMuPDF + curl для healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Устанавливаем зависимости сервера

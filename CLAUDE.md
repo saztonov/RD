@@ -31,11 +31,20 @@ pytest -v                             # Verbose output
 ```
 
 ### Remote OCR Server
-```bash
-# Docker (recommended)
-docker compose -f docker-compose.remote-ocr.dev.yml up --build
 
-# Manual
+#### Production
+```bash
+cp env.example .env              # Configure environment variables
+docker compose up -d --build     # Start server (listens on 127.0.0.1:18000)
+```
+
+#### Development (with hot reload)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+#### Manual (without Docker)
+```bash
 redis-server                                                              # Terminal 1
 uvicorn services.remote_ocr.server.main:app --host 0.0.0.0 --port 8000 --reload  # Terminal 2
 celery -A services.remote_ocr.server.celery_app worker --loglevel=info --concurrency=1  # Terminal 3
@@ -43,8 +52,8 @@ celery -A services.remote_ocr.server.celery_app worker --loglevel=info --concurr
 
 ### Health Checks
 ```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/queue
+curl http://localhost:18000/health   # Production (default port)
+curl http://localhost:18000/queue
 ```
 
 ## Architecture
@@ -119,12 +128,18 @@ Block types: `TEXT`, `TABLE`, `IMAGE`. Shape types: `RECTANGLE`, `POLYGON`. Bloc
 
 ## Configuration
 
+Copy `env.example` to `.env` and configure:
+
 Required `.env` variables:
 - `SUPABASE_URL`, `SUPABASE_KEY` - Database
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` - Storage
 - `OPENROUTER_API_KEY` and/or `DATALAB_API_KEY` - OCR engines
-- `REMOTE_OCR_BASE_URL` - Server URL (default: http://localhost:8000)
+- `REMOTE_OCR_BASE_URL` - Server URL (default: http://localhost:18000)
 - `REDIS_URL` - For server (default: redis://redis:6379/0)
+
+Docker-specific (optional):
+- `REMOTE_OCR_BIND_ADDR` - Bind address (default: 127.0.0.1)
+- `REMOTE_OCR_PORT` - External port (default: 18000)
 
 ## Code Style
 

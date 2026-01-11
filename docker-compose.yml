@@ -5,16 +5,23 @@ services:
       dockerfile: services/remote_ocr/Dockerfile
     command: uvicorn services.remote_ocr.server.main:app --host 0.0.0.0 --port 8000
     ports:
-      - "8000:8000"
+      - "${REMOTE_OCR_BIND_ADDR:-127.0.0.1}:${REMOTE_OCR_PORT:-18000}:8000"
     env_file:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: always
     mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -27,6 +34,11 @@ services:
     volumes:
       - redis_data:/data
     mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Legacy worker (обрабатывает очередь celery - старые задачи)
   worker:
@@ -40,7 +52,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -65,7 +78,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -90,7 +104,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -115,7 +130,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: always
     deploy:
       resources:
@@ -140,7 +156,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: always
     deploy:
       resources:

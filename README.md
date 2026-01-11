@@ -18,11 +18,25 @@ python app/main.py
 ```
 
 ### Сервер OCR
+
+#### Production
 ```bash
-docker compose -f docker-compose.remote-ocr.dev.yml up --build
+cp env.example .env              # Настроить переменные окружения
+docker compose up -d --build     # Запуск (слушает 127.0.0.1:18000)
 ```
 
-Или без Docker:
+Для работы за nginx, добавить в `.env`:
+```env
+REMOTE_OCR_BIND_ADDR=127.0.0.1
+REMOTE_OCR_PORT=18000
+```
+
+#### Development (с hot reload)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+#### Без Docker
 ```bash
 redis-server                                                              # Terminal 1
 uvicorn services.remote_ocr.server.main:app --host 0.0.0.0 --port 8000   # Terminal 2
@@ -36,25 +50,9 @@ python build.py  # → dist/CoreStructure.exe
 
 ## Конфигурация (.env)
 
-```env
-# Supabase
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_anon_key
+Скопируйте `env.example` в `.env` и настройте переменные.
 
-# R2 Storage
-R2_ACCOUNT_ID=your_account_id
-R2_ACCESS_KEY_ID=your_access_key
-R2_SECRET_ACCESS_KEY=your_secret_key
-R2_BUCKET_NAME=rd1
-
-# OCR
-OPENROUTER_API_KEY=your_key
-DATALAB_API_KEY=your_key
-
-# Server
-REMOTE_OCR_BASE_URL=http://localhost:8000
-REDIS_URL=redis://localhost:6379/0
-```
+См. полный список переменных в [env.example](env.example).
 
 ## Документация
 
