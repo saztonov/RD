@@ -46,7 +46,9 @@
       "Bash(cd:*)",
       "Bash(curl:*)",
       "WebSearch",
-      "Bash(powershell -Command \"Get-Content ''C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\remote-ocr_logs_2026-01-11_103734.log'' | Select-Object -Last 200\")"
+      "Bash(powershell -Command \"Get-Content ''C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\remote-ocr_logs_2026-01-11_103734.log'' | Select-Object -Last 200\")",
+      "Bash(git push:*)",
+      "Bash(del:*)"
     ]
   }
 }
