@@ -103,6 +103,17 @@ def get_job_details_handler(
 
     result = job_to_dict(job)
 
+    # Вычисляем общее время работы задачи
+    total_time_seconds = None
+    if job.created_at and job.updated_at:
+        try:
+            # Парсим ISO формат дат
+            created = datetime.fromisoformat(job.created_at.replace("Z", "+00:00"))
+            updated = datetime.fromisoformat(job.updated_at.replace("Z", "+00:00"))
+            total_time_seconds = (updated - created).total_seconds()
+        except Exception as e:
+            _logger.warning(f"Failed to calculate job duration: {e}")
+
     blocks_file = get_job_file_by_type(job_id, "blocks")
     if blocks_file:
         try:
@@ -111,19 +122,61 @@ def get_job_details_handler(
             if blocks_text:
                 blocks = json.loads(blocks_text)
 
+                # Подсчёт блоков по типам
                 text_count = sum(1 for b in blocks if b.get("block_type") == "text")
                 table_count = sum(1 for b in blocks if b.get("block_type") == "table")
-                image_count = sum(1 for b in blocks if b.get("block_type") == "image")
 
-                result["block_stats"] = {
-                    "total": len(blocks),
+                # Image блоки: разделяем на штампы и обычные изображения
+                image_blocks = [b for b in blocks if b.get("block_type") == "image"]
+                stamp_count = sum(1 for b in image_blocks if b.get("category_code") == "stamp")
+                image_count = len(image_blocks) - stamp_count  # Обычные изображения (не штампы)
+
+                total_blocks = len(blocks)
+                grouped_count = text_count + table_count
+
+                # Статистика по блокам
+                block_stats = {
+                    "total": total_blocks,
                     "text": text_count,
                     "table": table_count,
                     "image": image_count,
-                    "grouped": text_count + table_count,
+                    "stamp": stamp_count,
+                    "grouped": grouped_count,
                 }
+
+                # Добавляем статистику по времени если задача завершена
+                if total_time_seconds is not None and total_time_seconds > 0:
+                    block_stats["total_time_seconds"] = total_time_seconds
+
+                    # Среднее время на блок (для всех блоков)
+                    if total_blocks > 0:
+                        block_stats["avg_time_per_block"] = total_time_seconds / total_blocks
+
+                    # Среднее время на текстовый блок (текст + таблицы)
+                    if grouped_count > 0:
+                        block_stats["avg_time_per_text_block"] = total_time_seconds / grouped_count
+
+                    # Примерное распределение времени по типам блоков
+                    # (на основе весов: текст=1, таблица=1.5, image=2, stamp=0.5)
+                    weight_text = text_count * 1.0
+                    weight_table = table_count * 1.5
+                    weight_image = image_count * 2.0
+                    weight_stamp = stamp_count * 0.5
+                    total_weight = weight_text + weight_table + weight_image + weight_stamp
+
+                    if total_weight > 0:
+                        time_per_weight = total_time_seconds / total_weight
+                        block_stats["estimated_text_time"] = weight_text * time_per_weight
+                        block_stats["estimated_table_time"] = weight_table * time_per_weight
+                        block_stats["estimated_image_time"] = weight_image * time_per_weight
+                        block_stats["estimated_stamp_time"] = weight_stamp * time_per_weight
+
+                result["block_stats"] = block_stats
         except Exception as e:
             _logger.warning(f"Failed to load blocks from R2: {e}")
+    elif total_time_seconds is not None:
+        # Если нет блоков, но есть время - добавляем только время
+        result["block_stats"] = {"total_time_seconds": total_time_seconds}
 
     if job.settings:
         result["job_settings"] = {

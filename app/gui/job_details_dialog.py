@@ -115,15 +115,60 @@ class JobDetailsDialog(QDialog):
             text_count = block_stats.get("text", 0)
             table_count = block_stats.get("table", 0)
             image_count = block_stats.get("image", 0)
+            stamp_count = block_stats.get("stamp", 0)
             grouped_count = block_stats.get("grouped", text_count + table_count)
 
+            # Общее время работы
+            total_time = block_stats.get("total_time_seconds")
+            if total_time:
+                blocks_layout.addRow("⏱ Общее время:", QLabel(self._format_duration(total_time)))
+
             blocks_layout.addRow("Всего блоков:", QLabel(str(total)))
-            blocks_layout.addRow("Текстовых:", QLabel(str(text_count)))
-            blocks_layout.addRow("Таблиц:", QLabel(str(table_count)))
-            blocks_layout.addRow("Изображений:", QLabel(str(image_count)))
-            blocks_layout.addRow(
-                "Сгруппировано (текст+таблицы):", QLabel(str(grouped_count))
-            )
+
+            # Текстовые блоки с временем
+            text_time = block_stats.get("estimated_text_time")
+            if text_count > 0 and text_time:
+                avg_text = text_time / text_count if text_count > 0 else 0
+                text_info = f"{text_count}  ({self._format_duration(text_time)}, ~{self._format_duration(avg_text)}/блок)"
+            else:
+                text_info = str(text_count)
+            blocks_layout.addRow("Текстовых:", QLabel(text_info))
+
+            # Таблицы с временем
+            table_time = block_stats.get("estimated_table_time")
+            if table_count > 0 and table_time:
+                avg_table = table_time / table_count if table_count > 0 else 0
+                table_info = f"{table_count}  ({self._format_duration(table_time)}, ~{self._format_duration(avg_table)}/блок)"
+            else:
+                table_info = str(table_count)
+            blocks_layout.addRow("Таблиц:", QLabel(table_info))
+
+            # Изображения с временем
+            image_time = block_stats.get("estimated_image_time")
+            if image_count > 0 and image_time:
+                avg_image = image_time / image_count if image_count > 0 else 0
+                image_info = f"{image_count}  ({self._format_duration(image_time)}, ~{self._format_duration(avg_image)}/блок)"
+            else:
+                image_info = str(image_count)
+            blocks_layout.addRow("Изображений:", QLabel(image_info))
+
+            # Штампы с временем
+            stamp_time = block_stats.get("estimated_stamp_time")
+            if stamp_count > 0:
+                if stamp_time:
+                    avg_stamp = stamp_time / stamp_count if stamp_count > 0 else 0
+                    stamp_info = f"{stamp_count}  ({self._format_duration(stamp_time)}, ~{self._format_duration(avg_stamp)}/блок)"
+                else:
+                    stamp_info = str(stamp_count)
+                blocks_layout.addRow("Штампов:", QLabel(stamp_info))
+
+            # Сгруппировано (текст + таблицы)
+            blocks_layout.addRow("Сгруппировано (текст+таблицы):", QLabel(str(grouped_count)))
+
+            # Среднее время на блок
+            avg_per_block = block_stats.get("avg_time_per_block")
+            if avg_per_block and total > 0:
+                blocks_layout.addRow("Среднее время/блок:", QLabel(self._format_duration(avg_per_block)))
 
             blocks_group.setLayout(blocks_layout)
             layout.addWidget(blocks_group)
@@ -279,6 +324,22 @@ class JobDetailsDialog(QDialog):
     def _open_r2_url(self, url: str):
         """Открыть URL в браузере"""
         webbrowser.open(url)
+
+    def _format_duration(self, seconds: float) -> str:
+        """Форматировать длительность в человекочитаемый формат"""
+        if seconds < 1:
+            return f"{seconds * 1000:.0f}мс"
+        elif seconds < 60:
+            return f"{seconds:.1f}с"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{minutes}м {secs}с"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            secs = int(seconds % 60)
+            return f"{hours}ч {minutes}м {secs}с"
 
     def _estimate_completion(self, created_at: str, progress: float) -> str:
         """Прогноз времени завершения (в UTC+3)"""
