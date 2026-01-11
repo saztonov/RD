@@ -2512,6 +2512,13 @@
         "default": null,
         "data_type": "timestamp with time zone",
         "is_nullable": true
+      },
+      {
+        "name": "client_id",
+        "comment": "Идентификатор клиента (из ~/.config/CoreStructure/client_id.txt)",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
       }
     ],
     "constraints": [

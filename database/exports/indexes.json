@@ -519,6 +519,14 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_jobs_active_status ON public.jobs USING btree (status, updated_at DESC) WHERE (status = ANY (ARRAY['queued'::text, 'processing'::text]))"
   },
+  "public.jobs.idx_jobs_client_id": {
+    "schema": "public",
+    "name": "idx_jobs_client_id",
+    "table_name": "jobs",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_jobs_client_id ON public.jobs USING btree (client_id)"
+  },
   "public.jobs.idx_jobs_created_at": {
     "schema": "public",
     "name": "idx_jobs_created_at",

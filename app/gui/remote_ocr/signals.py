@@ -7,7 +7,7 @@ class WorkerSignals(QObject):
     """Сигналы для фоновых задач"""
 
     jobs_loaded = Signal(list)
-    jobs_error = Signal(str)
+    jobs_error = Signal(str, bool)  # error_message, is_network_error
     job_uploading = Signal(object)  # JobInfo с status="uploading" - показывается сразу
     job_created = Signal(object)
     job_create_error = Signal(str, str)  # error_type, message

@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-11T18:53:50.063964
+-- Generated: 2026-01-11T19:19:50.227678
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -454,6 +454,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     status_message text,
     migrated_to_node boolean DEFAULT false,
     migrated_at timestamp with time zone,
+    client_id text NOT NULL,
     CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT jobs_pkey PRIMARY KEY (id)
 );
@@ -463,6 +464,7 @@ COMMENT ON COLUMN public.jobs.node_id IS 'ID узла дерева докуме�
 COMMENT ON COLUMN public.jobs.status_message IS 'Детальное сообщение о текущей операции (отображается в колонке "Детали")';
 COMMENT ON COLUMN public.jobs.migrated_to_node IS 'Флаг: результаты перенесены в node_files';
 COMMENT ON COLUMN public.jobs.migrated_at IS 'Время переноса результатов в node_files';
+COMMENT ON COLUMN public.jobs.client_id IS 'Идентификатор клиента (из ~/.config/CoreStructure/client_id.txt)';
 
 -- Table: public.node_files
 -- Description: Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)
@@ -4390,6 +4392,9 @@ CREATE UNIQUE INDEX job_settings_job_id_key ON public.job_settings USING btree (
 
 -- Index on public.jobs
 CREATE INDEX idx_jobs_active_status ON public.jobs USING btree (status, updated_at DESC) WHERE (status = ANY (ARRAY['queued'::text, 'processing'::text]));
+
+-- Index on public.jobs
+CREATE INDEX idx_jobs_client_id ON public.jobs USING btree (client_id);
 
 -- Index on public.jobs
 CREATE INDEX idx_jobs_created_at ON public.jobs USING btree (created_at DESC);
