@@ -4,6 +4,8 @@ import logging
 import time
 from datetime import datetime
 
+from app.gui.connection_manager import is_network_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +34,7 @@ class PollingControllerMixin:
         """Фоновая загрузка полного списка задач"""
         client = self._get_client()
         if client is None:
-            self._signals.jobs_error.emit("Ошибка клиента")
+            self._signals.jobs_error.emit("Ошибка клиента", False)
             return
         try:
             logger.debug(f"Fetching full jobs list from {client.base_url}")
@@ -44,13 +46,13 @@ class PollingControllerMixin:
                 f"Ошибка получения списка задач от {client.base_url}: {e}",
                 exc_info=True,
             )
-            self._signals.jobs_error.emit(str(e))
+            self._signals.jobs_error.emit(str(e), is_network_error(e))
 
     def _fetch_changes_bg(self):
         """Фоновая загрузка только изменений (incremental polling)"""
         client = self._get_client()
         if client is None:
-            self._signals.jobs_error.emit("Ошибка клиента")
+            self._signals.jobs_error.emit("Ошибка клиента", False)
             return
         try:
             logger.debug(f"Fetching job changes since {self._last_server_time}")
@@ -75,7 +77,7 @@ class PollingControllerMixin:
             # При ошибке incremental - пробуем полную загрузку
             self._last_server_time = None
             self._jobs_cache.clear()
-            self._signals.jobs_error.emit(str(e))
+            self._signals.jobs_error.emit(str(e), is_network_error(e))
 
     def _on_jobs_loaded(self, jobs):
         """Слот: список задач получен"""
@@ -126,16 +128,22 @@ class PollingControllerMixin:
         if self.refresh_timer.interval() != new_interval:
             self.refresh_timer.setInterval(new_interval)
 
-    def _on_jobs_error(self, error_msg: str):
+    def _on_jobs_error(self, error_msg: str, is_network_err: bool = True):
         """Слот: ошибка загрузки списка"""
         self._is_fetching = False
-        self.status_label.setText("🔴 Сервер недоступен")
         self._consecutive_errors += 1
 
-        # Уведомляем ConnectionManager о проблеме
-        main_window = self.main_window
-        if hasattr(main_window, "connection_manager") and main_window.connection_manager:
-            main_window.connection_manager.mark_error(error_msg)
+        # Уведомляем ConnectionManager только о сетевых ошибках
+        # HTTP 500 означает что сервер доступен, но есть баг на эндпоинте
+        if is_network_err:
+            self.status_label.setText("🔴 Сервер недоступен")
+            main_window = self.main_window
+            if hasattr(main_window, "connection_manager") and main_window.connection_manager:
+                main_window.connection_manager.mark_error(error_msg)
+        else:
+            # Серверная ошибка (5xx) - сервер доступен, но временная проблема
+            self.status_label.setText("🟡 Ошибка сервера")
+            logger.warning(f"Серверная ошибка (не сетевая): {error_msg}")
 
         backoff_interval = min(
             self.POLL_INTERVAL_ERROR * (2 ** min(self._consecutive_errors - 1, 3)),
