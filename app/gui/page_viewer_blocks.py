@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Union
 from PySide6.QtCore import QPointF, QRectF, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QPen, QPolygonF
 from PySide6.QtWidgets import QGraphicsPolygonItem, QGraphicsRectItem, QGraphicsTextItem
+from shiboken6 import isValid
 
 from rd_core.models import Block, BlockSource, BlockType, ShapeType
 
@@ -26,10 +27,12 @@ class BlockRenderingMixin:
     def _clear_block_items(self):
         """Очистить все QGraphicsRectItem блоков"""
         for item in self.block_items.values():
-            self.scene.removeItem(item)
+            if isValid(item):
+                self.scene.removeItem(item)
         self.block_items.clear()
         for label in self.block_labels.values():
-            self.scene.removeItem(label)
+            if isValid(label):
+                self.scene.removeItem(label)
         self.block_labels.clear()
         self._clear_resize_handles()
 
@@ -169,19 +172,23 @@ class BlockRenderingMixin:
         # Удаляем старый item этого блока
         if block.id in self.block_items:
             old_item = self.block_items[block.id]
-            self.scene.removeItem(old_item)
+            if isValid(old_item):
+                self.scene.removeItem(old_item)
             del self.block_items[block.id]
 
         # Удаляем старую метку
         if block.id in self.block_labels:
             old_label = self.block_labels[block.id]
-            self.scene.removeItem(old_label)
+            if isValid(old_label):
+                self.scene.removeItem(old_label)
             del self.block_labels[block.id]
 
         # Удаляем метку галочки если была
         check_key = block.id + "_check"
         if check_key in self.block_labels:
-            self.scene.removeItem(self.block_labels[check_key])
+            check_label = self.block_labels[check_key]
+            if isValid(check_label):
+                self.scene.removeItem(check_label)
             del self.block_labels[check_key]
 
         # Очищаем и перерисовываем resize handles для выбранного блока

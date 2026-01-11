@@ -76,14 +76,10 @@ class AsyncR2Storage:
                     Bucket=self.bucket_name, Key=remote_key
                 )
 
-                # Streaming download чанками (8 MB)
+                # Streaming download чанками
                 async with aiofiles.open(local_file, "wb") as f:
-                    async with response["Body"] as stream:
-                        while True:
-                            chunk = await stream.read(CHUNK_SIZE)
-                            if not chunk:
-                                break
-                            await f.write(chunk)
+                    async for chunk in response["Body"].iter_chunks():
+                        await f.write(chunk)
 
             logger.debug(f"Async streaming download: {remote_key}")
             return True
