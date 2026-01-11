@@ -5,6 +5,8 @@ services:
     volumes:
       - .:/app
       - ./services/remote_ocr/data:/data
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
     restart: "no"
     mem_limit: null
 
@@ -18,5 +20,7 @@ services:
     volumes:
       - .:/app
       - ./services/remote_ocr/data:/data
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
     restart: "no"
     deploy: {}
