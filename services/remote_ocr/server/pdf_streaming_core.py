@@ -264,7 +264,7 @@ def split_large_crop(
     return parts
 
 
-BLOCK_SEPARATOR_HEIGHT = 60
+BLOCK_SEPARATOR_HEIGHT = 80  # Увеличено с 60 для лучшей видимости
 
 
 def create_block_separator(
@@ -286,10 +286,10 @@ def create_block_separator(
     text = f"BLOCK: {armor_code}"
 
     try:
-        font = ImageFont.truetype("arial.ttf", 36)
+        font = ImageFont.truetype("arial.ttf", 48)  # Увеличено с 36 для лучшей видимости
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype(BUNDLED_FONT_PATH, 36)
+            font = ImageFont.truetype(BUNDLED_FONT_PATH, 48)
         except (IOError, OSError):
             font = ImageFont.load_default()
 
@@ -352,7 +352,7 @@ def merge_crops_vertically(
         elif i > 0:
             y_offset += gap
 
-        x_offset = (max_width - crop.width) // 2
+        x_offset = 0  # Левое выравнивание вместо центрирования
         if crop.mode in ("RGBA", "LA"):
             crop = crop.convert("RGB")
         merged.paste(crop, (x_offset, y_offset))

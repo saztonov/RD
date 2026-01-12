@@ -177,7 +177,7 @@ class Settings:
     )
     pdf_render_dpi: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "pdf_render_dpi", "PDF_RENDER_DPI", 300, int
+            _db_settings, "pdf_render_dpi", "PDF_RENDER_DPI", 150, int  # Уменьшено с 300 для меньшего размера блоков
         )
     )
     max_strip_height: int = field(
