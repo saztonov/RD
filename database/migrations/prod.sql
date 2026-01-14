@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-12T10:57:55.668253
+-- Generated: 2026-01-15T01:57:40.785694
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -455,7 +455,10 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     migrated_to_node boolean DEFAULT false,
     migrated_at timestamp with time zone,
     client_id text NOT NULL,
-    CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id) ON DELETE CASCADE,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    block_stats jsonb,
+    CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT jobs_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.jobs IS 'OCR задачи обработки документов';
@@ -465,6 +468,9 @@ COMMENT ON COLUMN public.jobs.status_message IS 'Детальное сообще
 COMMENT ON COLUMN public.jobs.migrated_to_node IS 'Флаг: результаты перенесены в node_files';
 COMMENT ON COLUMN public.jobs.migrated_at IS 'Время переноса результатов в node_files';
 COMMENT ON COLUMN public.jobs.client_id IS 'Идентификатор клиента (из ~/.config/CoreStructure/client_id.txt)';
+COMMENT ON COLUMN public.jobs.started_at IS 'Время начала обработки задачи';
+COMMENT ON COLUMN public.jobs.completed_at IS 'Время завершения обработки задачи';
+COMMENT ON COLUMN public.jobs.block_stats IS 'Статистика обработанных блоков (количество по типам)';
 
 -- Table: public.node_files
 -- Description: Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)
@@ -479,7 +485,7 @@ CREATE TABLE IF NOT EXISTS public.node_files (
     metadata jsonb DEFAULT '{}'::jsonb,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT node_files_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id) ON DELETE CASCADE,
+    CONSTRAINT node_files_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT node_files_node_id_r2_key_unique UNIQUE (node_id),
     CONSTRAINT node_files_node_id_r2_key_unique UNIQUE (r2_key),
     CONSTRAINT node_files_pkey PRIMARY KEY (id)
