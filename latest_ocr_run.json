@@ -1,0 +1,12 @@
+{
+  "job_id": "1e410ffc-0531-48cc-951c-5ca732bc2079",
+  "created_at": "2026-01-11T19:52:11.664614Z",
+  "files": {
+    "result": "ocr_runs/1e410ffc-0531-48cc-951c-5ca732bc2079/result.json",
+    "annotation": "ocr_runs/1e410ffc-0531-48cc-951c-5ca732bc2079/annotation.json",
+    "ocr_html": "ocr_runs/1e410ffc-0531-48cc-951c-5ca732bc2079/ocr.html",
+    "document_md": "ocr_runs/1e410ffc-0531-48cc-951c-5ca732bc2079/document.md",
+    "qa_manifest": "ocr_runs/1e410ffc-0531-48cc-951c-5ca732bc2079/qa_manifest.json",
+    "crops": "ocr_runs/1e410ffc-0531-48cc-951c-5ca732bc2079/crops/"
+  }
+}

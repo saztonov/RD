@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-11T19:19:50.227678
+-- Generated: 2026-01-12T10:57:55.668253
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -455,9 +455,6 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     migrated_to_node boolean DEFAULT false,
     migrated_at timestamp with time zone,
     client_id text NOT NULL,
-    started_at timestamp with time zone,
-    completed_at timestamp with time zone,
-    block_stats jsonb DEFAULT '{}'::jsonb,
     CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT jobs_pkey PRIMARY KEY (id)
 );
@@ -468,9 +465,6 @@ COMMENT ON COLUMN public.jobs.status_message IS 'Детальное сообще
 COMMENT ON COLUMN public.jobs.migrated_to_node IS 'Флаг: результаты перенесены в node_files';
 COMMENT ON COLUMN public.jobs.migrated_at IS 'Время переноса результатов в node_files';
 COMMENT ON COLUMN public.jobs.client_id IS 'Идентификатор клиента (из ~/.config/CoreStructure/client_id.txt)';
-COMMENT ON COLUMN public.jobs.started_at IS 'Время начала обработки (отличается от created_at)';
-COMMENT ON COLUMN public.jobs.completed_at IS 'Время завершения обработки';
-COMMENT ON COLUMN public.jobs.block_stats IS 'Статистика блоков: {total, text, table, image, stamp, processing_time_seconds, avg_time_per_block, ...}';
 
 -- Table: public.node_files
 -- Description: Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)

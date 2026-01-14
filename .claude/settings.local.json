@@ -49,7 +49,12 @@
       "Bash(powershell -Command \"Get-Content ''C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\remote-ocr_logs_2026-01-11_103734.log'' | Select-Object -Last 200\")",
       "Bash(git push:*)",
       "Bash(del:*)",
-      "Bash(du -sh:*)"
+      "Bash(du -sh:*)",
+      "Bash(Get-ChildItem -Path . -Recurse -Directory -Filter \"__pycache__\")",
+      "Bash(Measure-Object)",
+      "Bash(Select-Object -ExpandProperty Count)",
+      "Bash(git pull:*)",
+      "Bash(git status:*)"
     ]
   }
 }
