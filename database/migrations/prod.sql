@@ -455,7 +455,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     migrated_to_node boolean DEFAULT false,
     migrated_at timestamp with time zone,
     client_id text NOT NULL,
-    CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
+    CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id) ON DELETE CASCADE,
     CONSTRAINT jobs_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.jobs IS 'OCR задачи обработки документов';
@@ -479,7 +479,7 @@ CREATE TABLE IF NOT EXISTS public.node_files (
     metadata jsonb DEFAULT '{}'::jsonb,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT node_files_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
+    CONSTRAINT node_files_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id) ON DELETE CASCADE,
     CONSTRAINT node_files_node_id_r2_key_unique UNIQUE (node_id),
     CONSTRAINT node_files_node_id_r2_key_unique UNIQUE (r2_key),
     CONSTRAINT node_files_pkey PRIMARY KEY (id)

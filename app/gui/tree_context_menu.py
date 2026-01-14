@@ -17,6 +17,27 @@ class TreeContextMenuMixin:
         from app.gui.folder_settings_dialog import get_max_versions
         from app.gui.tree_node_operations import NODE_ICONS
 
+        # Проверяем множественное выделение
+        selected_items = self.tree.selectedItems()
+        if len(selected_items) > 1:
+            nodes = []
+            for sel_item in selected_items:
+                node = sel_item.data(0, Qt.UserRole)
+                if isinstance(node, TreeNode):
+                    nodes.append(node)
+
+            if nodes:
+                menu = QMenu(self)
+                menu.addAction(f"🗑️ Удалить ({len(nodes)} элементов)").setData(
+                    ("delete_multi", nodes)
+                )
+                action = menu.exec_(self.tree.mapToGlobal(pos))
+                if action:
+                    data = action.data()
+                    if data:
+                        self._handle_menu_action(data)
+            return
+
         item = self.tree.itemAt(pos)
         menu = QMenu(self)
 
@@ -194,3 +215,6 @@ class TreeContextMenuMixin:
         elif action == "reconcile_files":
             node = data[1]
             self._reconcile_files(node)
+        elif action == "delete_multi":
+            nodes = data[1]
+            self._delete_nodes(nodes)

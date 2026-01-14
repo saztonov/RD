@@ -146,7 +146,7 @@ class ProjectTreeWidget(
         self.tree.setFrameShape(QFrame.NoFrame)
         self.tree.setAnimated(True)
         self.tree.setIndentation(20)
-        self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.tree.itemExpanded.connect(self._on_item_expanded)
@@ -391,9 +391,20 @@ class ProjectTreeWidget(
     def eventFilter(self, obj, event):
         if obj == self.tree and event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Delete:
-                item = self.tree.currentItem()
-                if item:
-                    node = item.data(0, Qt.UserRole)
+                selected_items = self.tree.selectedItems()
+                if len(selected_items) > 1:
+                    # Множественное выделение
+                    nodes = [
+                        item.data(0, Qt.UserRole)
+                        for item in selected_items
+                        if isinstance(item.data(0, Qt.UserRole), TreeNode)
+                    ]
+                    if nodes:
+                        self._delete_nodes(nodes)
+                        return True
+                elif selected_items:
+                    # Одиночное выделение
+                    node = selected_items[0].data(0, Qt.UserRole)
                     if isinstance(node, TreeNode):
                         self._delete_node(node)
                         return True

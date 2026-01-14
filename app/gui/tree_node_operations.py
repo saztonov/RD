@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
@@ -521,12 +521,122 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                 if self.client.delete_node(node.id):
                     item = self._node_map.get(node.id)
                     if item:
+                        # Рекурсивно собрать все id дочерних элементов
+                        def collect_child_ids(parent_item):
+                            ids = []
+                            for i in range(parent_item.childCount()):
+                                child_item = parent_item.child(i)
+                                child_node = child_item.data(0, Qt.UserRole)
+                                if isinstance(child_node, TreeNode):
+                                    ids.append(child_node.id)
+                                    ids.extend(collect_child_ids(child_item))
+                            return ids
+
+                        child_ids = collect_child_ids(item)
+
+                        # Очистить _node_map и _expanded_nodes для всех дочерних
+                        for cid in child_ids:
+                            self._node_map.pop(cid, None)
+                            self._expanded_nodes.discard(cid)
+
+                        # Удалить сам узел из _node_map и _expanded_nodes
+                        del self._node_map[node.id]
+                        self._expanded_nodes.discard(node.id)
+                        self._save_expanded_state()
+
+                        # Обновить счётчик узлов чтобы auto_refresh не триггерился
+                        if hasattr(self, '_last_node_count') and self._last_node_count > 0:
+                            self._last_node_count -= 1
+
+                        # Удалить элемент из UI
                         parent = item.parent()
                         if parent:
                             parent.removeChild(item)
                         else:
                             idx = self.tree.indexOfTopLevelItem(item)
                             self.tree.takeTopLevelItem(idx)
-                        del self._node_map[node.id]
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))
+
+    def _delete_nodes(self, nodes: List["TreeNode"]):
+        """Удалить несколько узлов и все вложенные (из R2, кэша и Supabase)"""
+        from app.tree_client import NodeType, TreeNode
+
+        # Проверка блокировки документов
+        locked = [
+            n for n in nodes if n.node_type == NodeType.DOCUMENT and n.is_locked
+        ]
+        if locked:
+            QMessageBox.warning(
+                self,
+                "Заблокировано",
+                f"{len(locked)} документов заблокированы и не будут удалены",
+            )
+            nodes = [n for n in nodes if n not in locked]
+
+        if not nodes:
+            return
+
+        # Формируем список имён для подтверждения
+        names = "\n".join(f"• {n.name}" for n in nodes[:5])
+        if len(nodes) > 5:
+            names += f"\n... и ещё {len(nodes) - 5}"
+
+        reply = QMessageBox.question(
+            self,
+            "Подтверждение",
+            f"Удалить {len(nodes)} элементов?\n\n{names}",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+
+        if reply == QMessageBox.Yes:
+            deleted_count = 0
+            for node in nodes:
+                try:
+                    # Рекурсивно удаляем все документы в ветке из R2 и кэша
+                    self._delete_branch_files(node)
+
+                    if self.client.delete_node(node.id):
+                        item = self._node_map.get(node.id)
+                        if item:
+                            # Рекурсивно собрать все id дочерних
+                            def collect_child_ids(parent_item):
+                                ids = []
+                                for i in range(parent_item.childCount()):
+                                    child_item = parent_item.child(i)
+                                    child_node = child_item.data(0, Qt.UserRole)
+                                    if isinstance(child_node, TreeNode):
+                                        ids.append(child_node.id)
+                                        ids.extend(collect_child_ids(child_item))
+                                return ids
+
+                            child_ids = collect_child_ids(item)
+
+                            # Очистить _node_map и _expanded_nodes для всех дочерних
+                            for cid in child_ids:
+                                self._node_map.pop(cid, None)
+                                self._expanded_nodes.discard(cid)
+
+                            # Удалить сам узел из _node_map и _expanded_nodes
+                            self._node_map.pop(node.id, None)
+                            self._expanded_nodes.discard(node.id)
+
+                            # Обновить счётчик узлов
+                            if hasattr(self, "_last_node_count") and self._last_node_count > 0:
+                                self._last_node_count -= 1
+
+                            # Удалить элемент из UI
+                            parent = item.parent()
+                            if parent:
+                                parent.removeChild(item)
+                            else:
+                                idx = self.tree.indexOfTopLevelItem(item)
+                                self.tree.takeTopLevelItem(idx)
+
+                        deleted_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to delete {node.name}: {e}")
+
+            # Сохранить состояние раскрытых узлов
+            self._save_expanded_state()
+            self.status_label.setText(f"Удалено {deleted_count} элементов")

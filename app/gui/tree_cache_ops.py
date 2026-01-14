@@ -155,6 +155,14 @@ class TreeCacheOperationsMixin:
             except Exception as e:
                 logger.error(f"Failed to delete node_files: {e}")
 
+            # Удаляем jobs связанные с узлом (только записи БД, файлы уже удалены выше)
+            try:
+                deleted_jobs = self.client.delete_jobs_by_node_id(node.id)
+                if deleted_jobs:
+                    logger.info(f"Deleted {deleted_jobs} jobs for node {node.id}")
+            except Exception as e:
+                logger.error(f"Failed to delete jobs for node: {e}")
+
         # Удаляем из R2: PDF, аннотацию и папку crops
         if r2_key:
             try:

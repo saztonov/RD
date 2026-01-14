@@ -522,6 +522,16 @@ class TreeClient:
             logger.error(f"Failed to delete node file {file_id}: {e}")
             return False
 
+    def delete_jobs_by_node_id(self, node_id: str) -> int:
+        """Удалить все jobs для узла (только записи БД, не файлы R2)"""
+        try:
+            resp = self._request("delete", f"/jobs?node_id=eq.{node_id}")
+            data = resp.json()
+            return len(data) if data else 0
+        except Exception as e:
+            logger.error(f"Failed to delete jobs for node {node_id}: {e}")
+            return 0
+
     def upsert_node_file(
         self,
         node_id: str,
