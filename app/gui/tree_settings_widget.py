@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import List, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -20,9 +23,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.client_id import get_client_id
 from app.tree_client import SectionType, StageType, TreeClient, _get_tree_client
 
 logger = logging.getLogger(__name__)
+
+RECENT_CLIENT_IDS_SETTINGS_KEY = "recent_client_ids"
 
 
 class TreeSettingsWidget(QWidget):
@@ -31,6 +37,8 @@ class TreeSettingsWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.client = TreeClient()
+        self._client_id = get_client_id()
+        self._recent_client_ids: List[str] = []
         self._setup_ui()
 
     def _setup_ui(self):
@@ -48,12 +56,87 @@ class TreeSettingsWidget(QWidget):
         sections_widget = self._create_sections_tab()
         tabs.addTab(sections_widget, "Разделы")
 
+        # Вкладка Доступ к проектам
+        access_widget = self._create_access_tab()
+        tabs.addTab(access_widget, "Доступ")
+
         layout.addWidget(tabs)
 
         # Кнопка обновления
         refresh_btn = QPushButton("🔄 Обновить справочники")
         refresh_btn.clicked.connect(self._refresh_all)
         layout.addWidget(refresh_btn)
+
+    def _create_access_tab(self) -> QWidget:
+        """Создать вкладку доступа к корневым проектам"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        client_row = QHBoxLayout()
+        client_row.addWidget(QLabel("Client ID:"))
+
+        self._client_id_combo = QComboBox()
+        self._client_id_combo.setEditable(True)
+        self._client_id_combo.setInsertPolicy(QComboBox.NoInsert)
+        self._client_id_combo.setMinimumWidth(260)
+        client_row.addWidget(self._client_id_combo)
+
+        apply_btn = QPushButton("Применить")
+        apply_btn.clicked.connect(self._apply_client_id_from_input)
+        client_row.addWidget(apply_btn)
+
+        current_btn = QPushButton("Текущий")
+        current_btn.clicked.connect(self._use_current_client_id)
+        client_row.addWidget(current_btn)
+
+        layout.addLayout(client_row)
+
+        self._access_status_label = QLabel("")
+        self._access_status_label.setStyleSheet("color: #888;")
+        layout.addWidget(self._access_status_label)
+
+        self._access_table = QTableWidget()
+        self._access_table.setColumnCount(4)
+        self._access_table.setHorizontalHeaderLabels(
+            ["Доступ", "Проект", "Путь", "ID"]
+        )
+        self._access_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.Stretch
+        )
+        self._access_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.Stretch
+        )
+        self._access_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeToContents
+        )
+        self._access_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        layout.addWidget(self._access_table)
+
+        btns = QHBoxLayout()
+
+        refresh_btn = QPushButton("?? Обновить")
+        refresh_btn.clicked.connect(self._load_root_access)
+        btns.addWidget(refresh_btn)
+
+        select_all_btn = QPushButton("? Выбрать все")
+        select_all_btn.clicked.connect(lambda: self._set_all_access(True))
+        btns.addWidget(select_all_btn)
+
+        clear_all_btn = QPushButton("?? Снять все")
+        clear_all_btn.clicked.connect(lambda: self._set_all_access(False))
+        btns.addWidget(clear_all_btn)
+
+        save_btn = QPushButton("?? Сохранить")
+        save_btn.clicked.connect(self._save_root_access)
+        btns.addWidget(save_btn)
+
+        reset_btn = QPushButton("?? Сбросить фильтр")
+        reset_btn.clicked.connect(self._reset_root_access)
+        btns.addWidget(reset_btn)
+
+        layout.addLayout(btns)
+
+        return widget
 
     def _create_stages_tab(self) -> QWidget:
         """Создать вкладку стадий"""
@@ -132,6 +215,8 @@ class TreeSettingsWidget(QWidget):
         """Обновить все справочники"""
         self._load_stages()
         self._load_sections()
+        self._load_recent_client_ids()
+        self._load_root_access()
 
     def _load_stages(self):
         """Загрузить стадии"""
@@ -159,6 +244,183 @@ class TreeSettingsWidget(QWidget):
                 self.sections_table.item(i, 0).setData(Qt.UserRole, st.id)
         except Exception as e:
             logger.error(f"Failed to load sections: {e}")
+
+    def _load_root_access(self):
+        """Загрузить доступ к корневым проектам"""
+        try:
+            roots = self.client.get_root_nodes(use_client_filter=False)
+            access_ids = self.client.get_client_root_ids(self._client_id)
+
+            if access_ids is None:
+                access_set = {n.id for n in roots}
+                self._access_status_label.setText(
+                    f"{self._client_id}: фильтр не задан — показываются все проекты"
+                )
+            else:
+                access_set = set(access_ids)
+                self._access_status_label.setText(
+                    f"{self._client_id}: фильтр {len(access_set)} из {len(roots)} проектов"
+                )
+
+            self._access_table.setRowCount(len(roots))
+            for row, node in enumerate(roots):
+                check_item = QTableWidgetItem()
+                check_item.setFlags(check_item.flags() | Qt.ItemIsUserCheckable)
+                check_item.setCheckState(
+                    Qt.Checked if node.id in access_set else Qt.Unchecked
+                )
+                check_item.setData(Qt.UserRole, node.id)
+
+                name_item = QTableWidgetItem(node.name)
+                path_value = node.path or (node.parent_id or "root")
+                if node.parent_id is None and node.path == node.id:
+                    path_value = "root"
+                path_item = QTableWidgetItem(path_value)
+                id_item = QTableWidgetItem(node.id)
+
+                tooltip = f"id: {node.id}\npath: {node.path or '-'}\nparent_id: {node.parent_id or '-'}"
+                name_item.setToolTip(tooltip)
+                path_item.setToolTip(tooltip)
+                id_item.setToolTip(tooltip)
+
+                self._access_table.setItem(row, 0, check_item)
+                self._access_table.setItem(row, 1, name_item)
+                self._access_table.setItem(row, 2, path_item)
+                self._access_table.setItem(row, 3, id_item)
+
+        except Exception as e:
+            logger.error(f"Failed to load root access: {e}")
+            self._access_status_label.setText("Ошибка загрузки доступа")
+
+    def _get_client_id_from_input(self) -> Optional[str]:
+        """Получить client_id из поля ввода с валидацией"""
+        client_id = self._client_id_combo.currentText().strip()
+        if not client_id:
+            QMessageBox.warning(self, "Ошибка", "client_id не задан")
+            return None
+        try:
+            uuid.UUID(client_id)
+        except ValueError:
+            QMessageBox.warning(self, "Ошибка", "Некорректный client_id (ожидается UUID)")
+            return None
+        return client_id
+
+    def _apply_client_id_from_input(self):
+        """Применить client_id из поля ввода"""
+        client_id = self._get_client_id_from_input()
+        if not client_id:
+            return
+        self._client_id = client_id
+        self._add_recent_client_id(client_id)
+        self._load_root_access()
+
+    def _use_current_client_id(self):
+        """Подставить текущий client_id приложения"""
+        self._client_id = get_client_id()
+        self._client_id_combo.setCurrentText(self._client_id)
+        self._add_recent_client_id(self._client_id)
+        self._load_root_access()
+
+    def _collect_checked_root_ids(self) -> List[str]:
+        """Собрать список выбранных корневых проектов"""
+        root_ids: List[str] = []
+        for row in range(self._access_table.rowCount()):
+            item = self._access_table.item(row, 0)
+            if not item:
+                continue
+            if item.checkState() == Qt.Checked:
+                root_id = item.data(Qt.UserRole)
+                if root_id:
+                    root_ids.append(str(root_id))
+        return root_ids
+
+    def _set_all_access(self, checked: bool):
+        """Выбрать или снять все проекты"""
+        for row in range(self._access_table.rowCount()):
+            item = self._access_table.item(row, 0)
+            if item:
+                item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+
+    def _save_root_access(self):
+        """Сохранить доступ к корневым проектам"""
+        client_id = self._get_client_id_from_input()
+        if not client_id:
+            return
+        self._client_id = client_id
+        self._add_recent_client_id(client_id)
+
+        root_ids = self._collect_checked_root_ids()
+        try:
+            self.client.set_client_root_ids(root_ids, self._client_id)
+            self._access_status_label.setText(
+                f"{self._client_id}: фильтр сохранён, {len(root_ids)} проектов"
+            )
+            QMessageBox.information(
+                self, "Сохранено", "Доступ к проектам сохранён для клиента."
+            )
+        except Exception as e:
+            logger.error(f"Failed to save root access: {e}")
+            QMessageBox.critical(
+                self, "Ошибка", f"Не удалось сохранить доступ:\n{e}"
+            )
+
+    def _reset_root_access(self):
+        """Сбросить фильтр доступа (показывать все проекты)"""
+        reply = QMessageBox.question(
+            self,
+            "Подтверждение",
+            "Сбросить фильтр? Будут показаны все проекты.",
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            client_id = self._get_client_id_from_input()
+            if not client_id:
+                return
+            self._client_id = client_id
+            self._add_recent_client_id(client_id)
+            self.client.clear_client_root_ids(self._client_id)
+            self._load_root_access()
+        except Exception as e:
+            logger.error(f"Failed to reset root access: {e}")
+            QMessageBox.critical(
+                self, "Ошибка", f"Не удалось сбросить фильтр:\n{e}"
+            )
+
+    def _load_recent_client_ids(self):
+        """Загрузить список последних client_id из настроек"""
+        settings = QSettings("RDApp", "TreeSettings")
+        recent = settings.value(RECENT_CLIENT_IDS_SETTINGS_KEY, [])
+        if isinstance(recent, str):
+            recent = [recent]
+        self._recent_client_ids = [cid for cid in recent if cid]
+
+        if self._client_id and self._client_id not in self._recent_client_ids:
+            self._recent_client_ids.insert(0, self._client_id)
+
+        self._recent_client_ids = self._recent_client_ids[:15]
+        self._client_id_combo.clear()
+        self._client_id_combo.addItems(self._recent_client_ids)
+        self._client_id_combo.setCurrentText(self._client_id)
+
+    def _save_recent_client_ids(self):
+        """Сохранить список последних client_id в настройки"""
+        settings = QSettings("RDApp", "TreeSettings")
+        settings.setValue(RECENT_CLIENT_IDS_SETTINGS_KEY, self._recent_client_ids)
+
+    def _add_recent_client_id(self, client_id: str):
+        """Добавить client_id в список последних"""
+        if not client_id:
+            return
+        if client_id in self._recent_client_ids:
+            self._recent_client_ids.remove(client_id)
+        self._recent_client_ids.insert(0, client_id)
+        self._recent_client_ids = self._recent_client_ids[:15]
+        self._save_recent_client_ids()
+        self._client_id_combo.clear()
+        self._client_id_combo.addItems(self._recent_client_ids)
+        self._client_id_combo.setCurrentText(client_id)
 
     def _add_stage(self):
         """Добавить стадию"""

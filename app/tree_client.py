@@ -36,6 +36,9 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
+# Ключи настроек доступа к корневым проектам для client_id
+TREE_ROOTS_SETTINGS_KEY_PREFIX = "tree_roots__"
+
 # Глобальный пул соединений для Supabase
 _tree_http_client: httpx.Client | None = None
 
@@ -67,6 +70,10 @@ class TreeClient:
             "Prefer": "return=representation",
         }
 
+    def _get_root_access_key(self, client_id: str) -> str:
+        """Сформировать ключ app_settings для доступа к корневым проектам"""
+        return f"{TREE_ROOTS_SETTINGS_KEY_PREFIX}{client_id}"
+
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         url = f"{self.supabase_url}/rest/v1{path}"
         try:
@@ -91,6 +98,84 @@ class TreeClient:
         except Exception as e:
             logger.debug(f"Supabase недоступен: {e}")
             return False
+
+    # === Доступ к корневым проектам (по client_id) ===
+
+    def get_client_root_ids(self, client_id: Optional[str] = None) -> Optional[List[str]]:
+        """Получить список доступных корневых проектов для клиента.
+
+        Returns:
+            None если настройка не задана (т.е. показывать все),
+            пустой список если фильтр задан, но проектов нет.
+        """
+        if client_id is None:
+            from app.client_id import get_client_id
+
+            client_id = get_client_id()
+
+        if not client_id:
+            return None
+
+        key = self._get_root_access_key(client_id)
+        resp = self._request("get", f"/app_settings?key=eq.{key}")
+        data = resp.json()
+        if not data:
+            return None
+
+        value = data[0].get("value")
+        if isinstance(value, dict):
+            root_ids = value.get("root_ids")
+        elif isinstance(value, list):
+            root_ids = value
+        else:
+            root_ids = []
+
+        if root_ids is None:
+            return []
+
+        return [str(rid) for rid in root_ids if rid]
+
+    def set_client_root_ids(self, root_ids: List[str], client_id: Optional[str] = None) -> None:
+        """Сохранить доступные корневые проекты для клиента (upsert в app_settings)."""
+        if client_id is None:
+            from app.client_id import get_client_id
+
+            client_id = get_client_id()
+
+        if not client_id:
+            raise ValueError("client_id is empty")
+
+        key = self._get_root_access_key(client_id)
+
+        # Уникализируем и сохраняем
+        uniq_ids = []
+        seen = set()
+        for rid in root_ids:
+            if rid and rid not in seen:
+                uniq_ids.append(rid)
+                seen.add(rid)
+
+        payload = {"key": key, "value": {"root_ids": uniq_ids}}
+        headers = self._headers()
+        headers["Prefer"] = "resolution=merge-duplicates"
+
+        url = f"{self.supabase_url}/rest/v1/app_settings"
+        client = _get_tree_client()
+        resp = client.post(url, headers=headers, json=payload, timeout=self.timeout)
+        resp.raise_for_status()
+
+    def clear_client_root_ids(self, client_id: Optional[str] = None) -> None:
+        """Сбросить настройку доступа (удалить запись app_settings)."""
+        if client_id is None:
+            from app.client_id import get_client_id
+
+            client_id = get_client_id()
+
+        if not client_id:
+            return
+
+        key = self._get_root_access_key(client_id)
+        self._request("delete", f"/app_settings?key=eq.{key}")
 
     # === Справочники ===
 
@@ -122,12 +207,33 @@ class TreeClient:
 
     # === CRUD для узлов ===
 
-    def get_root_nodes(self) -> List[TreeNode]:
-        """Получить корневые проекты (без parent_id) - все пользователи видят все проекты"""
+    def get_root_nodes(
+        self, use_client_filter: bool = True, client_id: Optional[str] = None
+    ) -> List[TreeNode]:
+        """Получить корневые проекты (без parent_id).
+
+        Если задан фильтр для client_id, возвращает только доступные проекты.
+        """
+        if use_client_filter:
+            root_ids = self.get_client_root_ids(client_id)
+            if root_ids is not None:
+                if not root_ids:
+                    return []
+                ids_str = ",".join(f'"{rid}"' for rid in root_ids)
+                resp = self._request(
+                    "get",
+                    f"/tree_nodes?id=in.({ids_str})&parent_id=is.null&order=sort_order,created_at",
+                )
+                return [TreeNode.from_dict(r) for r in resp.json()]
+
         resp = self._request(
             "get", "/tree_nodes?parent_id=is.null&order=sort_order,created_at"
         )
         return [TreeNode.from_dict(r) for r in resp.json()]
+
+    def get_root_nodes_all(self) -> List[TreeNode]:
+        """Получить все корневые проекты (без фильтра по client_id)."""
+        return self.get_root_nodes(use_client_filter=False)
 
     def get_children(self, parent_id: str) -> List[TreeNode]:
         """Получить дочерние узлы (Lazy Loading)"""
@@ -736,18 +842,37 @@ class TreeClient:
             # Fallback на старый метод
             return self.move_node(node_id, new_parent_id)
 
-    def get_tree_stats(self) -> Dict[str, int]:
+    def get_tree_stats(
+        self, use_client_filter: bool = True, client_id: Optional[str] = None
+    ) -> Dict[str, int]:
         """
         Получить общую статистику дерева для текущего клиента.
         Возвращает: pdf_count, md_count, folders_with_pdf
         """
         try:
-            # Получаем ВСЕ узлы без фильтра по client_id (для отладки)
+            root_ids = None
+            if use_client_filter:
+                root_ids = self.get_client_root_ids(client_id)
+                if root_ids is not None and not root_ids:
+                    return {"pdf_count": 0, "md_count": 0, "folders_with_pdf": 0}
+
+            # Получаем все узлы
             resp = self._request(
                 "get",
-                "/tree_nodes?select=id,node_type,parent_id,attributes&limit=10000",
+                "/tree_nodes?select=id,node_type,parent_id,attributes,path&limit=10000",
             )
             nodes = resp.json()
+
+            # Фильтруем по доступным корневым узлам (если задано)
+            if root_ids:
+                root_set = set(root_ids)
+                filtered = []
+                for node in nodes:
+                    path = node.get("path") or ""
+                    root_id = path.split(".", 1)[0] if path else node.get("id")
+                    if root_id in root_set:
+                        filtered.append(node)
+                nodes = filtered
 
             logger.info(f"get_tree_stats: total nodes from DB = {len(nodes)}")
 

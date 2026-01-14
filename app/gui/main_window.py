@@ -364,6 +364,7 @@ class MainWindow(
         # Обновляем справочники в дереве проектов после закрытия диалога
         if hasattr(self, "project_tree_widget"):
             self.project_tree_widget.refresh_types()
+            self.project_tree_widget._refresh_tree()
 
     def _show_version_settings(self):
         """Показать диалог настройки версионности"""
