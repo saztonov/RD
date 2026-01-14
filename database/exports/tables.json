@@ -2107,21 +2107,21 @@
       },
       {
         "name": "description",
-        "comment": null,
+        "comment": "Описание настройки для администратора",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания настройки",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -2145,7 +2145,7 @@
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор категории",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
@@ -2166,7 +2166,7 @@
       },
       {
         "name": "description",
-        "comment": null,
+        "comment": "Описание категории для пользователя",
         "default": null,
         "data_type": "text",
         "is_nullable": true
@@ -2194,21 +2194,21 @@
       },
       {
         "name": "sort_order",
-        "comment": null,
+        "comment": "Порядок сортировки в списке",
         "default": "0",
         "data_type": "integer",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания категории",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -2240,7 +2240,7 @@
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор файла",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
@@ -2254,35 +2254,35 @@
       },
       {
         "name": "file_type",
-        "comment": null,
+        "comment": "Тип файла: pdf, blocks, annotation, result, result_md, ocr_html, crop",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "r2_key",
-        "comment": null,
+        "comment": "Полный путь к файлу в R2 storage",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "file_name",
-        "comment": null,
+        "comment": "Имя файла для отображения",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "file_size",
-        "comment": null,
+        "comment": "Размер файла в байтах",
         "default": "0",
         "data_type": "bigint",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания записи",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -2321,49 +2321,49 @@
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор настроек",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "job_id",
-        "comment": null,
+        "comment": "Ссылка на задачу (один-к-одному)",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "text_model",
-        "comment": null,
+        "comment": "Модель для распознавания текста",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "table_model",
-        "comment": null,
+        "comment": "Модель для распознавания таблиц",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "image_model",
-        "comment": null,
+        "comment": "Модель для распознавания изображений",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания настроек",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -2410,7 +2410,7 @@
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор задачи",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
@@ -2424,63 +2424,63 @@
       },
       {
         "name": "document_name",
-        "comment": null,
+        "comment": "Имя PDF файла (например: report.pdf)",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "task_name",
-        "comment": null,
+        "comment": "Пользовательское название задания",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "status",
-        "comment": null,
+        "comment": "Статус задачи: queued, processing, done, error, paused, draft",
         "default": "'queued'::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "progress",
-        "comment": null,
+        "comment": "Прогресс выполнения (0.0 - 1.0)",
         "default": "0",
         "data_type": "real",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания задачи",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "error_message",
-        "comment": null,
+        "comment": "Текст ошибки при status=error",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "engine",
-        "comment": null,
+        "comment": "OCR движок: openrouter или datalab",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "r2_prefix",
-        "comment": null,
+        "comment": "Базовый путь файлов задачи в R2 storage",
         "default": null,
         "data_type": "text",
         "is_nullable": true
@@ -2568,14 +2568,14 @@
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор файла",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "node_id",
-        "comment": null,
+        "comment": "Ссылка на узел дерева",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
@@ -2596,21 +2596,21 @@
       },
       {
         "name": "file_name",
-        "comment": null,
+        "comment": "Имя файла для отображения",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "file_size",
-        "comment": null,
+        "comment": "Размер файла в байтах",
         "default": "0",
         "data_type": "bigint",
         "is_nullable": true
       },
       {
         "name": "mime_type",
-        "comment": null,
+        "comment": "MIME тип файла (например: application/pdf)",
         "default": "'application/octet-stream'::text",
         "data_type": "text",
         "is_nullable": true
@@ -2624,14 +2624,14 @@
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания записи",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -2683,39 +2683,39 @@
   "public.qa_app_settings": {
     "schema": "public",
     "name": "qa_app_settings",
-    "comment": "Global application settings (credentials, defaults, etc.)",
+    "comment": "Глобальные настройки Q&A приложения (ключ-значение)",
     "columns": [
       {
         "name": "key",
-        "comment": "Setting key (e.g., gemini_api_key, max_history_pairs)",
+        "comment": "Ключ настройки (например: gemini_api_key, max_history_pairs)",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "value",
-        "comment": "Setting value as text (convert based on value_type)",
+        "comment": "Значение настройки в текстовом формате",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "value_type",
-        "comment": "Type hint: string, int, bool, json",
+        "comment": "Тип значения: string, int, bool, json",
         "default": "'string'::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "description",
-        "comment": null,
+        "comment": "Описание настройки для администратора",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -2735,67 +2735,67 @@
   "public.qa_artifacts": {
     "schema": "public",
     "name": "qa_artifacts",
-    "comment": null,
+    "comment": "Артефакты (файлы), созданные в процессе диалога",
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор артефакта",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "conversation_id",
-        "comment": null,
+        "comment": "Ссылка на диалог",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "artifact_type",
-        "comment": null,
+        "comment": "Тип артефакта (image, document и др.)",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "r2_key",
-        "comment": null,
+        "comment": "Ключ объекта в R2 storage",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "file_name",
-        "comment": null,
+        "comment": "Имя файла для отображения",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "mime_type",
-        "comment": null,
+        "comment": "MIME тип файла",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "file_size",
-        "comment": null,
+        "comment": "Размер файла в байтах",
         "default": null,
         "data_type": "bigint",
         "is_nullable": true
       },
       {
         "name": "metadata",
-        "comment": null,
+        "comment": "Дополнительные метаданные (JSON)",
         "default": "'{}'::jsonb",
         "data_type": "jsonb",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -2831,60 +2831,60 @@
   "public.qa_clients": {
     "schema": "public",
     "name": "qa_clients",
-    "comment": null,
+    "comment": "Клиенты Q&A приложения",
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор записи",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "client_id",
-        "comment": null,
+        "comment": "Текстовый идентификатор клиента",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "api_token",
-        "comment": null,
+        "comment": "API токен для аутентификации",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "name",
-        "comment": null,
+        "comment": "Отображаемое имя клиента",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "default_model",
-        "comment": null,
+        "comment": "Модель по умолчанию для диалогов",
         "default": "'gemini-3-flash-preview'::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "is_active",
-        "comment": null,
+        "comment": "Флаг активности клиента",
         "default": "true",
         "data_type": "boolean",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время регистрации",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -2924,21 +2924,21 @@
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор записи",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "conversation_id",
-        "comment": null,
+        "comment": "Ссылка на диалог",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "node_file_id",
-        "comment": null,
+        "comment": "Ссылка на файл узла (node_files)",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
@@ -2966,14 +2966,14 @@
       },
       {
         "name": "uploaded_at",
-        "comment": null,
+        "comment": "Дата и время загрузки в Gemini",
         "default": null,
         "data_type": "timestamp with time zone",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания записи",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -3025,32 +3025,32 @@
   "public.qa_conversation_gemini_files": {
     "schema": "public",
     "name": "qa_conversation_gemini_files",
-    "comment": null,
+    "comment": "Связь диалогов с файлами в Gemini Files API",
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор связи",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "conversation_id",
-        "comment": null,
+        "comment": "Ссылка на диалог",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "gemini_file_id",
-        "comment": null,
+        "comment": "Ссылка на файл в qa_gemini_files",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "added_at",
-        "comment": null,
+        "comment": "Дата и время добавления файла",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -3102,32 +3102,32 @@
   "public.qa_conversation_nodes": {
     "schema": "public",
     "name": "qa_conversation_nodes",
-    "comment": null,
+    "comment": "Связь диалогов с узлами дерева проектов",
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор связи",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "conversation_id",
-        "comment": null,
+        "comment": "Ссылка на диалог",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "node_id",
-        "comment": null,
+        "comment": "Ссылка на узел дерева",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "added_at",
-        "comment": null,
+        "comment": "Дата и время добавления узла",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -3179,46 +3179,46 @@
   "public.qa_conversations": {
     "schema": "public",
     "name": "qa_conversations",
-    "comment": null,
+    "comment": "Диалоги (разговоры) с AI моделью",
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор диалога",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "client_id",
-        "comment": null,
+        "comment": "Идентификатор клиента-владельца",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "title",
-        "comment": null,
+        "comment": "Заголовок диалога",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "model_default",
-        "comment": null,
+        "comment": "Модель по умолчанию для этого диалога",
         "default": "'gemini-3-flash-preview'::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания диалога",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего сообщения",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -3238,95 +3238,95 @@
   "public.qa_gemini_files": {
     "schema": "public",
     "name": "qa_gemini_files",
-    "comment": null,
+    "comment": "Файлы, загруженные в Gemini Files API",
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор записи",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "client_id",
-        "comment": null,
+        "comment": "Идентификатор клиента-владельца",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "gemini_name",
-        "comment": null,
+        "comment": "Имя файла в Gemini API (files/xyz123)",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "gemini_uri",
-        "comment": null,
+        "comment": "URI файла в Gemini API",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "display_name",
-        "comment": null,
+        "comment": "Отображаемое имя файла",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "mime_type",
-        "comment": null,
+        "comment": "MIME тип файла",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "size_bytes",
-        "comment": null,
+        "comment": "Размер файла в байтах",
         "default": null,
         "data_type": "bigint",
         "is_nullable": true
       },
       {
         "name": "sha256",
-        "comment": null,
+        "comment": "SHA256 хеш содержимого файла",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "source_node_file_id",
-        "comment": null,
+        "comment": "Ссылка на исходный файл в node_files",
         "default": null,
         "data_type": "uuid",
         "is_nullable": true
       },
       {
         "name": "source_r2_key",
-        "comment": null,
+        "comment": "Исходный ключ файла в R2",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время загрузки",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "expires_at",
-        "comment": null,
+        "comment": "Дата и время истечения срока хранения",
         "default": null,
         "data_type": "timestamp with time zone",
         "is_nullable": true
@@ -3380,70 +3380,70 @@
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор задачи",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "conversation_id",
-        "comment": null,
+        "comment": "Ссылка на диалог",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "client_id",
-        "comment": null,
+        "comment": "Идентификатор клиента",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "user_text",
-        "comment": null,
+        "comment": "Текст запроса пользователя",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "system_prompt",
-        "comment": null,
+        "comment": "Системный промпт для модели",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "user_text_template",
-        "comment": null,
+        "comment": "Шаблон пользовательского промпта",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "model_name",
-        "comment": null,
+        "comment": "Название используемой модели",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "thinking_level",
-        "comment": null,
+        "comment": "Уровень размышлений: low, medium, high",
         "default": "'low'::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "thinking_budget",
-        "comment": null,
+        "comment": "Лимит токенов на размышления",
         "default": null,
         "data_type": "integer",
         "is_nullable": true
       },
       {
         "name": "file_refs",
-        "comment": null,
+        "comment": "Ссылки на прикрепленные файлы (JSON)",
         "default": "'[]'::jsonb",
         "data_type": "jsonb",
         "is_nullable": true
@@ -3457,7 +3457,7 @@
       },
       {
         "name": "progress",
-        "comment": null,
+        "comment": "Прогресс выполнения (0.0 - 1.0)",
         "default": "0",
         "data_type": "real",
         "is_nullable": true
@@ -3471,70 +3471,70 @@
       },
       {
         "name": "result_text",
-        "comment": null,
+        "comment": "Текст ответа модели",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "result_actions",
-        "comment": null,
+        "comment": "Извлеченные действия из ответа (JSON)",
         "default": "'[]'::jsonb",
         "data_type": "jsonb",
         "is_nullable": true
       },
       {
         "name": "result_is_final",
-        "comment": null,
+        "comment": "Флаг финального ответа",
         "default": "false",
         "data_type": "boolean",
         "is_nullable": true
       },
       {
         "name": "error_message",
-        "comment": null,
+        "comment": "Текст ошибки при status=failed",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "retry_count",
-        "comment": null,
+        "comment": "Количество попыток выполнения",
         "default": "0",
         "data_type": "integer",
         "is_nullable": true
       },
       {
         "name": "max_retries",
-        "comment": null,
+        "comment": "Максимальное количество попыток",
         "default": "3",
         "data_type": "integer",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания задачи",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "started_at",
-        "comment": null,
+        "comment": "Дата и время начала обработки",
         "default": null,
         "data_type": "timestamp with time zone",
         "is_nullable": true
       },
       {
         "name": "completed_at",
-        "comment": null,
+        "comment": "Дата и время завершения",
         "default": null,
         "data_type": "timestamp with time zone",
         "is_nullable": true
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -3577,46 +3577,46 @@
   "public.qa_messages": {
     "schema": "public",
     "name": "qa_messages",
-    "comment": null,
+    "comment": "Сообщения в диалогах",
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор сообщения",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "conversation_id",
-        "comment": null,
+        "comment": "Ссылка на диалог",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "role",
-        "comment": null,
+        "comment": "Роль отправителя: user, assistant, system",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "content",
-        "comment": null,
+        "comment": "Текст сообщения",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "meta",
-        "comment": null,
+        "comment": "Метаданные сообщения (JSON)",
         "default": "'{}'::jsonb",
         "data_type": "jsonb",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время отправки",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -3656,7 +3656,7 @@
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор трассировки",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
@@ -3670,42 +3670,42 @@
       },
       {
         "name": "conversation_id",
-        "comment": null,
+        "comment": "Ссылка на диалог",
         "default": null,
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "client_id",
-        "comment": null,
+        "comment": "Идентификатор клиента",
         "default": "'default'::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "model",
-        "comment": null,
+        "comment": "Название модели",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "thinking_level",
-        "comment": null,
+        "comment": "Уровень размышлений модели",
         "default": "'low'::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "system_prompt",
-        "comment": null,
+        "comment": "Системный промпт запроса",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "user_text",
-        "comment": null,
+        "comment": "Текст пользовательского запроса",
         "default": null,
         "data_type": "text",
         "is_nullable": false
@@ -3733,7 +3733,7 @@
       },
       {
         "name": "latency_ms",
-        "comment": null,
+        "comment": "Задержка ответа в миллисекундах",
         "default": null,
         "data_type": "real",
         "is_nullable": true
@@ -3747,49 +3747,49 @@
       },
       {
         "name": "is_final",
-        "comment": null,
+        "comment": "Флаг финального ответа в цепочке",
         "default": "false",
         "data_type": "boolean",
         "is_nullable": true
       },
       {
         "name": "assistant_text",
-        "comment": null,
+        "comment": "Текст ответа ассистента",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "full_thoughts",
-        "comment": null,
+        "comment": "Полный текст размышлений модели",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "input_tokens",
-        "comment": null,
+        "comment": "Количество входных токенов",
         "default": null,
         "data_type": "integer",
         "is_nullable": true
       },
       {
         "name": "output_tokens",
-        "comment": null,
+        "comment": "Количество выходных токенов",
         "default": null,
         "data_type": "integer",
         "is_nullable": true
       },
       {
         "name": "total_tokens",
-        "comment": null,
+        "comment": "Общее количество токенов",
         "default": null,
         "data_type": "integer",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания записи",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
@@ -3817,32 +3817,32 @@
   "public.section_types": {
     "schema": "public",
     "name": "section_types",
-    "comment": null,
+    "comment": "Справочник типов разделов документации (АР, КР, ОВ и др.)",
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор типа раздела",
         "default": "nextval('section_types_id_seq'::regclass)",
         "data_type": "integer",
         "is_nullable": false
       },
       {
         "name": "code",
-        "comment": null,
+        "comment": "Код раздела (например: АР, КР, ОВ)",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "name",
-        "comment": null,
+        "comment": "Полное название раздела",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "sort_order",
-        "comment": null,
+        "comment": "Порядок сортировки в списке",
         "default": "0",
         "data_type": "integer",
         "is_nullable": true
@@ -3870,32 +3870,32 @@
   "public.stage_types": {
     "schema": "public",
     "name": "stage_types",
-    "comment": null,
+    "comment": "Справочник типов стадий проекта (ПД, РД)",
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор типа стадии",
         "default": "nextval('stage_types_id_seq'::regclass)",
         "data_type": "integer",
         "is_nullable": false
       },
       {
         "name": "code",
-        "comment": null,
+        "comment": "Код стадии (например: ПД, РД)",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "name",
-        "comment": null,
+        "comment": "Полное название стадии",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "sort_order",
-        "comment": null,
+        "comment": "Порядок сортировки в списке",
         "default": "0",
         "data_type": "integer",
         "is_nullable": true
@@ -3927,14 +3927,14 @@
     "columns": [
       {
         "name": "id",
-        "comment": null,
+        "comment": "Уникальный идентификатор узла",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "parent_id",
-        "comment": null,
+        "comment": "Ссылка на родительский узел (NULL для корневых)",
         "default": null,
         "data_type": "uuid",
         "is_nullable": true
@@ -3948,28 +3948,28 @@
       },
       {
         "name": "name",
-        "comment": null,
+        "comment": "Отображаемое имя узла в дереве",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "code",
-        "comment": null,
+        "comment": "Опциональный код узла для идентификации",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "version",
-        "comment": null,
+        "comment": "Номер версии узла для оптимистичной блокировки",
         "default": "1",
         "data_type": "integer",
         "is_nullable": true
       },
       {
         "name": "status",
-        "comment": null,
+        "comment": "Статус узла: active, completed, archived",
         "default": "'active'::text",
         "data_type": "text",
         "is_nullable": true
@@ -3983,42 +3983,42 @@
       },
       {
         "name": "sort_order",
-        "comment": null,
+        "comment": "Порядок сортировки в дереве",
         "default": "0",
         "data_type": "integer",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания узла",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "pdf_status",
-        "comment": null,
+        "comment": "Статус PDF: unknown, processing, done, error",
         "default": "'unknown'::text",
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "pdf_status_message",
-        "comment": null,
+        "comment": "Детальное сообщение о статусе PDF",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "pdf_status_updated_at",
-        "comment": null,
+        "comment": "Время последнего обновления статуса PDF",
         "default": null,
         "data_type": "timestamp with time zone",
         "is_nullable": true
@@ -4088,60 +4088,60 @@
   "public.user_prompts": {
     "schema": "public",
     "name": "user_prompts",
-    "comment": "User custom prompts for AI conversations",
+    "comment": "Пользовательские промпты для AI диалогов",
     "columns": [
       {
         "name": "id",
-        "comment": "Unique prompt identifier",
+        "comment": "Уникальный идентификатор промпта",
         "default": "gen_random_uuid()",
         "data_type": "uuid",
         "is_nullable": false
       },
       {
         "name": "title",
-        "comment": "Prompt title",
+        "comment": "Заголовок промпта",
         "default": null,
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "system_prompt",
-        "comment": "System prompt text",
+        "comment": "Системный промпт",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "user_text",
-        "comment": "User prompt text",
+        "comment": "Пользовательский текст промпта",
         "default": "''::text",
         "data_type": "text",
         "is_nullable": false
       },
       {
         "name": "r2_key",
-        "comment": "R2 storage key for full content",
+        "comment": "Ключ в R2 storage для полного содержимого",
         "default": null,
         "data_type": "text",
         "is_nullable": true
       },
       {
         "name": "created_at",
-        "comment": null,
+        "comment": "Дата и время создания промпта",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "updated_at",
-        "comment": null,
+        "comment": "Дата и время последнего обновления",
         "default": "now()",
         "data_type": "timestamp with time zone",
         "is_nullable": false
       },
       {
         "name": "client_id",
-        "comment": "Client identifier for multi-tenant support",
+        "comment": "Идентификатор клиента для мультитенантности",
         "default": "'default'::text",
         "data_type": "text",
         "is_nullable": false
