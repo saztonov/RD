@@ -2519,6 +2519,27 @@
         "default": null,
         "data_type": "text",
         "is_nullable": false
+      },
+      {
+        "name": "started_at",
+        "comment": "Время начала обработки задачи",
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "completed_at",
+        "comment": "Время завершения обработки задачи",
+        "default": null,
+        "data_type": "timestamp with time zone",
+        "is_nullable": true
+      },
+      {
+        "name": "block_stats",
+        "comment": "Статистика обработанных блоков (количество по типам)",
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
       }
     ],
     "constraints": [
