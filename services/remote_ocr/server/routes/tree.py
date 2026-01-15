@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from ..routes.common import verify_api_key
 from ..storage_client import get_client
-from ..storage_nodes import (
+from ..node_storage import (
     add_node_file,
     create_node,
     delete_node,

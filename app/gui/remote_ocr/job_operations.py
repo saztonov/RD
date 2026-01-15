@@ -205,7 +205,7 @@ class JobOperationsMixin:
 
         temp_job_id = f"uploading-{uuid.uuid4().hex[:12]}"
 
-        from app.remote_ocr_client import JobInfo
+        from app.ocr_client import JobInfo
 
         temp_job = JobInfo(
             id=temp_job_id,
@@ -249,7 +249,7 @@ class JobOperationsMixin:
     ):
         """Фоновое создание задачи"""
         try:
-            from app.remote_ocr_client import (
+            from app.ocr_client import (
                 AuthenticationError,
                 PayloadTooLargeError,
                 ServerError,
