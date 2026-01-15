@@ -528,7 +528,3 @@ class RemoteOCRClient:
         }
         resp = self._request_with_retry("post", f"/jobs/{job_id}/start", data=data)
         return resp.json().get("ok", False)
-
-
-# Для обратной совместимости
-RemoteOcrClient = RemoteOCRClient

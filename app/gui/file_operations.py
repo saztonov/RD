@@ -70,8 +70,6 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             return
 
         try:
-            from PySide6.QtCore import QTimer
-
             from app.tree_client import TreeClient
             from rd_core.pdf_status import PDFStatus, calculate_pdf_status
             from rd_core.r2_storage import R2Storage
