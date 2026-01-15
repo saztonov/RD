@@ -279,9 +279,6 @@ def _group_and_merge_strips(
         current_strip_blocks = []
         current_strip_height = 0
 
-    # Отслеживание текущей страницы для разделения strips по страницам
-    current_page_index = None
-
     for block in blocks:
         if block.block_type == BlockType.IMAGE:
             # IMAGE блоки не прерывают группировку TEXT блоков
@@ -291,13 +288,7 @@ def _group_and_merge_strips(
         if block.id not in block_crop_paths:
             continue
 
-        # При смене страницы сохраняем текущий strip и начинаем новый
-        # Это предотвращает смешивание блоков с разных страниц в одном strip
-        if current_page_index is not None and block.page_index != current_page_index:
-            _save_current_strip()
-
-        current_page_index = block.page_index
-
+        # Блоки со всех страниц группируются в strips до MAX_STRIP_HEIGHT
         for crop_path, part_idx, total_parts in block_crop_paths[block.id]:
             # Получаем высоту без загрузки полного изображения
             try:

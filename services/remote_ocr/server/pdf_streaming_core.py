@@ -264,7 +264,7 @@ def split_large_crop(
     return parts
 
 
-BLOCK_SEPARATOR_HEIGHT = 80  # Увеличено с 60 для лучшей видимости
+BLOCK_SEPARATOR_HEIGHT = 120  # Увеличено для лучшей видимости OCR
 
 
 def create_block_separator(
@@ -286,17 +286,17 @@ def create_block_separator(
     text = f"BLOCK: {armor_code}"
 
     try:
-        font = ImageFont.truetype("arial.ttf", 48)  # Увеличено с 36 для лучшей видимости
+        font = ImageFont.truetype("arial.ttf", 72)  # Крупный шрифт для OCR
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype(BUNDLED_FONT_PATH, 48)
+            font = ImageFont.truetype(BUNDLED_FONT_PATH, 72)
         except (IOError, OSError):
             font = ImageFont.load_default()
 
     bbox = draw.textbbox((0, 0), text, font=font)
     text_height = bbox[3] - bbox[1]
 
-    x = 50
+    x = 80
     y = (height - text_height) // 2
 
     draw.text((x, y), text, fill=(255, 255, 255), font=font)
