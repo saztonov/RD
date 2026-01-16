@@ -415,6 +415,7 @@ def apply_ocr_preprocessing(
     img: Image.Image,
     contrast: float = 1.3,
     to_grayscale: bool = True,
+    mode: Optional[str] = None,
 ) -> Image.Image:
     """
     Apply OCR preprocessing to image.
@@ -422,11 +423,27 @@ def apply_ocr_preprocessing(
     Args:
         img: Source image (PIL.Image)
         contrast: Contrast enhancement factor (1.0 = no change)
-        to_grayscale: Convert to grayscale
+        to_grayscale: Convert to grayscale (ignored if mode is specified)
+        mode: Preprocessing mode ("text", "table", "image", "stamp") or None
 
     Returns:
         Processed image
     """
+    # If mode is specified, use the new preprocessing module
+    if mode is not None:
+        from rd_pipeline.processing.image_preprocessing import (
+            PreprocessMode,
+            preprocess_crop,
+        )
+
+        try:
+            preprocess_mode = PreprocessMode(mode)
+            return preprocess_crop(img, preprocess_mode, contrast=contrast)
+        except ValueError:
+            # Unknown mode, fall back to default behavior
+            pass
+
+    # Legacy behavior for backward compatibility
     from PIL import ImageEnhance
 
     result = img
@@ -531,9 +548,9 @@ def render_block_crop(
                 img, polygon_points, polygon_coords_px, (img.width, img.height)
             )
 
-        if ocr_prep in ("text", "table"):
+        if ocr_prep:
             img = apply_ocr_preprocessing(
-                img, contrast=ocr_prep_contrast, to_grayscale=True
+                img, contrast=ocr_prep_contrast, to_grayscale=True, mode=ocr_prep
             )
 
         return img

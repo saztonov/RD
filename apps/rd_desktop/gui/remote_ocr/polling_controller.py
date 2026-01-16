@@ -114,12 +114,27 @@ class PollingControllerMixin:
                 merged_jobs.insert(0, job_info)
 
         self._update_table(merged_jobs)
-        self.status_label.setText("🟢 Подключено")
+
+        # Sync Realtime cache if available (from RealtimeMixin)
+        if hasattr(self, "_sync_realtime_cache"):
+            self._sync_realtime_cache(merged_jobs)
+
+        # Update status label based on Realtime connection
+        if hasattr(self, "is_realtime_connected") and self.is_realtime_connected:
+            self.status_label.setText("🟢 Realtime")
+        else:
+            self.status_label.setText("🟢 Polling")
+
         self._consecutive_errors = 0
 
         self._has_active_jobs = any(
             j.status in ("queued", "processing") for j in merged_jobs
         )
+
+        # Don't change interval if Realtime is connected (it uses slower polling)
+        if hasattr(self, "is_realtime_connected") and self.is_realtime_connected:
+            return
+
         new_interval = (
             self.POLL_INTERVAL_PROCESSING
             if self._has_active_jobs

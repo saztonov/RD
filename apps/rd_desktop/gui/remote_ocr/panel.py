@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from apps.rd_desktop.gui.remote_ocr.download_mixin import DownloadMixin
 from apps.rd_desktop.gui.remote_ocr.job_operations import JobOperationsMixin
 from apps.rd_desktop.gui.remote_ocr.polling_controller import PollingControllerMixin
+from apps.rd_desktop.gui.remote_ocr.realtime_mixin import RealtimeMixin
 from apps.rd_desktop.gui.remote_ocr.result_handler import ResultHandlerMixin
 from apps.rd_desktop.gui.remote_ocr.signals import WorkerSignals
 from apps.rd_desktop.gui.remote_ocr.table_manager import TableManagerMixin
@@ -37,6 +38,7 @@ class RemoteOCRPanel(
     JobOperationsMixin,
     DownloadMixin,
     PollingControllerMixin,
+    RealtimeMixin,
     TableManagerMixin,
     ResultHandlerMixin,
     QDockWidget,
@@ -69,6 +71,9 @@ class RemoteOCRPanel(
         self._optimistic_jobs: dict = {}
         self._last_server_time: Optional[str] = None
         self._jobs_cache: dict = {}
+
+        # Initialize Realtime (from RealtimeMixin)
+        self._init_realtime()
 
         self._setup_ui()
         self._setup_timer()
@@ -296,17 +301,22 @@ class RemoteOCRPanel(
         )
 
     def showEvent(self, event):
-        """При показе панели обновляем список"""
+        """При показе панели обновляем список и запускаем Realtime"""
         super().showEvent(event)
         self._refresh_jobs(manual=True)
         self.refresh_timer.start(self.POLL_INTERVAL_IDLE)
+        # Start Realtime connection (from RealtimeMixin)
+        self._start_realtime()
 
     def hideEvent(self, event):
-        """При скрытии останавливаем таймер"""
+        """При скрытии останавливаем таймер и Realtime"""
         super().hideEvent(event)
         self.refresh_timer.stop()
+        # Stop Realtime connection (from RealtimeMixin)
+        self._stop_realtime()
 
     def closeEvent(self, event):
         """Освобождаем ресурсы"""
+        self._stop_realtime()
         self._executor.shutdown(wait=False)
         super().closeEvent(event)

@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 def get_r2_storage():
     """Получить R2 Storage клиент (async-обёртка)"""
-    from .async_r2_storage import AsyncR2StorageSync
+    from rd_adapters.storage import R2AsyncStorageSync
 
-    return AsyncR2StorageSync()
+    return R2AsyncStorageSync.from_env()
 
 
 def check_paused(job_id: str) -> bool:

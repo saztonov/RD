@@ -9,8 +9,14 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..async_r2_storage import AsyncR2StorageSync
+from rd_adapters.storage import R2AsyncStorageSync
+
 from ..routes.common import verify_api_key
+
+
+def _get_r2() -> R2AsyncStorageSync:
+    """Get R2 storage client."""
+    return R2AsyncStorageSync.from_env()
 
 router = APIRouter(
     prefix="/api/storage", tags=["storage"], dependencies=[Depends(verify_api_key)]
@@ -53,7 +59,7 @@ class R2ObjectMetadata(BaseModel):
 def exists_endpoint(r2_key: str):
     """Проверить существование объекта"""
     try:
-        r2 = AsyncR2StorageSync()
+        r2 = _get_r2()
         exists = r2.exists(r2_key)
         return {"exists": exists}
     except Exception as e:
@@ -64,7 +70,7 @@ def exists_endpoint(r2_key: str):
 def download_file_endpoint(r2_key: str):
     """Скачать файл (бинарный stream)"""
     try:
-        r2 = AsyncR2StorageSync()
+        r2 = _get_r2()
 
         # Для бинарных файлов используем presigned URL (эффективнее)
         presigned_url = r2.generate_presigned_url(r2_key, expiration=300)  # 5 минут
@@ -86,7 +92,7 @@ def download_file_endpoint(r2_key: str):
 def download_text_endpoint(r2_key: str):
     """Скачать текстовый файл"""
     try:
-        r2 = AsyncR2StorageSync()
+        r2 = _get_r2()
         content = r2.download_text(r2_key)
         if content is None:
             raise HTTPException(status_code=404, detail="File not found")
@@ -111,7 +117,7 @@ async def upload_file_endpoint(r2_key: str, file: UploadFile = File(...)):
             tmp_path = tmp.name
 
         try:
-            r2 = AsyncR2StorageSync()
+            r2 = _get_r2()
             success = r2.upload_file(tmp_path, r2_key, content_type=file.content_type)
 
             if not success:
@@ -132,7 +138,7 @@ async def upload_file_endpoint(r2_key: str, file: UploadFile = File(...)):
 def upload_text_endpoint(req: UploadTextRequest):
     """Загрузить текстовый контент"""
     try:
-        r2 = AsyncR2StorageSync()
+        r2 = _get_r2()
         success = r2.upload_text(req.content, req.r2_key, req.content_type)
 
         if not success:
@@ -147,7 +153,7 @@ def upload_text_endpoint(req: UploadTextRequest):
 def delete_batch_endpoint(req: DeleteBatchRequest):
     """Удалить несколько объектов батчем"""
     try:
-        r2 = AsyncR2StorageSync()
+        r2 = _get_r2()
         deleted = []
         errors = []
 
@@ -167,7 +173,7 @@ def delete_batch_endpoint(req: DeleteBatchRequest):
 def delete_object_endpoint(r2_key: str):
     """Удалить объект"""
     try:
-        r2 = AsyncR2StorageSync()
+        r2 = _get_r2()
         success = r2.delete_object(r2_key)
 
         if not success:
@@ -184,7 +190,7 @@ def delete_object_endpoint(r2_key: str):
 def delete_by_prefix_endpoint(prefix: str):
     """Удалить все объекты с префиксом"""
     try:
-        r2 = AsyncR2StorageSync()
+        r2 = _get_r2()
 
         # Получаем список объектов
         objects = r2.list_objects(prefix)
@@ -213,7 +219,7 @@ def delete_by_prefix_endpoint(prefix: str):
 def list_files_endpoint(prefix: str):
     """Список файлов по префиксу (только ключи)"""
     try:
-        r2 = AsyncR2StorageSync()
+        r2 = _get_r2()
         keys = r2.list_objects(prefix)
         return keys
     except Exception as e:

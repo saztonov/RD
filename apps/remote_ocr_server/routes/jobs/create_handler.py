@@ -11,6 +11,10 @@ from apps.remote_ocr_server.routes.common import (
     check_api_key,
     get_r2_sync_client,
 )
+from apps.remote_ocr_server.validation import (
+    validate_blocks_json,
+    validate_pdf_upload,
+)
 from apps.remote_ocr_server.storage import (
     add_job_file,
     add_node_file,
@@ -121,16 +125,16 @@ async def create_job_handler(
     """
     check_api_key(x_api_key)
 
+    # Validate PDF file (magic bytes, size)
+    await validate_pdf_upload(pdf)
+
+    # Validate blocks JSON
     blocks_json = (await blocks_file.read()).decode("utf-8")
+    blocks_data = validate_blocks_json(blocks_json)
+
     _logger.info(
         f"POST /jobs: document_id={document_id[:16]}..., node_id={node_id}"
     )
-
-    try:
-        blocks_data = json.loads(blocks_json)
-    except json.JSONDecodeError as e:
-        _logger.error(f"Invalid blocks_json: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid blocks_json: {e}")
 
     job_id = str(uuid.uuid4())
 

@@ -27,6 +27,10 @@ from rd_pipeline.processing.streaming_pdf import (
     split_large_crop,
 )
 from rd_pipeline.processing.config import ProcessingConfig, default_config
+from rd_pipeline.processing.image_preprocessing import (
+    PreprocessMode,
+    get_preprocess_mode_for_block,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,9 +198,13 @@ def pass1_prepare_crops(
 
             for block in page_blocks:
                 try:
+                    # Determine preprocessing mode based on block type
                     ocr_prep_mode = None
-                    if cfg.ocr_prep_enabled and block.block_type != BlockType.IMAGE:
-                        ocr_prep_mode = "text"
+                    if cfg.ocr_prep_enabled:
+                        preprocess_mode = get_preprocess_mode_for_block(block)
+                        if preprocess_mode != PreprocessMode.NONE:
+                            # Map PreprocessMode to string for render_block_crop
+                            ocr_prep_mode = preprocess_mode.value
 
                     crop = render_block_crop(
                         pdf_path=pdf_path,

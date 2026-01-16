@@ -1,9 +1,12 @@
 """Asynchronous R2 Storage implementation using aioboto3."""
 
+from __future__ import annotations
+
 import asyncio
+import concurrent.futures
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from rd_adapters.storage.r2_sync import R2Config
 
@@ -11,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Chunk size for streaming operations
 CHUNK_SIZE = 8 * 1024 * 1024  # 8 MB
+MULTIPART_THRESHOLD = 8 * 1024 * 1024  # 8 MB
 
 
 class R2AsyncStorage:
@@ -324,6 +328,74 @@ class R2AsyncStorage:
             logger.error(f"Error listing objects: {e}")
             return []
 
+    async def download_files_batch(
+        self, downloads: List[Tuple[str, str]]
+    ) -> List[bool]:
+        """
+        Parallel download of multiple files.
+
+        Args:
+            downloads: List of tuples (remote_key, local_path)
+
+        Returns:
+            List of results (True/False) for each file
+        """
+        if not downloads:
+            return []
+
+        tasks = [
+            self.download_file(remote_key, local_path)
+            for remote_key, local_path in downloads
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        return [
+            result if isinstance(result, bool) else False
+            for result in results
+        ]
+
+    async def upload_files_batch(
+        self, uploads: List[Tuple[str, str, Optional[str]]]
+    ) -> List[bool]:
+        """
+        Parallel upload of multiple files.
+
+        Args:
+            uploads: List of tuples (local_path, remote_key, content_type)
+                     content_type can be None
+
+        Returns:
+            List of results (True/False) for each file
+        """
+        if not uploads:
+            return []
+
+        tasks = [
+            self.upload_file(local_path, remote_key, content_type)
+            for local_path, remote_key, content_type in uploads
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        return [
+            result if isinstance(result, bool) else False
+            for result in results
+        ]
+
+
+def _run_async(coro):
+    """Run coroutine in synchronous context, handling existing event loops."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is None:
+        return asyncio.run(coro)
+    else:
+        # If event loop already running - use ThreadPoolExecutor
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+
 
 class R2AsyncStorageSync:
     """
@@ -341,42 +413,144 @@ class R2AsyncStorageSync:
         """Create instance from environment variables."""
         return cls(R2AsyncStorage.from_env())
 
-    def _run(self, coro):
-        """Run coroutine synchronously."""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro)
+    @property
+    def bucket_name(self) -> str:
+        """Get bucket name."""
+        return self._async_storage.bucket_name
+
+    @property
+    def config(self) -> R2Config:
+        """Get R2 config."""
+        return self._async_storage.config
 
     def upload_file(
         self, local_path: str, remote_key: str, content_type: Optional[str] = None
     ) -> bool:
-        return self._run(
+        return _run_async(
             self._async_storage.upload_file(local_path, remote_key, content_type)
         )
 
     def download_file(self, remote_key: str, local_path: str) -> bool:
-        return self._run(
+        return _run_async(
             self._async_storage.download_file(remote_key, local_path)
         )
 
     def upload_text(
         self, content: str, remote_key: str, content_type: Optional[str] = None
     ) -> bool:
-        return self._run(
+        return _run_async(
             self._async_storage.upload_text(content, remote_key, content_type)
         )
 
     def download_text(self, remote_key: str) -> Optional[str]:
-        return self._run(self._async_storage.download_text(remote_key))
+        return _run_async(self._async_storage.download_text(remote_key))
 
     def exists(self, remote_key: str) -> bool:
-        return self._run(self._async_storage.exists(remote_key))
+        return _run_async(self._async_storage.exists(remote_key))
 
     def delete_object(self, remote_key: str) -> bool:
-        return self._run(self._async_storage.delete_object(remote_key))
+        return _run_async(self._async_storage.delete_object(remote_key))
 
     def list_objects(self, prefix: str) -> List[str]:
-        return self._run(self._async_storage.list_objects(prefix))
+        return _run_async(self._async_storage.list_objects(prefix))
+
+    def download_files_batch(
+        self, downloads: List[Tuple[str, str]]
+    ) -> List[bool]:
+        """
+        Parallel download of multiple files (sync wrapper).
+
+        Args:
+            downloads: List of tuples (remote_key, local_path)
+
+        Returns:
+            List of results (True/False) for each file
+        """
+        return _run_async(self._async_storage.download_files_batch(downloads))
+
+    def upload_files_batch(
+        self, uploads: List[Tuple[str, str, Optional[str]]]
+    ) -> List[bool]:
+        """
+        Parallel upload of multiple files (sync wrapper).
+
+        Args:
+            uploads: List of tuples (local_path, remote_key, content_type)
+
+        Returns:
+            List of results (True/False) for each file
+        """
+        return _run_async(self._async_storage.upload_files_batch(uploads))
+
+    def generate_presigned_url(
+        self, remote_key: str, expiration: int = 3600
+    ) -> Optional[str]:
+        """
+        Generate presigned URL for downloading a file.
+
+        Args:
+            remote_key: R2 object key
+            expiration: URL expiration time in seconds (default 1 hour)
+
+        Returns:
+            Presigned URL string or None on error
+        """
+        import boto3
+        from botocore.config import Config
+
+        try:
+            client = boto3.client(
+                "s3",
+                endpoint_url=self._async_storage.config.endpoint_url,
+                aws_access_key_id=self._async_storage.config.access_key_id,
+                aws_secret_access_key=self._async_storage.config.secret_access_key,
+                region_name="auto",
+                config=Config(signature_version="s3v4"),
+            )
+            return client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.bucket_name, "Key": remote_key},
+                ExpiresIn=expiration,
+            )
+        except Exception as e:
+            logger.error(f"Presigned URL generation error: {e}")
+            return None
+
+    def generate_presigned_put_url(
+        self, remote_key: str, content_type: str = "application/octet-stream", expiration: int = 3600
+    ) -> Optional[str]:
+        """
+        Generate presigned URL for uploading a file.
+
+        Args:
+            remote_key: R2 object key
+            content_type: Content-Type for the upload
+            expiration: URL expiration time in seconds (default 1 hour)
+
+        Returns:
+            Presigned PUT URL string or None on error
+        """
+        import boto3
+        from botocore.config import Config
+
+        try:
+            client = boto3.client(
+                "s3",
+                endpoint_url=self._async_storage.config.endpoint_url,
+                aws_access_key_id=self._async_storage.config.access_key_id,
+                aws_secret_access_key=self._async_storage.config.secret_access_key,
+                region_name="auto",
+                config=Config(signature_version="s3v4"),
+            )
+            return client.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": self.bucket_name,
+                    "Key": remote_key,
+                    "ContentType": content_type,
+                },
+                ExpiresIn=expiration,
+            )
+        except Exception as e:
+            logger.error(f"Presigned PUT URL generation error: {e}")
+            return None

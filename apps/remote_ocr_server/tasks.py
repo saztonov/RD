@@ -1,22 +1,16 @@
-"""Celery задачи для OCR обработки"""
+"""Celery задачи для OCR обработки.
+
+Thin wrapper над JobOrchestrator - вся логика в job_orchestrator.py.
+"""
 from __future__ import annotations
 
-import json
 import logging
-import shutil
-import tempfile
 import traceback
-from pathlib import Path
 
 from .celery_app import celery_app
+from .job_orchestrator import JobOrchestrator
 from .memory_utils import force_gc, log_memory, log_memory_delta
-from .redis_rate_limiter import CompatRateLimiter
-from .settings import settings
-from .storage import Job, get_job, log_db_metrics, register_ocr_results_to_node, update_job_status, update_job_started, update_job_completed
-from .task_helpers import check_paused, create_empty_result, download_job_files
-from .task_ocr_twopass import run_two_pass_ocr
-from .task_results import generate_results
-from .task_upload import upload_results_to_r2
+from .storage import get_job, log_db_metrics, update_job_completed, update_job_started, update_job_status
 from .worker_pdf import clear_page_size_cache
 
 logger = logging.getLogger(__name__)
@@ -24,218 +18,77 @@ logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True, name="run_ocr_task", max_retries=3, rate_limit="4/m")
 def run_ocr_task(self, job_id: str) -> dict:
-    """Celery задача для обработки OCR"""
-    start_mem = log_memory(f"[START] Задача {job_id}")
+    """Celery задача для обработки OCR.
 
-    work_dir = None
+    Делегирует всю работу JobOrchestrator для лучшей тестируемости
+    и разделения ответственности.
+    """
+    start_mem = log_memory(f"[START] Задача {job_id}")
+    orchestrator = JobOrchestrator(job_id)
+
     try:
-        # Получаем задачу из БД с настройками
+        # Получаем задачу из БД
         job = get_job(job_id, with_files=True, with_settings=True)
         if not job:
             logger.error(f"Задача {job_id} не найдена")
             return {"status": "error", "message": "Job not found"}
 
-        if check_paused(job.id):
+        if orchestrator.is_paused():
             return {"status": "paused"}
 
-        # Обновляем статус на processing и фиксируем время старта
+        # Стартуем задачу
         update_job_started(job.id)
-        update_job_status(job.id, "processing", progress=0.05, status_message="📥 Инициализация задачи...")
+        orchestrator.update_status("processing", 0.05, "Инициализация задачи...")
 
-        # Создаём временную директорию
-        work_dir = Path(tempfile.mkdtemp(prefix=f"ocr_job_{job.id}_"))
-        crops_dir = work_dir / "crops"
-        crops_dir.mkdir(exist_ok=True)
+        # Настройка рабочего пространства
+        orchestrator.setup_workspace()
 
-        logger.info(f"Задача {job.id}: скачивание файлов из R2...")
-        update_job_status(job.id, "processing", progress=0.06, status_message="📥 Скачивание файлов из R2...")
-        pdf_path, blocks_path = download_job_files(job, work_dir)
+        # Скачивание файлов
+        orchestrator.download_files(job)
         log_memory_delta("После скачивания файлов", start_mem)
 
-        with open(blocks_path, "r", encoding="utf-8") as f:
-            blocks_data = json.load(f)
+        # Парсинг блоков
+        blocks = orchestrator.parse_blocks()
 
-        # annotation.json имеет структуру {pdf_path, pages: [{blocks: [...]}]}
-        # Извлекаем блоки из всех страниц
-        if isinstance(blocks_data, dict) and "pages" in blocks_data:
-            all_blocks = []
-            for page in blocks_data.get("pages", []):
-                all_blocks.extend(page.get("blocks", []))
-            blocks_data = all_blocks
-
-        if not blocks_data:
-            update_job_status(job.id, "done", progress=1.0, status_message="✅ Нет блоков для распознавания")
-            create_empty_result(job, work_dir, pdf_path)
-            upload_results_to_r2(job, work_dir)
+        if not blocks:
+            orchestrator.handle_empty_blocks(job)
             return {"status": "done", "job_id": job_id}
 
-        from rd_domain.models import Block
-        from rd_pipeline.ocr import create_ocr_engine
-
-        blocks = [Block.from_dict(b, migrate_ids=False)[0] for b in blocks_data]
-        total_blocks = len(blocks)
-
-        logger.info(f"Задача {job.id}: {total_blocks} блоков")
-
-        if check_paused(job.id):
+        if orchestrator.is_paused():
             return {"status": "paused"}
 
-        update_job_status(job.id, "processing", progress=0.1, status_message=f"⚙️ Подготовка: {total_blocks} блоков")
+        # Создание OCR движков
+        engines = orchestrator.create_engines(job)
 
-        # Настройки из Supabase
-        job_settings = job.settings
-        text_model = (job_settings.text_model if job_settings else "") or ""
-        table_model = (job_settings.table_model if job_settings else "") or ""
-        image_model = (job_settings.image_model if job_settings else "") or ""
-        stamp_model = (job_settings.stamp_model if job_settings else "") or ""
-
-        engine = job.engine or "openrouter"
-
-        # Создаём rate limiter с контекстом job_id
-        job_context = {"job_id": job.id}
-
-        if engine == "datalab" and settings.datalab_api_key:
-            datalab_limiter = CompatRateLimiter("datalab", job_context)
-            strip_backend = create_ocr_engine(
-                "datalab",
-                api_key=settings.datalab_api_key,
-                rate_limiter=datalab_limiter,
-                poll_interval=settings.datalab_poll_interval,
-                poll_max_attempts=settings.datalab_poll_max_attempts,
-                max_retries=settings.datalab_max_retries,
-            )
-        elif settings.openrouter_api_key:
-            strip_model = text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
-            openrouter_limiter = CompatRateLimiter("openrouter", job_context)
-            strip_backend = create_ocr_engine(
-                "openrouter",
-                api_key=settings.openrouter_api_key,
-                model_name=strip_model,
-                rate_limiter=openrouter_limiter,
-            )
-        else:
-            strip_backend = create_ocr_engine("dummy")
-
-        if settings.openrouter_api_key:
-            img_model = (
-                image_model
-                or text_model
-                or table_model
-                or "qwen/qwen3-vl-30b-a3b-instruct"
-            )
-            logger.info(f"IMAGE модель: {img_model}")
-            image_limiter = CompatRateLimiter("openrouter", job_context)
-            image_backend = create_ocr_engine(
-                "openrouter",
-                api_key=settings.openrouter_api_key,
-                model_name=img_model,
-                rate_limiter=image_limiter,
-            )
-
-            stmp_model = (
-                stamp_model
-                or image_model
-                or text_model
-                or table_model
-                or "qwen/qwen3-vl-30b-a3b-instruct"
-            )
-            logger.info(f"STAMP модель: {stmp_model}")
-            stamp_limiter = CompatRateLimiter("openrouter", job_context)
-            stamp_backend = create_ocr_engine(
-                "openrouter",
-                api_key=settings.openrouter_api_key,
-                model_name=stmp_model,
-                rate_limiter=stamp_limiter,
-            )
-        else:
-            image_backend = create_ocr_engine("dummy")
-            stamp_backend = create_ocr_engine("dummy")
-
-        # OCR обработка (двухпроходный алгоритм)
-        run_two_pass_ocr(
-            job,
-            pdf_path,
-            blocks,
-            crops_dir,
-            work_dir,
-            strip_backend,
-            image_backend,
-            stamp_backend,
-            start_mem,
-        )
-
+        # OCR обработка
+        orchestrator.run_ocr(job, engines, start_mem)
         force_gc("после OCR обработки")
 
-        # Генерация результатов (передаём datalab backend для верификации)
-        update_job_status(job.id, "processing", progress=0.92, status_message="📄 Генерация результатов...")
-        verification_backend = strip_backend if engine == "datalab" else None
-        r2_prefix = generate_results(job, pdf_path, blocks, work_dir, verification_backend)
+        # Генерация и загрузка результатов
+        orchestrator.generate_and_upload_results(job, engines)
 
-        # Загрузка результатов в R2
-        logger.info(f"Загрузка результатов в R2...")
-        update_job_status(job.id, "processing", progress=0.95, status_message="☁️ Загрузка в облако...")
-        upload_results_to_r2(job, work_dir, r2_prefix)
+        # Регистрация файлов для node
+        orchestrator.register_node_files(job)
 
-        # Регистрация OCR результатов в node_files
-        if job.node_id:
-            update_job_status(job.id, "processing", progress=0.98, status_message="📝 Регистрация файлов...")
-            registered_count = register_ocr_results_to_node(job.node_id, str(job.id), job.document_name, work_dir)
-            logger.info(f"✅ Зарегистрировано {registered_count} файлов в node_files для node {job.node_id}, job {job.id}")
-
-            # Обновляем статус PDF документа
-            try:
-                from .node_storage import update_node_pdf_status
-
-                update_node_pdf_status(job.node_id)
-                logger.info(f"PDF status updated for node {job.node_id}")
-            except Exception as e:
-                logger.warning(f"Failed to update PDF status: {e}")
-
-        # Подсчёт статистики блоков
-        text_count = sum(1 for b in blocks if b.block_type.value == "text")
-        table_count = sum(1 for b in blocks if b.block_type.value == "table")
-        image_blocks = [b for b in blocks if b.block_type.value == "image"]
-        stamp_count = sum(1 for b in image_blocks if getattr(b, "category_code", None) == "stamp")
-        image_count = len(image_blocks) - stamp_count
-
-        block_stats = {
-            "total": total_blocks,
-            "text": text_count,
-            "table": table_count,
-            "image": image_count,
-            "stamp": stamp_count,
-            "grouped": text_count + table_count,
-        }
-
-        # Завершаем задачу с сохранением статистики
+        # Статистика и завершение
+        block_stats = orchestrator.calculate_stats()
         update_job_completed(job.id, block_stats=block_stats)
-        update_job_status(job.id, "done", progress=1.0, status_message="✅ Завершено успешно", force=True)
-        logger.info(f"Задача {job.id} завершена успешно. Статистика: {block_stats}")
+        update_job_status(job.id, "done", progress=1.0, status_message="Завершено успешно", force=True)
 
+        logger.info(f"Задача {job.id} завершена. Статистика: {block_stats}")
         return {"status": "done", "job_id": job_id}
 
     except Exception as e:
         error_msg = f"{e}\n{traceback.format_exc()}"
         logger.error(f"Ошибка обработки задачи {job_id}: {error_msg}")
         update_job_completed(job_id, error_message=str(e))
-        update_job_status(job_id, "error", error_message=str(e), status_message="❌ Ошибка обработки", force=True)
+        update_job_status(job_id, "error", error_message=str(e), status_message="Ошибка обработки", force=True)
         return {"status": "error", "message": str(e)}
 
     finally:
-        # Очистка временной директории
-        if work_dir and work_dir.exists():
-            try:
-                shutil.rmtree(work_dir)
-                logger.info(f"✅ Временная директория очищена: {work_dir}")
-            except Exception as e:
-                logger.warning(f"⚠️ Ошибка очистки временной директории: {e}")
-
-        # Очищаем кэш размеров страниц
+        # Очистка
+        orchestrator.cleanup()
         clear_page_size_cache()
-
-        # Логирование метрик DB calls
         log_db_metrics(job_id)
-
-        # Финальная сборка мусора
         force_gc("финальная")
         log_memory_delta(f"[END] Задача {job_id}", start_mem)

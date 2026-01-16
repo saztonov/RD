@@ -35,6 +35,12 @@ from rd_pipeline.processing.merge import (
     HTMLSegmentParser,
     DefaultHTMLSegmentParser,
 )
+from rd_pipeline.processing.image_preprocessing import (
+    PreprocessMode,
+    get_preprocess_mode_for_block,
+    preprocess_crop,
+    preprocess_for_ocr,
+)
 
 __all__ = [
     # Config
@@ -63,4 +69,9 @@ __all__ = [
     "regenerate_md_from_result",
     "HTMLSegmentParser",
     "DefaultHTMLSegmentParser",
+    # Image preprocessing
+    "PreprocessMode",
+    "get_preprocess_mode_for_block",
+    "preprocess_crop",
+    "preprocess_for_ocr",
 ]
