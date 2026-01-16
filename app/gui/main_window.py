@@ -19,7 +19,7 @@ from app.gui.menu_setup import MenuSetupMixin
 from app.gui.navigation_manager import NavigationManager
 from app.gui.panels_setup import PanelsSetupMixin
 from app.gui.remote_ocr.panel import RemoteOCRPanel
-from rd_core.models import BlockType, Document
+from rd_domain.models import BlockType, Document
 from rd_core.pdf_utils import PDFDocument
 
 # Импорт метаданных продукта
@@ -680,7 +680,7 @@ class MainWindow(
         def sync_operation(operation):
             try:
                 from app.gui.sync_queue import SyncOperationType
-                from rd_core.r2_storage import R2Storage
+                from rd_adapters.storage import R2SyncStorage as R2Storage
                 from pathlib import Path
 
                 if operation.type == SyncOperationType.UPLOAD_FILE:

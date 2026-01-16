@@ -95,7 +95,7 @@ class VerificationWorker(QThread):
             self.finished.emit(f"Ошибка верификации: {e}")
 
     def _verify(self) -> VerificationResult:
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2 = R2Storage()
         result = VerificationResult()

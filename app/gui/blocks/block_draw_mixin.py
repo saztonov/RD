@@ -5,7 +5,7 @@ import logging
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMessageBox
 
-from rd_core.models import Block, BlockSource, BlockType, ShapeType
+from rd_domain.models import Block, BlockSource, BlockType, ShapeType
 
 logger = logging.getLogger(__name__)
 

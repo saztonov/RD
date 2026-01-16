@@ -102,7 +102,7 @@ def create_empty_result(job: Job, work_dir: Path, pdf_path: Path) -> None:
         )
 
     with open(annotation_path, "w", encoding="utf-8") as f:
-        from rd_core.models import Document
+        from rd_domain.models import Document
 
         json.dump(
             Document(pdf_path=pdf_path.name, pages=[]).to_dict(),

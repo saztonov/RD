@@ -23,7 +23,7 @@ class R2DeleteWorker(QThread):
         self._cancelled = True
 
     def run(self):
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         try:
             r2 = R2Storage()

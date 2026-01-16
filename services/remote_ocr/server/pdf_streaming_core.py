@@ -138,7 +138,7 @@ class StreamingPDFProcessor:
         if not page_image:
             return None
 
-        from rd_core.models import ShapeType
+        from rd_domain.models import ShapeType
 
         nx1, ny1, nx2, ny2 = block.coords_norm
         img_w, img_h = page_image.width, page_image.height
@@ -180,7 +180,7 @@ class StreamingPDFProcessor:
         if not self._doc:
             return None
 
-        from rd_core.models import ShapeType
+        from rd_domain.models import ShapeType
 
         try:
             page = self._doc[block.page_index]
@@ -277,7 +277,7 @@ def create_block_separator(
     """
     from PIL import ImageFont
 
-    from .armor_id import encode_block_id
+    from rd_domain.ids import encode_block_id
 
     separator = Image.new("RGB", (width, height), (0, 0, 0))
     draw = ImageDraw.Draw(separator)

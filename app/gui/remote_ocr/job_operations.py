@@ -84,7 +84,7 @@ class JobOperationsMixin:
                         get_annotation_path,
                         get_annotation_r2_key,
                     )
-                    from rd_core.annotation_io import AnnotationIO
+                    from rd_domain.annotation import AnnotationIO
 
                     pdf_path = getattr(self.main_window, "_current_pdf_path", None)
                     if pdf_path:
@@ -144,7 +144,7 @@ class JobOperationsMixin:
 
         if node_id and r2_key:
             try:
-                from rd_core.r2_storage import R2Storage
+                from rd_adapters.storage import R2SyncStorage as R2Storage
 
                 r2 = R2Storage()
                 if not r2.exists(r2_key):

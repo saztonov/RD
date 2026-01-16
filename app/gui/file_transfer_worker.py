@@ -92,7 +92,7 @@ class FileTransferWorker(QThread):
 
     def run(self):
         """Выполнить все задачи параллельно"""
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         try:
             r2 = R2Storage()

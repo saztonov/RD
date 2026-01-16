@@ -69,7 +69,7 @@ def verify_and_retry_missing_blocks(
 
     # Обрабатываем каждый блок отдельно
     from .pdf_streaming_core import StreamingPDFProcessor
-    from rd_core.models import Block
+    from rd_domain.models import Block
     
     successful_retries = 0
     

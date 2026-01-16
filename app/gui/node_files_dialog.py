@@ -149,7 +149,7 @@ class NodeFilesDialog(QDialog):
     def _load_latest_job_id(self):
         """Загрузить ID последнего OCR запуска"""
         try:
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
 
             r2 = R2Storage()
             latest_run_key = f"tree_docs/{self.node.id}/latest_ocr_run.json"

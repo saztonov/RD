@@ -21,7 +21,7 @@ from app.ocr_client.exceptions import (
 )
 from app.ocr_client.http_pool import get_remote_ocr_client
 from app.ocr_client.models import JobInfo
-from rd_core.models import Block
+from rd_domain.models import Block
 
 logger = logging.getLogger(__name__)
 

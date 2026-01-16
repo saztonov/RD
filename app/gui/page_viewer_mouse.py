@@ -7,7 +7,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPen, QWheelEvent
 from PySide6.QtWidgets import QGraphicsRectItem, QMenu
 
-from rd_core.models import BlockType, ShapeType
+from rd_domain.models import BlockType, ShapeType
 
 
 class MouseEventsMixin:

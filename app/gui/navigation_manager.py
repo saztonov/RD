@@ -62,7 +62,7 @@ class NavigationManager:
 
     def _recalc_blocks_coords(self, page, new_width: int, new_height: int):
         """Пересчитать coords_px блоков из coords_norm для нового размера страницы"""
-        from rd_core.models import Block, ShapeType
+        from rd_domain.models import Block, ShapeType
 
         for block in page.blocks:
             # Сохраняем старые coords_px для пересчёта polygon_points

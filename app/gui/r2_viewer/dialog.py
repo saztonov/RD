@@ -448,7 +448,7 @@ class R2FilesDialog(QDialog):
             return
 
         try:
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
 
             r2 = R2Storage()
             r2_objects = r2.list_objects_with_metadata(self.r2_prefix)

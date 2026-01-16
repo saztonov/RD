@@ -63,7 +63,7 @@ class ReconciliationWorker(QThread):
 
     def run(self):
         try:
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
 
             discrepancies: List[FileDiscrepancy] = []
 
@@ -543,7 +543,7 @@ class FileReconciliationDialog(QDialog):
             return
 
         try:
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
             r2 = R2Storage()
 
             deleted, errors = r2.delete_objects_batch(r2_keys)

@@ -19,7 +19,7 @@ class TreeFolderOperationsMixin:
         from pathlib import PurePosixPath
 
         from app.gui.folder_settings_dialog import get_projects_dir
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
@@ -95,7 +95,7 @@ class TreeFolderOperationsMixin:
         from app.gui.folder_settings_dialog import get_projects_dir
         from app.gui.tree_node_operations import NODE_ICONS
         from rd_core.pdf_stamp_remover import remove_stamps_from_pdf
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:

@@ -8,7 +8,7 @@ from PySide6.QtGui import QBrush, QColor, QFont, QPen, QPolygonF
 from PySide6.QtWidgets import QGraphicsPolygonItem, QGraphicsRectItem, QGraphicsTextItem
 from shiboken6 import isValid
 
-from rd_core.models import Block, BlockSource, BlockType, ShapeType
+from rd_domain.models import Block, BlockSource, BlockType, ShapeType
 
 
 class BlockRenderingMixin:

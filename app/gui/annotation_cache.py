@@ -8,8 +8,8 @@ from typing import Dict, Optional
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from rd_core.annotation_io import AnnotationIO
-from rd_core.models import Document
+from rd_domain.annotation import AnnotationIO
+from rd_domain.models import Document
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +167,7 @@ class AnnotationCache(QObject):
             AnnotationIO.save_annotation(doc, ann_path)
 
             # Загружаем в R2
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
             r2 = R2Storage()
             ann_r2_key = self._get_annotation_r2_key(r2_key)
 

@@ -80,7 +80,7 @@ class TreeCacheOperationsMixin:
         if node.node_type == NodeType.TASK_FOLDER:
             # Удаляем папку из R2
             try:
-                from rd_core.r2_storage import R2Storage
+                from rd_adapters.storage import R2SyncStorage as R2Storage
 
                 r2 = R2Storage()
                 r2_prefix = f"tree_docs/{node.id}/"
@@ -107,7 +107,7 @@ class TreeCacheOperationsMixin:
 
         from app.gui.file_operations import get_annotation_r2_key
         from app.gui.folder_settings_dialog import get_projects_dir
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2_key = node.attributes.get("r2_key", "")
 

@@ -117,7 +117,7 @@ def match_armor_code(
     Сопоставить armor код (XXXX-XXXX-XXX) с ожидаемыми UUID.
     Использует ArmorID для восстановления и декодирования.
     """
-    from .armor_id import match_armor_to_uuid
+    from rd_domain.ids import match_armor_to_uuid
 
     matched_uuid, score = match_armor_to_uuid(armor_code, expected_ids)
     return matched_uuid, score

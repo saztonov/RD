@@ -16,7 +16,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from PIL import Image
 
-from .manifest_models import CropManifestEntry, StripManifestEntry, TwoPassManifest
+from rd_domain.manifest import CropManifestEntry, StripManifestEntry, TwoPassManifest
 from .memory_utils import force_gc, log_memory, log_memory_delta
 from .pdf_streaming_core import (
     StreamingPDFProcessor,
@@ -47,7 +47,7 @@ def pass1_prepare_crops(
     Группирует TEXT/TABLE блоки в strips, IMAGE блоки сохраняет отдельно.
     Использует clip-рендеринг для эффективной обработки больших листов (A0/A1).
     """
-    from rd_core.models import BlockType, ShapeType
+    from rd_domain.models import BlockType, ShapeType
 
     os.makedirs(crops_dir, exist_ok=True)
     strips_dir = os.path.join(crops_dir, "strips")
@@ -218,7 +218,7 @@ def _group_and_merge_strips(
     compress_level: int,
 ) -> List[StripManifestEntry]:
     """Группировка TEXT/TABLE блоков в strips и сохранение merged images"""
-    from rd_core.models import BlockType
+    from rd_domain.models import BlockType
 
     strips: List[StripManifestEntry] = []
     current_strip_blocks: List[

@@ -570,7 +570,7 @@ class OcrPreviewWidget(QWidget):
             try:
                 from pathlib import PurePosixPath
 
-                from rd_core.r2_storage import R2Storage
+                from rd_adapters.storage import R2SyncStorage as R2Storage
 
                 r2 = R2Storage()
 

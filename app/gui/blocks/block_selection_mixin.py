@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTreeWidgetItem
 
-from rd_core.models import BlockType
+from rd_domain.models import BlockType
 
 
 class BlockSelectionMixin:

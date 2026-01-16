@@ -1,7 +1,7 @@
 """Операции с блоками из контекстного меню"""
 import logging
 
-from rd_core.models import Block, BlockSource, BlockType
+from rd_domain.models import Block, BlockSource, BlockType
 
 logger = logging.getLogger(__name__)
 

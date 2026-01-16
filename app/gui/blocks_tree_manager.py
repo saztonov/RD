@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
 )
 
-from rd_core.models import Block, BlockSource, BlockType
+from rd_domain.models import Block, BlockSource, BlockType
 
 logger = logging.getLogger(__name__)
 

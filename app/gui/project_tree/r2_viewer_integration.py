@@ -47,7 +47,7 @@ class R2ViewerIntegration:
 
     def _get_latest_ocr_job_id(self, node_id: str) -> Optional[str]:
         """Получить job_id последнего OCR запуска из latest_ocr_run.json"""
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         try:
             r2 = R2Storage()
@@ -63,7 +63,7 @@ class R2ViewerIntegration:
     def view_on_r2(self, node: TreeNode) -> None:
         """Показать файлы узла на R2 Storage"""
         from app.gui.r2_viewer import R2FilesDialog
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         # Определяем r2_prefix для узла
         r2_prefix = self._get_r2_prefix(node)

@@ -61,7 +61,7 @@ class ResultHandlerMixin:
                 logger.warning(f"Файл аннотации не найден: {ann_path}")
                 return
 
-            from rd_core.annotation_io import AnnotationIO
+            from rd_domain.annotation import AnnotationIO
 
             loaded_doc, result = AnnotationIO.load_and_migrate(str(ann_path))
 

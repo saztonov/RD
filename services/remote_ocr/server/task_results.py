@@ -16,8 +16,8 @@ def generate_results(
     job: Job, pdf_path: Path, blocks: list, work_dir: Path, datalab_backend=None
 ) -> str:
     """Генерация результатов OCR (annotation.json + HTML)"""
-    from rd_core.models import Block, Document, Page, ShapeType
-    from rd_core.ocr import generate_html_from_pages, generate_md_from_pages
+    from rd_domain.models import Block, Document, Page, ShapeType
+    from rd_pipeline.output import generate_html_from_pages, generate_md_from_pages
 
     from .pdf_streaming_core import get_page_dimensions_streaming
 

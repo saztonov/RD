@@ -254,7 +254,7 @@ def update_node_pdf_status(node_id: str):
         import httpx
 
         from rd_core.pdf_status import calculate_pdf_status
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_KEY")

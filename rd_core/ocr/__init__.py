@@ -1,13 +1,28 @@
-"""OCR модуль с поддержкой различных backends"""
+"""
+OCR module - backward compatibility shim.
 
-from rd_core.ocr.base import OCRBackend
-from rd_core.ocr.datalab import DatalabOCRBackend
-from rd_core.ocr.dummy import DummyOCRBackend
-from rd_core.ocr.factory import create_ocr_engine
-from rd_core.ocr.html_generator import generate_html_from_pages
-from rd_core.ocr.md_generator import generate_md_from_pages, generate_md_from_result
-from rd_core.ocr.openrouter import OpenRouterBackend
-from rd_core.ocr.utils import image_to_base64, image_to_pdf_base64
+DEPRECATED: Import from rd_pipeline.ocr and rd_pipeline.output instead.
+"""
+
+# Re-export from rd_pipeline.ocr
+from rd_pipeline.ocr import (
+    OCRBackend,
+    OpenRouterBackend,
+    DatalabOCRBackend,
+    DummyOCRBackend,
+    create_ocr_engine,
+    image_to_base64,
+)
+
+# Re-export from rd_pipeline.output
+from rd_pipeline.output import (
+    generate_html_from_pages,
+    generate_md_from_pages,
+    generate_md_from_result,
+)
+
+# Backward compat alias
+image_to_pdf_base64 = image_to_base64
 
 __all__ = [
     "OCRBackend",

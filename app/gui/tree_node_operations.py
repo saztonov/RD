@@ -286,7 +286,7 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
         """
         from pathlib import PurePosixPath
 
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         old_stem = PurePosixPath(old_r2_key).stem
         new_stem = PurePosixPath(new_r2_key).stem
@@ -396,7 +396,7 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                     if old_r2_key:
                         from pathlib import PurePosixPath
 
-                        from rd_core.r2_storage import R2Storage
+                        from rd_adapters.storage import R2SyncStorage as R2Storage
 
                         # Формируем новый ключ (меняем только имя файла)
                         # Используем PurePosixPath чтобы сохранить / в путях R2

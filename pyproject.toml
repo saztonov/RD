@@ -42,3 +42,30 @@ packages = ["app", "rd_core", "services"]
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+# Import Linter - enforce layered architecture
+# Run: pip install import-linter && lint-imports
+[tool.importlinter]
+root_packages = ["rd_domain", "rd_pipeline", "rd_adapters"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture"
+type = "layers"
+layers = [
+    "rd_adapters",
+    "rd_pipeline",
+    "rd_domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain has no dependencies on upper layers"
+type = "forbidden"
+source_modules = ["rd_domain"]
+forbidden_modules = ["rd_pipeline", "rd_adapters", "rd_core", "app", "services"]
+
+[[tool.importlinter.contracts]]
+name = "Pipeline depends only on domain"
+type = "forbidden"
+source_modules = ["rd_pipeline"]
+forbidden_modules = ["rd_adapters", "rd_core", "app", "services"]

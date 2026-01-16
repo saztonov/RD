@@ -24,7 +24,7 @@ from app.gui.page_viewer_menus.context_menu import ContextMenuMixin
 from app.gui.page_viewer_mouse import MouseEventsMixin
 from app.gui.page_viewer_polygon import PolygonMixin
 from app.gui.page_viewer_resize import ResizeHandlesMixin
-from rd_core.models import Block, ShapeType
+from rd_domain.models import Block, ShapeType
 
 
 class PageViewer(

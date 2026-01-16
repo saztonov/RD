@@ -81,7 +81,7 @@ class BlockGroupsMixin:
                 block_item.setText(0, f"Стр.{page_num + 1} Блок {block_idx + 1}")
                 block_item.setText(1, block.block_type.value)
                 # Колонка Категория (для IMAGE блоков)
-                from rd_core.models import BlockType
+                from rd_domain.models import BlockType
 
                 cat_name = (
                     self._get_category_name(block.category_id)

@@ -1,15 +1,18 @@
 """
 Core Structure - Базовая библиотека
 
-Содержит основную логику для работы с PDF-документами, блоками,
-OCR и интеграцией с облачными хранилищами (без GUI).
+DEPRECATED: Этот модуль сохранён для обратной совместимости.
+Используйте напрямую:
+- rd_domain.models - модели данных
+- rd_domain.ids - ArmorID
+- rd_domain.annotation - работа с разметкой
+- rd_pipeline.ocr - OCR backend'ы
+- rd_pipeline.output - генерация HTML/Markdown
+- rd_adapters.storage - хранилище R2
 
-Модули:
-- models: Базовые модели данных (Block, Document, Page)
+Legacy модули (будут удалены):
 - pdf_utils: Утилиты для работы с PDF (PyMuPDF)
-- annotation_io: Сохранение и загрузка разметки (JSON)
-- r2_storage: Интеграция с Cloudflare R2
-- ocr: OCR backend'ы (OpenRouter, Datalab)
+- r2_metadata_cache: Кэш метаданных R2
 """
 
 import sys

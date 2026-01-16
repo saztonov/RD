@@ -82,7 +82,7 @@ class SyncCheckWorker(QThread):
     def run(self):
         """Выполнить проверку всех узлов"""
         try:
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
 
             r2 = R2Storage()
         except Exception as e:

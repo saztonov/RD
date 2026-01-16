@@ -69,8 +69,8 @@ def run_ocr_task(self, job_id: str) -> dict:
             upload_results_to_r2(job, work_dir)
             return {"status": "done", "job_id": job_id}
 
-        from rd_core.models import Block
-        from rd_core.ocr import create_ocr_engine
+        from rd_domain.models import Block
+        from rd_pipeline.ocr import create_ocr_engine
 
         blocks = [Block.from_dict(b, migrate_ids=False)[0] for b in blocks_data]
         total_blocks = len(blocks)

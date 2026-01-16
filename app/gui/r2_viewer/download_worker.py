@@ -57,7 +57,7 @@ class R2DownloadWorker(QThread):
     def run(self):
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         try:
             r2 = R2Storage()

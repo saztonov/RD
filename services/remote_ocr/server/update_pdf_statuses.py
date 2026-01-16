@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from rd_core.pdf_status import calculate_pdf_status
-from rd_core.r2_storage import R2Storage
+from rd_adapters.storage import R2SyncStorage as R2Storage
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

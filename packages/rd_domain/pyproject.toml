@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rd_domain"
+version = "1.0.0"
+description = "Pure domain layer for RD project - models, identifiers, schemas"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = []  # Zero external dependencies - pure domain
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["rd_domain"]

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer
 
-from rd_core.annotation_io import AnnotationIO
+from rd_domain.annotation import AnnotationIO
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ class FileAutoSaveMixin:
             from PySide6.QtCore import Qt
             from app.tree_client import TreeClient
             from rd_core.pdf_status import calculate_pdf_status
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
 
             item = self.project_tree._node_map.get(node_id)
             if item:

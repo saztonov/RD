@@ -41,7 +41,7 @@ class AnnotationOperations:
     def copy_annotation(self, node: TreeNode) -> None:
         """Скопировать аннотацию документа в буфер"""
         from app.gui.file_operations import get_annotation_r2_key
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
@@ -73,7 +73,7 @@ class AnnotationOperations:
             return
 
         from app.gui.file_operations import get_annotation_r2_key
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         if not self._copied_annotation:
             return
@@ -114,7 +114,7 @@ class AnnotationOperations:
             return
 
         from app.gui.file_operations import get_annotation_r2_key
-        from rd_core.r2_storage import R2Storage
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
@@ -197,8 +197,8 @@ class AnnotationOperations:
             return
 
         from app.gui.file_operations import get_annotation_r2_key
-        from rd_core.models import BlockType, Document
-        from rd_core.r2_storage import R2Storage
+        from rd_domain.models import BlockType, Document
+        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:

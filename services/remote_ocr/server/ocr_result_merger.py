@@ -9,7 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
-from rd_core.ocr.generator_common import (
+from rd_pipeline.common import (
     HTML_FOOTER,
     INHERITABLE_STAMP_FIELDS,
     build_linked_blocks_index_dict,
@@ -203,7 +203,7 @@ def regenerate_md_from_result(
     doc_name: Optional[str] = None,
 ) -> None:
     """Регенерировать Markdown файл из result.json."""
-    from rd_core.ocr.md_generator import generate_md_from_result
+    from rd_pipeline.output.md_generator import generate_md_from_result
 
     try:
         generate_md_from_result(result, output_path, doc_name=doc_name)

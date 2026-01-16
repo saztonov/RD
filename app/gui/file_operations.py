@@ -14,8 +14,8 @@ from app.gui.file_auto_save import (
     get_annotation_r2_key,
 )
 from app.gui.file_download import FileDownloadMixin
-from rd_core.annotation_io import AnnotationIO
-from rd_core.models import Document, Page
+from rd_domain.annotation import AnnotationIO
+from rd_domain.models import Document, Page
 from rd_core.pdf_utils import PDFDocument
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             return
 
         try:
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
 
             r2 = R2Storage()
             ann_r2_key = get_annotation_r2_key(self._current_r2_key)
@@ -72,7 +72,7 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
         try:
             from app.tree_client import TreeClient
             from rd_core.pdf_status import PDFStatus, calculate_pdf_status
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
 
             client = TreeClient()
             node = client.get_node(self._current_node_id)
@@ -122,14 +122,14 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
     def _load_annotation_if_exists(self, pdf_path: str, r2_key: str = ""):
         """Загрузить annotation.json если существует (локально или в R2)"""
         from app.gui.toast import show_toast
-        from rd_core.annotation_io import MigrationResult
+        from rd_domain.annotation import MigrationResult
 
         ann_path = get_annotation_path(pdf_path)
 
         # Попробовать скачать из R2 если нет локально
         if not ann_path.exists() and r2_key:
             try:
-                from rd_core.r2_storage import R2Storage
+                from rd_adapters.storage import R2SyncStorage as R2Storage
 
                 r2 = R2Storage()
                 ann_r2_key = get_annotation_r2_key(r2_key)
@@ -364,7 +364,7 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
 
         try:
             # Скачиваем обновлённую аннотацию из R2
-            from rd_core.r2_storage import R2Storage
+            from rd_adapters.storage import R2SyncStorage as R2Storage
 
             ann_r2_key = get_annotation_r2_key(r2_key)
             ann_path = get_annotation_path(self._current_pdf_path)

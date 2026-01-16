@@ -4,7 +4,7 @@
 Объединяет все под-миксины для работы с блоками.
 """
 
-from rd_core.models import Page
+from rd_domain.models import Page
 
 from app.gui.blocks.block_draw_mixin import BlockDrawMixin
 from app.gui.blocks.block_modification_mixin import BlockModificationMixin

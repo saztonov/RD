@@ -5,7 +5,7 @@ import logging
 
 from PySide6.QtWidgets import QMenu
 
-from rd_core.models import BlockType
+from rd_domain.models import BlockType
 
 from app.gui.page_viewer_menus.context_menu.block_operations import BlockOperationsMixin
 from app.gui.page_viewer_menus.context_menu.category_mixin import CategoryMixin

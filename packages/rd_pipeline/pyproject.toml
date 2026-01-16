@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rd_pipeline"
+version = "1.0.0"
+description = "Business logic layer for RD project - OCR, PDF processing, generators"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "rd_domain",
+    "Pillow>=10.0",
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+pdf = [
+    "PyMuPDF>=1.23",
+]
+async = [
+    "aioboto3>=12.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["rd_pipeline"]
