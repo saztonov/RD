@@ -19,7 +19,7 @@ pip install -r requirements.txt
 
 ### Desktop Client
 ```bash
-python app/main.py                    # Run application
+python apps/rd_desktop/main.py         # Run application
 python build.py                        # Build executable → dist/CoreStructure.exe
 ```
 
@@ -46,8 +46,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 #### Manual (without Docker)
 ```bash
 redis-server                                                              # Terminal 1
-uvicorn services.remote_ocr.server.main:app --host 0.0.0.0 --port 8000 --reload  # Terminal 2
-celery -A services.remote_ocr.server.celery_app worker --loglevel=info --concurrency=1  # Terminal 3
+uvicorn apps.remote_ocr_server.main:app --host 0.0.0.0 --port 8000 --reload  # Terminal 2
+celery -A apps.remote_ocr_server.celery_app worker --loglevel=info --concurrency=1  # Terminal 3
 ```
 
 ### Health Checks
@@ -68,30 +68,30 @@ Desktop Client (PySide6)
     └─→ R2Storage (boto3) ──→ Cloudflare R2 (prompts, results)
 ```
 
-### Key Components
+### Key Components (Clean/Hexagonal Architecture)
 
-| Directory | Purpose |
-|-----------|---------|
-| `app/` | Desktop GUI (PySide6). Entry: `app/main.py` |
-| `app/gui/` | 57 GUI modules. Core: `main_window.py`, `page_viewer.py` |
-| `rd_core/` | Core logic: models, PDF utils, R2 storage, OCR engines |
-| `rd_core/ocr/` | OCR backends (OpenRouter, Datalab). Protocol: `base.py` |
-| `services/remote_ocr/server/` | FastAPI server + Celery tasks |
-| `database/migrations/` | SQL migration files |
+| Directory | Layer | Purpose |
+|-----------|-------|---------|
+| `packages/rd_domain/` | 0 - Domain | Domain models, ArmorID, annotation I/O (no dependencies) |
+| `packages/rd_pipeline/` | 1 - Business | OCR backends, PDF utils, output generators, processing |
+| `packages/rd_adapters/` | 2 - Infrastructure | R2 storage adapters, caching |
+| `apps/rd_desktop/` | Application | Desktop GUI (PySide6). Entry: `apps/rd_desktop/main.py` |
+| `apps/remote_ocr_server/` | Application | FastAPI server + Celery tasks |
+| `database/migrations/` | - | SQL migration files |
 
 ### Architectural Patterns
 
 **Mixin Pattern (GUI)**: `MainWindow` composes multiple mixins - each handles specific responsibility (menus, file ops, block handlers).
 
-**Protocol Pattern (OCR)**: `OCRBackend` protocol in `rd_core/ocr/base.py`. Implementations: `OpenRouterBackend`, `DatalabOCRBackend`. Factory: `create_ocr_engine()`.
+**Protocol Pattern (OCR)**: `OCRBackend` protocol in `rd_pipeline/ocr/ports.py`. Implementations: `OpenRouterBackend`, `DatalabOCRBackend`. Factory: `create_ocr_engine()`.
 
-**Context Manager (PDF)**: `PDFDocument` in `rd_core/pdf_utils.py` uses `__enter__`/`__exit__` for resource cleanup.
+**Context Manager (PDF)**: `PDFDocument` in `rd_pipeline/pdf/utils.py` uses `__enter__`/`__exit__` for resource cleanup.
 
-**ArmorID (Block IDs)**: OCR-resistant ID format `XXXX-XXXX-XXX` using 26-character alphabet. See `rd_core/models/armor_id.py`. Use `generate_armor_id()` for new blocks.
+**ArmorID (Block IDs)**: OCR-resistant ID format `XXXX-XXXX-XXX` using 26-character alphabet. See `rd_domain/ids/armor_id.py`. Use `generate_armor_id()` for new blocks.
 
 **Offline Mode**: App queues operations when disconnected. `ConnectionManager` monitors connectivity, `SyncQueue` stores pending operations. Auto-syncs on reconnection.
 
-### Data Models (`rd_core/models/`)
+### Data Models (`rd_domain/models/`)
 
 ```python
 Block      # Annotation unit: id, page_index, coords_px, coords_norm, block_type, shape_type, polygon_points, ocr_text
@@ -118,11 +118,11 @@ Block types: `TEXT`, `TABLE`, `IMAGE`. Shape types: `RECTANGLE`, `POLYGON`. Bloc
 
 ## Extension Points
 
-**Add GUI feature**: Create mixin in `app/gui/`, add to MainWindow inheritance.
+**Add GUI feature**: Create mixin in `apps/rd_desktop/gui/`, add to MainWindow inheritance.
 
-**Add OCR engine**: Implement `OCRBackend` protocol, add to `rd_core/ocr/`, register in `factory.py`.
+**Add OCR engine**: Implement `OCRBackend` protocol in `rd_pipeline/ocr/backends/`, register in `factory.py`.
 
-**Add API endpoint**: Create route in `services/remote_ocr/server/routes/`, include in `main.py`.
+**Add API endpoint**: Create route in `apps/remote_ocr_server/routes/`, include in `main.py`.
 
 **Modify database**: Add migration in `database/migrations/`, document in `docs/DATABASE.md`.
 

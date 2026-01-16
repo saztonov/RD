@@ -36,8 +36,10 @@ Homepage = "https://github.com/your-org/core-structure"
 Documentation = "https://github.com/your-org/core-structure/docs"
 Repository = "https://github.com/your-org/core-structure"
 
-[tool.setuptools]
-packages = ["app", "rd_core", "services"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["apps*", "packages*"]
+exclude = ["rd_core*"]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
@@ -62,10 +64,10 @@ layers = [
 name = "Domain has no dependencies on upper layers"
 type = "forbidden"
 source_modules = ["rd_domain"]
-forbidden_modules = ["rd_pipeline", "rd_adapters", "rd_core", "app", "services"]
+forbidden_modules = ["rd_pipeline", "rd_adapters", "apps"]
 
 [[tool.importlinter.contracts]]
 name = "Pipeline depends only on domain"
 type = "forbidden"
 source_modules = ["rd_pipeline"]
-forbidden_modules = ["rd_adapters", "rd_core", "app", "services"]
+forbidden_modules = ["rd_adapters", "apps"]

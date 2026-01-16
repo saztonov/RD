@@ -2,8 +2,8 @@ services:
   web:
     build:
       context: .
-      dockerfile: services/remote_ocr/Dockerfile
-    command: uvicorn services.remote_ocr.server.main:app --host 0.0.0.0 --port 8000
+      dockerfile: apps/remote_ocr_server/Dockerfile
+    command: uvicorn apps.remote_ocr_server.main:app --host 0.0.0.0 --port 8000
     ports:
       - "${REMOTE_OCR_BIND_ADDR:-127.0.0.1}:${REMOTE_OCR_PORT:-18000}:8000"
     env_file:
@@ -44,8 +44,8 @@ services:
   worker:
     build:
       context: .
-      dockerfile: services/remote_ocr/Dockerfile
-    command: celery -A services.remote_ocr.server.celery_app worker -Q celery --loglevel=info --concurrency=1
+      dockerfile: apps/remote_ocr_server/Dockerfile
+    command: celery -A apps.remote_ocr_server.celery_app worker -Q celery --loglevel=info --concurrency=1
     env_file:
       - .env
     environment:
@@ -70,8 +70,8 @@ services:
   worker-meta:
     build:
       context: .
-      dockerfile: services/remote_ocr/Dockerfile
-    command: celery -A services.remote_ocr.server.celery_app worker -Q ocr_meta --loglevel=info --concurrency=2
+      dockerfile: apps/remote_ocr_server/Dockerfile
+    command: celery -A apps.remote_ocr_server.celery_app worker -Q ocr_meta --loglevel=info --concurrency=2
     env_file:
       - .env
     environment:
@@ -96,8 +96,8 @@ services:
   worker-text:
     build:
       context: .
-      dockerfile: services/remote_ocr/Dockerfile
-    command: celery -A services.remote_ocr.server.celery_app worker -Q ocr_text --loglevel=info --concurrency=4
+      dockerfile: apps/remote_ocr_server/Dockerfile
+    command: celery -A apps.remote_ocr_server.celery_app worker -Q ocr_text --loglevel=info --concurrency=4
     env_file:
       - .env
     environment:
@@ -122,8 +122,8 @@ services:
   worker-image:
     build:
       context: .
-      dockerfile: services/remote_ocr/Dockerfile
-    command: celery -A services.remote_ocr.server.celery_app worker -Q ocr_image --loglevel=info --concurrency=2
+      dockerfile: apps/remote_ocr_server/Dockerfile
+    command: celery -A apps.remote_ocr_server.celery_app worker -Q ocr_image --loglevel=info --concurrency=2
     env_file:
       - .env
     environment:
@@ -148,8 +148,8 @@ services:
   worker-stamp:
     build:
       context: .
-      dockerfile: services/remote_ocr/Dockerfile
-    command: celery -A services.remote_ocr.server.celery_app worker -Q ocr_stamp --loglevel=info --concurrency=1
+      dockerfile: apps/remote_ocr_server/Dockerfile
+    command: celery -A apps.remote_ocr_server.celery_app worker -Q ocr_stamp --loglevel=info --concurrency=1
     env_file:
       - .env
     environment:
