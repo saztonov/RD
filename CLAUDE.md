@@ -55,20 +55,14 @@ cp env.example .env              # Configure environment variables
 docker compose up -d --build     # Start server (listens on 127.0.0.1:18000)
 ```
 
-#### Development (with hot reload)
+#### Development
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
-#### Minimal (8GB RAM machines)
-```bash
-docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
-```
-
 **RAM requirements:**
-- Production: ~12GB (5 specialized workers)
-- Development: ~5GB (1 universal worker, concurrency=2)
-- Minimal: ~2.5GB (1 worker, concurrency=1)
+- Production: ~12GB (5 specialized workers с лимитами)
+- Development: без лимитов (1 universal worker)
 
 **Desktop client connection:** Set `REMOTE_OCR_BASE_URL=http://localhost:18000` in `.env`
 

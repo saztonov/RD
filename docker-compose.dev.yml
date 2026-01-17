@@ -2,11 +2,9 @@
 # Использование: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 #
 # Изменения относительно production:
-# - hot reload для web (--reload)
-# - volume mount для кода
 # - один universal worker вместо 5 специализированных
-# - сниженные лимиты памяти (~5GB total)
 # - Redis порт открыт для отладки
+# - без лимитов памяти
 
 services:
   web:
@@ -16,34 +14,24 @@ services:
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
     restart: "no"
-    mem_limit: 512m
 
   redis:
     ports:
       - "6379:6379"
     restart: "no"
-    mem_limit: 128m
 
   # Universal worker для всех очередей (заменяет 5 production workers)
-  # watchfiles автоматически перезапускает worker при изменении Python файлов
   worker:
     command: >
-      watchfiles --filter python
-      'celery -A apps.remote_ocr_server.celery_app worker
+      celery -A apps.remote_ocr_server.celery_app worker
       -Q celery,ocr_meta,ocr_text,ocr_image,ocr_stamp
       --loglevel=info
-      --concurrency=2'
-      /app/apps /app/packages
+      --concurrency=2
     volumes:
       - .:/app
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
     restart: "no"
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
 
   # Отключаем специализированные workers
   worker-meta:

@@ -224,6 +224,58 @@ def get_job_details_handler(
     return _add_job_settings_and_r2_files(result, job)
 
 
+def get_job_progress_handler(
+    job_id: str,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> dict:
+    """Получить детальный прогресс задачи с информацией о фазах обработки"""
+    check_api_key(x_api_key)
+
+    job = get_job(job_id, with_files=True)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    result = {
+        "job_id": job.id,
+        "status": job.status,
+        "progress": job.progress,
+        "status_message": job.status_message,
+        "phase_data": job.phase_data,
+        "error_message": job.error_message,
+    }
+
+    # Добавляем информацию о блоках если есть
+    blocks_file = get_job_file_by_type(job_id, "blocks")
+    if blocks_file:
+        try:
+            r2 = get_r2_storage()
+            blocks_text = r2.download_text(blocks_file.r2_key)
+            if blocks_text:
+                blocks = json.loads(blocks_text)
+                result["blocks"] = blocks
+        except Exception as e:
+            _logger.warning(f"Failed to load blocks for progress: {e}")
+
+    # Добавляем URLs для кропов если доступны
+    r2_public_url = os.getenv("R2_PUBLIC_URL")
+    if r2_public_url and job.r2_prefix:
+        base_url = r2_public_url.rstrip("/")
+        result["r2_base_url"] = f"{base_url}/{job.r2_prefix}"
+
+        # Собираем URLs для кропов
+        crop_files = [f for f in job.files if f.file_type == "crop"]
+        result["crops"] = [
+            {
+                "block_id": f.metadata.get("block_id") if f.metadata else None,
+                "url": f"{base_url}/{f.r2_key}",
+                "file_name": f.file_name,
+            }
+            for f in crop_files
+        ]
+
+    return result
+
+
 def download_result_handler(
     job_id: str,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),

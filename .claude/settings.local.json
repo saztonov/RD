@@ -46,7 +46,8 @@
       "Bash(findstr:*)",
       "Bash(%cd%apps)",
       "Bash($env:PYTHONPATH=\"$PWD\\\\packages;$PWD\\\\apps\")",
-      "Bash(PYTHONPATH=\"packages:apps\" python:*)"
+      "Bash(PYTHONPATH=\"packages:apps\" python:*)",
+      "Bash(docker compose:*)"
     ]
   }
 }

@@ -519,6 +519,30 @@ class RemoteOCRClient:
         resp = self._request_with_retry("get", f"/jobs/{job_id}/details")
         return resp.json()
 
+    def get_job_progress(self, job_id: str) -> dict:
+        """
+        Получить детальный прогресс задачи с информацией о фазах.
+
+        Возвращает:
+            {
+                "job_id": str,
+                "status": str,
+                "progress": float,
+                "status_message": str,
+                "phase_data": {
+                    "current_phase": str,
+                    "pass1": {...},
+                    "pass2_strips": {...},
+                    "pass2_images": {...},
+                    "blocks_summary": {...},
+                },
+                "blocks": [...],
+                "crops": [...],
+            }
+        """
+        resp = self._request_with_retry("get", f"/jobs/{job_id}/progress")
+        return resp.json()
+
     def download_result(self, job_id: str, target_zip_path: str) -> str:
         """
         Скачать результат задачи

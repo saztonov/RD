@@ -43,6 +43,7 @@ class Job:
     started_at: Optional[str] = None  # Время начала обработки
     completed_at: Optional[str] = None  # Время завершения обработки
     block_stats: Optional[dict] = None  # Статистика блоков (jsonb)
+    phase_data: Optional[dict] = None  # Детальная информация о фазах обработки (jsonb)
     # Вложенные данные (опционально загружаются)
     files: List[JobFile] = field(default_factory=list)
     settings: Optional[JobSettings] = None

@@ -9,6 +9,7 @@ from apps.remote_ocr_server.routes.jobs.read_handlers import (
     download_result_handler,
     get_job_details_handler,
     get_job_handler,
+    get_job_progress_handler,
     get_jobs_changes_handler,
     list_jobs_handler,
 )
@@ -36,6 +37,7 @@ router.get("")(list_jobs_handler)
 router.get("/changes")(get_jobs_changes_handler)
 router.get("/{job_id}")(get_job_handler)
 router.get("/{job_id}/details")(get_job_details_handler)
+router.get("/{job_id}/progress")(get_job_progress_handler)
 router.get("/{job_id}/result")(download_result_handler)
 
 # PATCH endpoints

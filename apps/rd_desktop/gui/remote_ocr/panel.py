@@ -253,6 +253,20 @@ class RemoteOCRPanel(
             f"Задача обновлена в таблице, строк={self.jobs_table.rowCount()}"
         )
 
+        # Открываем окно мониторинга OCR
+        self._open_ocr_monitor(job_info.id)
+
+    def _open_ocr_monitor(self, job_id: str):
+        """Открыть окно мониторинга OCR процесса"""
+        try:
+            from apps.rd_desktop.gui.ocr_monitor import OCRMonitorDialog
+
+            monitor = OCRMonitorDialog(job_id, self.main_window)
+            monitor.show()
+            logger.info(f"Открыто окно мониторинга для задачи: {job_id}")
+        except Exception as e:
+            logger.error(f"Ошибка открытия окна мониторинга: {e}", exc_info=True)
+
     def _on_job_create_error(self, error_type: str, message: str):
         """Слот: ошибка создания задачи"""
         uploading_ids = [

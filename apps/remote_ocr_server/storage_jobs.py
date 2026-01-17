@@ -242,6 +242,7 @@ def update_job_status(
     error_message: Optional[str] = None,
     r2_prefix: Optional[str] = None,
     status_message: Optional[str] = None,
+    phase_data: Optional[dict] = None,
     force: bool = False,
 ) -> None:
     """Обновить статус задачи (с rate limiting для progress)"""
@@ -262,6 +263,8 @@ def update_job_status(
         updates["r2_prefix"] = r2_prefix
     if status_message is not None:
         updates["status_message"] = status_message
+    if phase_data is not None:
+        updates["phase_data"] = json.dumps(phase_data)
 
     client = get_client()
     client.table("jobs").update(updates).eq("id", job_id).execute()
@@ -368,6 +371,14 @@ def update_job_completed(
 
 
 def _row_to_job(row: dict) -> Job:
+    # Парсим phase_data из JSON если это строка
+    phase_data = row.get("phase_data")
+    if isinstance(phase_data, str):
+        try:
+            phase_data = json.loads(phase_data)
+        except (json.JSONDecodeError, TypeError):
+            phase_data = None
+
     return Job(
         id=row["id"],
         client_id=row.get("client_id", ""),
@@ -386,4 +397,5 @@ def _row_to_job(row: dict) -> Job:
         started_at=row.get("started_at"),
         completed_at=row.get("completed_at"),
         block_stats=row.get("block_stats"),
+        phase_data=phase_data,
     )
