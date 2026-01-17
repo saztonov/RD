@@ -2,7 +2,6 @@
 
 Different block types benefit from different preprocessing:
 - TEXT: grayscale + high contrast + sharpen (clean text extraction)
-- TABLE: grayscale + moderate contrast (preserve structure)
 - IMAGE: minimal processing (preserve details and colors)
 - STAMP: grayscale + denoise (often has noise/artifacts)
 """
@@ -22,7 +21,6 @@ class PreprocessMode(Enum):
 
     NONE = "none"  # No preprocessing
     TEXT = "text"  # Grayscale + high contrast + sharpen
-    TABLE = "table"  # Grayscale + moderate contrast
     IMAGE = "image"  # Minimal (preserve colors)
     STAMP = "stamp"  # Grayscale + denoise
 
@@ -43,8 +41,6 @@ def get_preprocess_mode_for_block(block) -> PreprocessMode:
 
     if block_type == BlockType.TEXT:
         return PreprocessMode.TEXT
-    elif block_type == BlockType.TABLE:
-        return PreprocessMode.TABLE
     elif block_type == BlockType.IMAGE:
         # Check for stamp category
         category_code = getattr(block, "category_code", None)
@@ -78,8 +74,6 @@ def preprocess_crop(
 
     if mode == PreprocessMode.TEXT:
         return _preprocess_text(image, contrast, sharpen_strength)
-    elif mode == PreprocessMode.TABLE:
-        return _preprocess_table(image, contrast)
     elif mode == PreprocessMode.STAMP:
         return _preprocess_stamp(image)
     elif mode == PreprocessMode.IMAGE:
@@ -121,32 +115,6 @@ def _preprocess_text(
             # Apply multiple times for stronger effect
             for _ in range(int(sharpen_strength)):
                 result = result.filter(ImageFilter.SHARPEN)
-
-    return result
-
-
-def _preprocess_table(image: Image.Image, contrast: float = 1.2) -> Image.Image:
-    """
-    Preprocess image for table OCR.
-
-    - Convert to grayscale
-    - Auto-contrast (gentler)
-    - Moderate contrast enhancement
-    - No sharpening (preserve line structure)
-    """
-    # Convert to grayscale
-    if image.mode != "L":
-        result = ImageOps.grayscale(image)
-    else:
-        result = image.copy()
-
-    # Auto-contrast with gentler cutoff (preserve more detail)
-    result = ImageOps.autocontrast(result, cutoff=2)
-
-    # Moderate contrast
-    if contrast != 1.0:
-        enhancer = ImageEnhance.Contrast(result)
-        result = enhancer.enhance(contrast)
 
     return result
 
@@ -204,7 +172,7 @@ def preprocess_for_ocr(
 
     Args:
         image: PIL Image
-        block_type_str: Block type as string ("text", "table", "image")
+        block_type_str: Block type as string ("text", "image")
         category_code: Optional category code (e.g., "stamp")
         enabled: Whether preprocessing is enabled
         contrast: Contrast enhancement factor
@@ -220,8 +188,6 @@ def preprocess_for_ocr(
 
     if block_type_lower == "text":
         mode = PreprocessMode.TEXT
-    elif block_type_lower == "table":
-        mode = PreprocessMode.TABLE
     elif block_type_lower == "image":
         if category_code == "stamp":
             mode = PreprocessMode.STAMP

@@ -31,8 +31,8 @@ coords_norm = Block.px_to_norm(coords_px, page_width, page_height)
 
 ```
 draft → queued → processing → done
-              ↘           ↘
-            paused       error
+                          ↘
+                         error
 
 pending_upload → queued  (v2 direct upload flow)
 ```
@@ -41,7 +41,6 @@ pending_upload → queued  (v2 direct upload flow)
 - `queued` - waiting for worker
 - `processing` - worker is processing
 - `done` - completed successfully
-- `paused` - user paused (from queued/processing)
 - `error` - terminal error state
 - `pending_upload` - waiting for direct R2 upload (v2 API: /jobs/init → /jobs/{id}/confirm)
 
@@ -124,7 +123,6 @@ Available types: `openrouter`, `datalab`, `dummy`
 | BlockType | Processing | Preprocess Mode |
 |-----------|-----------|-----------------|
 | `TEXT` | Strip grouping, text OCR | Grayscale + high contrast + sharpen |
-| `TABLE` | Strip grouping, table OCR | Grayscale + moderate contrast |
 | `IMAGE` | Individual crop, image description | Minimal (preserve colors) |
 | `STAMP` | Individual crop, stamp recognition | Grayscale + median filter (denoise) |
 
@@ -147,7 +145,6 @@ processed_image = preprocess_crop(image, mode)
 | Mode | Grayscale | Contrast | Sharpen | Denoise |
 |------|-----------|----------|---------|---------|
 | `TEXT` | Yes | High (1.5) | Yes | No |
-| `TABLE` | Yes | Moderate (1.3) | No | No |
 | `IMAGE` | No | No | No | No |
 | `STAMP` | Yes | No | No | MedianFilter(3) |
 

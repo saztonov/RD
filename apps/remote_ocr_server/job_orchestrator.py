@@ -49,7 +49,6 @@ class JobOrchestrator:
         self,
         job_id: str,
         on_status_update: Optional[Callable[[str, float, str], None]] = None,
-        check_paused_fn: Optional[Callable[[str], bool]] = None,
     ):
         """
         Initialize orchestrator.
@@ -57,11 +56,9 @@ class JobOrchestrator:
         Args:
             job_id: Job ID
             on_status_update: Callback for status updates (status, progress, message)
-            check_paused_fn: Callback to check if job is paused
         """
         self.job_id = job_id
         self._on_status_update = on_status_update or self._default_status_update
-        self._check_paused_fn = check_paused_fn or self._default_check_paused
         self._context: Optional[JobContext] = None
 
     def _default_status_update(
@@ -72,19 +69,9 @@ class JobOrchestrator:
 
         update_job_status(self.job_id, status, progress=progress, status_message=message)
 
-    def _default_check_paused(self, job_id: str) -> bool:
-        """Default pause check - queries database."""
-        from .task_helpers import check_paused
-
-        return check_paused(job_id)
-
     def update_status(self, status: str, progress: float, message: str) -> None:
         """Update job status."""
         self._on_status_update(status, progress, message)
-
-    def is_paused(self) -> bool:
-        """Check if job is paused."""
-        return self._check_paused_fn(self.job_id)
 
     def setup_workspace(self) -> JobContext:
         """Create temporary working directory."""
@@ -285,7 +272,6 @@ class JobOrchestrator:
         blocks = self.context.blocks
         total = len(blocks)
         text_count = sum(1 for b in blocks if b.block_type.value == "text")
-        table_count = sum(1 for b in blocks if b.block_type.value == "table")
         image_blocks = [b for b in blocks if b.block_type.value == "image"]
         stamp_count = sum(
             1 for b in image_blocks if getattr(b, "category_code", None) == "stamp"
@@ -295,10 +281,9 @@ class JobOrchestrator:
         return {
             "total": total,
             "text": text_count,
-            "table": table_count,
             "image": image_count,
             "stamp": stamp_count,
-            "grouped": text_count + table_count,
+            "grouped": text_count,
         }
 
     def cleanup(self) -> None:

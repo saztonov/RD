@@ -14,9 +14,7 @@ from apps.remote_ocr_server.routes.jobs.read_handlers import (
 )
 from apps.remote_ocr_server.routes.jobs.update_handlers import (
     cancel_job_handler,
-    pause_job_handler,
     restart_job_handler,
-    resume_job_handler,
     start_job_handler,
     update_job_handler,
 )
@@ -31,8 +29,6 @@ router.post("/{job_id}/confirm")(confirm_job_handler)
 router.post("")(create_job_handler)
 router.post("/{job_id}/restart")(restart_job_handler)
 router.post("/{job_id}/start")(start_job_handler)
-router.post("/{job_id}/pause")(pause_job_handler)
-router.post("/{job_id}/resume")(resume_job_handler)
 router.post("/{job_id}/cancel")(cancel_job_handler)
 
 # GET endpoints

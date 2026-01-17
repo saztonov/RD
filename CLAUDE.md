@@ -99,11 +99,11 @@ Document   # Collection of pages
 Page       # Page with blocks list
 ```
 
-Block types: `TEXT`, `TABLE`, `IMAGE`. Shape types: `RECTANGLE`, `POLYGON`. Block source: `MANUAL`, `OCR`.
+Block types: `TEXT`, `IMAGE`. Shape types: `RECTANGLE`, `POLYGON`. Block source: `MANUAL`, `OCR`.
 
 ### Database Tables (Supabase)
 
-- `jobs` - OCR task records (status: draft/queued/processing/done/error/paused)
+- `jobs` - OCR task records (status: draft/queued/processing/done/error)
 - `job_files` - File references (pdf, blocks, results, crops)
 - `job_settings` - Model selections per job
 - `tree_nodes` - Hierarchical project structure

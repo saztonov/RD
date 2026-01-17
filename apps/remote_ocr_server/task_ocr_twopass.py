@@ -10,8 +10,7 @@ from .pdf_streaming_twopass import (
     pass1_prepare_crops,
     pass2_ocr_from_manifest,
 )
-from .storage import Job, is_job_paused, update_job_status
-from .task_helpers import check_paused
+from .storage import Job, update_job_status
 from .task_upload import copy_crops_to_final
 
 logger = logging.getLogger(__name__)
@@ -41,8 +40,7 @@ def run_two_pass_ocr(
         def on_pass1_progress(current, total):
             progress = 0.1 + 0.3 * (current / total)
             status_msg = f"📦 PASS 1: Подготовка кропов (стр. {current}/{total})"
-            if not is_job_paused(job.id):
-                update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
+            update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
 
         manifest = pass1_prepare_crops(
             str(pdf_path),
@@ -53,9 +51,6 @@ def run_two_pass_ocr(
         )
 
         log_memory_delta("После PASS1", start_mem)
-
-        if check_paused(job.id):
-            return
 
         # PASS 2: OCR с загрузкой с диска
         total_strips = len(manifest.strips) if manifest else 0
@@ -68,8 +63,7 @@ def run_two_pass_ocr(
                 status_msg = f"🔍 PASS 2: {block_info} ({current}/{total})"
             else:
                 status_msg = f"🔍 PASS 2: Распознавание ({current}/{total})"
-            if not is_job_paused(job.id):
-                update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
+            update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
 
         pass2_ocr_from_manifest(
             manifest,
@@ -79,7 +73,6 @@ def run_two_pass_ocr(
             stamp_backend,
             str(pdf_path),
             on_progress=on_pass2_progress,
-            check_paused=lambda: is_job_paused(job.id),
         )
 
         log_memory_delta("После PASS2", start_mem)

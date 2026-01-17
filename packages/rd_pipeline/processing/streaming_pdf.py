@@ -424,7 +424,7 @@ def apply_ocr_preprocessing(
         img: Source image (PIL.Image)
         contrast: Contrast enhancement factor (1.0 = no change)
         to_grayscale: Convert to grayscale (ignored if mode is specified)
-        mode: Preprocessing mode ("text", "table", "image", "stamp") or None
+        mode: Preprocessing mode ("text", "image", "stamp") or None
 
     Returns:
         Processed image
@@ -482,7 +482,7 @@ def render_block_crop(
         max_dimension: Max pixel size on longest side
         min_dpi: Minimum DPI (to preserve small text)
         padding_pt: Padding in PDF points
-        ocr_prep: OCR preprocessing mode ("text", "table") or None
+        ocr_prep: OCR preprocessing mode ("text") or None
         ocr_prep_contrast: Contrast coefficient for OCR-prep
         polygon_points: Polygon points for mask (normalized to bbox)
         polygon_coords_px: Original pixel coordinates of polygon

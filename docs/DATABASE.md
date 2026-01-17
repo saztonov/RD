@@ -202,7 +202,7 @@ CREATE TABLE job_files (
   "block_id": "uuid-блока",
   "page_index": 0,
   "coords_norm": {"x1": 0.1, "y1": 0.2, "x2": 0.9, "y2": 0.8},
-  "block_type": "text|table|image"
+  "block_type": "text|image"
 }
 ```
 

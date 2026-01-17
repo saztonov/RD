@@ -113,10 +113,9 @@ class JobDetailsDialog(QDialog):
 
             total = block_stats.get("total", 0)
             text_count = block_stats.get("text", 0)
-            table_count = block_stats.get("table", 0)
             image_count = block_stats.get("image", 0)
             stamp_count = block_stats.get("stamp", 0)
-            grouped_count = block_stats.get("grouped", text_count + table_count)
+            grouped_count = block_stats.get("grouped", text_count)
 
             # Время обработки (processing_time_seconds или total_time_seconds для обратной совместимости)
             processing_time = block_stats.get("processing_time_seconds") or block_stats.get("total_time_seconds")
@@ -133,15 +132,6 @@ class JobDetailsDialog(QDialog):
             else:
                 text_info = str(text_count)
             blocks_layout.addRow("Текстовых:", QLabel(text_info))
-
-            # Таблицы с временем
-            table_time = block_stats.get("estimated_table_time")
-            if table_count > 0 and table_time:
-                avg_table = table_time / table_count if table_count > 0 else 0
-                table_info = f"{table_count}  ({self._format_duration(table_time)}, ~{self._format_duration(avg_table)}/блок)"
-            else:
-                table_info = str(table_count)
-            blocks_layout.addRow("Таблиц:", QLabel(table_info))
 
             # Изображения с временем
             image_time = block_stats.get("estimated_image_time")
@@ -162,8 +152,8 @@ class JobDetailsDialog(QDialog):
                     stamp_info = str(stamp_count)
                 blocks_layout.addRow("Штампов:", QLabel(stamp_info))
 
-            # Сгруппировано (текст + таблицы)
-            blocks_layout.addRow("Сгруппировано (текст+таблицы):", QLabel(str(grouped_count)))
+            # Сгруппировано (текст)
+            blocks_layout.addRow("Сгруппировано:", QLabel(str(grouped_count)))
 
             # Среднее время на блок
             avg_per_block = block_stats.get("avg_time_per_block")

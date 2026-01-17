@@ -23,15 +23,11 @@ PROGRESS_UPDATE_INTERVAL = 3.0  # секунд
 PROGRESS_UPDATE_THRESHOLD = 0.05  # 5%
 LAST_UPDATE_KEY = "job:{job_id}:last_update"
 
-# Redis кеш для is_job_paused
-PAUSED_CACHE_KEY = "job:{job_id}:paused"
-PAUSED_CACHE_TTL = 60  # секунд
-
 # Метрики DB calls
 DB_CALLS_KEY = "job:{job_id}:db_calls"
 
 # Финальные статусы (всегда писать в БД)
-FINAL_STATUSES = {"done", "error", "paused"}
+FINAL_STATUSES = {"done", "error"}
 
 
 def _get_jobs_cache_key(document_id: Optional[str]) -> str:
@@ -326,91 +322,6 @@ def reset_job_for_restart(job_id: str) -> bool:
     )
     _invalidate_jobs_cache()
     return len(result.data) > 0
-
-
-def pause_job(job_id: str) -> bool:
-    """Поставить задачу на паузу"""
-    now = datetime.utcnow().isoformat()
-    client = get_client()
-
-    result = (
-        client.table("jobs")
-        .update({"status": "paused", "updated_at": now})
-        .eq("id", job_id)
-        .eq("status", "queued")
-        .execute()
-    )
-
-    if result.data:
-        _invalidate_jobs_cache()
-        _set_paused_cache(job_id, True)
-        return True
-
-    result = (
-        client.table("jobs")
-        .update({"status": "paused", "updated_at": now})
-        .eq("id", job_id)
-        .eq("status", "processing")
-        .execute()
-    )
-
-    if result.data:
-        _invalidate_jobs_cache()
-        _set_paused_cache(job_id, True)
-    return len(result.data) > 0
-
-
-def resume_job(job_id: str) -> bool:
-    """Возобновить задачу"""
-    now = datetime.utcnow().isoformat()
-    client = get_client()
-    result = (
-        client.table("jobs")
-        .update({"status": "queued", "updated_at": now})
-        .eq("id", job_id)
-        .eq("status", "paused")
-        .execute()
-    )
-    if result.data:
-        _invalidate_jobs_cache()
-        _set_paused_cache(job_id, False)
-    return len(result.data) > 0
-
-
-def _set_paused_cache(job_id: str, paused: bool) -> None:
-    """Установить кеш статуса паузы"""
-    try:
-        redis_client = _get_redis_client()
-        key = PAUSED_CACHE_KEY.format(job_id=job_id)
-        if paused:
-            redis_client.setex(key, PAUSED_CACHE_TTL, "1")
-        else:
-            redis_client.delete(key)
-    except Exception:
-        pass
-
-
-def is_job_paused(job_id: str) -> bool:
-    """Проверить, поставлена ли задача на паузу (с Redis кешем)"""
-    # Сначала проверяем Redis кеш
-    try:
-        redis_client = _get_redis_client()
-        key = PAUSED_CACHE_KEY.format(job_id=job_id)
-        cached = redis_client.get(key)
-        if cached is not None:
-            return cached == "1"
-    except Exception:
-        pass
-
-    # Cache miss - запрос к БД
-    job = get_job(job_id)
-    paused = job.status == "paused" if job else False
-    _increment_db_calls(job_id)
-
-    # Сохранить в кеш
-    _set_paused_cache(job_id, paused)
-
-    return paused
 
 
 def update_job_started(job_id: str) -> None:

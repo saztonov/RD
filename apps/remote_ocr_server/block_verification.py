@@ -50,8 +50,8 @@ def verify_and_retry_missing_blocks(
             if category_code == "stamp" or block_type == "image":
                 continue
             
-            # Проверяем только текстовые и табличные блоки
-            if block_type in ["text", "table"] and not ocr_html:
+            # Проверяем только текстовые блоки
+            if block_type == "text" and not ocr_html:
                 missing_blocks.append({
                     "block": blk,
                     "page_index": blk.get("page_index", 1) - 1,  # Конвертируем в 0-based

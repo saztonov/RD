@@ -287,42 +287,6 @@ class JobOperationsMixin:
             logger.error(f"Ошибка создания задачи: {e}", exc_info=True)
             self._signals.job_create_error.emit("generic", str(e))
 
-    def _pause_job(self, job_id: str):
-        """Поставить задачу на паузу"""
-        client = self._get_client()
-        if client is None:
-            return
-
-        try:
-            if client.pause_job(job_id):
-                from apps.rd_desktop.gui.toast import show_toast
-
-                show_toast(self, f"Задача {job_id[:8]}... на паузе")
-                self._refresh_jobs(manual=True)
-            else:
-                QMessageBox.warning(self, "Ошибка", "Не удалось поставить на паузу")
-        except Exception as e:
-            logger.error(f"Ошибка паузы задачи: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось поставить на паузу:\n{e}")
-
-    def _resume_job(self, job_id: str):
-        """Возобновить задачу с паузы"""
-        client = self._get_client()
-        if client is None:
-            return
-
-        try:
-            if client.resume_job(job_id):
-                from apps.rd_desktop.gui.toast import show_toast
-
-                show_toast(self, f"Задача {job_id[:8]}... возобновлена")
-                self._refresh_jobs(manual=True)
-            else:
-                QMessageBox.warning(self, "Ошибка", "Не удалось возобновить")
-        except Exception as e:
-            logger.error(f"Ошибка возобновления задачи: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось возобновить:\n{e}")
-
     def _show_job_details(self, job_id: str):
         """Показать детальную информацию о задаче"""
         client = self._get_client()

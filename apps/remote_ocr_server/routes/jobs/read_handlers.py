@@ -171,7 +171,6 @@ def get_job_details_handler(
 
                 # Подсчёт блоков по типам
                 text_count = sum(1 for b in blocks if b.get("block_type") == "text")
-                table_count = sum(1 for b in blocks if b.get("block_type") == "table")
 
                 # Image блоки: разделяем на штампы и обычные изображения
                 image_blocks = [b for b in blocks if b.get("block_type") == "image"]
@@ -179,13 +178,12 @@ def get_job_details_handler(
                 image_count = len(image_blocks) - stamp_count  # Обычные изображения (не штампы)
 
                 total_blocks = len(blocks)
-                grouped_count = text_count + table_count
+                grouped_count = text_count
 
                 # Статистика по блокам
                 block_stats = {
                     "total": total_blocks,
                     "text": text_count,
-                    "table": table_count,
                     "image": image_count,
                     "stamp": stamp_count,
                     "grouped": grouped_count,
@@ -199,22 +197,20 @@ def get_job_details_handler(
                     if total_blocks > 0:
                         block_stats["avg_time_per_block"] = total_time_seconds / total_blocks
 
-                    # Среднее время на текстовый блок (текст + таблицы)
+                    # Среднее время на текстовый блок
                     if grouped_count > 0:
                         block_stats["avg_time_per_text_block"] = total_time_seconds / grouped_count
 
                     # Примерное распределение времени по типам блоков
-                    # (на основе весов: текст=1, таблица=1.5, image=2, stamp=0.5)
+                    # (на основе весов: текст=1, image=2, stamp=0.5)
                     weight_text = text_count * 1.0
-                    weight_table = table_count * 1.5
                     weight_image = image_count * 2.0
                     weight_stamp = stamp_count * 0.5
-                    total_weight = weight_text + weight_table + weight_image + weight_stamp
+                    total_weight = weight_text + weight_image + weight_stamp
 
                     if total_weight > 0:
                         time_per_weight = total_time_seconds / total_weight
                         block_stats["estimated_text_time"] = weight_text * time_per_weight
-                        block_stats["estimated_table_time"] = weight_table * time_per_weight
                         block_stats["estimated_image_time"] = weight_image * time_per_weight
                         block_stats["estimated_stamp_time"] = weight_stamp * time_per_weight
 

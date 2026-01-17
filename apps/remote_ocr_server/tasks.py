@@ -33,9 +33,6 @@ def run_ocr_task(self, job_id: str) -> dict:
             logger.error(f"Задача {job_id} не найдена")
             return {"status": "error", "message": "Job not found"}
 
-        if orchestrator.is_paused():
-            return {"status": "paused"}
-
         # Стартуем задачу
         update_job_started(job.id)
         orchestrator.update_status("processing", 0.05, "Инициализация задачи...")
@@ -53,9 +50,6 @@ def run_ocr_task(self, job_id: str) -> dict:
         if not blocks:
             orchestrator.handle_empty_blocks(job)
             return {"status": "done", "job_id": job_id}
-
-        if orchestrator.is_paused():
-            return {"status": "paused"}
 
         # Создание OCR движков
         engines = orchestrator.create_engines(job)

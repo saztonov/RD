@@ -5,7 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from .storage import Job, get_job_file_by_type, get_node_pdf_r2_key, is_job_paused
+from .storage import Job, get_job_file_by_type, get_node_pdf_r2_key
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +15,6 @@ def get_r2_storage():
     from rd_adapters.storage import R2AsyncStorageSync
 
     return R2AsyncStorageSync.from_env()
-
-
-def check_paused(job_id: str) -> bool:
-    """Проверить, не поставлена ли задача на паузу"""
-    if is_job_paused(job_id):
-        logger.info(f"Задача {job_id} поставлена на паузу")
-        return True
-    return False
 
 
 def download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:

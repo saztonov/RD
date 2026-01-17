@@ -204,19 +204,6 @@ class TableManagerMixin:
             )
             stop_btn.clicked.connect(lambda checked, jid=job.id: self._cancel_job(jid))
             actions_layout.addWidget(stop_btn)
-        elif job.status == "paused":
-            resume_btn = QPushButton("▶")
-            resume_btn.setToolTip("Возобновить")
-            resume_btn.setFixedSize(26, 26)
-            resume_btn.setStyleSheet(
-                "QPushButton { background-color: #27ae60; border: 1px solid #1e8449; "
-                "border-radius: 4px; color: white; } "
-                "QPushButton:hover { background-color: #1e8449; }"
-            )
-            resume_btn.clicked.connect(
-                lambda checked, jid=job.id: self._resume_job(jid)
-            )
-            actions_layout.addWidget(resume_btn)
 
         # Кнопка информации
         info_btn = QPushButton("ℹ")

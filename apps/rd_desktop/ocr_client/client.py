@@ -618,16 +618,6 @@ class RemoteOCRClient:
 
         return None
 
-    def pause_job(self, job_id: str) -> bool:
-        """Поставить задачу на паузу"""
-        resp = self._request_with_retry("post", f"/jobs/{job_id}/pause")
-        return resp.json().get("ok", False)
-
-    def resume_job(self, job_id: str) -> bool:
-        """Возобновить задачу с паузы"""
-        resp = self._request_with_retry("post", f"/jobs/{job_id}/resume")
-        return resp.json().get("ok", False)
-
     def cancel_job(self, job_id: str) -> bool:
         """Отменить задачу"""
         resp = self._request_with_retry("post", f"/jobs/{job_id}/cancel")

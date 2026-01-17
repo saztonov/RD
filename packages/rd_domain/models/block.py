@@ -242,15 +242,11 @@ class Block:
             (Block, was_migrated) - block and migration flag
         """
         # Safe block_type extraction with fallback to TEXT
-        # TABLE converts to TEXT for backward compatibility
         raw_type = data["block_type"]
-        if raw_type == "table":
+        try:
+            block_type = BlockType(raw_type)
+        except ValueError:
             block_type = BlockType.TEXT
-        else:
-            try:
-                block_type = BlockType(raw_type)
-            except ValueError:
-                block_type = BlockType.TEXT
 
         # Safe shape_type extraction with fallback to RECTANGLE
         try:

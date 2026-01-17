@@ -15,9 +15,7 @@ from apps.remote_ocr_server.storage import (
     get_job,
     get_job_files,
     get_node_pdf_r2_key,
-    pause_job,
     reset_job_for_restart,
-    resume_job,
     save_job_settings,
     update_job_engine,
     update_job_task_name,
@@ -161,58 +159,6 @@ def start_job_handler(
     return {"ok": True, "job_id": job_id, "status": "queued"}
 
 
-def pause_job_handler(
-    job_id: str,
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-) -> dict:
-    """Поставить задачу на паузу"""
-    check_api_key(x_api_key)
-
-    job = get_job(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.status not in ("queued", "processing"):
-        raise HTTPException(
-            status_code=400, detail=f"Cannot pause job in status: {job.status}"
-        )
-
-    if not pause_job(job_id):
-        raise HTTPException(status_code=500, detail="Failed to pause job")
-
-    return {"ok": True, "job_id": job_id, "status": "paused"}
-
-
-def resume_job_handler(
-    job_id: str,
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-) -> dict:
-    """Возобновить задачу с паузы"""
-    check_api_key(x_api_key)
-
-    job = get_job(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.status != "paused":
-        raise HTTPException(
-            status_code=400, detail=f"Job is not paused, status: {job.status}"
-        )
-
-    if not resume_job(job_id):
-        raise HTTPException(status_code=500, detail="Failed to resume job")
-
-    can_accept, queue_size, max_size = check_queue_capacity()
-    if not can_accept:
-        raise HTTPException(
-            status_code=503, detail=f"Queue full ({queue_size}/{max_size})"
-        )
-
-    run_ocr_task.delay(job_id)
-
-    return {"ok": True, "job_id": job_id, "status": "queued"}
-
-
 def cancel_job_handler(
     job_id: str,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -226,7 +172,7 @@ def cancel_job_handler(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if job.status not in ("queued", "processing", "paused"):
+    if job.status not in ("queued", "processing"):
         raise HTTPException(
             status_code=400, detail=f"Cannot cancel job in status: {job.status}"
         )
