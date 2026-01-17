@@ -178,15 +178,26 @@ class RemoteOCRPanel(
         return self._client
 
     def _get_selected_blocks(self):
-        """Получить все блоки для OCR"""
-        blocks = []
-        if hasattr(self.main_window, "page_viewer") and self.main_window.page_viewer:
-            blocks = self.main_window.page_viewer.get_selected_blocks()
+        """Получить все блоки для OCR.
 
+        Если есть явный мультивыбор (selected_block_indices) - используем его.
+        Иначе берём ВСЕ блоки со всех страниц документа.
+        """
+        blocks = []
+
+        # Проверяем явный мультивыбор (Ctrl+click)
+        page_viewer = getattr(self.main_window, "page_viewer", None)
+        if page_viewer and getattr(page_viewer, "selected_block_indices", None):
+            # Есть явно выбранные блоки - используем их
+            blocks = page_viewer.get_selected_blocks()
+            logger.info(f"_get_selected_blocks: explicit multi-selection: {len(blocks)} blocks")
+
+        # Если нет явного выбора - берём ВСЕ блоки со всех страниц
         if not blocks and self.main_window.annotation_document:
             for page in self.main_window.annotation_document.pages:
                 if page.blocks:
                     blocks.extend(page.blocks)
+            logger.info(f"_get_selected_blocks: all blocks from document: {len(blocks)} blocks")
 
         self._attach_prompts_to_blocks(blocks)
         return blocks

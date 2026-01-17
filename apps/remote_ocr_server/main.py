@@ -12,16 +12,28 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .routes.jobs import router as jobs_router
 from .routes.storage import router as storage_router
 from .routes.tree import router as tree_router
-from .settings import settings
-from .storage import init_db
 
 _logger = logging.getLogger(__name__)
 
 
+async def _check_db_async():
+    """Проверка БД в фоне (не блокирует старт сервера)"""
+    import asyncio
+
+    try:
+        from .storage import init_db
+
+        await asyncio.to_thread(init_db)
+    except Exception as e:
+        _logger.warning(f"DB check failed (will retry on first request): {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle: инициализация БД (воркер запускается отдельно через Celery)"""
-    init_db()
+    """Lifecycle: проверка БД в фоне (не блокирует запуск)"""
+    import asyncio
+
+    asyncio.create_task(_check_db_async())
     yield
 
 

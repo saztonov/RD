@@ -25,12 +25,15 @@ services:
     mem_limit: 128m
 
   # Universal worker для всех очередей (заменяет 5 production workers)
+  # watchfiles автоматически перезапускает worker при изменении Python файлов
   worker:
     command: >
-      celery -A apps.remote_ocr_server.celery_app worker
+      watchfiles --filter python
+      'celery -A apps.remote_ocr_server.celery_app worker
       -Q celery,ocr_meta,ocr_text,ocr_image,ocr_stamp
       --loglevel=info
-      --concurrency=2
+      --concurrency=2'
+      /app/apps /app/packages
     volumes:
       - .:/app
     environment:

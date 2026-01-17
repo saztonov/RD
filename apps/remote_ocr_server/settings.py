@@ -38,11 +38,24 @@ def _load_settings_from_supabase() -> Optional[dict]:
     return None
 
 
-def _get_setting(
-    db_settings: Optional[dict], key: str, env_key: str, default, cast_fn=None
-):
+# Ленивая загрузка настроек из БД (не при импорте, а при первом обращении)
+_db_settings: Optional[dict] = None
+_db_settings_loaded = False
+
+
+def _get_db_settings() -> Optional[dict]:
+    """Получить настройки из БД (ленивая загрузка при первом обращении)"""
+    global _db_settings_loaded
+    if not _db_settings_loaded:
+        _db_settings = _load_settings_from_supabase()
+        _db_settings_loaded = True
+    return _db_settings
+
+
+def _get_setting(key: str, env_key: str, default, cast_fn=None):
     """Получить настройку: сначала из БД, потом из env, потом default"""
     # Приоритет: БД > env > default
+    db_settings = _get_db_settings()
     if db_settings and key in db_settings:
         value = db_settings[key]
     elif os.getenv(env_key):
@@ -56,10 +69,6 @@ def _get_setting(
         except:
             return default
     return value
-
-
-# Загружаем настройки из БД один раз при импорте модуля
-_db_settings = _load_settings_from_supabase()
 
 
 @dataclass
@@ -86,160 +95,159 @@ class Settings:
     # ===== CELERY WORKER =====
     max_concurrent_jobs: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "max_concurrent_jobs", "MAX_CONCURRENT_JOBS", 4, int
+            "max_concurrent_jobs", "MAX_CONCURRENT_JOBS", 4, int
         )
     )
     worker_prefetch: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "worker_prefetch", "WORKER_PREFETCH", 1, int
+            "worker_prefetch", "WORKER_PREFETCH", 1, int
         )
     )
     worker_max_tasks: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "worker_max_tasks", "WORKER_MAX_TASKS", 100, int
+            "worker_max_tasks", "WORKER_MAX_TASKS", 100, int
         )
     )
     task_soft_timeout: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "task_soft_timeout", "TASK_SOFT_TIMEOUT", 3000, int
+            "task_soft_timeout", "TASK_SOFT_TIMEOUT", 3000, int
         )
     )
     task_hard_timeout: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "task_hard_timeout", "TASK_HARD_TIMEOUT", 3600, int
+            "task_hard_timeout", "TASK_HARD_TIMEOUT", 3600, int
         )
     )
     task_max_retries: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "task_max_retries", "TASK_MAX_RETRIES", 3, int
+            "task_max_retries", "TASK_MAX_RETRIES", 3, int
         )
     )
     task_retry_delay: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "task_retry_delay", "TASK_RETRY_DELAY", 60, int
+            "task_retry_delay", "TASK_RETRY_DELAY", 60, int
         )
     )
 
     # ===== OCR THREADING =====
     max_global_ocr_requests: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "max_global_ocr_requests", "MAX_GLOBAL_OCR_REQUESTS", 8, int
+            "max_global_ocr_requests", "MAX_GLOBAL_OCR_REQUESTS", 8, int
         )
     )
     ocr_threads_per_job: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "ocr_threads_per_job", "OCR_THREADS_PER_JOB", 2, int
+            "ocr_threads_per_job", "OCR_THREADS_PER_JOB", 2, int
         )
     )
     ocr_request_timeout: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "ocr_request_timeout", "OCR_REQUEST_TIMEOUT", 120, int
+            "ocr_request_timeout", "OCR_REQUEST_TIMEOUT", 120, int
         )
     )
 
     # ===== DATALAB API =====
     datalab_max_rpm: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "datalab_max_rpm", "DATALAB_MAX_RPM", 180, int
+            "datalab_max_rpm", "DATALAB_MAX_RPM", 180, int
         )
     )
     datalab_max_concurrent: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "datalab_max_concurrent", "DATALAB_MAX_CONCURRENT", 5, int
+            "datalab_max_concurrent", "DATALAB_MAX_CONCURRENT", 5, int
         )
     )
     datalab_poll_interval: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "datalab_poll_interval", "DATALAB_POLL_INTERVAL", 3, int
+            "datalab_poll_interval", "DATALAB_POLL_INTERVAL", 3, int
         )
     )
     datalab_poll_max_attempts: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "datalab_poll_max_attempts", "DATALAB_POLL_MAX_ATTEMPTS", 90, int
+            "datalab_poll_max_attempts", "DATALAB_POLL_MAX_ATTEMPTS", 90, int
         )
     )
     datalab_max_retries: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "datalab_max_retries", "DATALAB_MAX_RETRIES", 3, int
+            "datalab_max_retries", "DATALAB_MAX_RETRIES", 3, int
         )
     )
 
     # ===== НАСТРОЙКИ OCR =====
     crop_png_compress: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "crop_png_compress", "CROP_PNG_COMPRESS", 6, int
+            "crop_png_compress", "CROP_PNG_COMPRESS", 6, int
         )
     )
     max_ocr_batch_size: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "max_ocr_batch_size", "MAX_OCR_BATCH_SIZE", 5, int
+            "max_ocr_batch_size", "MAX_OCR_BATCH_SIZE", 5, int
         )
     )
     pdf_render_dpi: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "pdf_render_dpi", "PDF_RENDER_DPI", 150, int  # Уменьшено с 300 для меньшего размера блоков
+            "pdf_render_dpi", "PDF_RENDER_DPI", 150, int  # Уменьшено с 300 для меньшего размера блоков
         )
     )
     max_strip_height: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "max_strip_height", "MAX_STRIP_HEIGHT", 9000, int
+            "max_strip_height", "MAX_STRIP_HEIGHT", 9000, int
         )
     )
 
     # ===== CLIP-РЕНДЕРИНГ (для больших листов A0/A1) =====
     max_crop_dimension: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "max_crop_dimension", "MAX_CROP_DIMENSION", 4000, int
+            "max_crop_dimension", "MAX_CROP_DIMENSION", 4000, int
         )
     )
     min_crop_dpi: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "min_crop_dpi", "MIN_CROP_DPI", 150, int
+            "min_crop_dpi", "MIN_CROP_DPI", 150, int
         )
     )
     ocr_prep_enabled: bool = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "ocr_prep_enabled", "OCR_PREP_ENABLED", False, bool
+            "ocr_prep_enabled", "OCR_PREP_ENABLED", False, bool
         )
     )
     ocr_prep_contrast: float = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "ocr_prep_contrast", "OCR_PREP_CONTRAST", 1.3, float
+            "ocr_prep_contrast", "OCR_PREP_CONTRAST", 1.3, float
         )
     )
 
     # ===== ОЧЕРЕДЬ =====
     poll_interval: float = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "poll_interval", "POLL_INTERVAL", 10.0, float
+            "poll_interval", "POLL_INTERVAL", 10.0, float
         )
     )
     poll_max_interval: float = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "poll_max_interval", "POLL_MAX_INTERVAL", 60.0, float
+            "poll_max_interval", "POLL_MAX_INTERVAL", 60.0, float
         )
     )
     max_queue_size: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "max_queue_size", "MAX_QUEUE_SIZE", 100, int
+            "max_queue_size", "MAX_QUEUE_SIZE", 100, int
         )
     )
     default_task_priority: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "default_task_priority", "DEFAULT_TASK_PRIORITY", 5, int
+            "default_task_priority", "DEFAULT_TASK_PRIORITY", 5, int
         )
     )
 
     # ===== RATE LIMITING (распределённый на Redis) =====
     rate_limit_datalab_rpm: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "rate_limit_datalab_rpm", "RATE_LIMIT_DATALAB_RPM", 180, int
+            "rate_limit_datalab_rpm", "RATE_LIMIT_DATALAB_RPM", 180, int
         )
     )
     rate_limit_datalab_concurrent: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings,
-            "rate_limit_datalab_concurrent",
+                        "rate_limit_datalab_concurrent",
             "RATE_LIMIT_DATALAB_CONCURRENT",
             5,
             int,
@@ -247,13 +255,12 @@ class Settings:
     )
     rate_limit_openrouter_rpm: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "rate_limit_openrouter_rpm", "RATE_LIMIT_OPENROUTER_RPM", 60, int
+            "rate_limit_openrouter_rpm", "RATE_LIMIT_OPENROUTER_RPM", 60, int
         )
     )
     rate_limit_openrouter_concurrent: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings,
-            "rate_limit_openrouter_concurrent",
+                        "rate_limit_openrouter_concurrent",
             "RATE_LIMIT_OPENROUTER_CONCURRENT",
             8,
             int,
@@ -261,13 +268,12 @@ class Settings:
     )
     rate_limit_client_rpm: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "rate_limit_client_rpm", "RATE_LIMIT_CLIENT_RPM", 30, int
+            "rate_limit_client_rpm", "RATE_LIMIT_CLIENT_RPM", 30, int
         )
     )
     rate_limit_client_concurrent: int = field(
         default_factory=lambda: _get_setting(
-            _db_settings,
-            "rate_limit_client_concurrent",
+                        "rate_limit_client_concurrent",
             "RATE_LIMIT_CLIENT_CONCURRENT",
             4,
             int,
@@ -275,12 +281,12 @@ class Settings:
     )
     rate_limit_backoff_base: float = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "rate_limit_backoff_base", "RATE_LIMIT_BACKOFF_BASE", 5.0, float
+            "rate_limit_backoff_base", "RATE_LIMIT_BACKOFF_BASE", 5.0, float
         )
     )
     rate_limit_backoff_max: float = field(
         default_factory=lambda: _get_setting(
-            _db_settings, "rate_limit_backoff_max", "RATE_LIMIT_BACKOFF_MAX", 60.0, float
+            "rate_limit_backoff_max", "RATE_LIMIT_BACKOFF_MAX", 60.0, float
         )
     )
 
