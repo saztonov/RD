@@ -115,7 +115,7 @@ tests/__pycache__/
 # ============================================
 # ПРОЕКТ СПЕЦИФИЧНЫЕ
 # ============================================
-output/
+/output/
 examples/all_pages/
 examples/zoom_comparison/
 examples/*.png
