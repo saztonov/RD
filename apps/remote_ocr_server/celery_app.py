@@ -1,10 +1,49 @@
 """Конфигурация Celery для очереди OCR задач"""
 from __future__ import annotations
 
+import logging
+import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
 from celery import Celery
 from kombu import Queue
 
 from .settings import settings
+
+
+def setup_worker_logging():
+    """Настройка логирования Celery worker с записью в файл"""
+    project_root = Path(__file__).resolve().parents[2]
+    log_dir = project_root / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    file_handler = RotatingFileHandler(
+        log_dir / "worker.log",
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(logging.Formatter(log_format, date_format))
+    file_handler.setLevel(logging.INFO)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter(log_format, date_format))
+    console_handler.setLevel(logging.INFO)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+    for name in ("httpcore", "httpx", "urllib3", "botocore", "boto3", "s3transfer"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
+setup_worker_logging()
 
 celery_app = Celery("ocr_worker", broker=settings.redis_url, backend=settings.redis_url)
 

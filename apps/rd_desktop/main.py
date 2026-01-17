@@ -30,8 +30,8 @@ def setup_logging(log_level=logging.DEBUG):
     Args:
         log_level: уровень логирования (DEBUG, INFO, WARNING, ERROR)
     """
-    # Создаём директорию для логов
-    log_dir = Path("logs")
+    # Создаём директорию для логов в корне проекта
+    log_dir = PROJECT_ROOT / "logs"
     log_dir.mkdir(exist_ok=True)
 
     # Формат логов

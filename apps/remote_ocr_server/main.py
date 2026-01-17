@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -12,6 +15,42 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .routes.jobs import router as jobs_router
 from .routes.storage import router as storage_router
 from .routes.tree import router as tree_router
+
+
+def setup_server_logging():
+    """Настройка логирования сервера с записью в файл"""
+    project_root = Path(__file__).resolve().parents[2]
+    log_dir = project_root / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    # Rotating file handler (10MB, 5 backups)
+    file_handler = RotatingFileHandler(
+        log_dir / "server.log",
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(logging.Formatter(log_format, date_format))
+    file_handler.setLevel(logging.INFO)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter(log_format, date_format))
+    console_handler.setLevel(logging.INFO)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+    # Отключаем DEBUG от сторонних библиотек
+    for name in ("httpcore", "httpx", "urllib3", "botocore", "boto3", "s3transfer"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
+setup_server_logging()
 
 _logger = logging.getLogger(__name__)
 
