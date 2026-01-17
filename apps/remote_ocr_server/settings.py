@@ -45,7 +45,7 @@ _db_settings_loaded = False
 
 def _get_db_settings() -> Optional[dict]:
     """Получить настройки из БД (ленивая загрузка при первом обращении)"""
-    global _db_settings_loaded
+    global _db_settings, _db_settings_loaded
     if not _db_settings_loaded:
         _db_settings = _load_settings_from_supabase()
         _db_settings_loaded = True
