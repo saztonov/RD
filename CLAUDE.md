@@ -173,3 +173,7 @@ Docker-specific (optional):
 ## Code Style
 
 From `.cursorrules`: Be maximally concise. Code only in code blocks. Changes as minimal diff. No explanations unless asked. If text needed - max 5 points, each ≤ 12 words.
+
+## Language
+
+Все планы, ответы и объяснения генерируй на русском языке.

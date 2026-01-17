@@ -16,6 +16,11 @@ from PySide6.QtWidgets import (
 )
 
 from apps.rd_desktop.gui.file_transfer_worker import FileTransferWorker, TransferTask, TransferType
+from apps.rd_desktop.gui.r2_operation_worker import (
+    R2Operation,
+    R2OperationType,
+    R2OperationWorker,
+)
 from apps.rd_desktop.gui.tree_cache_ops import TreeCacheOperationsMixin
 from apps.rd_desktop.gui.tree_folder_ops import TreeFolderOperationsMixin
 from apps.rd_desktop.tree_client import NodeStatus, NodeType, TreeNode
@@ -283,16 +288,14 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
 
         ВАЖНО: Переименовывает файлы в локальном кэше НЕЗАВИСИМО от наличия в R2,
         чтобы избежать потери аннотаций при работе в офлайн режиме.
+
+        R2 операции выполняются асинхронно в фоне.
         """
         from pathlib import PurePosixPath
-
-        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         old_stem = PurePosixPath(old_r2_key).stem
         new_stem = PurePosixPath(new_r2_key).stem
         r2_prefix = str(PurePosixPath(old_r2_key).parent)
-
-        r2 = R2Storage()
 
         # Список связанных файлов для переименования
         related_files = [
@@ -311,22 +314,67 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
             ),
         ]
 
-        # Переименовываем файлы
+        # 1. СИНХРОННО: Переименовываем в локальном кэше (мгновенно)
         for old_key, new_key in related_files:
-            # ВСЕГДА переименовываем в локальном кэше (даже если файла нет в R2)
-            # Это критически важно для сохранения аннотаций при работе в офлайн режиме
             self._rename_cache_file(old_key, new_key)
-
-            # Переименовываем в R2 если файл там существует
-            if r2.exists(old_key):
-                try:
-                    if r2.rename_object(old_key, new_key):
-                        logger.info(f"Renamed in R2: {old_key} → {new_key}")
-                except Exception as e:
-                    logger.error(f"Failed to rename in R2 {old_key}: {e}")
-
-            # Обновляем запись в node_files если существует
+            # Обновляем запись в node_files (быстрая DB операция)
             self._update_node_file_r2_key(node_id, old_key, new_key)
+
+        # 2. АСИНХРОННО: Переименовываем в R2 в фоне
+        self._start_async_r2_renames(related_files)
+
+    def _start_async_r2_renames(self, related_files: list):
+        """Запустить асинхронное переименование файлов в R2"""
+        # Создаём worker для переименования
+        self._rename_worker = R2OperationWorker()
+
+        for old_key, new_key in related_files:
+            self._rename_worker.add_operation(R2Operation(
+                operation_type=R2OperationType.RENAME,
+                remote_key=old_key,
+                new_key=new_key,
+                callback_data={"old_key": old_key, "new_key": new_key}
+            ))
+
+        self._rename_worker.signals.operation_completed.connect(
+            self._on_rename_r2_completed
+        )
+        self._rename_worker.finished.connect(self._on_all_renames_finished)
+        self._rename_worker.start()
+
+    def _on_rename_r2_completed(self, op, success: bool, result, error: str):
+        """Callback после переименования файла в R2"""
+        if success:
+            logger.info(f"Renamed in R2: {op.remote_key} → {op.new_key}")
+        else:
+            # Не критично - локальный кэш уже переименован
+            logger.debug(f"R2 rename skipped (file may not exist): {op.remote_key}")
+
+    def _on_all_renames_finished(self):
+        """Все R2 переименования завершены"""
+        self._rename_worker = None
+
+    def _start_async_main_file_rename(self, old_r2_key: str, new_r2_key: str):
+        """Запустить асинхронное переименование основного PDF файла в R2"""
+        self._main_rename_worker = R2OperationWorker()
+        self._main_rename_worker.add_operation(R2Operation(
+            operation_type=R2OperationType.RENAME,
+            remote_key=old_r2_key,
+            new_key=new_r2_key,
+            callback_data={"old_key": old_r2_key, "new_key": new_r2_key}
+        ))
+        self._main_rename_worker.signals.operation_completed.connect(
+            self._on_main_file_rename_completed
+        )
+        self._main_rename_worker.start()
+
+    def _on_main_file_rename_completed(self, op, success: bool, result, error: str):
+        """Callback после переименования основного PDF в R2"""
+        if success:
+            logger.info(f"Main PDF renamed in R2: {op.remote_key} → {op.new_key}")
+        else:
+            logger.warning(f"Main PDF R2 rename failed (may not exist): {op.remote_key} - {error}")
+        self._main_rename_worker = None
 
     def _update_node_file_r2_key(self, node_id: str, old_r2_key: str, new_r2_key: str):
         """Обновить r2_key в таблице node_files"""
@@ -386,7 +434,7 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                             )
                             return
 
-                # Для документов переименовываем файл в R2
+                # Для документов переименовываем файл в R2 (асинхронно)
                 if node.node_type == NodeType.DOCUMENT:
                     old_r2_key = node.attributes.get("r2_key", "")
 
@@ -396,69 +444,28 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
                     if old_r2_key:
                         from pathlib import PurePosixPath
 
-                        from rd_adapters.storage import R2SyncStorage as R2Storage
-
                         # Формируем новый ключ (меняем только имя файла)
-                        # Используем PurePosixPath чтобы сохранить / в путях R2
                         old_path = PurePosixPath(old_r2_key)
                         new_r2_key = str(old_path.parent / new_name_clean)
 
-                        try:
-                            r2 = R2Storage()
-                            # Проверяем существование файла в R2 перед переименованием
-                            if not r2.exists(old_r2_key, use_cache=False):
-                                logger.warning(
-                                    f"File not found in R2: {old_r2_key}, updating metadata only"
-                                )
-                                # Файла нет в R2 - обновляем только метаданные
-                                # Но связанные файлы могут существовать
-                                self._rename_related_files(
-                                    old_r2_key, new_r2_key, node.id
-                                )
-                                node.attributes["r2_key"] = new_r2_key
-                                node.attributes["original_name"] = new_name_clean
-                                self.client.update_node(
-                                    node.id,
-                                    name=new_name_clean,
-                                    attributes=node.attributes,
-                                )
-                                self._rename_cache_file(old_r2_key, new_r2_key)
-                                self._update_node_file_r2_key(
-                                    node.id, old_r2_key, new_r2_key
-                                )
-                            elif r2.rename_object(old_r2_key, new_r2_key):
-                                # Переименовываем связанные файлы
-                                self._rename_related_files(
-                                    old_r2_key, new_r2_key, node.id
-                                )
+                        # 1. СИНХРОННО: Обновляем локальный кэш и метаданные (мгновенно)
+                        self._rename_cache_file(old_r2_key, new_r2_key)
+                        self._update_node_file_r2_key(node.id, old_r2_key, new_r2_key)
 
-                                # Обновляем r2_key в attributes
-                                node.attributes["r2_key"] = new_r2_key
-                                node.attributes["original_name"] = new_name_clean
-                                self.client.update_node(
-                                    node.id,
-                                    name=new_name_clean,
-                                    attributes=node.attributes,
-                                )
+                        # Переименовываем связанные файлы (локально + async R2)
+                        self._rename_related_files(old_r2_key, new_r2_key, node.id)
 
-                                # Переименовываем PDF в локальном кэше
-                                self._rename_cache_file(old_r2_key, new_r2_key)
+                        # Обновляем метаданные в БД
+                        node.attributes["r2_key"] = new_r2_key
+                        node.attributes["original_name"] = new_name_clean
+                        self.client.update_node(
+                            node.id,
+                            name=new_name_clean,
+                            attributes=node.attributes,
+                        )
 
-                                # Обновляем запись PDF в node_files
-                                self._update_node_file_r2_key(
-                                    node.id, old_r2_key, new_r2_key
-                                )
-                            else:
-                                QMessageBox.warning(
-                                    self,
-                                    "Внимание",
-                                    "Не удалось переименовать файл в R2",
-                                )
-                                return
-                        except Exception as e:
-                            logger.error(f"R2 rename error: {e}")
-                            QMessageBox.warning(self, "Ошибка R2", f"Ошибка R2: {e}")
-                            return
+                        # 2. АСИНХРОННО: Переименовываем основной PDF в R2
+                        self._start_async_main_file_rename(old_r2_key, new_r2_key)
                     else:
                         self.client.update_node(node.id, name=new_name_clean)
                 else:

@@ -232,8 +232,13 @@ class PDFDocument:
         try:
             page = self.doc[page_number]
             rect = page.rect
-            width = int(rect.width * zoom)
-            height = int(rect.height * zoom)
+            # Для повёрнутых страниц (90/270) меняем местами размеры
+            if page.rotation in (90, 270):
+                width = int(rect.height * zoom)
+                height = int(rect.width * zoom)
+            else:
+                width = int(rect.width * zoom)
+                height = int(rect.height * zoom)
             return (width, height)
         except Exception as e:
             logger.error(f"Ошибка получения размеров страницы {page_number}: {e}")

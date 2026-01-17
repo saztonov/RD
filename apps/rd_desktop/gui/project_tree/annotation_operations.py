@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING, Dict, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
+from apps.rd_desktop.gui.r2_operation_worker import (
+    R2Operation,
+    R2OperationType,
+    R2OperationWorker,
+)
 from apps.rd_desktop.tree_client import FileType, NodeType, TreeNode
 
 if TYPE_CHECKING:
@@ -32,6 +37,7 @@ class AnnotationOperations:
         """
         self._widget = widget
         self._copied_annotation: Dict = {}  # {"json": str, "source_r2_key": str}
+        self._r2_worker: Optional[R2OperationWorker] = None
 
     @property
     def has_copied(self) -> bool:
@@ -39,41 +45,47 @@ class AnnotationOperations:
         return bool(self._copied_annotation)
 
     def copy_annotation(self, node: TreeNode) -> None:
-        """Скопировать аннотацию документа в буфер"""
+        """Скопировать аннотацию документа в буфер (асинхронно)"""
         from apps.rd_desktop.gui.file_operations import get_annotation_r2_key
-        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
             return
 
-        try:
-            r2 = R2Storage()
-            ann_r2_key = get_annotation_r2_key(r2_key)
-            json_content = r2.download_text(ann_r2_key)
+        ann_r2_key = get_annotation_r2_key(r2_key)
+        self._widget.status_label.setText("Загрузка аннотации...")
 
-            if json_content:
-                self._copied_annotation = {
-                    "json": json_content,
-                    "source_r2_key": r2_key,
-                }
-                self._widget.status_label.setText("📋 Аннотация скопирована")
-                logger.info(f"Annotation copied from {ann_r2_key}")
-            else:
-                QMessageBox.warning(
-                    self._widget, "Ошибка", "Не удалось загрузить аннотацию"
-                )
-        except Exception as e:
-            logger.error(f"Copy annotation failed: {e}")
-            QMessageBox.critical(self._widget, "Ошибка", f"Ошибка копирования: {e}")
+        # Запускаем асинхронную загрузку
+        self._r2_worker = R2OperationWorker()
+        self._r2_worker.add_operation(R2Operation(
+            operation_type=R2OperationType.DOWNLOAD_TEXT,
+            remote_key=ann_r2_key,
+            callback_data={"action": "copy", "r2_key": r2_key}
+        ))
+        self._r2_worker.signals.operation_completed.connect(self._on_r2_operation_completed)
+        self._r2_worker.start()
+
+    def _on_copy_completed(self, r2_key: str, json_content: Optional[str], error: str):
+        """Callback после копирования аннотации"""
+        if json_content:
+            self._copied_annotation = {
+                "json": json_content,
+                "source_r2_key": r2_key,
+            }
+            self._widget.status_label.setText("📋 Аннотация скопирована")
+            logger.info(f"Annotation copied")
+        else:
+            self._widget.status_label.setText("")
+            QMessageBox.warning(
+                self._widget, "Ошибка", f"Не удалось загрузить аннотацию: {error}"
+            )
 
     def paste_annotation(self, node: TreeNode) -> None:
-        """Вставить аннотацию из буфера в документ"""
+        """Вставить аннотацию из буфера в документ (асинхронно)"""
         if self._check_locked(node):
             return
 
         from apps.rd_desktop.gui.file_operations import get_annotation_r2_key
-        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         if not self._copied_annotation:
             return
@@ -82,39 +94,160 @@ class AnnotationOperations:
         if not r2_key:
             return
 
-        try:
+        ann_r2_key = get_annotation_r2_key(r2_key)
+        self._widget.status_label.setText("Сохранение аннотации...")
+
+        # Запускаем асинхронную загрузку
+        self._r2_worker = R2OperationWorker()
+        self._r2_worker.add_operation(R2Operation(
+            operation_type=R2OperationType.UPLOAD_TEXT,
+            remote_key=ann_r2_key,
+            content=self._copied_annotation["json"],
+            content_type="application/json",
+            callback_data={
+                "action": "paste",
+                "node_id": node.id,
+                "r2_key": r2_key,
+                "node": node,
+            }
+        ))
+        self._r2_worker.signals.operation_completed.connect(self._on_r2_operation_completed)
+        self._r2_worker.start()
+
+    def _on_paste_completed(self, node: TreeNode, r2_key: str, success: bool, error: str):
+        """Callback после вставки аннотации"""
+        if success:
+            # Обновляем флаг has_annotation
+            attrs = node.attributes.copy()
+            attrs["has_annotation"] = True
+            self._widget.client.update_node(node.id, attributes=attrs)
+
+            # Обновляем статус PDF (синхронно - быстрая операция)
+            from rd_adapters.storage import R2SyncStorage as R2Storage
             r2 = R2Storage()
-            ann_r2_key = get_annotation_r2_key(r2_key)
+            self._update_pdf_status(node, r2_key, r2)
 
-            if r2.upload_text(self._copied_annotation["json"], ann_r2_key):
-                # Обновляем флаг has_annotation
-                attrs = node.attributes.copy()
-                attrs["has_annotation"] = True
-                self._widget.client.update_node(node.id, attributes=attrs)
+            self._widget.status_label.setText("📥 Аннотация вставлена")
+            logger.info(f"Annotation pasted")
 
-                # Обновляем статус PDF
-                self._update_pdf_status(node, r2_key, r2)
+            # Сигнал для обновления открытого документа
+            self._widget.annotation_replaced.emit(r2_key)
+        else:
+            self._widget.status_label.setText("")
+            QMessageBox.warning(
+                self._widget, "Ошибка", f"Не удалось сохранить аннотацию: {error}"
+            )
 
-                self._widget.status_label.setText("📥 Аннотация вставлена")
-                logger.info(f"Annotation pasted to {ann_r2_key}")
+    def _on_r2_operation_completed(self, op, success: bool, result, error: str):
+        """Унифицированный callback для R2 операций"""
+        callback_data = op.callback_data
+        action = callback_data.get("action", "")
 
-                # Сигнал для обновления открытого документа
-                self._widget.annotation_replaced.emit(r2_key)
-            else:
-                QMessageBox.warning(
-                    self._widget, "Ошибка", "Не удалось сохранить аннотацию"
+        try:
+            if action == "copy":
+                self._on_copy_completed(
+                    callback_data.get("r2_key", ""),
+                    result if success else None,
+                    error
                 )
-        except Exception as e:
-            logger.error(f"Paste annotation failed: {e}")
-            QMessageBox.critical(self._widget, "Ошибка", f"Ошибка вставки: {e}")
+
+            elif action == "paste":
+                self._on_paste_completed(
+                    callback_data.get("node"),
+                    callback_data.get("r2_key", ""),
+                    success,
+                    error
+                )
+
+            elif action == "upload_file":
+                self._on_upload_file_completed(
+                    callback_data.get("node"),
+                    callback_data.get("r2_key", ""),
+                    callback_data.get("ann_r2_key", ""),
+                    callback_data.get("file_size", 0),
+                    success,
+                    error
+                )
+
+            elif action == "detect_stamps_download":
+                if success and result:
+                    self._process_stamps_and_upload(
+                        callback_data.get("r2_key", ""),
+                        callback_data.get("ann_r2_key", ""),
+                        result
+                    )
+                else:
+                    self._widget.status_label.setText("")
+                    QMessageBox.warning(
+                        self._widget, "Ошибка", "Аннотация документа не найдена"
+                    )
+
+            elif action == "detect_stamps_upload":
+                if success:
+                    modified_count = callback_data.get("modified_count", 0)
+                    r2_key = callback_data.get("r2_key", "")
+                    self._widget.status_label.setText(f"🔖 Назначено штампов: {modified_count}")
+                    QMessageBox.information(
+                        self._widget, "Успех", f"Штамп назначен на {modified_count} страницах"
+                    )
+                    self._widget.annotation_replaced.emit(r2_key)
+                else:
+                    self._widget.status_label.setText("")
+                    QMessageBox.critical(
+                        self._widget, "Ошибка", f"Не удалось сохранить аннотацию: {error}"
+                    )
+
+        finally:
+            self._r2_worker = None
+
+    def _on_upload_file_completed(
+        self, node: TreeNode, r2_key: str, ann_r2_key: str, file_size: int,
+        success: bool, error: str
+    ):
+        """Callback после загрузки аннотации из файла"""
+        if success:
+            logger.info(f"Annotation uploaded to R2: {ann_r2_key}")
+
+            # Обновляем флаг has_annotation
+            attrs = node.attributes.copy()
+            attrs["has_annotation"] = True
+            self._widget.client.update_node(node.id, attributes=attrs)
+
+            # Регистрируем файл в node_files
+            self._widget.client.upsert_node_file(
+                node_id=node.id,
+                file_type=FileType.ANNOTATION,
+                r2_key=ann_r2_key,
+                file_name=Path(ann_r2_key).name,
+                file_size=file_size,
+                mime_type="application/json",
+            )
+
+            logger.info(f"Annotation registered in Supabase: node_id={node.id}")
+
+            # Обновляем статус PDF
+            from rd_adapters.storage import R2SyncStorage as R2Storage
+            r2 = R2Storage()
+            self._update_pdf_status(node, r2_key, r2)
+
+            self._widget.status_label.setText("📤 Аннотация загружена")
+            self._widget.annotation_replaced.emit(r2_key)
+
+            QMessageBox.information(
+                self._widget, "Успех", "Аннотация блоков успешно загружена"
+            )
+        else:
+            self._widget.status_label.setText("")
+            QMessageBox.critical(
+                self._widget, "Ошибка", f"Не удалось загрузить аннотацию в R2: {error}"
+            )
 
     def upload_from_file(self, node: TreeNode) -> None:
-        """Диалог загрузки аннотации блоков из файла"""
+        """Диалог загрузки аннотации блоков из файла (асинхронно)"""
         if self._check_locked(node):
             return
 
         from apps.rd_desktop.gui.file_operations import get_annotation_r2_key
-        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
@@ -142,45 +275,28 @@ class AnnotationOperations:
             # Валидация JSON
             json.loads(json_content)
 
-            r2 = R2Storage()
             ann_r2_key = get_annotation_r2_key(r2_key)
-
-            # Загружаем в R2
-            if not r2.upload_text(json_content, ann_r2_key):
-                QMessageBox.critical(
-                    self._widget, "Ошибка", "Не удалось загрузить аннотацию в R2"
-                )
-                return
-
-            logger.info(f"Annotation uploaded to R2: {ann_r2_key}")
-
-            # Обновляем флаг has_annotation
-            attrs = node.attributes.copy()
-            attrs["has_annotation"] = True
-            self._widget.client.update_node(node.id, attributes=attrs)
-
-            # Регистрируем файл в node_files
             file_size = Path(file_path).stat().st_size
-            self._widget.client.upsert_node_file(
-                node_id=node.id,
-                file_type=FileType.ANNOTATION,
-                r2_key=ann_r2_key,
-                file_name=Path(ann_r2_key).name,
-                file_size=file_size,
-                mime_type="application/json",
-            )
+            self._widget.status_label.setText("Загрузка аннотации...")
 
-            logger.info(f"Annotation registered in Supabase: node_id={node.id}")
-
-            # Обновляем статус PDF
-            self._update_pdf_status(node, r2_key, r2)
-
-            self._widget.status_label.setText("📤 Аннотация загружена")
-            self._widget.annotation_replaced.emit(r2_key)
-
-            QMessageBox.information(
-                self._widget, "Успех", "Аннотация блоков успешно загружена"
-            )
+            # Запускаем асинхронную загрузку
+            self._r2_worker = R2OperationWorker()
+            self._r2_worker.add_operation(R2Operation(
+                operation_type=R2OperationType.UPLOAD_TEXT,
+                remote_key=ann_r2_key,
+                content=json_content,
+                content_type="application/json",
+                callback_data={
+                    "action": "upload_file",
+                    "node_id": node.id,
+                    "r2_key": r2_key,
+                    "ann_r2_key": ann_r2_key,
+                    "file_size": file_size,
+                    "node": node,
+                }
+            ))
+            self._r2_worker.signals.operation_completed.connect(self._on_r2_operation_completed)
+            self._r2_worker.start()
 
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in annotation file: {e}")
@@ -192,13 +308,11 @@ class AnnotationOperations:
             )
 
     def detect_and_assign_stamps(self, node: TreeNode) -> None:
-        """Определить и назначить штамп на всех страницах PDF"""
+        """Определить и назначить штамп на всех страницах PDF (асинхронно)"""
         if self._check_locked(node):
             return
 
         from apps.rd_desktop.gui.file_operations import get_annotation_r2_key
-        from rd_domain.models import BlockType, Document
-        from rd_adapters.storage import R2SyncStorage as R2Storage
 
         r2_key = node.attributes.get("r2_key", "")
         if not r2_key:
@@ -207,18 +321,28 @@ class AnnotationOperations:
             )
             return
 
+        ann_r2_key = get_annotation_r2_key(r2_key)
+        self._widget.status_label.setText("Загрузка аннотации...")
+
+        # Шаг 1: Асинхронно загружаем аннотацию
+        self._r2_worker = R2OperationWorker()
+        self._r2_worker.add_operation(R2Operation(
+            operation_type=R2OperationType.DOWNLOAD_TEXT,
+            remote_key=ann_r2_key,
+            callback_data={
+                "action": "detect_stamps_download",
+                "r2_key": r2_key,
+                "ann_r2_key": ann_r2_key,
+            }
+        ))
+        self._r2_worker.signals.operation_completed.connect(self._on_r2_operation_completed)
+        self._r2_worker.start()
+
+    def _process_stamps_and_upload(self, r2_key: str, ann_r2_key: str, json_content: str):
+        """Обработать штампы и загрузить обратно (вызывается после загрузки)"""
+        from rd_domain.models import BlockType, Document
+
         try:
-            r2 = R2Storage()
-            ann_r2_key = get_annotation_r2_key(r2_key)
-
-            # Загрузить аннотацию из R2
-            json_content = r2.download_text(ann_r2_key)
-            if not json_content:
-                QMessageBox.warning(
-                    self._widget, "Ошибка", "Аннотация документа не найдена"
-                )
-                return
-
             data = json.loads(json_content)
             doc, _ = Document.from_dict(data)
 
@@ -262,26 +386,32 @@ class AnnotationOperations:
                     modified_count += 1
 
             if modified_count == 0:
+                self._widget.status_label.setText("")
                 QMessageBox.information(self._widget, "Результат", "Штампы не найдены")
                 return
 
-            # Сохранить аннотацию обратно в R2
+            # Шаг 2: Асинхронно сохраняем аннотацию обратно в R2
             updated_json = json.dumps(doc.to_dict(), ensure_ascii=False, indent=2)
-            if not r2.upload_text(updated_json, ann_r2_key):
-                QMessageBox.critical(
-                    self._widget, "Ошибка", "Не удалось сохранить аннотацию"
-                )
-                return
+            self._widget.status_label.setText("Сохранение аннотации...")
 
-            self._widget.status_label.setText(f"🔖 Назначено штампов: {modified_count}")
-            QMessageBox.information(
-                self._widget, "Успех", f"Штамп назначен на {modified_count} страницах"
-            )
-
-            self._widget.annotation_replaced.emit(r2_key)
+            self._r2_worker = R2OperationWorker()
+            self._r2_worker.add_operation(R2Operation(
+                operation_type=R2OperationType.UPLOAD_TEXT,
+                remote_key=ann_r2_key,
+                content=updated_json,
+                content_type="application/json",
+                callback_data={
+                    "action": "detect_stamps_upload",
+                    "r2_key": r2_key,
+                    "modified_count": modified_count,
+                }
+            ))
+            self._r2_worker.signals.operation_completed.connect(self._on_r2_operation_completed)
+            self._r2_worker.start()
 
         except Exception as e:
             logger.error(f"Detect stamps failed: {e}")
+            self._widget.status_label.setText("")
             QMessageBox.critical(
                 self._widget, "Ошибка", f"Ошибка определения штампов:\n{e}"
             )

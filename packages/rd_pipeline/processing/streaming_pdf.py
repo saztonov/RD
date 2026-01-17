@@ -123,12 +123,15 @@ class StreamingPDFProcessor:
             return None
 
     def get_page_dimensions(self, page_idx: int) -> Optional[Tuple[int, int]]:
-        """Get page dimensions."""
+        """Get page dimensions (accounting for rotation)."""
         if not self._doc or page_idx < 0 or page_idx >= len(self._doc):
             return None
         page = self._doc[page_idx]
         rect = page.rect
         zoom = self._get_effective_zoom(page)
+        # Для повёрнутых страниц (90/270) меняем местами размеры
+        if page.rotation in (90, 270):
+            return (int(rect.height * zoom), int(rect.width * zoom))
         return (int(rect.width * zoom), int(rect.height * zoom))
 
     def crop_block_image(self, block, padding: int = 5) -> Optional[Image.Image]:
@@ -187,10 +190,19 @@ class StreamingPDFProcessor:
             rotation = page.rotation
 
             nx1, ny1, nx2, ny2 = block.coords_norm
-            x1_pt = max(rect.x0, rect.x0 + nx1 * rect.width - padding_pt)
-            y1_pt = max(rect.y0, rect.y0 + ny1 * rect.height - padding_pt)
-            x2_pt = min(rect.x1, rect.x0 + nx2 * rect.width + padding_pt)
-            y2_pt = min(rect.y1, rect.y0 + ny2 * rect.height + padding_pt)
+
+            # Для повёрнутых страниц (90/270) меняем местами размеры
+            if rotation in (90, 270):
+                visual_width = rect.height
+                visual_height = rect.width
+            else:
+                visual_width = rect.width
+                visual_height = rect.height
+
+            x1_pt = max(rect.x0, rect.x0 + nx1 * visual_width - padding_pt)
+            y1_pt = max(rect.y0, rect.y0 + ny1 * visual_height - padding_pt)
+            x2_pt = min(rect.x1, rect.x0 + nx2 * visual_width + padding_pt)
+            y2_pt = min(rect.y1, rect.y0 + ny2 * visual_height + padding_pt)
 
             clip_rect = fitz.Rect(x1_pt, y1_pt, x2_pt, y2_pt)
 
@@ -502,10 +514,20 @@ def render_block_crop(
 
         nx1, ny1, nx2, ny2 = coords_norm
 
-        x1_pt = max(rect.x0, rect.x0 + nx1 * rect.width - padding_pt)
-        y1_pt = max(rect.y0, rect.y0 + ny1 * rect.height - padding_pt)
-        x2_pt = min(rect.x1, rect.x0 + nx2 * rect.width + padding_pt)
-        y2_pt = min(rect.y1, rect.y0 + ny2 * rect.height + padding_pt)
+        # Для повёрнутых страниц (90/270) меняем местами размеры, потому что
+        # desktop рендерит с учётом rotation и coords_norm рассчитаны
+        # относительно визуальных (повёрнутых) размеров
+        if rotation in (90, 270):
+            visual_width = rect.height
+            visual_height = rect.width
+        else:
+            visual_width = rect.width
+            visual_height = rect.height
+
+        x1_pt = max(rect.x0, rect.x0 + nx1 * visual_width - padding_pt)
+        y1_pt = max(rect.y0, rect.y0 + ny1 * visual_height - padding_pt)
+        x2_pt = min(rect.x1, rect.x0 + nx2 * visual_width + padding_pt)
+        y2_pt = min(rect.y1, rect.y0 + ny2 * visual_height + padding_pt)
 
         clip_rect = fitz.Rect(x1_pt, y1_pt, x2_pt, y2_pt)
 

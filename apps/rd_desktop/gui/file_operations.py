@@ -4,6 +4,7 @@
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -14,6 +15,11 @@ from apps.rd_desktop.gui.file_auto_save import (
     get_annotation_r2_key,
 )
 from apps.rd_desktop.gui.file_download import FileDownloadMixin
+from apps.rd_desktop.gui.r2_operation_worker import (
+    R2Operation,
+    R2OperationType,
+    R2OperationWorker,
+)
 from rd_domain.annotation import AnnotationIO
 from rd_domain.models import Document, Page
 from rd_pipeline.pdf import PDFDocument
@@ -120,28 +126,25 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             logger.debug(f"Update has_annotation failed: {e}")
 
     def _load_annotation_if_exists(self, pdf_path: str, r2_key: str = ""):
-        """Загрузить annotation.json если существует (локально или в R2)"""
+        """Загрузить annotation.json если существует (локально или в R2)
+
+        Если аннотация есть локально - загружает синхронно.
+        Если нет локально но есть r2_key - запускает асинхронную загрузку.
+        """
         from apps.rd_desktop.gui.toast import show_toast
-        from rd_domain.annotation import MigrationResult
 
         ann_path = get_annotation_path(pdf_path)
 
         # Попробовать скачать из R2 если нет локально
         if not ann_path.exists() and r2_key:
-            try:
-                from rd_adapters.storage import R2SyncStorage as R2Storage
-
-                r2 = R2Storage()
+            # Проверяем офлайн режим
+            if hasattr(self, 'connection_manager') and not self.connection_manager.is_connected():
+                logger.info("Не удалось скачать аннотацию - работа в офлайн режиме")
+                show_toast(self, "Работа в офлайн режиме. Аннотация недоступна.", duration=3000)
+            else:
+                # Запускаем асинхронную загрузку
                 ann_r2_key = get_annotation_r2_key(r2_key)
-                success = r2.download_file(ann_r2_key, str(ann_path))
-                
-                if not success:
-                    # Проверяем статус соединения
-                    if hasattr(self, 'connection_manager') and not self.connection_manager.is_connected():
-                        logger.info(f"Не удалось скачать аннотацию - работа в офлайн режиме")
-                        show_toast(self, "Работа в офлайн режиме. Аннотация недоступна.", duration=3000)
-            except Exception as e:
-                logger.debug(f"No annotation in R2 or error: {e}")
+                self._start_async_annotation_download(pdf_path, r2_key, ann_r2_key, str(ann_path))
 
         # Загрузить и мигрировать локальный файл
         if ann_path.exists():
@@ -215,6 +218,85 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
                 self._update_has_annotation_flag(True)
                 return True
         return False
+
+    def _start_async_annotation_download(
+        self, pdf_path: str, r2_key: str, ann_r2_key: str, ann_path: str
+    ):
+        """Запустить асинхронную загрузку аннотации из R2"""
+        # Показываем индикатор загрузки
+        if hasattr(self, 'show_transfer_progress'):
+            self.show_transfer_progress("Загрузка аннотации...", 0, 1)
+
+        # Создаём worker для загрузки
+        self._ann_download_worker = R2OperationWorker()
+        self._ann_download_worker.add_operation(R2Operation(
+            operation_type=R2OperationType.DOWNLOAD_FILE,
+            remote_key=ann_r2_key,
+            local_path=ann_path,
+            callback_data={
+                "pdf_path": pdf_path,
+                "r2_key": r2_key,
+                "ann_path": ann_path,
+            }
+        ))
+
+        # Подключаем callback
+        self._ann_download_worker.signals.operation_completed.connect(
+            self._on_annotation_download_completed
+        )
+        self._ann_download_worker.start()
+
+    def _on_annotation_download_completed(self, op, success: bool, result, error: str):
+        """Callback после загрузки аннотации из R2"""
+        from apps.rd_desktop.gui.toast import show_toast
+
+        # Скрываем индикатор
+        if hasattr(self, 'hide_transfer_progress'):
+            self.hide_transfer_progress()
+
+        callback_data = op.callback_data
+        pdf_path = callback_data.get("pdf_path")
+        r2_key = callback_data.get("r2_key")
+        ann_path = callback_data.get("ann_path")
+
+        if success and Path(ann_path).exists():
+            # Загружаем скачанную аннотацию
+            loaded, migrate_result = AnnotationIO.load_and_migrate(ann_path)
+
+            if loaded and migrate_result.success:
+                self.annotation_document = loaded
+                logger.info(f"Annotation loaded from R2: {ann_path}")
+
+                # Инициализируем кеш аннотаций
+                if self._current_node_id:
+                    from apps.rd_desktop.gui.annotation_cache import get_annotation_cache
+                    cache = get_annotation_cache()
+                    cache.set(
+                        self._current_node_id,
+                        self.annotation_document,
+                        pdf_path,
+                        r2_key,
+                        ann_path
+                    )
+
+                # Миграция формата - сохраняем
+                if migrate_result.migrated:
+                    AnnotationIO.save_annotation(loaded, ann_path)
+                    self._sync_annotation_to_r2()
+                    show_toast(self, "Формат разметки обновлён", success=True)
+
+                self._annotation_synced = True
+                self._update_has_annotation_flag(True)
+
+                # Обновляем отображение
+                self._render_current_page()
+                if hasattr(self, "blocks_tree_manager") and self.blocks_tree_manager:
+                    self.blocks_tree_manager.update_blocks_tree()
+        else:
+            logger.debug(f"Annotation not found in R2 or download failed: {error}")
+
+        # Очищаем worker
+        self._ann_download_worker = None
 
     def _create_empty_annotation(self, pdf_path: str) -> Document:
         """Создать пустой документ аннотации со страницами"""
@@ -352,9 +434,7 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             self.blocks_tree_manager.update_blocks_tree()
 
     def _on_annotation_replaced(self, r2_key: str):
-        """Обработчик замены аннотации в дереве проектов"""
-        from apps.rd_desktop.gui.toast import show_toast
-
+        """Обработчик замены аннотации в дереве проектов (асинхронно)"""
         # Проверяем совпадает ли r2_key с текущим открытым документом
         if not hasattr(self, "_current_r2_key") or self._current_r2_key != r2_key:
             return
@@ -362,22 +442,43 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
         if not self._current_pdf_path:
             return
 
+        ann_r2_key = get_annotation_r2_key(r2_key)
+        ann_path = get_annotation_path(self._current_pdf_path)
+
+        # Запускаем асинхронную загрузку
+        self._ann_replace_worker = R2OperationWorker()
+        self._ann_replace_worker.add_operation(R2Operation(
+            operation_type=R2OperationType.DOWNLOAD_FILE,
+            remote_key=ann_r2_key,
+            local_path=str(ann_path),
+            callback_data={
+                "r2_key": r2_key,
+                "ann_path": str(ann_path),
+            }
+        ))
+        self._ann_replace_worker.signals.operation_completed.connect(
+            self._on_annotation_replace_downloaded
+        )
+        self._ann_replace_worker.start()
+
+    def _on_annotation_replace_downloaded(self, op, success: bool, result, error: str):
+        """Callback после загрузки замененной аннотации"""
+        from apps.rd_desktop.gui.toast import show_toast
+
+        callback_data = op.callback_data
+        r2_key = callback_data.get("r2_key")
+        ann_path = callback_data.get("ann_path")
+
+        if not success:
+            logger.warning(f"Не удалось скачать аннотацию из R2: {error}")
+            self._ann_replace_worker = None
+            return
+
         try:
-            # Скачиваем обновлённую аннотацию из R2
-            from rd_adapters.storage import R2SyncStorage as R2Storage
-
-            ann_r2_key = get_annotation_r2_key(r2_key)
-            ann_path = get_annotation_path(self._current_pdf_path)
-
-            r2 = R2Storage()
-            if not r2.download_file(ann_r2_key, str(ann_path)):
-                logger.warning(f"Не удалось скачать аннотацию из R2: {ann_r2_key}")
-                return
-
             # Загружаем с миграцией
-            loaded_doc, result = AnnotationIO.load_and_migrate(str(ann_path))
-            if not result.success or not loaded_doc:
-                logger.warning(f"Не удалось загрузить аннотацию: {result.errors}")
+            loaded_doc, migrate_result = AnnotationIO.load_and_migrate(ann_path)
+            if not migrate_result.success or not loaded_doc:
+                logger.warning(f"Не удалось загрузить аннотацию: {migrate_result.errors}")
                 return
 
             # Заменяем текущую аннотацию
@@ -385,8 +486,8 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             self._annotation_synced = True
 
             # Если была миграция - сохраняем и синхронизируем
-            if result.migrated:
-                AnnotationIO.save_annotation(loaded_doc, str(ann_path))
+            if migrate_result.migrated:
+                AnnotationIO.save_annotation(loaded_doc, ann_path)
                 self._sync_annotation_to_r2()
 
             # Обновляем отображение
@@ -396,8 +497,10 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             if hasattr(self, "_update_groups_tree"):
                 self._update_groups_tree()
 
-            logger.info(f"Аннотация обновлена из R2: {ann_r2_key}")
+            logger.info(f"Аннотация обновлена из R2: {op.remote_key}")
             show_toast(self, "Аннотация обновлена", success=True)
 
         except Exception as e:
             logger.error(f"Ошибка обновления аннотации: {e}")
+        finally:
+            self._ann_replace_worker = None
