@@ -514,6 +514,11 @@ def render_block_crop(
 
         nx1, ny1, nx2, ny2 = coords_norm
 
+        logger.info(
+            f"render_block_crop: page={page_index}, rotation={rotation}, "
+            f"rect={rect.width:.1f}x{rect.height:.1f}, coords_norm={coords_norm}"
+        )
+
         # Для повёрнутых страниц (90/270) меняем местами размеры, потому что
         # desktop рендерит с учётом rotation и coords_norm рассчитаны
         # относительно визуальных (повёрнутых) размеров
@@ -524,12 +529,15 @@ def render_block_crop(
             visual_width = rect.width
             visual_height = rect.height
 
+        logger.info(f"render_block_crop: visual_size={visual_width:.1f}x{visual_height:.1f}")
+
         x1_pt = max(rect.x0, rect.x0 + nx1 * visual_width - padding_pt)
         y1_pt = max(rect.y0, rect.y0 + ny1 * visual_height - padding_pt)
         x2_pt = min(rect.x1, rect.x0 + nx2 * visual_width + padding_pt)
         y2_pt = min(rect.y1, rect.y0 + ny2 * visual_height + padding_pt)
 
         clip_rect = fitz.Rect(x1_pt, y1_pt, x2_pt, y2_pt)
+        logger.info(f"render_block_crop: clip_rect=({x1_pt:.1f}, {y1_pt:.1f}, {x2_pt:.1f}, {y2_pt:.1f})")
 
         if rotation != 0:
             clip_rect = clip_rect * page.derotation_matrix

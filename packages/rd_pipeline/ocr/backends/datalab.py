@@ -66,8 +66,11 @@ class DatalabOCRBackend:
         import tempfile
         import time
 
+        logger.info(f"Datalab.recognize: получено изображение {image.width}x{image.height}")
+
         if self.rate_limiter:
             if not self.rate_limiter.acquire():
+                logger.warning("Datalab.recognize: rate limiter timeout")
                 return "[Error: rate limiter timeout]"
 
         try:

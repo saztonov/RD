@@ -175,10 +175,23 @@ def pass1_prepare_crops(
         f"PASS1 start (PDF: {os.path.getsize(pdf_path) / 1024 / 1024:.1f} MB)"
     )
 
+    # === ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ВХОДНЫХ БЛОКОВ ===
+    logger.info(f"PASS1: получено {len(blocks)} блоков для обработки")
+    for i, b in enumerate(blocks):
+        logger.info(
+            f"  PASS1 input block [{i}]: id={b.id}, page={b.page_index}, "
+            f"type={b.block_type.value}, coords_norm={b.coords_norm}"
+        )
+
     # Group blocks by page
     blocks_by_page: Dict[int, List] = {}
     for block in blocks:
         blocks_by_page.setdefault(block.page_index, []).append(block)
+
+    logger.info(f"PASS1: блоки сгруппированы по {len(blocks_by_page)} страницам")
+    for page_idx, page_blocks in blocks_by_page.items():
+        block_ids = [b.id for b in page_blocks]
+        logger.info(f"  PASS1 page {page_idx}: {len(page_blocks)} блоков: {block_ids}")
 
     # Temporary storage for crop paths
     block_crop_paths: Dict[str, List[Tuple[str, int, int]]] = {}
@@ -198,6 +211,11 @@ def pass1_prepare_crops(
 
             for block in page_blocks:
                 try:
+                    logger.info(
+                        f"PASS1: cropping block {block.id} (page={block.page_index}, "
+                        f"type={block.block_type.value}, coords_norm={block.coords_norm})"
+                    )
+
                     # Determine preprocessing mode based on block type
                     ocr_prep_mode = None
                     if cfg.ocr_prep_enabled:
@@ -220,7 +238,10 @@ def pass1_prepare_crops(
                         polygon_coords_px=block.coords_px if block.shape_type == ShapeType.POLYGON else None,
                     )
                     if not crop:
+                        logger.warning(f"PASS1: render_block_crop returned None for block {block.id}")
                         continue
+
+                    logger.info(f"PASS1: block {block.id} crop size: {crop.width}x{crop.height}")
 
                     crop_parts = split_large_crop(crop, cfg.max_single_block_height, config=cfg)
                     total_parts = len(crop_parts)
@@ -330,6 +351,10 @@ def _group_and_merge_strips(
     """Group TEXT/TABLE blocks into strips and save merged images."""
     from rd_domain.models import BlockType
 
+    # === ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ===
+    logger.info(f"_group_and_merge_strips: входные блоки={len(blocks)}, block_crop_paths={len(block_crop_paths)}")
+    logger.info(f"  block_crop_paths keys: {list(block_crop_paths.keys())}")
+
     strips: List[StripManifestEntry] = []
     current_strip_blocks: List[Tuple[str, str, int, int]] = []
     current_strip_height = 0
@@ -386,12 +411,23 @@ def _group_and_merge_strips(
         current_strip_blocks = []
         current_strip_height = 0
 
+    text_blocks_count = 0
+    skipped_image = 0
+    skipped_no_crop = 0
+
     for block in blocks:
         if block.block_type == BlockType.IMAGE:
+            skipped_image += 1
+            logger.debug(f"  _group_and_merge_strips: skip IMAGE block {block.id}")
             continue
 
         if block.id not in block_crop_paths:
+            skipped_no_crop += 1
+            logger.warning(f"  _group_and_merge_strips: block {block.id} not in block_crop_paths - SKIPPED")
             continue
+
+        text_blocks_count += 1
+        logger.info(f"  _group_and_merge_strips: adding TEXT block {block.id} to strip")
 
         for crop_path, part_idx, total_parts in block_crop_paths[block.id]:
             try:
@@ -413,6 +449,14 @@ def _group_and_merge_strips(
             current_strip_height += new_height
 
     _save_current_strip()
+
+    logger.info(
+        f"_group_and_merge_strips: итого text_blocks={text_blocks_count}, "
+        f"skipped_image={skipped_image}, skipped_no_crop={skipped_no_crop}, "
+        f"strips_created={len(strips)}"
+    )
+    for s in strips:
+        logger.info(f"  strip {s.strip_id}: {len(s.block_ids)} блоков: {s.block_ids}")
 
     return strips
 
