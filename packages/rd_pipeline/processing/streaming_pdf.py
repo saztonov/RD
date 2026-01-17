@@ -289,32 +289,53 @@ def create_block_separator(
     """
     Create separator with white text block_id on black background.
     Format: BLOCK: XXXX-XXXX-XXX (OCR-resistant code)
+
+    Font size and height scale proportionally to width for consistent OCR readability.
+    Base: 800px width -> 36px font, 50px height
     """
     from PIL import ImageFont
     from rd_domain.ids import encode_block_id
 
-    separator = Image.new("RGB", (width, height), (0, 0, 0))
+    # Scale font and height proportionally to width
+    BASE_WIDTH = 800
+    BASE_FONT_SIZE = 36
+    BASE_HEIGHT = 50
+
+    scale = max(1.0, width / BASE_WIDTH)
+    font_size = int(BASE_FONT_SIZE * scale)
+    actual_height = int(BASE_HEIGHT * scale)
+    padding_x = int(40 * scale)
+
+    separator = Image.new("RGB", (width, actual_height), (0, 0, 0))
     draw = ImageDraw.Draw(separator)
 
     armor_code = encode_block_id(block_id)
     text = f"BLOCK: {armor_code}"
 
     try:
-        font = ImageFont.truetype("arial.ttf", 36)
+        font = ImageFont.truetype("arial.ttf", font_size)
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype(BUNDLED_FONT_PATH, 36)
+            font = ImageFont.truetype(BUNDLED_FONT_PATH, font_size)
         except (IOError, OSError):
             font = ImageFont.load_default()
 
     bbox = draw.textbbox((0, 0), text, font=font)
     text_height = bbox[3] - bbox[1]
 
-    x = 80
-    y = (height - text_height) // 2
+    x = padding_x
+    y = (actual_height - text_height) // 2
 
     draw.text((x, y), text, fill=(255, 255, 255), font=font)
     return separator
+
+
+def _get_separator_height(width: int) -> int:
+    """Calculate dynamic separator height based on width."""
+    BASE_WIDTH = 800
+    BASE_HEIGHT = 50
+    scale = max(1.0, width / BASE_WIDTH)
+    return int(BASE_HEIGHT * scale)
 
 
 def merge_crops_vertically(
@@ -326,12 +347,16 @@ def merge_crops_vertically(
     """
     Merge crops vertically with optional block_id separators.
     Separator is inserted only when block_id changes.
+    Separator height scales proportionally to image width.
     """
     if not crops:
         raise ValueError("Empty crops list")
 
     use_separators = block_ids is not None and len(block_ids) == len(crops)
     max_width = max(c.width for c in crops)
+
+    # Calculate dynamic separator height based on max_width
+    actual_sep_height = _get_separator_height(max_width)
 
     if use_separators:
         separator_count = 0
@@ -342,7 +367,7 @@ def merge_crops_vertically(
                 prev_id = bid
         total_height = (
             sum(c.height for c in crops)
-            + separator_height * separator_count
+            + actual_sep_height * separator_count
             + gap * (len(crops) - separator_count)
         )
     else:
@@ -356,7 +381,7 @@ def merge_crops_vertically(
         if use_separators:
             current_block_id = block_ids[i]
             if current_block_id != prev_block_id:
-                separator = create_block_separator(current_block_id, max_width, separator_height)
+                separator = create_block_separator(current_block_id, max_width)
                 merged.paste(separator, (0, y_offset))
                 y_offset += separator.height
                 prev_block_id = current_block_id
