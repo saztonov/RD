@@ -235,7 +235,7 @@ class OCRMonitorDialog(QDialog):
 
         # Обновляем вкладки
         self._blocks_tab.update_data(blocks, phase_data)
-        self._groups_tab.update_data(phase_data)
+        self._groups_tab.update_data(phase_data, data.get("r2_base_url"))
         self._results_tab.update_data(blocks, phase_data)
 
         if status == "done":

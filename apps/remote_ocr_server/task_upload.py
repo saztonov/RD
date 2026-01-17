@@ -152,6 +152,19 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
             ))
         logger.info(f"Добавлено {len(list(grouped_blocks_dir.glob('*.json')))} grouped_blocks для загрузки")
 
+    text_block_dir = work_dir / "text_block"
+    if text_block_dir.exists():
+        for text_file in text_block_dir.iterdir():
+            if text_file.is_file() and text_file.suffix.lower() == ".json":
+                file_type = "text_block"
+                if text_file.name == "batches.json":
+                    file_type = "text_block_batch"
+                r2_key = f"{r2_prefix}/text_block/{text_file.name}"
+                files_to_upload.append((
+                    str(text_file), r2_key, "application/json",
+                    file_type, text_file.name, text_file.stat().st_size, None
+                ))
+
     # crops/ (проверяем оба варианта: crops и crops_final)
     # Исключаем блоки-штампы (category_code='stamp')
     for crops_subdir in ["crops", "crops_final"]:

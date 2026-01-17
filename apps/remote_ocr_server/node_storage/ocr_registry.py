@@ -21,7 +21,17 @@ logger = logging.getLogger(__name__)
 def _delete_old_ocr_entries(node_id: str) -> int:
     """Удалить старые записи OCR результатов из node_files (кроме pdf)."""
     client = get_client()
-    ocr_file_types = ["result_json", "annotation", "ocr_html", "result_md", "qa_manifest", "crop", "crops_folder"]
+    ocr_file_types = [
+        "result_json",
+        "annotation",
+        "ocr_html",
+        "result_md",
+        "qa_manifest",
+        "text_block",
+        "text_block_batch",
+        "crop",
+        "crops_folder",
+    ]
 
     try:
         result = client.table("node_files").delete().eq("node_id", node_id).in_(
@@ -180,6 +190,39 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
         )
         registered += 1
         logger.info(f"Зарегистрирован qa_manifest.json в node_files")
+
+    text_block_dir = work_path / "text_block"
+    blocks_json = text_block_dir / "blocks.json"
+    if blocks_json.exists():
+        r2_key = f"{job_r2_prefix}/text_block/blocks.json"
+        files_info["text_block"] = f"ocr_runs/{job_id}/text_block/blocks.json"
+        add_node_file(
+            node_id,
+            "text_block",
+            r2_key,
+            "blocks.json",
+            blocks_json.stat().st_size,
+            "application/json",
+            metadata={"ocr_run_id": job_id},
+        )
+        registered += 1
+        logger.info("Зарегистрирован text_block/blocks.json в node_files")
+
+    batches_json = text_block_dir / "batches.json"
+    if batches_json.exists():
+        r2_key = f"{job_r2_prefix}/text_block/batches.json"
+        files_info["text_block_batch"] = f"ocr_runs/{job_id}/text_block/batches.json"
+        add_node_file(
+            node_id,
+            "text_block_batch",
+            r2_key,
+            "batches.json",
+            batches_json.stat().st_size,
+            "application/json",
+            metadata={"ocr_run_id": job_id},
+        )
+        registered += 1
+        logger.info("Зарегистрирован text_block/batches.json в node_files")
 
     # Собираем все кропы из crops/ и crops_final/
     all_crop_files: List[Path] = []

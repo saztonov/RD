@@ -88,147 +88,127 @@ class DatalabOCRBackend:
                 tmp_path = tmp.name
 
             try:
-                # Outer retry loop for re-sending on polling timeout
-                for full_retry in range(self.max_retries):
-                    if full_retry > 0:
+                response = None
+                for retry in range(self.max_retries):
+                    with open(tmp_path, "rb") as f:
+                        import json
+
+                        files = {"file": (os.path.basename(tmp_path), f, "image/png")}
+                        data = {
+                            "mode": "accurate",
+                            "paginate": "true",
+                            "output_format": "html",
+                            "disable_image_extraction": "true",
+                            "disable_image_captions": "true",
+                            "additional_config": json.dumps(
+                                {"keep_pageheader_in_output": True}
+                            ),
+                        }
+
+                        response = self.session.post(
+                            self.API_URL,
+                            headers=self.headers,
+                            files=files,
+                            data=data,
+                            timeout=120,
+                        )
+
+                    if response.status_code == 429:
+                        if self.rate_limiter and hasattr(self.rate_limiter, "report_429"):
+                            retry_after = response.headers.get("Retry-After")
+                            self.rate_limiter.report_429(
+                                int(retry_after) if retry_after else None
+                            )
+                        wait_time = min(60, (2**retry) * 10)
                         logger.warning(
-                            f"Datalab: re-sending request (attempt {full_retry + 1}/{self.max_retries})"
+                            f"Datalab API 429: waiting {wait_time}s (attempt {retry + 1}/{self.max_retries})"
                         )
+                        time.sleep(wait_time)
+                        continue
+                    break
 
-                    response = None
-                    for retry in range(self.max_retries):
-                        with open(tmp_path, "rb") as f:
-                            import json
+                if response is None or response.status_code == 429:
+                    return "[Datalab API Error: rate limit exceeded (429)]"
 
-                            files = {"file": (os.path.basename(tmp_path), f, "image/png")}
-                            data = {
-                                "mode": "accurate",
-                                "paginate": "true",
-                                "output_format": "html",
-                                "disable_image_extraction": "true",
-                                "disable_image_captions": "true",
-                                "additional_config": json.dumps(
-                                    {"keep_pageheader_in_output": True}
-                                ),
-                            }
+                if response.status_code != 200:
+                    logger.error(
+                        f"Datalab API error: {response.status_code} - {response.text}"
+                    )
+                    return f"[Datalab API Error: {response.status_code}]"
 
-                            response = self.session.post(
-                                self.API_URL,
-                                headers=self.headers,
-                                files=files,
-                                data=data,
-                                timeout=120,
-                            )
+                result = response.json()
 
-                        if response.status_code == 429:
-                            if self.rate_limiter and hasattr(self.rate_limiter, "report_429"):
-                                retry_after = response.headers.get("Retry-After")
-                                self.rate_limiter.report_429(
-                                    int(retry_after) if retry_after else None
-                                )
-                            wait_time = min(60, (2**retry) * 10)
-                            logger.warning(
-                                f"Datalab API 429: waiting {wait_time}s (attempt {retry + 1}/{self.max_retries})"
-                            )
-                            time.sleep(wait_time)
-                            continue
-                        break
+                if not result.get("success"):
+                    error = result.get("error", "Unknown error")
+                    return f"[Datalab Error: {error}]"
 
-                    if response is None or response.status_code == 429:
-                        return "[Datalab API Error: rate limit exceeded (429)]"
+                check_url = result.get("request_check_url")
+                if not check_url:
+                    if "json" in result:
+                        json_result = result["json"]
+                        if isinstance(json_result, dict):
+                            import json as json_lib
 
-                    if response.status_code != 200:
-                        logger.error(
-                            f"Datalab API error: {response.status_code} - {response.text}"
-                        )
-                        return f"[Datalab API Error: {response.status_code}]"
+                            return json_lib.dumps(json_result, ensure_ascii=False)
+                        return json_result
+                    return "[Error: no request_check_url]"
 
-                    result = response.json()
+                logger.info(f"Datalab: starting polling at URL: {check_url}")
+                for attempt in range(self.poll_max_attempts):
+                    time.sleep(self.poll_interval)
 
-                    if not result.get("success"):
-                        error = result.get("error", "Unknown error")
-                        return f"[Datalab Error: {error}]"
-
-                    check_url = result.get("request_check_url")
-                    if not check_url:
-                        if "json" in result:
-                            json_result = result["json"]
-                            if isinstance(json_result, dict):
-                                import json as json_lib
-
-                                return json_lib.dumps(json_result, ensure_ascii=False)
-                            return json_result
-                        return "[Error: no request_check_url]"
-
-                    logger.info(f"Datalab: starting polling at URL: {check_url}")
-                    for attempt in range(self.poll_max_attempts):
-                        time.sleep(self.poll_interval)
-
-                        logger.debug(
-                            f"Datalab: polling attempt {attempt + 1}/{self.poll_max_attempts}"
-                        )
-                        poll_response = self.session.get(
-                            check_url, headers=self.headers, timeout=30
-                        )
-
-                        if poll_response.status_code == 429:
-                            if self.rate_limiter and hasattr(self.rate_limiter, "report_429"):
-                                retry_after = poll_response.headers.get("Retry-After")
-                                self.rate_limiter.report_429(
-                                    int(retry_after) if retry_after else None
-                                )
-                            logger.warning("Datalab: 429 during polling, waiting 30s")
-                            time.sleep(30)
-                            continue
-
-                        if poll_response.status_code != 200:
-                            logger.warning(
-                                f"Datalab: polling returned status {poll_response.status_code}: {poll_response.text}"
-                            )
-                            continue
-
-                        poll_result = poll_response.json()
-                        status = poll_result.get("status", "")
-
-                        logger.info(
-                            f"Datalab: current task status: '{status}' (attempt {attempt + 1}/{self.poll_max_attempts})"
-                        )
-
-                        if status == "complete":
-                            logger.info("Datalab: task completed successfully")
-                            html_result = poll_result.get("html", "")
-                            logger.debug(
-                                f"Datalab: response keys: {list(poll_result.keys())}"
-                            )
-                            self.last_html_result = html_result if html_result else None
-                            return html_result if html_result else ""
-                        elif status == "failed":
-                            error = poll_result.get("error", "Unknown error")
-                            logger.error(f"Datalab: task failed with error: {error}")
-                            return f"[Datalab Error: {error}]"
-                        elif status not in ["processing", "pending", "queued"]:
-                            logger.warning(
-                                f"Datalab: unknown status '{status}'. Full response: {poll_result}"
-                            )
-
-                    # Polling timeout - try sending new request
-                    logger.warning(
-                        f"Datalab: polling timeout after {self.poll_max_attempts} attempts, "
-                        f"retry {full_retry + 1}/{self.max_retries}"
+                    logger.debug(
+                        f"Datalab: polling attempt {attempt + 1}/{self.poll_max_attempts}"
+                    )
+                    poll_response = self.session.get(
+                        check_url, headers=self.headers, timeout=30
                     )
 
-                    if full_retry < self.max_retries - 1:
-                        # Wait before re-sending
-                        wait_time = (full_retry + 1) * 10
-                        logger.info(f"Datalab: waiting {wait_time}s before re-sending")
-                        time.sleep(wait_time)
+                    if poll_response.status_code == 429:
+                        if self.rate_limiter and hasattr(self.rate_limiter, "report_429"):
+                            retry_after = poll_response.headers.get("Retry-After")
+                            self.rate_limiter.report_429(
+                                int(retry_after) if retry_after else None
+                            )
+                        logger.warning("Datalab: 429 during polling, waiting 30s")
+                        time.sleep(30)
+                        continue
 
-                # All retries exhausted
-                logger.error(
-                    f"Datalab: timeout exceeded after {self.max_retries} full attempts"
+                    if poll_response.status_code != 200:
+                        logger.warning(
+                            f"Datalab: polling returned status {poll_response.status_code}: {poll_response.text}"
+                        )
+                        continue
+
+                    poll_result = poll_response.json()
+                    status = poll_result.get("status", "")
+
+                    logger.info(
+                        f"Datalab: current task status: '{status}' (attempt {attempt + 1}/{self.poll_max_attempts})"
+                    )
+
+                    if status == "complete":
+                        logger.info("Datalab: task completed successfully")
+                        html_result = poll_result.get("html", "")
+                        logger.debug(
+                            f"Datalab: response keys: {list(poll_result.keys())}"
+                        )
+                        self.last_html_result = html_result if html_result else None
+                        return html_result if html_result else ""
+                    elif status == "failed":
+                        error = poll_result.get("error", "Unknown error")
+                        logger.error(f"Datalab: task failed with error: {error}")
+                        return f"[Datalab Error: {error}]"
+                    elif status not in ["processing", "pending", "queued"]:
+                        logger.warning(
+                            f"Datalab: unknown status '{status}'. Full response: {poll_result}"
+                        )
+
+                logger.warning(
+                    f"Datalab: polling timeout after {self.poll_max_attempts} attempts"
                 )
                 logger.warning(
-                    f"Datalab: skipping block due to timeout, continuing processing"
+                    "Datalab: skipping block due to timeout, continuing processing"
                 )
                 return "[TIMEOUT]"
 

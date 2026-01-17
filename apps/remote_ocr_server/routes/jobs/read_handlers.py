@@ -121,6 +121,32 @@ def _add_job_settings_and_r2_files(result: dict, job) -> dict:
     return result
 
 
+def _normalize_blocks_payload(payload) -> list:
+    """Normalize blocks payload to a flat list of block dicts."""
+    if not payload:
+        return []
+
+    if isinstance(payload, list):
+        return payload
+
+    if isinstance(payload, dict):
+        pages = payload.get("pages")
+        if isinstance(pages, list):
+            blocks = []
+            for page in pages:
+                if isinstance(page, dict):
+                    page_blocks = page.get("blocks") or []
+                    if isinstance(page_blocks, list):
+                        blocks.extend(page_blocks)
+            return blocks
+
+        blocks = payload.get("blocks")
+        if isinstance(blocks, list):
+            return blocks
+
+    return []
+
+
 def get_job_details_handler(
     job_id: str,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -258,29 +284,42 @@ def get_job_progress_handler(
             r2 = get_r2_storage()
             annotation_text = r2.download_text(annotation_file.r2_key)
             if annotation_text:
-                blocks = json.loads(annotation_text)
-                _logger.debug(f"[get_job_progress] Loaded {len(blocks)} blocks from annotation.json")
+                blocks_payload = json.loads(annotation_text)
+                blocks = _normalize_blocks_payload(blocks_payload)
+                _logger.debug(
+                    f"[get_job_progress] Loaded {len(blocks)} blocks from annotation.json"
+                )
         except Exception as e:
             _logger.warning(f"Failed to load annotation for progress: {e}")
 
     # Fallback на blocks.json если annotation.json недоступен
-    if blocks is None:
+    if not blocks:
         blocks_file = get_job_file_by_type(job_id, "blocks")
         if blocks_file:
             try:
                 r2 = get_r2_storage()
                 blocks_text = r2.download_text(blocks_file.r2_key)
                 if blocks_text:
-                    blocks = json.loads(blocks_text)
-                    _logger.debug(f"[get_job_progress] Loaded {len(blocks)} blocks from blocks.json (fallback)")
+                    blocks_payload = json.loads(blocks_text)
+                    blocks = _normalize_blocks_payload(blocks_payload)
+                    _logger.debug(
+                        "[get_job_progress] Loaded %s blocks from blocks.json (fallback)",
+                        len(blocks),
+                    )
             except Exception as e:
                 _logger.warning(f"Failed to load blocks for progress: {e}")
 
-    if blocks:
+    if blocks is not None:
         result["blocks"] = blocks
         # Логируем количество блоков с ocr_text
-        blocks_with_ocr = sum(1 for b in blocks if b.get("ocr_text"))
-        _logger.debug(f"[get_job_progress] Blocks with ocr_text: {blocks_with_ocr}/{len(blocks)}")
+        blocks_with_ocr = sum(
+            1 for b in blocks if isinstance(b, dict) and b.get("ocr_text")
+        )
+        _logger.debug(
+            "[get_job_progress] Blocks with ocr_text: %s/%s",
+            blocks_with_ocr,
+            len(blocks),
+        )
 
     # Добавляем URLs для кропов если доступны
     r2_public_url = os.getenv("R2_PUBLIC_URL")

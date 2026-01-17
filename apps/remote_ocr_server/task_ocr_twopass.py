@@ -1,6 +1,7 @@
 """Двухпроходный OCR алгоритм (экономия памяти)"""
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -14,6 +15,75 @@ from .storage import Job, update_job_status
 from .task_upload import copy_crops_to_final
 
 logger = logging.getLogger(__name__)
+
+
+def _save_text_block_outputs(work_dir: Path, blocks: list, manifest) -> None:
+    """Save text blocks and strip batches for UI inspection."""
+    if not manifest:
+        return
+
+    from rd_domain.models.enums import BlockType
+
+    text_blocks = [b for b in blocks if b.block_type == BlockType.TEXT]
+    if not text_blocks:
+        return
+
+    text_dir = work_dir / "text_block"
+    text_dir.mkdir(parents=True, exist_ok=True)
+
+    strip_map = {}
+    for strip in manifest.strips or []:
+        for block_id in strip.block_ids:
+            strip_map[block_id] = strip.strip_id
+
+    block_entries = []
+    for block in text_blocks:
+        block_dict = block.to_dict()
+        strip_id = strip_map.get(block.id)
+        if strip_id:
+            block_dict["strip_id"] = strip_id
+        block_entries.append(block_dict)
+
+    blocks_payload = {"blocks": block_entries}
+    blocks_path = text_dir / "blocks.json"
+    with open(blocks_path, "w", encoding="utf-8") as f:
+        json.dump(blocks_payload, f, ensure_ascii=False, indent=2)
+
+    blocks_by_id = {b.id: b for b in text_blocks}
+    batch_entries = []
+    for strip in manifest.strips or []:
+        batch_blocks = []
+        for part in strip.block_parts:
+            block_id = part.get("block_id")
+            block = blocks_by_id.get(block_id)
+            batch_blocks.append(
+                {
+                    "block_id": block_id,
+                    "part_idx": part.get("part_idx", 0),
+                    "total_parts": part.get("total_parts", 1),
+                    "page_index": block.page_index if block else None,
+                    "ocr_text": block.ocr_text if block else "",
+                }
+            )
+        batch_entries.append(
+            {
+                "strip_id": strip.strip_id,
+                "block_ids": strip.block_ids,
+                "block_parts": strip.block_parts,
+                "blocks": batch_blocks,
+            }
+        )
+
+    batches_payload = {"batches": batch_entries}
+    batches_path = text_dir / "batches.json"
+    with open(batches_path, "w", encoding="utf-8") as f:
+        json.dump(batches_payload, f, ensure_ascii=False, indent=2)
+
+    logger.info(
+        "Saved text_block outputs: %s blocks, %s batches",
+        len(block_entries),
+        len(batch_entries),
+    )
 
 
 def run_two_pass_ocr(
@@ -101,6 +171,40 @@ def run_two_pass_ocr(
         processed_strips = 0
         processed_images = 0
 
+        phase_data = {
+            "current_phase": "pass2_strips" if total_strips else "pass2_images",
+            "pass1": {
+                "status": "completed",
+                "total": total_strips + total_images,
+                "processed": total_strips + total_images,
+            },
+            "pass2_strips": {
+                "status": "pending",
+                "total": total_strips,
+                "processed": processed_strips,
+                "strips": strips_info,
+            },
+            "pass2_images": {
+                "status": "pending",
+                "total": total_images,
+                "processed": processed_images,
+                "images": images_info,
+            },
+            "blocks_summary": {
+                "total": len(blocks),
+                "text": len(text_blocks),
+                "image": len(regular_images),
+                "stamp": len(stamp_blocks),
+            },
+        }
+        update_job_status(
+            job.id,
+            "processing",
+            progress=0.4,
+            status_message="PASS 2: Pending",
+            phase_data=phase_data,
+        )
+
         def on_pass2_progress(current, total, block_info: str = None):
             nonlocal processed_strips, processed_images
 
@@ -169,6 +273,7 @@ def run_two_pass_ocr(
 
         # Копируем PDF кропы в crops_final
         copy_crops_to_final(work_dir, blocks)
+        _save_text_block_outputs(work_dir, blocks, manifest)
 
     finally:
         # Очистка временных файлов кропов

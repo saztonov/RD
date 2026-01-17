@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Optional
+
+import httpx
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -12,6 +15,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QSplitter,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -25,6 +29,12 @@ class GroupsTab(QWidget):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._phase_data = {}
+        self._text_blocks = []
+        self._batches = []
+        self._batch_by_strip_id = {}
+        self._r2_base_url = None
+        self._text_block_loaded = False
+        self._last_fetch_attempt = 0.0
         self._setup_ui()
 
     def _setup_ui(self):
@@ -52,6 +62,22 @@ class GroupsTab(QWidget):
         strips_layout.addWidget(self._strips_list)
 
         left_layout.addWidget(self._strips_group)
+
+        # Text blocks section
+        self._text_blocks_group = QGroupBox("Текстовые блоки")
+        text_blocks_layout = QVBoxLayout(self._text_blocks_group)
+
+        self._text_blocks_stats = QLabel("Текстовые блоки: 0")
+        self._text_blocks_stats.setStyleSheet("font-weight: bold;")
+        text_blocks_layout.addWidget(self._text_blocks_stats)
+
+        self._text_blocks_list = QListWidget()
+        self._text_blocks_list.itemSelectionChanged.connect(
+            self._on_text_block_selected
+        )
+        text_blocks_layout.addWidget(self._text_blocks_list)
+
+        left_layout.addWidget(self._text_blocks_group)
 
         # Images секция
         self._images_group = QGroupBox("IMAGE блоки")
@@ -84,22 +110,33 @@ class GroupsTab(QWidget):
         right_layout.addWidget(self._details_label)
 
         # Preview area
-        self._preview_label = QLabel("Preview недоступен")
-        self._preview_label.setAlignment(Qt.AlignCenter)
-        self._preview_label.setStyleSheet(
-            "background-color: #e0e0e0; border: 1px solid #ccc; padding: 20px;"
+        self._preview_text = QTextEdit()
+        self._preview_text.setReadOnly(True)
+        self._preview_text.setPlaceholderText("Текст OCR будет отображен здесь")
+        self._preview_text.setStyleSheet(
+            "background-color: #e0e0e0; border: 1px solid #ccc; padding: 10px;"
         )
-        self._preview_label.setMinimumSize(200, 200)
-        right_layout.addWidget(self._preview_label, 1)
+        self._preview_text.setMinimumSize(200, 200)
+        right_layout.addWidget(self._preview_text, 1)
 
         splitter.addWidget(right_widget)
         splitter.setSizes([400, 400])
 
         layout.addWidget(splitter)
 
-    def update_data(self, phase_data: dict):
+    def update_data(self, phase_data: dict, r2_base_url: Optional[str] = None):
         """Обновить данные групп"""
         self._phase_data = phase_data
+        if r2_base_url and r2_base_url != self._r2_base_url:
+            self._r2_base_url = r2_base_url
+            self._text_block_loaded = False
+            self._text_blocks = []
+            self._batches = []
+            self._batch_by_strip_id = {}
+            self._last_fetch_attempt = 0.0
+
+        if self._r2_base_url and not self._text_block_loaded:
+            self._try_load_text_block_data()
 
         # Логирование входных данных
         logger.info(
@@ -112,6 +149,19 @@ class GroupsTab(QWidget):
         strips = pass2_strips.get("strips", [])
         strips_total = pass2_strips.get("total", 0)
         strips_processed = pass2_strips.get("processed", 0)
+
+        if not strips and self._batches:
+            strips = [
+                {
+                    "strip_id": batch.get("strip_id", ""),
+                    "block_ids": batch.get("block_ids", []),
+                    "status": "completed",
+                }
+                for batch in self._batches
+                if isinstance(batch, dict)
+            ]
+            strips_total = len(strips)
+            strips_processed = len(strips)
 
         logger.info(
             f"[GroupsTab] pass2_strips: total={strips_total}, processed={strips_processed}, "
@@ -126,7 +176,10 @@ class GroupsTab(QWidget):
                 )
 
         self._strips_stats.setText(f"Strips: {strips_processed}/{strips_total}")
-        self._update_strips_list(strips)
+        self._update_strips_list(strips, self._batch_by_strip_id)
+
+        self._text_blocks_stats.setText(f"Текстовые блоки: {len(self._text_blocks)}")
+        self._update_text_blocks_list(self._text_blocks)
 
         # Обновляем images
         pass2_images = phase_data.get("pass2_images", {})
@@ -149,7 +202,58 @@ class GroupsTab(QWidget):
         self._images_stats.setText(f"Images: {images_processed}/{images_total}")
         self._update_images_list(images)
 
-    def _update_strips_list(self, strips: list):
+    def _try_load_text_block_data(self) -> None:
+        now = time.monotonic()
+        if now - self._last_fetch_attempt < 5:
+            return
+        self._last_fetch_attempt = now
+
+        blocks_url = f"{self._r2_base_url}/text_block/blocks.json"
+        batches_url = f"{self._r2_base_url}/text_block/batches.json"
+
+        blocks_data = self._fetch_json(blocks_url)
+        batches_data = self._fetch_json(batches_url)
+
+        if blocks_data is None and batches_data is None:
+            return
+
+        if blocks_data is not None:
+            self._text_blocks = self._extract_list(blocks_data, "blocks")
+
+        if batches_data is not None:
+            self._batches = self._extract_list(batches_data, "batches")
+            self._batch_by_strip_id = {
+                b.get("strip_id"): b
+                for b in self._batches
+                if isinstance(b, dict) and b.get("strip_id")
+            }
+
+        self._text_block_loaded = blocks_data is not None and batches_data is not None
+
+    def _fetch_json(self, url: str):
+        try:
+            resp = httpx.get(url, timeout=10.0)
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            logger.debug("Failed to fetch %s: %s", url, exc)
+            return None
+
+    @staticmethod
+    def _extract_list(payload, key: str) -> list:
+        if payload is None:
+            return []
+        if isinstance(payload, list):
+            return payload
+        if isinstance(payload, dict):
+            items = payload.get(key)
+            if isinstance(items, list):
+                return items
+        return []
+
+    def _update_strips_list(self, strips: list, batch_by_strip_id: dict):
         """Обновить список strips"""
         self._strips_list.clear()
 
@@ -157,12 +261,16 @@ class GroupsTab(QWidget):
             strip_id = strip.get("strip_id", "")
             block_ids = strip.get("block_ids", [])
             status = strip.get("status", "pending")
+            batch = batch_by_strip_id.get(strip_id)
 
             status_icon = self._get_status_icon(status)
             text = f"{status_icon} {strip_id} ({len(block_ids)} блоков)"
 
             item = QListWidgetItem(text)
-            item.setData(Qt.UserRole, strip)
+            item_data = dict(strip)
+            if batch:
+                item_data["batch"] = batch
+            item.setData(Qt.UserRole, item_data)
 
             # Цвет по статусу
             if status == "completed":
@@ -173,6 +281,23 @@ class GroupsTab(QWidget):
                 item.setForeground(Qt.red)
 
             self._strips_list.addItem(item)
+
+    def _update_text_blocks_list(self, blocks: list):
+        """Обновить список текстовых блоков"""
+        self._text_blocks_list.clear()
+
+        for block in blocks:
+            block_id = block.get("id") or block.get("block_id", "")
+            page_idx = block.get("page_index", 0)
+            strip_id = block.get("strip_id")
+
+            text = f"{block_id[:13]} (стр. {page_idx + 1})"
+            if strip_id:
+                text = f"{text} [{strip_id}]"
+
+            item = QListWidgetItem(text)
+            item.setData(Qt.UserRole, block)
+            self._text_blocks_list.addItem(item)
 
     def _update_images_list(self, images: list):
         """Обновить список images"""
@@ -209,6 +334,34 @@ class GroupsTab(QWidget):
             "error": "[ERR]",
         }.get(status, "[?]")
 
+    def _on_text_block_selected(self):
+        """Обработка выбора текстового блока"""
+        items = self._text_blocks_list.selectedItems()
+        if not items:
+            return
+
+        block_data = items[0].data(Qt.UserRole)
+        if not block_data:
+            return
+
+        block_id = block_data.get("id") or block_data.get("block_id", "")
+        page_idx = block_data.get("page_index", 0)
+        strip_id = block_data.get("strip_id")
+        coords = block_data.get("coords_norm") or []
+        ocr_text = block_data.get("ocr_text", "")
+
+        details = [
+            f"Block ID: {block_id}",
+            f"Страница: {page_idx + 1}",
+        ]
+        if strip_id:
+            details.append(f"Strip: {strip_id}")
+        if coords:
+            details.append(f"Координаты: {coords}")
+
+        self._details_label.setText("\n".join(details))
+        self._preview_text.setPlainText(ocr_text or "OCR текст недоступен")
+
     def _on_strip_selected(self):
         """Обработка выбора strip"""
         items = self._strips_list.selectedItems()
@@ -236,6 +389,20 @@ class GroupsTab(QWidget):
 
         self._details_label.setText("\n".join(details))
 
+        batch = strip_data.get("batch")
+        if batch:
+            preview_lines = []
+            for block in batch.get("blocks", []):
+                block_id = block.get("block_id", "")
+                text = block.get("ocr_text", "")
+                if text:
+                    preview_lines.append(f"{block_id}\n{text}")
+                else:
+                    preview_lines.append(f"{block_id}\n[empty]")
+            self._preview_text.setPlainText("\n\n".join(preview_lines))
+        else:
+            self._preview_text.setPlainText("Данные batch пока недоступны.")
+
     def _on_image_selected(self):
         """Обработка выбора image"""
         items = self._images_list.selectedItems()
@@ -257,3 +424,4 @@ class GroupsTab(QWidget):
         ]
 
         self._details_label.setText("\n".join(details))
+        self._preview_text.setPlainText("Для IMAGE блоков текст не отображается.")
