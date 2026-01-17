@@ -318,6 +318,50 @@ class R2SyncStorage:
             logger.error(f"Error generating presigned URL: {e}")
             return None
 
+    def delete_objects_batch(self, keys: List[str]) -> tuple[List[str], List[str]]:
+        """
+        Delete multiple objects in batch.
+
+        Args:
+            keys: List of object keys to delete
+
+        Returns:
+            Tuple of (deleted_keys, failed_keys)
+        """
+        if not keys:
+            return [], []
+
+        deleted_keys: List[str] = []
+        failed_keys: List[str] = []
+
+        # S3 delete_objects supports max 1000 keys per request
+        batch_size = 1000
+        for i in range(0, len(keys), batch_size):
+            batch = keys[i : i + batch_size]
+            try:
+                response = self.s3_client.delete_objects(
+                    Bucket=self.bucket_name,
+                    Delete={"Objects": [{"Key": key} for key in batch], "Quiet": False},
+                )
+
+                # Track deleted objects
+                for obj in response.get("Deleted", []):
+                    deleted_keys.append(obj["Key"])
+
+                # Track errors
+                for err in response.get("Errors", []):
+                    failed_keys.append(err.get("Key", ""))
+                    logger.error(f"Failed to delete {err.get('Key')}: {err.get('Message')}")
+
+            except Exception as e:
+                logger.error(f"Error in batch delete: {e}")
+                failed_keys.extend(batch)
+
+        if deleted_keys:
+            logger.info(f"Batch deleted {len(deleted_keys)} objects from R2")
+
+        return deleted_keys, failed_keys
+
     def delete_by_prefix(self, prefix: str) -> int:
         """Delete all objects with given prefix."""
         keys = self.list_objects(prefix)
