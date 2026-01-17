@@ -383,7 +383,12 @@ def _group_and_merge_strips(
         if crops:
             try:
                 block_ids = [b[0] for b in current_strip_blocks]
-                merged = merge_crops_vertically(crops, gap, block_ids=block_ids)
+                merged = merge_crops_vertically(
+                    crops,
+                    gap,
+                    block_ids=block_ids,
+                    separator_height=config.block_separator_height,
+                )
                 merged.save(strip_path, "PNG", compress_level=compress_level)
                 merged.close()
             except Exception as e:
