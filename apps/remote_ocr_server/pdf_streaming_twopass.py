@@ -31,6 +31,7 @@ from .settings import settings
 _server_config = ProcessingConfig(
     pdf_render_dpi=settings.pdf_render_dpi,
     max_strip_height=settings.max_strip_height,
+    block_separator_height=settings.block_separator_height,
     crop_png_compress=settings.crop_png_compress,
     max_crop_dimension=settings.max_crop_dimension,
     min_crop_dpi=settings.min_crop_dpi,

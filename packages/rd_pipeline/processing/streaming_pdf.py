@@ -309,7 +309,7 @@ def create_block_separator(
 
     max_text_width = max(1, width - (2 * padding_x))
     max_text_height = max(1, actual_height - (2 * padding_y))
-    font_size = max(10, int(max_text_height))
+    font_size = max(20, int(max_text_height))  # Min 20px for OCR visibility
 
     def _load_font(size: int):
         try:
@@ -322,7 +322,7 @@ def create_block_separator(
 
     font = _load_font(font_size)
     if isinstance(font, ImageFont.FreeTypeFont):
-        min_size = 8
+        min_size = 20  # Increased for OCR visibility
         while font_size > min_size:
             bbox = draw.textbbox((0, 0), text, font=font)
             text_width = bbox[2] - bbox[0]

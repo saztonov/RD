@@ -194,6 +194,11 @@ class Settings:
             "max_strip_height", "MAX_STRIP_HEIGHT", 9000, int
         )
     )
+    block_separator_height: int = field(
+        default_factory=lambda: _get_setting(
+            "block_separator_height", "BLOCK_SEPARATOR_HEIGHT", 100, int
+        )
+    )
 
     # ===== CLIP-РЕНДЕРИНГ (для больших листов A0/A1) =====
     max_crop_dimension: int = field(

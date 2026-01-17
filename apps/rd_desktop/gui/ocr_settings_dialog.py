@@ -60,8 +60,9 @@ class OCRSettings:
     use_two_pass_ocr: bool = True
     crop_png_compress: int = 6
     max_ocr_batch_size: int = 5
-    pdf_render_dpi: int = 300
+    pdf_render_dpi: int = 150
     max_strip_height: int = 9000
+    block_separator_height: int = 100
 
     # Очередь
     poll_interval: float = 10.0
@@ -327,6 +328,15 @@ class OCRSettingsDialog(QDialog):
         self.max_strip_height_spin.setToolTip("Максимальная высота полосы (strips)")
         form2.addRow("Макс. высота полосы:", self.max_strip_height_spin)
 
+        self.block_separator_height_spin = QSpinBox()
+        self.block_separator_height_spin.setRange(50, 200)
+        self.block_separator_height_spin.setSuffix(" px")
+        self.block_separator_height_spin.setToolTip(
+            "Высота разделителя между блоками в strip.\n"
+            "Увеличьте, если маркеры BLOCK не распознаются."
+        )
+        form2.addRow("Высота разделителя:", self.block_separator_height_spin)
+
         layout.addWidget(group2)
         layout.addStretch()
 
@@ -522,6 +532,7 @@ class OCRSettingsDialog(QDialog):
         self.max_ocr_batch_spin.setValue(s.max_ocr_batch_size)
         self.pdf_render_dpi_spin.setValue(s.pdf_render_dpi)
         self.max_strip_height_spin.setValue(s.max_strip_height)
+        self.block_separator_height_spin.setValue(s.block_separator_height)
 
         # Queue
         self.poll_interval_spin.setValue(s.poll_interval)
@@ -565,6 +576,7 @@ class OCRSettingsDialog(QDialog):
             max_ocr_batch_size=self.max_ocr_batch_spin.value(),
             pdf_render_dpi=self.pdf_render_dpi_spin.value(),
             max_strip_height=self.max_strip_height_spin.value(),
+            block_separator_height=self.block_separator_height_spin.value(),
             # Queue
             poll_interval=self.poll_interval_spin.value(),
             poll_max_interval=self.poll_max_interval_spin.value(),

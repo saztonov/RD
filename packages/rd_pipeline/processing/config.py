@@ -31,8 +31,8 @@ class ProcessingConfig:
     # Threading
     ocr_threads_per_job: int = 2
 
-    # Block separator
-    block_separator_height: int = 50
+    # Block separator (increased from 50 for better OCR recognition)
+    block_separator_height: int = 100
 
     @property
     def pdf_render_zoom(self) -> float:
