@@ -235,6 +235,11 @@ def get_job_progress_handler(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    _logger.debug(
+        f"[get_job_progress] job_id={job_id[:8]}, status={job.status}, "
+        f"progress={job.progress}, phase_data={bool(job.phase_data)}"
+    )
+
     result = {
         "job_id": job.id,
         "status": job.status,
@@ -245,16 +250,37 @@ def get_job_progress_handler(
     }
 
     # Добавляем информацию о блоках если есть
-    blocks_file = get_job_file_by_type(job_id, "blocks")
-    if blocks_file:
+    # Сначала пробуем annotation.json (с результатами OCR), потом blocks.json
+    blocks = None
+    annotation_file = get_job_file_by_type(job_id, "annotation")
+    if annotation_file:
         try:
             r2 = get_r2_storage()
-            blocks_text = r2.download_text(blocks_file.r2_key)
-            if blocks_text:
-                blocks = json.loads(blocks_text)
-                result["blocks"] = blocks
+            annotation_text = r2.download_text(annotation_file.r2_key)
+            if annotation_text:
+                blocks = json.loads(annotation_text)
+                _logger.debug(f"[get_job_progress] Loaded {len(blocks)} blocks from annotation.json")
         except Exception as e:
-            _logger.warning(f"Failed to load blocks for progress: {e}")
+            _logger.warning(f"Failed to load annotation for progress: {e}")
+
+    # Fallback на blocks.json если annotation.json недоступен
+    if blocks is None:
+        blocks_file = get_job_file_by_type(job_id, "blocks")
+        if blocks_file:
+            try:
+                r2 = get_r2_storage()
+                blocks_text = r2.download_text(blocks_file.r2_key)
+                if blocks_text:
+                    blocks = json.loads(blocks_text)
+                    _logger.debug(f"[get_job_progress] Loaded {len(blocks)} blocks from blocks.json (fallback)")
+            except Exception as e:
+                _logger.warning(f"Failed to load blocks for progress: {e}")
+
+    if blocks:
+        result["blocks"] = blocks
+        # Логируем количество блоков с ocr_text
+        blocks_with_ocr = sum(1 for b in blocks if b.get("ocr_text"))
+        _logger.debug(f"[get_job_progress] Blocks with ocr_text: {blocks_with_ocr}/{len(blocks)}")
 
     # Добавляем URLs для кропов если доступны
     r2_public_url = os.getenv("R2_PUBLIC_URL")

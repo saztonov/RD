@@ -1,6 +1,7 @@
 """Вкладка отображения групп и strips"""
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from PySide6.QtCore import Qt
@@ -14,6 +15,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class GroupsTab(QWidget):
@@ -98,11 +101,29 @@ class GroupsTab(QWidget):
         """Обновить данные групп"""
         self._phase_data = phase_data
 
+        # Логирование входных данных
+        logger.info(
+            f"[GroupsTab.update_data] phase_data: {bool(phase_data)}, "
+            f"keys={list(phase_data.keys()) if phase_data else 'None'}"
+        )
+
         # Обновляем strips
         pass2_strips = phase_data.get("pass2_strips", {})
         strips = pass2_strips.get("strips", [])
         strips_total = pass2_strips.get("total", 0)
         strips_processed = pass2_strips.get("processed", 0)
+
+        logger.info(
+            f"[GroupsTab] pass2_strips: total={strips_total}, processed={strips_processed}, "
+            f"strips_list_len={len(strips) if strips else 0}"
+        )
+
+        if strips:
+            for i, strip in enumerate(strips[:3]):
+                logger.debug(
+                    f"[GroupsTab] Strip {i}: id={strip.get('strip_id', 'N/A')}, "
+                    f"blocks={len(strip.get('block_ids', []))}, status={strip.get('status')}"
+                )
 
         self._strips_stats.setText(f"Strips: {strips_processed}/{strips_total}")
         self._update_strips_list(strips)
@@ -112,6 +133,18 @@ class GroupsTab(QWidget):
         images = pass2_images.get("images", [])
         images_total = pass2_images.get("total", 0)
         images_processed = pass2_images.get("processed", 0)
+
+        logger.info(
+            f"[GroupsTab] pass2_images: total={images_total}, processed={images_processed}, "
+            f"images_list_len={len(images) if images else 0}"
+        )
+
+        if images:
+            for i, img in enumerate(images[:3]):
+                logger.debug(
+                    f"[GroupsTab] Image {i}: block_id={img.get('block_id', 'N/A')[:13] if img.get('block_id') else 'N/A'}, "
+                    f"status={img.get('status')}, is_stamp={img.get('is_stamp')}"
+                )
 
         self._images_stats.setText(f"Images: {images_processed}/{images_total}")
         self._update_images_list(images)

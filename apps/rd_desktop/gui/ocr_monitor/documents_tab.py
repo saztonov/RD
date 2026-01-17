@@ -1,6 +1,7 @@
 """Вкладка отображения итоговых документов"""
 from __future__ import annotations
 
+import logging
 import webbrowser
 from typing import Optional
 
@@ -15,6 +16,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentsTab(QWidget):
@@ -85,7 +88,13 @@ class DocumentsTab(QWidget):
         self._r2_base_url = r2_base_url
         self._job_id = job_id
 
+        logger.info(
+            f"[DocumentsTab.update_data] job_id={job_id[:8] if job_id else 'N/A'}, "
+            f"r2_base_url={r2_base_url[:50] if r2_base_url else 'None'}..."
+        )
+
         if not r2_base_url:
+            logger.debug("[DocumentsTab] r2_base_url не установлен, ожидание завершения")
             self._status_label.setText("Ожидание завершения обработки...")
             self._docs_list.clear()
             self._open_btn.setEnabled(False)

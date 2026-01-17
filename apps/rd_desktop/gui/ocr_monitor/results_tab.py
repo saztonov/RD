@@ -1,6 +1,7 @@
 """Вкладка отображения результатов OCR"""
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 
 from PySide6.QtCore import Qt
@@ -14,6 +15,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ResultsTab(QWidget):
@@ -69,10 +72,28 @@ class ResultsTab(QWidget):
         """Обновить данные результатов"""
         self._blocks_data = blocks
 
+        # Логирование входных данных
+        logger.info(
+            f"[ResultsTab.update_data] Получено блоков: {len(blocks) if blocks else 0}, "
+            f"phase_data: {bool(phase_data)}"
+        )
+
         # Подсчет блоков с результатами
         blocks_with_results = [b for b in blocks if b.get("ocr_text")]
         total_blocks = len(blocks)
         completed_blocks = len(blocks_with_results)
+
+        logger.info(
+            f"[ResultsTab] Блоки с результатами: {completed_blocks}/{total_blocks}"
+        )
+
+        if blocks_with_results:
+            for i, block in enumerate(blocks_with_results[:3]):
+                ocr_text = block.get("ocr_text", "")
+                logger.debug(
+                    f"[ResultsTab] Результат {i}: id={block.get('id', 'N/A')[:13]}, "
+                    f"ocr_text_len={len(ocr_text) if ocr_text else 0}"
+                )
 
         self._stats_label.setText(f"Результаты: {completed_blocks}/{total_blocks}")
 

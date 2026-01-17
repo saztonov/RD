@@ -79,8 +79,8 @@ def main():
     Главная функция - точка входа в приложение
     """
     # Настраиваем логирование
-    # Для отладки используйте logging.DEBUG
-    setup_logging(log_level=logging.INFO)
+    # DEBUG для детального логирования OCR Monitor
+    setup_logging(log_level=logging.DEBUG)
 
     logger = logging.getLogger(__name__)
     

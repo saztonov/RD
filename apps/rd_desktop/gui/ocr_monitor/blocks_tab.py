@@ -1,6 +1,7 @@
 """Вкладка отображения блоков"""
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from typing import List, Optional
 
@@ -15,6 +16,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BlocksTab(QWidget):
@@ -86,6 +89,20 @@ class BlocksTab(QWidget):
         self._blocks_data = blocks
         self._phase_data = phase_data
 
+        # Логирование входных данных
+        logger.info(
+            f"[BlocksTab.update_data] Получено блоков: {len(blocks) if blocks else 0}, "
+            f"phase_data: {bool(phase_data)}"
+        )
+
+        if blocks:
+            # Логируем первые 3 блока для отладки
+            for i, block in enumerate(blocks[:3]):
+                logger.debug(
+                    f"[BlocksTab] Блок {i}: id={block.get('id', 'N/A')[:13]}, "
+                    f"type={block.get('block_type')}, page={block.get('page_index')}"
+                )
+
         # Статистика
         summary = phase_data.get("blocks_summary", {})
         total = summary.get("total", len(blocks))
@@ -93,11 +110,17 @@ class BlocksTab(QWidget):
         image_count = summary.get("image", 0)
         stamp_count = summary.get("stamp", 0)
 
+        logger.debug(
+            f"[BlocksTab] blocks_summary из phase_data: total={total}, "
+            f"text={text_count}, image={image_count}, stamp={stamp_count}"
+        )
+
         stats_text = f"Блоки: {total} (TEXT: {text_count}, IMAGE: {image_count}, STAMP: {stamp_count})"
         self._stats_label.setText(stats_text)
 
         # Собираем статусы блоков из phase_data
         block_statuses = self._get_block_statuses(phase_data)
+        logger.debug(f"[BlocksTab] Статусы блоков: {len(block_statuses)} записей")
 
         # Обновляем дерево
         self._tree.clear()

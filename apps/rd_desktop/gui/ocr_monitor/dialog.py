@@ -26,6 +26,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _safe_len(obj) -> int:
+    """Безопасно получить длину объекта"""
+    if obj is None:
+        return 0
+    try:
+        return len(obj)
+    except TypeError:
+        return 0
+
+
 class OCRMonitorDialog(QDialog):
     """Окно мониторинга процесса OCR"""
 
@@ -130,22 +140,51 @@ class OCRMonitorDialog(QDialog):
         """Получить прогресс задачи"""
         client = self._get_client()
         if not client:
+            logger.warning(f"[OCRMonitor] Клиент не доступен для job_id={self.job_id[:8]}")
             return
 
         try:
             progress_data = client.get_job_progress(self.job_id)
             self._progress_data = progress_data
+
+            # Детальное логирование полученных данных
+            status = progress_data.get("status", "unknown")
+            progress = progress_data.get("progress", 0)
+            blocks = progress_data.get("blocks") or []
+            phase_data = progress_data.get("phase_data") or {}
+
+            logger.info(
+                f"[OCRMonitor] job_id={self.job_id[:8]}: "
+                f"status={status}, progress={progress:.1%}, "
+                f"blocks_count={_safe_len(blocks)}, "
+                f"phase_data_keys={list(phase_data.keys()) if phase_data else 'None'}"
+            )
+
+            # Логируем детали phase_data
+            if phase_data:
+                current_phase = phase_data.get("current_phase", "unknown")
+                blocks_summary = phase_data.get("blocks_summary", {})
+                pass2_strips = phase_data.get("pass2_strips", {})
+                pass2_images = phase_data.get("pass2_images", {})
+
+                logger.debug(
+                    f"[OCRMonitor] phase_data: current_phase={current_phase}, "
+                    f"blocks_summary={blocks_summary}, "
+                    f"strips_count={_safe_len(pass2_strips.get('strips'))}, "
+                    f"images_count={_safe_len(pass2_images.get('images'))}"
+                )
+
             self._update_ui(progress_data)
 
             # Остановить polling если задача завершена
-            status = progress_data.get("status")
             if status in ("done", "error"):
                 self._poll_timer.stop()
+                logger.info(f"[OCRMonitor] Polling остановлен: status={status}")
                 if status == "done":
                     self._open_folder_btn.setEnabled(True)
 
         except Exception as e:
-            logger.warning(f"Ошибка получения прогресса: {e}")
+            logger.warning(f"[OCRMonitor] Ошибка получения прогресса: {e}", exc_info=True)
 
     def _update_ui(self, data: dict):
         """Обновить UI по данным прогресса"""
@@ -155,6 +194,11 @@ class OCRMonitorDialog(QDialog):
         phase_data = data.get("phase_data") or {}
         blocks = data.get("blocks") or []
         error_message = data.get("error_message")
+
+        logger.debug(
+            f"[OCRMonitor._update_ui] Обновление UI: blocks={len(blocks)}, "
+            f"phase_data={bool(phase_data)}, status={status}"
+        )
 
         # Обновляем статус
         status_text = self._get_status_text(status, status_message, error_message)
