@@ -3,7 +3,10 @@ services:
     build:
       context: .
       dockerfile: apps/remote_ocr_server/Dockerfile
-    command: uvicorn apps.remote_ocr_server.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn apps.remote_ocr_server.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/apps --reload-dir /app/packages
+    volumes:
+      - ./apps:/app/apps
+      - ./packages:/app/packages
     ports:
       - "${REMOTE_OCR_BIND_ADDR:-127.0.0.1}:${REMOTE_OCR_PORT:-18000}:8000"
     env_file:
@@ -11,6 +14,8 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+      - PYTHONPATH=/app:/app/packages
+      - WATCHFILES_FORCE_POLLING=1
     depends_on:
       redis:
         condition: service_healthy
@@ -51,6 +56,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+      - PYTHONPATH=/app:/app/packages
     depends_on:
       redis:
         condition: service_healthy
@@ -77,6 +83,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+      - PYTHONPATH=/app:/app/packages
     depends_on:
       redis:
         condition: service_healthy
@@ -103,6 +110,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+      - PYTHONPATH=/app:/app/packages
     depends_on:
       redis:
         condition: service_healthy
@@ -129,6 +137,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+      - PYTHONPATH=/app:/app/packages
     depends_on:
       redis:
         condition: service_healthy
@@ -155,6 +164,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+      - PYTHONPATH=/app:/app/packages
     depends_on:
       redis:
         condition: service_healthy

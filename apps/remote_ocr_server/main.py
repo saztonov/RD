@@ -79,5 +79,13 @@ app.include_router(storage_router)
 
 if __name__ == "__main__":
     import uvicorn
+    from pathlib import Path
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    project_root = Path(__file__).resolve().parents[2]
+    uvicorn.run(
+        "apps.remote_ocr_server.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_dirs=[str(project_root)],
+    )

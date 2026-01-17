@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
+from PySide6.QtNetwork import QAbstractSocket
 from PySide6.QtWebSockets import QWebSocket
 
 logger = logging.getLogger(__name__)
@@ -138,7 +139,7 @@ class SupabaseRealtimeClient(QObject):
         self._reconnect_timer.stop()
         self._heartbeat_timer.stop()
 
-        if self._websocket.state() != QWebSocket.SocketState.UnconnectedState:
+        if self._websocket.state() != QAbstractSocket.SocketState.UnconnectedState:
             self._websocket.close()
 
         self._subscriptions.clear()
@@ -191,7 +192,7 @@ class SupabaseRealtimeClient(QObject):
 
     def _send_message(self, message: dict):
         """Send JSON message over WebSocket."""
-        if self._websocket.state() == QWebSocket.SocketState.ConnectedState:
+        if self._websocket.state() == QAbstractSocket.SocketState.ConnectedState:
             text = json.dumps(message)
             self._websocket.sendTextMessage(text)
             logger.debug(f"Sent: {message.get('event', 'unknown')} to {message.get('topic', 'unknown')}")

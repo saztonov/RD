@@ -4,7 +4,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/packages
 
 # Dependencies for PyMuPDF + curl for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -32,7 +32,24 @@ pytest -v                             # Verbose output
 
 ### Remote OCR Server
 
-#### Production
+#### Quick Start (Windows PowerShell)
+
+**Option 1: Separate windows (Recommended)**
+```powershell
+.\start-server.ps1   # Start in separate windows (shows logs)
+.\stop-server.ps1    # Stop all
+```
+
+**Option 2: Background jobs**
+```powershell
+.\start-all.ps1      # Start in background
+.\status.ps1         # Check status
+.\stop-all.ps1       # Stop all
+```
+
+See `README_SERVER.md` for details.
+
+#### Docker Compose (Production)
 ```bash
 cp env.example .env              # Configure environment variables
 docker compose up -d --build     # Start server (listens on 127.0.0.1:18000)
