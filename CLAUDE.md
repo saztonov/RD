@@ -43,6 +43,18 @@ docker compose up -d --build     # Start server (listens on 127.0.0.1:18000)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
+#### Minimal (8GB RAM machines)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+```
+
+**RAM requirements:**
+- Production: ~12GB (5 specialized workers)
+- Development: ~5GB (1 universal worker, concurrency=2)
+- Minimal: ~2.5GB (1 worker, concurrency=1)
+
+**Desktop client connection:** Set `REMOTE_OCR_BASE_URL=http://localhost:18000` in `.env`
+
 #### Manual (without Docker)
 ```bash
 redis-server                                                              # Terminal 1

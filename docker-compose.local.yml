@@ -1,12 +1,10 @@
-# Development override для локального Docker Desktop
-# Использование: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Минимальная конфигурация для машин с 8GB RAM
+# Использование: docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 #
-# Изменения относительно production:
-# - hot reload для web (--reload)
-# - volume mount для кода
-# - один universal worker вместо 5 специализированных
-# - сниженные лимиты памяти (~5GB total)
-# - Redis порт открыт для отладки
+# Суммарное потребление: ~2.5GB RAM
+# - web: 384m
+# - redis: 64m
+# - worker: 2G (concurrency=1)
 
 services:
   web:
@@ -16,21 +14,21 @@ services:
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
     restart: "no"
-    mem_limit: 512m
+    mem_limit: 384m
 
   redis:
     ports:
       - "6379:6379"
     restart: "no"
-    mem_limit: 128m
+    mem_limit: 64m
 
-  # Universal worker для всех очередей (заменяет 5 production workers)
+  # Минимальный worker для всех очередей
   worker:
     command: >
       celery -A apps.remote_ocr_server.celery_app worker
       -Q celery,ocr_meta,ocr_text,ocr_image,ocr_stamp
       --loglevel=info
-      --concurrency=2
+      --concurrency=1
     volumes:
       - .:/app
     environment:
@@ -39,8 +37,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 4G
+          cpus: '1.0'
+          memory: 2G
 
   # Отключаем специализированные workers
   worker-meta:
