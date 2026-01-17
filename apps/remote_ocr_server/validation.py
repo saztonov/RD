@@ -48,10 +48,10 @@ async def validate_pdf_upload(
     Raises:
         ValidationError: If validation fails
     """
-    # Get file size
-    await upload_file.seek(0, 2)  # SEEK_END
-    file_size = await upload_file.tell()
-    await upload_file.seek(0)
+    # Get file size (use underlying file for full seek semantics)
+    upload_file.file.seek(0, 2)  # SEEK_END
+    file_size = upload_file.file.tell()
+    upload_file.file.seek(0)
 
     # Size validation
     if file_size < MIN_PDF_SIZE:
