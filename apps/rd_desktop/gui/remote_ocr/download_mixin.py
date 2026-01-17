@@ -11,8 +11,16 @@ class DownloadMixin:
 
     def _auto_download_result(self, job_id: str):
         """Запустить скачивание результата из R2 в папку текущего документа"""
+        # Защита от повторного запуска (polling + realtime гонка)
+        if job_id in self._downloaded_jobs:
+            logger.debug(f"Скачивание {job_id[:8]} уже запущено, пропуск")
+            return
+        self._downloaded_jobs.add(job_id)
+        logger.info(f"Запуск скачивания результата: {job_id[:8]}")
+
         client = self._get_client()
         if client is None:
+            self._downloaded_jobs.discard(job_id)
             return
 
         try:
@@ -21,6 +29,7 @@ class DownloadMixin:
 
             if not r2_prefix:
                 logger.warning(f"Задача {job_id} не имеет r2_prefix")
+                self._downloaded_jobs.discard(job_id)
                 return
 
             # Получаем путь к текущему PDF из main_window
@@ -29,6 +38,7 @@ class DownloadMixin:
                 logger.warning(
                     f"Нет открытого документа для сохранения результатов job {job_id}"
                 )
+                self._downloaded_jobs.discard(job_id)
                 return
 
             pdf_path = Path(pdf_path)
@@ -41,6 +51,7 @@ class DownloadMixin:
 
         except Exception as e:
             logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")
+            self._downloaded_jobs.discard(job_id)
 
     def _download_result_bg(self, job_id: str, r2_prefix: str, extract_dir: str):
         """Фоновое скачивание результата в папку текущего документа."""

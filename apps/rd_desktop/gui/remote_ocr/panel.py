@@ -296,6 +296,9 @@ class RemoteOCRPanel(
             dialog.close()
             self._download_dialog = None
 
+        # Удаляем из downloaded чтобы можно было повторить
+        self._downloaded_jobs.discard(job_id)
+
         QMessageBox.critical(
             self, "Ошибка загрузки", f"Не удалось скачать файлы:\n{error_msg}"
         )
