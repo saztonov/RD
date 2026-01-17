@@ -180,7 +180,10 @@ class RemoteOCRPanel(
     def _get_selected_blocks(self):
         """Получить все блоки для OCR"""
         blocks = []
-        if self.main_window.annotation_document:
+        if hasattr(self.main_window, "page_viewer") and self.main_window.page_viewer:
+            blocks = self.main_window.page_viewer.get_selected_blocks()
+
+        if not blocks and self.main_window.annotation_document:
             for page in self.main_window.annotation_document.pages:
                 if page.blocks:
                     blocks.extend(page.blocks)
