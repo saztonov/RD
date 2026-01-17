@@ -40,7 +40,10 @@
       "Bash(%PYTHONPATH%)",
       "Bash(PYTHONPATH=\"packages:.\" python -c:*)",
       "Bash(GIT_TERMINAL_PROMPT=0 git push:*)",
-      "Bash(copy \"c:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\services\\\\remote_ocr\\\\server\\\\fonts\\\\DejaVuSansMono.ttf\" \"c:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\packages\\\\rd_pipeline\\\\processing\\\\fonts\"\")"
+      "Bash(copy \"c:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\services\\\\remote_ocr\\\\server\\\\fonts\\\\DejaVuSansMono.ttf\" \"c:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\packages\\\\rd_pipeline\\\\processing\\\\fonts\"\")",
+      "Bash(git fetch:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(findstr:*)"
     ]
   }
 }
