@@ -31,13 +31,16 @@ class JobOperationsMixin:
 
             # 1. Удаляем кропы из R2 и локального кэша
             crops_prefix = f"{r2_prefix}/crops/{pdf_stem}/"
-            crop_keys = r2.list_files(crops_prefix)
+            crop_keys = r2.list_objects(crops_prefix)
 
+            deleted_keys = []
             if crop_keys:
-                deleted_keys, errors = r2.delete_objects_batch(crop_keys)
+                for key in crop_keys:
+                    if r2.delete_object(key):
+                        deleted_keys.append(key)
+                    else:
+                        logger.warning(f"Failed to delete crop from R2: {key}")
                 logger.debug(f"Deleted {len(deleted_keys)} crops from R2")
-                if errors:
-                    logger.warning(f"Failed to delete {len(errors)} crops from R2")
 
                 if projects_dir:
                     for crop_key in deleted_keys:
