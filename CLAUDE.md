@@ -174,6 +174,8 @@ Docker-specific (optional):
 
 From `.cursorrules`: Be maximally concise. Code only in code blocks. Changes as minimal diff. No explanations unless asked. If text needed - max 5 points, each ≤ 12 words.
 
+**Git workflow**: После внесения изменений в код ВСЕГДА делай коммит и пуш. Сообщения коммитов пиши на русском языке.
+
 ## Language
 
 Все планы, ответы и объяснения генерируй на русском языке.
