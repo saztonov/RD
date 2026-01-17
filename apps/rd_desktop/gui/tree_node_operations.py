@@ -69,6 +69,20 @@ STATUS_COLORS = {
 class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixin):
     """Миксин для CRUD операций с узлами дерева"""
 
+    def _pause_timers(self):
+        """Приостановить фоновые таймеры на время показа диалога"""
+        if hasattr(self, '_auto_refresh_timer') and self._auto_refresh_timer:
+            self._auto_refresh_timer.stop()
+        if hasattr(self, '_pdf_status_refresh_timer') and self._pdf_status_refresh_timer:
+            self._pdf_status_refresh_timer.stop()
+
+    def _resume_timers(self):
+        """Возобновить фоновые таймеры после закрытия диалога"""
+        if hasattr(self, '_auto_refresh_timer') and self._auto_refresh_timer:
+            self._auto_refresh_timer.start(30000)
+        if hasattr(self, '_pdf_status_refresh_timer') and self._pdf_status_refresh_timer:
+            self._pdf_status_refresh_timer.start(30000)
+
     def _check_name_unique(
         self, parent_id: str, name: str, exclude_node_id: str = None
     ) -> bool:
@@ -81,17 +95,21 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
 
     def _create_project(self):
         """Создать новый проект (корневая папка)"""
-        name, ok = QInputDialog.getText(self, "Новый проект", "Название проекта:")
-        if ok and name.strip():
-            try:
-                # Создаём корневую папку (FOLDER вместо PROJECT)
-                node = self.client.create_node(NodeType.FOLDER, name.strip())
-                item = self._item_builder.create_item(node)
-                self.tree.addTopLevelItem(item)
-                self._item_builder.add_placeholder(item, node)
-                self.tree.setCurrentItem(item)
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", str(e))
+        self._pause_timers()
+        try:
+            name, ok = QInputDialog.getText(self, "Новый проект", "Название проекта:")
+            if ok and name.strip():
+                try:
+                    # Создаём корневую папку (FOLDER вместо PROJECT)
+                    node = self.client.create_node(NodeType.FOLDER, name.strip())
+                    item = self._item_builder.create_item(node)
+                    self.tree.addTopLevelItem(item)
+                    self._item_builder.add_placeholder(item, node)
+                    self.tree.setCurrentItem(item)
+                except Exception as e:
+                    QMessageBox.critical(self, "Ошибка", str(e))
+        finally:
+            self._resume_timers()
 
     def _create_child_node(self, parent_node: TreeNode, child_type):
         """Создать дочерний узел"""
@@ -108,34 +126,38 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
 
         from apps.rd_desktop.gui.create_node_dialog import CreateNodeDialog
 
-        dialog = CreateNodeDialog(self, child_type, stage_types, section_types)
-        if dialog.exec_() == QDialog.Accepted:
-            name, code = dialog.get_data()
-            logger.debug(f"Dialog result: name={name}, code={code}")
-            if name:
-                try:
-                    logger.debug(
-                        f"Creating node: type={child_type}, name={name}, parent={parent_node.id}, code={code}"
-                    )
-                    node = self.client.create_node(
-                        child_type, name, parent_node.id, code
-                    )
-                    logger.debug(f"Node created: {node.id}")
-                    parent_item = self._node_map.get(parent_node.id)
-                    if parent_item:
-                        if parent_item.childCount() == 1:
-                            child = parent_item.child(0)
-                            if child.data(0, self._get_user_role()) == "placeholder":
-                                parent_item.removeChild(child)
+        self._pause_timers()
+        try:
+            dialog = CreateNodeDialog(self, child_type, stage_types, section_types)
+            if dialog.exec_() == QDialog.Accepted:
+                name, code = dialog.get_data()
+                logger.debug(f"Dialog result: name={name}, code={code}")
+                if name:
+                    try:
+                        logger.debug(
+                            f"Creating node: type={child_type}, name={name}, parent={parent_node.id}, code={code}"
+                        )
+                        node = self.client.create_node(
+                            child_type, name, parent_node.id, code
+                        )
+                        logger.debug(f"Node created: {node.id}")
+                        parent_item = self._node_map.get(parent_node.id)
+                        if parent_item:
+                            if parent_item.childCount() == 1:
+                                child = parent_item.child(0)
+                                if child.data(0, self._get_user_role()) == "placeholder":
+                                    parent_item.removeChild(child)
 
-                        child_item = self._item_builder.create_item(node)
-                        parent_item.addChild(child_item)
-                        self._item_builder.add_placeholder(child_item, node)
-                        parent_item.setExpanded(True)
-                        self.tree.setCurrentItem(child_item)
-                except Exception as e:
-                    logger.exception(f"Error creating child node: {e}")
-                    QMessageBox.critical(self, "Ошибка", str(e))
+                            child_item = self._item_builder.create_item(node)
+                            parent_item.addChild(child_item)
+                            self._item_builder.add_placeholder(child_item, node)
+                            parent_item.setExpanded(True)
+                            self.tree.setCurrentItem(child_item)
+                    except Exception as e:
+                        logger.exception(f"Error creating child node: {e}")
+                        QMessageBox.critical(self, "Ошибка", str(e))
+        finally:
+            self._resume_timers()
 
     def _get_user_role(self):
         """Получить Qt.UserRole"""
@@ -396,88 +418,92 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
         if self._check_document_locked(node):
             return
 
-        new_name, ok = QInputDialog.getText(
-            self, "Переименовать", "Новое название:", text=node.name
-        )
-        if ok and new_name.strip() and new_name.strip() != node.name:
-            try:
-                new_name_clean = new_name.strip()
+        self._pause_timers()
+        try:
+            new_name, ok = QInputDialog.getText(
+                self, "Переименовать", "Новое название:", text=node.name
+            )
+            if ok and new_name.strip() and new_name.strip() != node.name:
+                try:
+                    new_name_clean = new_name.strip()
 
-                # Проверка уникальности имени в папке
-                if node.parent_id and not self._check_name_unique(
-                    node.parent_id, new_name_clean, node.id
-                ):
-                    QMessageBox.warning(
-                        self,
-                        "Ошибка",
-                        f"Элемент с именем '{new_name_clean}' уже существует в этой папке",
-                    )
-                    return
-
-                # Для документов проверяем и добавляем расширение .pdf
-                if node.node_type == NodeType.DOCUMENT:
-                    # Проверяем что имя заканчивается на .pdf (регистронезависимо)
-                    if not new_name_clean.lower().endswith(".pdf"):
-                        # Автоматически добавляем расширение .pdf
-                        new_name_clean = f"{new_name_clean}.pdf"
-                        logger.info(
-                            f"Added .pdf extension to document name: {new_name_clean}"
+                    # Проверка уникальности имени в папке
+                    if node.parent_id and not self._check_name_unique(
+                        node.parent_id, new_name_clean, node.id
+                    ):
+                        QMessageBox.warning(
+                            self,
+                            "Ошибка",
+                            f"Элемент с именем '{new_name_clean}' уже существует в этой папке",
                         )
-                        # Повторная проверка уникальности после добавления расширения
-                        if node.parent_id and not self._check_name_unique(
-                            node.parent_id, new_name_clean, node.id
-                        ):
-                            QMessageBox.warning(
-                                self,
-                                "Ошибка",
-                                f"Элемент с именем '{new_name_clean}' уже существует в этой папке",
+                        return
+
+                    # Для документов проверяем и добавляем расширение .pdf
+                    if node.node_type == NodeType.DOCUMENT:
+                        # Проверяем что имя заканчивается на .pdf (регистронезависимо)
+                        if not new_name_clean.lower().endswith(".pdf"):
+                            # Автоматически добавляем расширение .pdf
+                            new_name_clean = f"{new_name_clean}.pdf"
+                            logger.info(
+                                f"Added .pdf extension to document name: {new_name_clean}"
                             )
-                            return
+                            # Повторная проверка уникальности после добавления расширения
+                            if node.parent_id and not self._check_name_unique(
+                                node.parent_id, new_name_clean, node.id
+                            ):
+                                QMessageBox.warning(
+                                    self,
+                                    "Ошибка",
+                                    f"Элемент с именем '{new_name_clean}' уже существует в этой папке",
+                                )
+                                return
 
-                # Для документов переименовываем файл в R2 (асинхронно)
-                if node.node_type == NodeType.DOCUMENT:
-                    old_r2_key = node.attributes.get("r2_key", "")
+                    # Для документов переименовываем файл в R2 (асинхронно)
+                    if node.node_type == NodeType.DOCUMENT:
+                        old_r2_key = node.attributes.get("r2_key", "")
 
-                    # Закрываем файл если он открыт в редакторе
-                    self._close_if_open(old_r2_key)
+                        # Закрываем файл если он открыт в редакторе
+                        self._close_if_open(old_r2_key)
 
-                    if old_r2_key:
-                        from pathlib import PurePosixPath
+                        if old_r2_key:
+                            from pathlib import PurePosixPath
 
-                        # Формируем новый ключ (меняем только имя файла)
-                        old_path = PurePosixPath(old_r2_key)
-                        new_r2_key = str(old_path.parent / new_name_clean)
+                            # Формируем новый ключ (меняем только имя файла)
+                            old_path = PurePosixPath(old_r2_key)
+                            new_r2_key = str(old_path.parent / new_name_clean)
 
-                        # 1. СИНХРОННО: Обновляем локальный кэш и метаданные (мгновенно)
-                        self._rename_cache_file(old_r2_key, new_r2_key)
-                        self._update_node_file_r2_key(node.id, old_r2_key, new_r2_key)
+                            # 1. СИНХРОННО: Обновляем локальный кэш и метаданные (мгновенно)
+                            self._rename_cache_file(old_r2_key, new_r2_key)
+                            self._update_node_file_r2_key(node.id, old_r2_key, new_r2_key)
 
-                        # Переименовываем связанные файлы (локально + async R2)
-                        self._rename_related_files(old_r2_key, new_r2_key, node.id)
+                            # Переименовываем связанные файлы (локально + async R2)
+                            self._rename_related_files(old_r2_key, new_r2_key, node.id)
 
-                        # Обновляем метаданные в БД
-                        node.attributes["r2_key"] = new_r2_key
-                        node.attributes["original_name"] = new_name_clean
-                        self.client.update_node(
-                            node.id,
-                            name=new_name_clean,
-                            attributes=node.attributes,
-                        )
+                            # Обновляем метаданные в БД
+                            node.attributes["r2_key"] = new_r2_key
+                            node.attributes["original_name"] = new_name_clean
+                            self.client.update_node(
+                                node.id,
+                                name=new_name_clean,
+                                attributes=node.attributes,
+                            )
 
-                        # 2. АСИНХРОННО: Переименовываем основной PDF в R2
-                        self._start_async_main_file_rename(old_r2_key, new_r2_key)
+                            # 2. АСИНХРОННО: Переименовываем основной PDF в R2
+                            self._start_async_main_file_rename(old_r2_key, new_r2_key)
+                        else:
+                            self.client.update_node(node.id, name=new_name_clean)
                     else:
                         self.client.update_node(node.id, name=new_name_clean)
-                else:
-                    self.client.update_node(node.id, name=new_name_clean)
 
-                # Обновляем UI
-                node.name = new_name_clean
-                from PySide6.QtCore import QTimer
+                    # Обновляем UI
+                    node.name = new_name_clean
+                    from PySide6.QtCore import QTimer
 
-                QTimer.singleShot(100, self._refresh_tree)
-            except Exception as e:
-                QMessageBox.critical(self, "Ошибка", str(e))
+                    QTimer.singleShot(100, self._refresh_tree)
+                except Exception as e:
+                    QMessageBox.critical(self, "Ошибка", str(e))
+        finally:
+            self._resume_timers()
 
     def _set_status(self, node: TreeNode, status: NodeStatus):
         """Установить статус узла"""
