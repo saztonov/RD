@@ -2540,6 +2540,13 @@
         "default": null,
         "data_type": "jsonb",
         "is_nullable": true
+      },
+      {
+        "name": "phase_data",
+        "comment": "Детальная информация о фазах обработки OCR (PASS1, PASS2 strips/images)",
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
       }
     ],
     "constraints": [
@@ -4158,9 +4165,9 @@
       }
     ]
   },
-  "realtime.messages_2026_01_07": {
+  "realtime.messages_2026_01_16": {
     "schema": "realtime",
-    "name": "messages_2026_01_07",
+    "name": "messages_2026_01_16",
     "comment": null,
     "columns": [
       {
@@ -4222,7 +4229,7 @@
     ],
     "constraints": [
       {
-        "name": "messages_2026_01_07_pkey",
+        "name": "messages_2026_01_16_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
         "foreign_table": null,
@@ -4230,7 +4237,7 @@
         "foreign_table_schema": null
       },
       {
-        "name": "messages_2026_01_07_pkey",
+        "name": "messages_2026_01_16_pkey",
         "type": "PRIMARY KEY",
         "column": "inserted_at",
         "foreign_table": null,
@@ -4239,9 +4246,9 @@
       }
     ]
   },
-  "realtime.messages_2026_01_08": {
+  "realtime.messages_2026_01_17": {
     "schema": "realtime",
-    "name": "messages_2026_01_08",
+    "name": "messages_2026_01_17",
     "comment": null,
     "columns": [
       {
@@ -4303,7 +4310,7 @@
     ],
     "constraints": [
       {
-        "name": "messages_2026_01_08_pkey",
+        "name": "messages_2026_01_17_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
         "foreign_table": null,
@@ -4311,7 +4318,7 @@
         "foreign_table_schema": null
       },
       {
-        "name": "messages_2026_01_08_pkey",
+        "name": "messages_2026_01_17_pkey",
         "type": "PRIMARY KEY",
         "column": "inserted_at",
         "foreign_table": null,
@@ -4320,9 +4327,9 @@
       }
     ]
   },
-  "realtime.messages_2026_01_09": {
+  "realtime.messages_2026_01_18": {
     "schema": "realtime",
-    "name": "messages_2026_01_09",
+    "name": "messages_2026_01_18",
     "comment": null,
     "columns": [
       {
@@ -4384,7 +4391,7 @@
     ],
     "constraints": [
       {
-        "name": "messages_2026_01_09_pkey",
+        "name": "messages_2026_01_18_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
         "foreign_table": null,
@@ -4392,7 +4399,7 @@
         "foreign_table_schema": null
       },
       {
-        "name": "messages_2026_01_09_pkey",
+        "name": "messages_2026_01_18_pkey",
         "type": "PRIMARY KEY",
         "column": "inserted_at",
         "foreign_table": null,
@@ -4401,9 +4408,9 @@
       }
     ]
   },
-  "realtime.messages_2026_01_10": {
+  "realtime.messages_2026_01_19": {
     "schema": "realtime",
-    "name": "messages_2026_01_10",
+    "name": "messages_2026_01_19",
     "comment": null,
     "columns": [
       {
@@ -4465,7 +4472,7 @@
     ],
     "constraints": [
       {
-        "name": "messages_2026_01_10_pkey",
+        "name": "messages_2026_01_19_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
         "foreign_table": null,
@@ -4473,7 +4480,7 @@
         "foreign_table_schema": null
       },
       {
-        "name": "messages_2026_01_10_pkey",
+        "name": "messages_2026_01_19_pkey",
         "type": "PRIMARY KEY",
         "column": "inserted_at",
         "foreign_table": null,
@@ -4482,9 +4489,9 @@
       }
     ]
   },
-  "realtime.messages_2026_01_11": {
+  "realtime.messages_2026_01_20": {
     "schema": "realtime",
-    "name": "messages_2026_01_11",
+    "name": "messages_2026_01_20",
     "comment": null,
     "columns": [
       {
@@ -4546,7 +4553,7 @@
     ],
     "constraints": [
       {
-        "name": "messages_2026_01_11_pkey",
+        "name": "messages_2026_01_20_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
         "foreign_table": null,
@@ -4554,169 +4561,7 @@
         "foreign_table_schema": null
       },
       {
-        "name": "messages_2026_01_11_pkey",
-        "type": "PRIMARY KEY",
-        "column": "inserted_at",
-        "foreign_table": null,
-        "foreign_column": null,
-        "foreign_table_schema": null
-      }
-    ]
-  },
-  "realtime.messages_2026_01_12": {
-    "schema": "realtime",
-    "name": "messages_2026_01_12",
-    "comment": null,
-    "columns": [
-      {
-        "name": "topic",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": false
-      },
-      {
-        "name": "extension",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": false
-      },
-      {
-        "name": "payload",
-        "comment": null,
-        "default": null,
-        "data_type": "jsonb",
-        "is_nullable": true
-      },
-      {
-        "name": "event",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "private",
-        "comment": null,
-        "default": "false",
-        "data_type": "boolean",
-        "is_nullable": true
-      },
-      {
-        "name": "updated_at",
-        "comment": null,
-        "default": "now()",
-        "data_type": "timestamp without time zone",
-        "is_nullable": false
-      },
-      {
-        "name": "inserted_at",
-        "comment": null,
-        "default": "now()",
-        "data_type": "timestamp without time zone",
-        "is_nullable": false
-      },
-      {
-        "name": "id",
-        "comment": null,
-        "default": "gen_random_uuid()",
-        "data_type": "uuid",
-        "is_nullable": false
-      }
-    ],
-    "constraints": [
-      {
-        "name": "messages_2026_01_12_pkey",
-        "type": "PRIMARY KEY",
-        "column": "id",
-        "foreign_table": null,
-        "foreign_column": null,
-        "foreign_table_schema": null
-      },
-      {
-        "name": "messages_2026_01_12_pkey",
-        "type": "PRIMARY KEY",
-        "column": "inserted_at",
-        "foreign_table": null,
-        "foreign_column": null,
-        "foreign_table_schema": null
-      }
-    ]
-  },
-  "realtime.messages_2026_01_13": {
-    "schema": "realtime",
-    "name": "messages_2026_01_13",
-    "comment": null,
-    "columns": [
-      {
-        "name": "topic",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": false
-      },
-      {
-        "name": "extension",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": false
-      },
-      {
-        "name": "payload",
-        "comment": null,
-        "default": null,
-        "data_type": "jsonb",
-        "is_nullable": true
-      },
-      {
-        "name": "event",
-        "comment": null,
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "private",
-        "comment": null,
-        "default": "false",
-        "data_type": "boolean",
-        "is_nullable": true
-      },
-      {
-        "name": "updated_at",
-        "comment": null,
-        "default": "now()",
-        "data_type": "timestamp without time zone",
-        "is_nullable": false
-      },
-      {
-        "name": "inserted_at",
-        "comment": null,
-        "default": "now()",
-        "data_type": "timestamp without time zone",
-        "is_nullable": false
-      },
-      {
-        "name": "id",
-        "comment": null,
-        "default": "gen_random_uuid()",
-        "data_type": "uuid",
-        "is_nullable": false
-      }
-    ],
-    "constraints": [
-      {
-        "name": "messages_2026_01_13_pkey",
-        "type": "PRIMARY KEY",
-        "column": "id",
-        "foreign_table": null,
-        "foreign_column": null,
-        "foreign_table_schema": null
-      },
-      {
-        "name": "messages_2026_01_13_pkey",
+        "name": "messages_2026_01_20_pkey",
         "type": "PRIMARY KEY",
         "column": "inserted_at",
         "foreign_table": null,

@@ -935,61 +935,45 @@
     "is_primary": false,
     "sql": "CREATE INDEX messages_inserted_at_topic_index ON ONLY realtime.messages USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_07.messages_2026_01_07_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_16.messages_2026_01_16_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_07_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_07",
+    "name": "messages_2026_01_16_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_16",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_07_inserted_at_topic_idx ON realtime.messages_2026_01_07 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_16_inserted_at_topic_idx ON realtime.messages_2026_01_16 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_08.messages_2026_01_08_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_17.messages_2026_01_17_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_08_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_08",
+    "name": "messages_2026_01_17_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_17",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_08_inserted_at_topic_idx ON realtime.messages_2026_01_08 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_17_inserted_at_topic_idx ON realtime.messages_2026_01_17 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_09.messages_2026_01_09_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_18.messages_2026_01_18_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_09_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_09",
+    "name": "messages_2026_01_18_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_18",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_09_inserted_at_topic_idx ON realtime.messages_2026_01_09 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_18_inserted_at_topic_idx ON realtime.messages_2026_01_18 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_10.messages_2026_01_10_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_19.messages_2026_01_19_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_10_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_10",
+    "name": "messages_2026_01_19_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_19",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_10_inserted_at_topic_idx ON realtime.messages_2026_01_10 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_19_inserted_at_topic_idx ON realtime.messages_2026_01_19 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_11.messages_2026_01_11_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_20.messages_2026_01_20_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_11_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_11",
+    "name": "messages_2026_01_20_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_20",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_11_inserted_at_topic_idx ON realtime.messages_2026_01_11 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
-  },
-  "realtime.messages_2026_01_12.messages_2026_01_12_inserted_at_topic_idx": {
-    "schema": "realtime",
-    "name": "messages_2026_01_12_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_12",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_12_inserted_at_topic_idx ON realtime.messages_2026_01_12 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
-  },
-  "realtime.messages_2026_01_13.messages_2026_01_13_inserted_at_topic_idx": {
-    "schema": "realtime",
-    "name": "messages_2026_01_13_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_13",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_13_inserted_at_topic_idx ON realtime.messages_2026_01_13 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_20_inserted_at_topic_idx ON realtime.messages_2026_01_20 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
   "realtime.subscription.ix_realtime_subscription_entity": {
     "schema": "realtime",

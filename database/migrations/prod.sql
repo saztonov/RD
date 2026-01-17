@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-15T03:00:29.921252
+-- Generated: 2026-01-17T20:40:38.955816
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -479,6 +479,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     started_at timestamp with time zone,
     completed_at timestamp with time zone,
     block_stats jsonb,
+    phase_data jsonb,
     CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT jobs_pkey PRIMARY KEY (id)
 );
@@ -502,6 +503,7 @@ COMMENT ON COLUMN public.jobs.client_id IS 'Идентификатор клие�
 COMMENT ON COLUMN public.jobs.started_at IS 'Время начала обработки задачи';
 COMMENT ON COLUMN public.jobs.completed_at IS 'Время завершения обработки задачи';
 COMMENT ON COLUMN public.jobs.block_stats IS 'Статистика обработанных блоков (количество по типам)';
+COMMENT ON COLUMN public.jobs.phase_data IS 'Детальная информация о фазах обработки OCR (PASS1, PASS2 strips/images)';
 
 -- Table: public.node_files
 -- Description: Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)
@@ -952,8 +954,8 @@ COMMENT ON COLUMN public.user_prompts.created_at IS 'Дата и время со
 COMMENT ON COLUMN public.user_prompts.updated_at IS 'Дата и время последнего обновления';
 COMMENT ON COLUMN public.user_prompts.client_id IS 'Идентификатор клиента для мультитенантности';
 
--- Table: realtime.messages_2026_01_07
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_07 (
+-- Table: realtime.messages_2026_01_16
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_16 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -962,12 +964,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_07 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_07_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_07_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_16_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_16_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_08
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_08 (
+-- Table: realtime.messages_2026_01_17
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_17 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -976,12 +978,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_08 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_08_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_08_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_17_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_17_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_09
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_09 (
+-- Table: realtime.messages_2026_01_18
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_18 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -990,12 +992,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_09 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_09_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_09_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_18_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_18_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_10
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_10 (
+-- Table: realtime.messages_2026_01_19
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_19 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -1004,12 +1006,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_10 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_10_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_10_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_19_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_19_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_11
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_11 (
+-- Table: realtime.messages_2026_01_20
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_20 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -1018,36 +1020,8 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_11 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_11_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_11_pkey PRIMARY KEY (inserted_at)
-);
-
--- Table: realtime.messages_2026_01_12
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_12 (
-    topic text NOT NULL,
-    extension text NOT NULL,
-    payload jsonb,
-    event text,
-    private boolean DEFAULT false,
-    updated_at timestamp without time zone NOT NULL DEFAULT now(),
-    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_12_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_12_pkey PRIMARY KEY (inserted_at)
-);
-
--- Table: realtime.messages_2026_01_13
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_13 (
-    topic text NOT NULL,
-    extension text NOT NULL,
-    payload jsonb,
-    event text,
-    private boolean DEFAULT false,
-    updated_at timestamp without time zone NOT NULL DEFAULT now(),
-    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_13_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_13_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_20_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_20_pkey PRIMARY KEY (inserted_at)
 );
 
 -- Table: realtime.schema_migrations
@@ -4726,26 +4700,20 @@ CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (clie
 -- Index on realtime.messages
 CREATE INDEX messages_inserted_at_topic_index ON ONLY realtime.messages USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_07
-CREATE INDEX messages_2026_01_07_inserted_at_topic_idx ON realtime.messages_2026_01_07 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_16
+CREATE INDEX messages_2026_01_16_inserted_at_topic_idx ON realtime.messages_2026_01_16 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_08
-CREATE INDEX messages_2026_01_08_inserted_at_topic_idx ON realtime.messages_2026_01_08 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_17
+CREATE INDEX messages_2026_01_17_inserted_at_topic_idx ON realtime.messages_2026_01_17 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_09
-CREATE INDEX messages_2026_01_09_inserted_at_topic_idx ON realtime.messages_2026_01_09 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_18
+CREATE INDEX messages_2026_01_18_inserted_at_topic_idx ON realtime.messages_2026_01_18 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_10
-CREATE INDEX messages_2026_01_10_inserted_at_topic_idx ON realtime.messages_2026_01_10 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_19
+CREATE INDEX messages_2026_01_19_inserted_at_topic_idx ON realtime.messages_2026_01_19 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_11
-CREATE INDEX messages_2026_01_11_inserted_at_topic_idx ON realtime.messages_2026_01_11 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
-
--- Index on realtime.messages_2026_01_12
-CREATE INDEX messages_2026_01_12_inserted_at_topic_idx ON realtime.messages_2026_01_12 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
-
--- Index on realtime.messages_2026_01_13
-CREATE INDEX messages_2026_01_13_inserted_at_topic_idx ON realtime.messages_2026_01_13 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_20
+CREATE INDEX messages_2026_01_20_inserted_at_topic_idx ON realtime.messages_2026_01_20 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
 -- Index on realtime.subscription
 CREATE INDEX ix_realtime_subscription_entity ON realtime.subscription USING btree (entity);
