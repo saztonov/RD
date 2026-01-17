@@ -19,7 +19,7 @@ from rd_pipeline.processing.config import ProcessingConfig, default_config
 logger = logging.getLogger(__name__)
 
 # Default constants (can be overridden via config)
-BLOCK_SEPARATOR_HEIGHT = 120
+BLOCK_SEPARATOR_HEIGHT = 50
 
 # Increase PIL limit
 Image.MAX_IMAGE_PIXELS = 500_000_000
@@ -300,10 +300,10 @@ def create_block_separator(
     text = f"BLOCK: {armor_code}"
 
     try:
-        font = ImageFont.truetype("arial.ttf", 72)
+        font = ImageFont.truetype("arial.ttf", 36)
     except (IOError, OSError):
         try:
-            font = ImageFont.truetype(BUNDLED_FONT_PATH, 72)
+            font = ImageFont.truetype(BUNDLED_FONT_PATH, 36)
         except (IOError, OSError):
             font = ImageFont.load_default()
 

@@ -32,7 +32,7 @@ class ProcessingConfig:
     ocr_threads_per_job: int = 2
 
     # Block separator
-    block_separator_height: int = 120
+    block_separator_height: int = 50
 
     @property
     def pdf_render_zoom(self) -> float:
