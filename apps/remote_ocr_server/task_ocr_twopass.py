@@ -36,13 +36,14 @@ def run_two_pass_ocr(
     manifest = None
 
     # Подготовка информации о блоках для phase_data
-    text_blocks = [b for b in blocks if b.get("block_type") == "text"]
-    image_blocks_list = [b for b in blocks if b.get("block_type") == "image"]
-    stamp_blocks = [b for b in image_blocks_list if b.get("category_code") == "stamp"]
-    regular_images = [b for b in image_blocks_list if b.get("category_code") != "stamp"]
+    from rd_domain.models.enums import BlockType
+    text_blocks = [b for b in blocks if b.block_type == BlockType.TEXT]
+    image_blocks_list = [b for b in blocks if b.block_type == BlockType.IMAGE]
+    stamp_blocks = [b for b in image_blocks_list if b.category_code == "stamp"]
+    regular_images = [b for b in image_blocks_list if b.category_code != "stamp"]
 
     # Состояние обработки блоков
-    blocks_status = {b.get("id"): "pending" for b in blocks}
+    blocks_status = {b.id: "pending" for b in blocks}
 
     try:
         # PASS 1: Подготовка кропов на диск
@@ -94,7 +95,7 @@ def run_two_pass_ocr(
                 images_info.append({
                     "block_id": img.block_id,
                     "status": "pending",
-                    "is_stamp": any(b.get("id") == img.block_id and b.get("category_code") == "stamp" for b in blocks),
+                    "is_stamp": any(b.id == img.block_id and b.category_code == "stamp" for b in blocks),
                 })
 
         processed_strips = 0
