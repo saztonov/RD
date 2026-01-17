@@ -25,13 +25,16 @@ class R2SyncStorage:
     Implements StoragePort protocol.
     """
 
-    def __init__(self, config: R2Config):
+    def __init__(self, config: Optional[R2Config] = None):
         """
         Initialize R2 sync storage.
 
         Args:
             config: R2 configuration
         """
+        if config is None:
+            config = self._config_from_env()
+
         self.config = config
         self.bucket_name = config.bucket_name
 
@@ -73,6 +76,10 @@ class R2SyncStorage:
     @classmethod
     def from_env(cls) -> "R2SyncStorage":
         """Create instance from environment variables."""
+        return cls(cls._config_from_env())
+
+    @classmethod
+    def _config_from_env(cls) -> R2Config:
         import os
 
         account_id = os.getenv("R2_ACCOUNT_ID")
@@ -96,7 +103,7 @@ class R2SyncStorage:
                 "R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME"
             )
 
-        return cls(config)
+        return config
 
     def _guess_content_type(self, file_path: Path) -> str:
         """Determine MIME type by extension."""
@@ -244,6 +251,56 @@ class R2SyncStorage:
             return [obj["Key"] for obj in response.get("Contents", [])]
         except Exception as e:
             logger.error(f"Error listing objects: {e}")
+            return []
+
+    def list_objects_with_metadata(
+        self, prefix: str, use_cache: bool = True
+    ) -> List[dict]:
+        """List objects with metadata (Key, Size, ETag, LastModified)."""
+        try:
+            cache = None
+            if use_cache:
+                from rd_adapters.storage.caching import get_metadata_cache
+
+                cache = get_metadata_cache()
+                cached = cache.get_list(prefix)
+                if cached is not None:
+                    return cached
+
+            objects: List[dict] = []
+            continuation_token = None
+            while True:
+                kwargs = {"Bucket": self.bucket_name, "Prefix": prefix}
+                if continuation_token:
+                    kwargs["ContinuationToken"] = continuation_token
+
+                response = self.s3_client.list_objects_v2(**kwargs)
+                for obj in response.get("Contents", []):
+                    etag = obj.get("ETag", "") or ""
+                    if isinstance(etag, str):
+                        etag = etag.strip('"')
+                    objects.append(
+                        {
+                            "Key": obj.get("Key", ""),
+                            "Size": obj.get("Size", 0) or 0,
+                            "ETag": etag,
+                            "LastModified": obj.get("LastModified"),
+                        }
+                    )
+
+                if response.get("IsTruncated"):
+                    continuation_token = response.get("NextContinuationToken")
+                    if not continuation_token:
+                        break
+                else:
+                    break
+
+            if cache is not None:
+                cache.set_list(prefix, objects)
+
+            return objects
+        except Exception as e:
+            logger.error(f"Error listing objects with metadata: {e}")
             return []
 
     def generate_presigned_url(
