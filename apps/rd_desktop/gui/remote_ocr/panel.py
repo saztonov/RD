@@ -185,17 +185,18 @@ class RemoteOCRPanel(
         """
         blocks = []
 
-        # Проверяем явный мультивыбор (Ctrl+click)
+        # Проверяем ТОЛЬКО мультивыбор (Ctrl+click), игнорируем одиночный клик
         page_viewer = getattr(self.main_window, "page_viewer", None)
-        if page_viewer:
-            # Есть явно выбранные блоки - используем их
-            blocks = page_viewer.get_selected_blocks()
+        if page_viewer and page_viewer.selected_block_indices:
+            for idx in page_viewer.selected_block_indices:
+                if 0 <= idx < len(page_viewer.current_blocks):
+                    blocks.append(page_viewer.current_blocks[idx])
             if blocks:
                 logger.info(
-                    f"_get_selected_blocks: explicit selection: {len(blocks)} blocks"
+                    f"_get_selected_blocks: explicit multi-selection: {len(blocks)} blocks"
                 )
 
-        # Если нет явного выбора - берём ВСЕ блоки со всех страниц
+        # Если нет мультивыбора - берём ВСЕ блоки со всех страниц
         if not blocks and self.main_window.annotation_document:
             for page in self.main_window.annotation_document.pages:
                 if page.blocks:
