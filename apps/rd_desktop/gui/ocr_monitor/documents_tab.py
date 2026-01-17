@@ -72,7 +72,9 @@ class DocumentsTab(QWidget):
             "- annotation.json - блоки с результатами OCR\n"
             "- ocr.html - HTML представление результатов\n"
             "- result.json - полные данные с метаинформацией\n"
-            "- document.md - Markdown документ для LLM"
+            "- document.md - Markdown документ для LLM\n"
+            "- text_blocks/ - отдельные текстовые блоки\n"
+            "- grouped_blocks/ - сгруппированные блоки (strips)"
         )
         self._description.setStyleSheet("color: #666; padding: 10px;")
         self._description.setWordWrap(True)
@@ -106,19 +108,23 @@ class DocumentsTab(QWidget):
             "font-size: 14px; font-weight: bold; padding: 10px; color: #4CAF50;"
         )
 
-        # Список документов
+        # Список документов (файлы и папки)
         documents = [
-            ("annotation.json", "Блоки с результатами OCR"),
-            ("ocr.html", "HTML представление"),
-            ("result.json", "Полные данные"),
-            ("document.md", "Markdown документ"),
+            ("annotation.json", "Блоки с результатами OCR", False),
+            ("ocr.html", "HTML представление", False),
+            ("result.json", "Полные данные", False),
+            ("document.md", "Markdown документ", False),
+            ("text_blocks/", "Текстовые блоки (папка)", True),
+            ("grouped_blocks/", "Сгруппированные блоки (папка)", True),
         ]
 
         self._docs_list.clear()
-        for filename, description in documents:
+        for filename, description, is_folder in documents:
             url = f"{r2_base_url}/{filename}"
-            item = QListWidgetItem(f"{filename} - {description}")
+            icon = "📁 " if is_folder else "📄 "
+            item = QListWidgetItem(f"{icon}{filename} - {description}")
             item.setData(Qt.UserRole, url)
+            item.setData(Qt.UserRole + 1, is_folder)  # Флаг папки
             self._docs_list.addItem(item)
 
     def _on_selection_changed(self):

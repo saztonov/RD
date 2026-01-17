@@ -548,6 +548,14 @@ def pass2_ocr_from_manifest(
                     merged_image, prompt=prompt_data
                 )
 
+                # Проверяем на timeout
+                if response_text == "[TIMEOUT]":
+                    logger.error(
+                        f"PASS2: strip {strip.strip_id} got TIMEOUT, "
+                        f"blocks {block_ids} will need retry in verification phase"
+                    )
+                    response_text = ""  # Сбрасываем для парсинга
+
                 response_len = len(response_text) if response_text else 0
                 logger.info(f"PASS2: completed strip {strip.strip_id}, response {response_len} chars")
 
@@ -670,9 +678,23 @@ def pass2_ocr_from_manifest(
             if use_native_pdf:
                 logger.info(f"PASS2: native PDF for {entry.block_id}")
                 text = backend.recognize_pdf(entry.pdf_crop_path, prompt=prompt_data)
+                # Проверяем на timeout для native PDF
+                if text == "[TIMEOUT]":
+                    logger.error(
+                        f"PASS2: native PDF block {entry.block_id} got TIMEOUT"
+                    )
+                    text = ""
             else:
                 with Image.open(entry.crop_path) as crop:
                     text = backend.recognize(crop, prompt=prompt_data)
+
+            # Проверяем на timeout
+            if text == "[TIMEOUT]":
+                logger.error(
+                    f"PASS2: IMAGE block {entry.block_id} got TIMEOUT, "
+                    f"will need retry in verification phase"
+                )
+                text = ""
 
             logger.info(f"PASS2: completed IMAGE block {entry.block_id}")
 

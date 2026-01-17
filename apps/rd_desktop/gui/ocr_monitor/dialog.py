@@ -1,6 +1,7 @@
 """Главное окно мониторинга процесса OCR"""
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING, Optional
 
@@ -24,6 +25,21 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_json_if_string(value) -> dict:
+    """Парсить JSON если значение - строка (защита от двойной сериализации)"""
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value) if value else {}
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    if isinstance(value, dict):
+        return value
+    return {}
 
 
 def _safe_len(obj) -> int:
@@ -151,7 +167,7 @@ class OCRMonitorDialog(QDialog):
             status = progress_data.get("status", "unknown")
             progress = progress_data.get("progress", 0)
             blocks = progress_data.get("blocks") or []
-            phase_data = progress_data.get("phase_data") or {}
+            phase_data = _parse_json_if_string(progress_data.get("phase_data"))
 
             logger.info(
                 f"[OCRMonitor] job_id={self.job_id[:8]}: "
@@ -191,7 +207,7 @@ class OCRMonitorDialog(QDialog):
         status = data.get("status", "")
         progress = data.get("progress", 0) or 0
         status_message = data.get("status_message", "")
-        phase_data = data.get("phase_data") or {}
+        phase_data = _parse_json_if_string(data.get("phase_data"))
         blocks = data.get("blocks") or []
         error_message = data.get("error_message")
 

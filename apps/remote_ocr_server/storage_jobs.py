@@ -264,7 +264,7 @@ def update_job_status(
     if status_message is not None:
         updates["status_message"] = status_message
     if phase_data is not None:
-        updates["phase_data"] = json.dumps(phase_data)
+        updates["phase_data"] = phase_data  # Supabase SDK автоматически сериализует dict для JSONB
 
     client = get_client()
     client.table("jobs").update(updates).eq("id", job_id).execute()
@@ -357,7 +357,7 @@ def update_job_completed(
     }
 
     if block_stats:
-        updates["block_stats"] = json.dumps(block_stats) if isinstance(block_stats, dict) else block_stats
+        updates["block_stats"] = block_stats  # Supabase SDK автоматически сериализует dict для JSONB
     if error_message:
         updates["error_message"] = error_message
 
@@ -371,13 +371,21 @@ def update_job_completed(
 
 
 def _row_to_job(row: dict) -> Job:
-    # Парсим phase_data из JSON если это строка
+    # Парсим phase_data из JSON если это строка (обратная совместимость)
     phase_data = row.get("phase_data")
     if isinstance(phase_data, str):
         try:
             phase_data = json.loads(phase_data)
         except (json.JSONDecodeError, TypeError):
             phase_data = None
+
+    # Парсим block_stats из JSON если это строка (обратная совместимость)
+    block_stats = row.get("block_stats")
+    if isinstance(block_stats, str):
+        try:
+            block_stats = json.loads(block_stats)
+        except (json.JSONDecodeError, TypeError):
+            block_stats = None
 
     return Job(
         id=row["id"],
@@ -396,6 +404,6 @@ def _row_to_job(row: dict) -> Job:
         status_message=row.get("status_message"),
         started_at=row.get("started_at"),
         completed_at=row.get("completed_at"),
-        block_stats=row.get("block_stats"),
+        block_stats=block_stats,
         phase_data=phase_data,
     )

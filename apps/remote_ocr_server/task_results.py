@@ -3,13 +3,126 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
+from typing import List, Optional
 
 from .ocr_result_merger import merge_ocr_results
 from .qa_manifest import generate_qa_manifest
 from .storage import Job, get_node_full_path
 
 logger = logging.getLogger(__name__)
+
+
+def save_text_blocks(blocks: list, work_dir: Path) -> int:
+    """Сохранить каждый TEXT блок с ocr_text в отдельный JSON файл.
+
+    Args:
+        blocks: список Block объектов
+        work_dir: рабочая директория
+
+    Returns:
+        количество сохранённых блоков
+    """
+    from rd_domain.models import BlockType
+
+    text_blocks_dir = work_dir / "text_blocks"
+    text_blocks_dir.mkdir(exist_ok=True)
+
+    saved_count = 0
+    for block in blocks:
+        # Проверяем тип блока и наличие OCR текста
+        if block.block_type != BlockType.TEXT:
+            continue
+        if not block.ocr_text:
+            continue
+
+        data = {
+            "block_id": block.id,
+            "page_index": block.page_index,
+            "coords_norm": list(block.coords_norm) if block.coords_norm else [],
+            "coords_px": list(block.coords_px) if block.coords_px else [],
+            "block_type": block.block_type.value,
+            "ocr_text": block.ocr_text,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+
+        # Добавляем опциональные поля
+        if hasattr(block, "category_code") and block.category_code:
+            data["category_code"] = block.category_code
+
+        path = text_blocks_dir / f"{block.id}.json"
+        try:
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            saved_count += 1
+        except Exception as e:
+            logger.warning(f"Ошибка сохранения text_block {block.id}: {e}")
+
+    logger.info(f"Сохранено {saved_count} текстовых блоков в {text_blocks_dir}")
+    return saved_count
+
+
+def save_grouped_blocks(
+    manifest, blocks: list, work_dir: Path
+) -> int:
+    """Сохранить сгруппированные блоки (strips) в отдельные JSON файлы.
+
+    Args:
+        manifest: TwoPassManifest с информацией о strips
+        blocks: список Block объектов
+        work_dir: рабочая директория
+
+    Returns:
+        количество сохранённых групп
+    """
+    grouped_dir = work_dir / "grouped_blocks"
+    grouped_dir.mkdir(exist_ok=True)
+
+    # Создаём словарь блоков по ID
+    blocks_by_id = {b.id: b for b in blocks}
+
+    saved_count = 0
+    for strip in getattr(manifest, "strips", []):
+        block_ids = [bp.get("block_id") or bp for bp in strip.block_parts]
+
+        # Собираем данные блоков
+        strip_blocks = []
+        total_text_length = 0
+        for bid in block_ids:
+            block = blocks_by_id.get(bid)
+            if block:
+                ocr_text = block.ocr_text or ""
+                total_text_length += len(ocr_text)
+                strip_blocks.append({
+                    "block_id": bid,
+                    "page_index": block.page_index,
+                    "ocr_text": ocr_text,
+                })
+            else:
+                strip_blocks.append({
+                    "block_id": bid,
+                    "page_index": -1,
+                    "ocr_text": "",
+                })
+
+        data = {
+            "strip_id": strip.strip_id,
+            "block_ids": block_ids,
+            "blocks_count": len(block_ids),
+            "blocks": strip_blocks,
+            "total_ocr_text_length": total_text_length,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+
+        path = grouped_dir / f"{strip.strip_id}.json"
+        try:
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            saved_count += 1
+        except Exception as e:
+            logger.warning(f"Ошибка сохранения grouped_block {strip.strip_id}: {e}")
+
+    logger.info(f"Сохранено {saved_count} групп блоков в {grouped_dir}")
+    return saved_count
 
 
 def generate_results(
@@ -136,6 +249,12 @@ def generate_results(
             verify_and_retry_missing_blocks(result_path, pdf_path, work_dir, datalab_backend)
         except Exception as e:
             logger.warning(f"Ошибка верификации блоков: {e}", exc_info=True)
+
+    # Сохранение отдельных текстовых блоков для просмотра
+    try:
+        save_text_blocks(blocks, work_dir)
+    except Exception as e:
+        logger.warning(f"Ошибка сохранения text_blocks: {e}", exc_info=True)
 
     # Генерация QA манифеста (для Q&A приложения)
     try:

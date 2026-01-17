@@ -230,7 +230,7 @@ class DatalabOCRBackend:
                 logger.warning(
                     f"Datalab: skipping block due to timeout, continuing processing"
                 )
-                return ""
+                return "[TIMEOUT]"
 
             finally:
                 if os.path.exists(tmp_path):

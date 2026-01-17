@@ -130,6 +130,28 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
             "qa_manifest", "qa_manifest.json", qa_manifest_path.stat().st_size, None
         ))
 
+    # text_blocks/ (отдельные текстовые блоки с OCR результатами)
+    text_blocks_dir = work_dir / "text_blocks"
+    if text_blocks_dir.exists():
+        for json_file in text_blocks_dir.glob("*.json"):
+            r2_key = f"{r2_prefix}/text_blocks/{json_file.name}"
+            files_to_upload.append((
+                str(json_file), r2_key, "application/json",
+                "text_block", json_file.name, json_file.stat().st_size, None
+            ))
+        logger.info(f"Добавлено {len(list(text_blocks_dir.glob('*.json')))} text_blocks для загрузки")
+
+    # grouped_blocks/ (сгруппированные блоки - strips)
+    grouped_blocks_dir = work_dir / "grouped_blocks"
+    if grouped_blocks_dir.exists():
+        for json_file in grouped_blocks_dir.glob("*.json"):
+            r2_key = f"{r2_prefix}/grouped_blocks/{json_file.name}"
+            files_to_upload.append((
+                str(json_file), r2_key, "application/json",
+                "grouped_block", json_file.name, json_file.stat().st_size, None
+            ))
+        logger.info(f"Добавлено {len(list(grouped_blocks_dir.glob('*.json')))} grouped_blocks для загрузки")
+
     # crops/ (проверяем оба варианта: crops и crops_final)
     # Исключаем блоки-штампы (category_code='stamp')
     for crops_subdir in ["crops", "crops_final"]:

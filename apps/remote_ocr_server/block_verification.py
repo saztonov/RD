@@ -37,31 +37,46 @@ def verify_and_retry_missing_blocks(
     with open(result_json_path, "r", encoding="utf-8") as f:
         result = json.load(f)
 
-    # Находим блоки без OCR результата
+    # Находим блоки без OCR результата или с ошибками
     missing_blocks = []
+    error_prefixes = ("[TIMEOUT]", "[Error", "[Datalab", "[Ошибка")
+
     for page in result.get("pages", []):
         for blk in page.get("blocks", []):
             block_type = blk.get("block_type", "text")
             block_id = blk.get("id", "")
             ocr_html = blk.get("ocr_html", "").strip()
+            ocr_text = blk.get("ocr_text", "").strip()
             category_code = blk.get("category_code", "")
-            
+
             # Пропускаем штампы и image блоки (они обрабатываются отдельно)
             if category_code == "stamp" or block_type == "image":
                 continue
-            
+
+            # Определяем причину retry
+            retry_reason = None
+            if not ocr_html and not ocr_text:
+                retry_reason = "empty"
+            elif ocr_html and ocr_html.startswith(error_prefixes):
+                retry_reason = f"error: {ocr_html[:50]}"
+            elif ocr_text and ocr_text.startswith(error_prefixes):
+                retry_reason = f"error: {ocr_text[:50]}"
+
             # Проверяем только текстовые блоки
-            if block_type == "text" and not ocr_html:
+            if block_type == "text" and retry_reason:
                 missing_blocks.append({
                     "block": blk,
                     "page_index": blk.get("page_index", 1) - 1,  # Конвертируем в 0-based
+                    "retry_reason": retry_reason,
                 })
 
     if not missing_blocks:
         logger.info("✅ Все текстовые блоки распознаны")
         return False
 
-    logger.warning(f"⚠️ Найдено {len(missing_blocks)} нераспознанных текстовых блоков")
+    logger.warning(f"⚠️ Найдено {len(missing_blocks)} нераспознанных текстовых блоков:")
+    for item in missing_blocks:
+        logger.warning(f"  - {item['block']['id']}: {item['retry_reason']}")
     
     # Создаём директорию для кропов
     retry_crops_dir = work_dir / "retry_crops"
@@ -98,10 +113,17 @@ def verify_and_retry_missing_blocks(
                 # Отправляем на распознавание в datalab
                 ocr_text = datalab_backend.recognize(crop)
                 crop.close()
-                
-                if ocr_text and not ocr_text.startswith("[Ошибка"):
+
+                # Проверяем успешность распознавания
+                is_error = (
+                    not ocr_text
+                    or ocr_text.startswith(error_prefixes)
+                )
+
+                if not is_error:
                     # Обновляем блок в result.json
                     blk_data["ocr_html"] = ocr_text
+                    blk_data["ocr_text"] = ocr_text  # Также обновляем ocr_text
                     blk_data["ocr_meta"] = {
                         "method": ["retry_verification"],
                         "match_score": 100.0,
