@@ -5,7 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from .memory_utils import log_memory_delta
+from rd_pipeline.utils.memory import log_memory_delta
 from .pdf_streaming_twopass import (
     cleanup_manifest_files,
     pass1_prepare_crops,
@@ -18,30 +18,22 @@ logger = logging.getLogger(__name__)
 
 
 def _save_text_block_outputs(work_dir: Path, blocks: list, manifest) -> None:
-    """Save text blocks and strip batches for UI inspection."""
+    """Save text blocks for UI inspection."""
     if not manifest:
         return
 
     from rd_domain.models.enums import BlockType
 
-    text_blocks = [b for b in blocks if b.block_type == BlockType.TEXT]
-    if not text_blocks:
+    text_blocks_list = [b for b in blocks if b.block_type == BlockType.TEXT]
+    if not text_blocks_list:
         return
 
     text_dir = work_dir / "text_block"
     text_dir.mkdir(parents=True, exist_ok=True)
 
-    strip_map = {}
-    for strip in manifest.strips or []:
-        for block_id in strip.block_ids:
-            strip_map[block_id] = strip.strip_id
-
     block_entries = []
-    for block in text_blocks:
+    for block in text_blocks_list:
         block_dict = block.to_dict()
-        strip_id = strip_map.get(block.id)
-        if strip_id:
-            block_dict["strip_id"] = strip_id
         block_entries.append(block_dict)
 
     blocks_payload = {"blocks": block_entries}
@@ -49,41 +41,7 @@ def _save_text_block_outputs(work_dir: Path, blocks: list, manifest) -> None:
     with open(blocks_path, "w", encoding="utf-8") as f:
         json.dump(blocks_payload, f, ensure_ascii=False, indent=2)
 
-    blocks_by_id = {b.id: b for b in text_blocks}
-    batch_entries = []
-    for strip in manifest.strips or []:
-        batch_blocks = []
-        for part in strip.block_parts:
-            block_id = part.get("block_id")
-            block = blocks_by_id.get(block_id)
-            batch_blocks.append(
-                {
-                    "block_id": block_id,
-                    "part_idx": part.get("part_idx", 0),
-                    "total_parts": part.get("total_parts", 1),
-                    "page_index": block.page_index if block else None,
-                    "ocr_text": block.ocr_text if block else "",
-                }
-            )
-        batch_entries.append(
-            {
-                "strip_id": strip.strip_id,
-                "block_ids": strip.block_ids,
-                "block_parts": strip.block_parts,
-                "blocks": batch_blocks,
-            }
-        )
-
-    batches_payload = {"batches": batch_entries}
-    batches_path = text_dir / "batches.json"
-    with open(batches_path, "w", encoding="utf-8") as f:
-        json.dump(batches_payload, f, ensure_ascii=False, indent=2)
-
-    logger.info(
-        "Saved text_block outputs: %s blocks, %s batches",
-        len(block_entries),
-        len(batch_entries),
-    )
+    logger.info("Saved text_block outputs: %s blocks", len(block_entries))
 
 
 def run_two_pass_ocr(
@@ -123,7 +81,7 @@ def run_two_pass_ocr(
             phase_data = {
                 "current_phase": "pass1",
                 "pass1": {"status": "processing", "current": current, "total": total},
-                "pass2_strips": {"status": "pending", "total": 0, "processed": 0},
+                "pass2_text": {"status": "pending", "total": 0, "processed": 0},
                 "pass2_images": {"status": "pending", "total": 0, "processed": 0},
                 "blocks_summary": {
                     "total": len(blocks),
@@ -145,17 +103,16 @@ def run_two_pass_ocr(
         log_memory_delta("После PASS1", start_mem)
 
         # PASS 2: OCR с загрузкой с диска
-        total_strips = len(manifest.strips) if manifest else 0
+        total_text_blocks = len(manifest.text_blocks) if manifest else 0
         total_images = len(manifest.image_blocks) if manifest else 0
-        total_requests = total_strips + total_images
+        total_requests = total_text_blocks + total_images
 
-        # Подготовка информации о strips и images для phase_data
-        strips_info = []
-        if manifest and manifest.strips:
-            for strip in manifest.strips:
-                strips_info.append({
-                    "strip_id": strip.strip_id,
-                    "block_ids": strip.block_ids,
+        # Подготовка информации о text_blocks и images для phase_data
+        text_blocks_info = []
+        if manifest and manifest.text_blocks:
+            for tb in manifest.text_blocks:
+                text_blocks_info.append({
+                    "block_id": tb.block_id,
                     "status": "pending",
                 })
 
@@ -168,21 +125,21 @@ def run_two_pass_ocr(
                     "is_stamp": any(b.id == img.block_id and b.category_code == "stamp" for b in blocks),
                 })
 
-        processed_strips = 0
+        processed_text_blocks = 0
         processed_images = 0
 
         phase_data = {
-            "current_phase": "pass2_strips" if total_strips else "pass2_images",
+            "current_phase": "pass2_text" if total_text_blocks else "pass2_images",
             "pass1": {
                 "status": "completed",
-                "total": total_strips + total_images,
-                "processed": total_strips + total_images,
+                "total": total_text_blocks + total_images,
+                "processed": total_text_blocks + total_images,
             },
-            "pass2_strips": {
+            "pass2_text": {
                 "status": "pending",
-                "total": total_strips,
-                "processed": processed_strips,
-                "strips": strips_info,
+                "total": total_text_blocks,
+                "processed": processed_text_blocks,
+                "blocks": text_blocks_info,
             },
             "pass2_images": {
                 "status": "pending",
@@ -206,7 +163,7 @@ def run_two_pass_ocr(
         )
 
         def on_pass2_progress(current, total, block_info: str = None):
-            nonlocal processed_strips, processed_images
+            nonlocal processed_text_blocks, processed_images
 
             progress = 0.4 + 0.5 * (current / total)
             if block_info:
@@ -215,19 +172,19 @@ def run_two_pass_ocr(
                 status_msg = f"🔍 PASS 2: Распознавание ({current}/{total})"
 
             # Определяем что обрабатывается
-            current_phase = "pass2_strips"
+            current_phase = "pass2_text"
             if block_info and ("Image" in block_info or "Stamp" in block_info):
                 current_phase = "pass2_images"
-                processed_images = current - processed_strips
+                processed_images = current - processed_text_blocks
             else:
-                processed_strips = current
+                processed_text_blocks = current
 
-            # Обновляем статусы в strips_info и images_info
-            for i, strip in enumerate(strips_info):
-                if i < processed_strips:
-                    strip["status"] = "completed"
-                elif i == processed_strips and current_phase == "pass2_strips":
-                    strip["status"] = "processing"
+            # Обновляем статусы в text_blocks_info и images_info
+            for i, tb in enumerate(text_blocks_info):
+                if i < processed_text_blocks:
+                    tb["status"] = "completed"
+                elif i == processed_text_blocks and current_phase == "pass2_text":
+                    tb["status"] = "processing"
 
             for i, img in enumerate(images_info):
                 if i < processed_images:
@@ -237,12 +194,12 @@ def run_two_pass_ocr(
 
             phase_data = {
                 "current_phase": current_phase,
-                "pass1": {"status": "completed", "total": total_strips + total_images, "processed": total_strips + total_images},
-                "pass2_strips": {
-                    "status": "completed" if processed_strips >= total_strips else "processing",
-                    "total": total_strips,
-                    "processed": processed_strips,
-                    "strips": strips_info,
+                "pass1": {"status": "completed", "total": total_text_blocks + total_images, "processed": total_text_blocks + total_images},
+                "pass2_text": {
+                    "status": "completed" if processed_text_blocks >= total_text_blocks else "processing",
+                    "total": total_text_blocks,
+                    "processed": processed_text_blocks,
+                    "blocks": text_blocks_info,
                 },
                 "pass2_images": {
                     "status": "processing" if current_phase == "pass2_images" else "pending",

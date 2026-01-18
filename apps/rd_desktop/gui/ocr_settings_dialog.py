@@ -56,13 +56,9 @@ class OCRSettings:
     datalab_poll_max_attempts: int = 90
     datalab_max_retries: int = 3
 
-    # Двухпроходный алгоритм
-    use_two_pass_ocr: bool = True
+    # Рендеринг PDF
     crop_png_compress: int = 6
-    max_ocr_batch_size: int = 5
     pdf_render_dpi: int = 150
-    max_strip_height: int = 9000
-    block_separator_height: int = 100
 
     # Очередь
     poll_interval: float = 10.0
@@ -285,34 +281,9 @@ class OCRSettingsDialog(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Группа: Двухпроходный алгоритм
-        group1 = QGroupBox("Двухпроходный алгоритм")
-        form1 = QFormLayout(group1)
-
-        self.use_two_pass_check = QCheckBox("Включить (экономия памяти)")
-        self.use_two_pass_check.setToolTip(
-            "Сохранять кропы на диск вместо памяти.\n"
-            "Снижает потребление RAM с 1-4 GB до 200-400 MB"
-        )
-        form1.addRow("Двухпроходный:", self.use_two_pass_check)
-
-        self.crop_png_compress_spin = QSpinBox()
-        self.crop_png_compress_spin.setRange(0, 9)
-        self.crop_png_compress_spin.setToolTip(
-            "Сжатие PNG (0=без сжатия, 9=максимальное)"
-        )
-        form1.addRow("Сжатие PNG:", self.crop_png_compress_spin)
-
-        self.max_ocr_batch_spin = QSpinBox()
-        self.max_ocr_batch_spin.setRange(1, 20)
-        self.max_ocr_batch_spin.setToolTip("Максимум блоков в одном batch запросе")
-        form1.addRow("Batch размер:", self.max_ocr_batch_spin)
-
-        layout.addWidget(group1)
-
         # Группа: Рендеринг PDF
-        group2 = QGroupBox("Рендеринг PDF")
-        form2 = QFormLayout(group2)
+        group = QGroupBox("Рендеринг PDF")
+        form = QFormLayout(group)
 
         self.pdf_render_dpi_spin = QSpinBox()
         self.pdf_render_dpi_spin.setRange(72, 600)
@@ -320,24 +291,16 @@ class OCRSettingsDialog(QDialog):
         self.pdf_render_dpi_spin.setToolTip(
             "DPI рендеринга PDF (влияет на качество и размер)"
         )
-        form2.addRow("DPI рендеринга:", self.pdf_render_dpi_spin)
+        form.addRow("DPI рендеринга:", self.pdf_render_dpi_spin)
 
-        self.max_strip_height_spin = QSpinBox()
-        self.max_strip_height_spin.setRange(1000, 20000)
-        self.max_strip_height_spin.setSuffix(" px")
-        self.max_strip_height_spin.setToolTip("Максимальная высота полосы (strips)")
-        form2.addRow("Макс. высота полосы:", self.max_strip_height_spin)
-
-        self.block_separator_height_spin = QSpinBox()
-        self.block_separator_height_spin.setRange(50, 200)
-        self.block_separator_height_spin.setSuffix(" px")
-        self.block_separator_height_spin.setToolTip(
-            "Высота разделителя между блоками в strip.\n"
-            "Увеличьте, если маркеры BLOCK не распознаются."
+        self.crop_png_compress_spin = QSpinBox()
+        self.crop_png_compress_spin.setRange(0, 9)
+        self.crop_png_compress_spin.setToolTip(
+            "Сжатие PNG (0=без сжатия, 9=максимальное)"
         )
-        form2.addRow("Высота разделителя:", self.block_separator_height_spin)
+        form.addRow("Сжатие PNG:", self.crop_png_compress_spin)
 
-        layout.addWidget(group2)
+        layout.addWidget(group)
         layout.addStretch()
 
         return widget
@@ -527,12 +490,8 @@ class OCRSettingsDialog(QDialog):
         self.datalab_max_retries_spin.setValue(s.datalab_max_retries)
 
         # Algorithm
-        self.use_two_pass_check.setChecked(s.use_two_pass_ocr)
         self.crop_png_compress_spin.setValue(s.crop_png_compress)
-        self.max_ocr_batch_spin.setValue(s.max_ocr_batch_size)
         self.pdf_render_dpi_spin.setValue(s.pdf_render_dpi)
-        self.max_strip_height_spin.setValue(s.max_strip_height)
-        self.block_separator_height_spin.setValue(s.block_separator_height)
 
         # Queue
         self.poll_interval_spin.setValue(s.poll_interval)
@@ -571,12 +530,8 @@ class OCRSettingsDialog(QDialog):
             datalab_poll_max_attempts=self.datalab_poll_max_attempts_spin.value(),
             datalab_max_retries=self.datalab_max_retries_spin.value(),
             # Algorithm
-            use_two_pass_ocr=self.use_two_pass_check.isChecked(),
             crop_png_compress=self.crop_png_compress_spin.value(),
-            max_ocr_batch_size=self.max_ocr_batch_spin.value(),
             pdf_render_dpi=self.pdf_render_dpi_spin.value(),
-            max_strip_height=self.max_strip_height_spin.value(),
-            block_separator_height=self.block_separator_height_spin.value(),
             # Queue
             poll_interval=self.poll_interval_spin.value(),
             poll_max_interval=self.poll_max_interval_spin.value(),

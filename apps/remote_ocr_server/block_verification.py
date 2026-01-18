@@ -83,7 +83,7 @@ def verify_and_retry_missing_blocks(
     retry_crops_dir.mkdir(exist_ok=True)
 
     # Обрабатываем каждый блок отдельно
-    from .pdf_streaming_core import StreamingPDFProcessor
+    from rd_pipeline.processing.streaming_pdf import StreamingPDFProcessor
     from rd_domain.models import Block
     
     successful_retries = 0
@@ -153,7 +153,7 @@ def verify_and_retry_missing_blocks(
 
 def _regenerate_output_files(result: dict, work_dir: Path, result_json_path: Path):
     """Регенерировать HTML и MD после обновления result.json"""
-    from .ocr_result_merger import regenerate_html_from_result, regenerate_md_from_result
+    from rd_pipeline.processing.merge import regenerate_html_from_result, regenerate_md_from_result
     
     try:
         # Регенерируем HTML

@@ -40,7 +40,8 @@ class TwoPassManifest:
 
     pdf_path: str
     crops_dir: str
-    strips: List[StripManifestEntry] = field(default_factory=list)
+    strips: List[StripManifestEntry] = field(default_factory=list)  # DEPRECATED
+    text_blocks: List[CropManifestEntry] = field(default_factory=list)  # NEW: individual TEXT crops
     image_blocks: List[CropManifestEntry] = field(default_factory=list)
     total_blocks: int = 0
 
@@ -49,7 +50,7 @@ class TwoPassManifest:
             "pdf_path": self.pdf_path,
             "crops_dir": self.crops_dir,
             "total_blocks": self.total_blocks,
-            "strips": [
+            "strips": [  # DEPRECATED - kept for backward compatibility
                 {
                     "strip_id": s.strip_id,
                     "strip_path": s.strip_path,
@@ -57,6 +58,20 @@ class TwoPassManifest:
                     "block_parts": s.block_parts,
                 }
                 for s in self.strips
+            ],
+            "text_blocks": [  # NEW: individual TEXT crops
+                {
+                    "block_id": e.block_id,
+                    "crop_path": e.crop_path,
+                    "block_type": e.block_type,
+                    "page_index": e.page_index,
+                    "part_idx": e.part_idx,
+                    "total_parts": e.total_parts,
+                    "width": e.width,
+                    "height": e.height,
+                    "pdf_crop_path": e.pdf_crop_path,
+                }
+                for e in self.text_blocks
             ],
             "image_blocks": [
                 {
@@ -87,6 +102,7 @@ class TwoPassManifest:
             total_blocks=data.get("total_blocks", 0),
         )
 
+        # DEPRECATED - kept for backward compatibility
         for s in data.get("strips", []):
             manifest.strips.append(
                 StripManifestEntry(
@@ -94,6 +110,22 @@ class TwoPassManifest:
                     strip_path=s["strip_path"],
                     block_ids=s.get("block_ids", []),
                     block_parts=s.get("block_parts", []),
+                )
+            )
+
+        # NEW: individual TEXT crops
+        for e in data.get("text_blocks", []):
+            manifest.text_blocks.append(
+                CropManifestEntry(
+                    block_id=e["block_id"],
+                    crop_path=e["crop_path"],
+                    block_type=e["block_type"],
+                    page_index=e["page_index"],
+                    part_idx=e.get("part_idx", 0),
+                    total_parts=e.get("total_parts", 1),
+                    width=e.get("width", 0),
+                    height=e.get("height", 0),
+                    pdf_crop_path=e.get("pdf_crop_path"),
                 )
             )
 

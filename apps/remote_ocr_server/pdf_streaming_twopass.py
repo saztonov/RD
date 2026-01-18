@@ -30,8 +30,6 @@ from .settings import settings
 # Server-specific config
 _server_config = ProcessingConfig(
     pdf_render_dpi=settings.pdf_render_dpi,
-    max_strip_height=settings.max_strip_height,
-    block_separator_height=settings.block_separator_height,
     crop_png_compress=settings.crop_png_compress,
     max_crop_dimension=settings.max_crop_dimension,
     min_crop_dpi=settings.min_crop_dpi,
@@ -39,10 +37,6 @@ _server_config = ProcessingConfig(
     ocr_prep_contrast=settings.ocr_prep_contrast,
     ocr_threads_per_job=settings.ocr_threads_per_job,
 )
-
-# Re-export constants
-MAX_STRIP_HEIGHT = settings.max_strip_height
-MAX_SINGLE_BLOCK_HEIGHT = settings.max_strip_height
 
 
 class ServerPromptBuilder:
@@ -146,8 +140,6 @@ __all__ = [
     "pass1_prepare_crops",
     "pass2_ocr_from_manifest",
     "cleanup_manifest_files",
-    "MAX_STRIP_HEIGHT",
-    "MAX_SINGLE_BLOCK_HEIGHT",
     "ServerPromptBuilder",
     "ServerTextExtractor",
 ]

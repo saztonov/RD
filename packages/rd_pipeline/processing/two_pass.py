@@ -22,7 +22,6 @@ from rd_domain.manifest import CropManifestEntry, StripManifestEntry, TwoPassMan
 from rd_pipeline.utils.memory import force_gc, log_memory, log_memory_delta
 from rd_pipeline.processing.streaming_pdf import (
     StreamingPDFProcessor,
-    merge_crops_vertically,
     render_block_crop,
     split_large_crop,
 )
@@ -195,6 +194,7 @@ def pass1_prepare_crops(
 
     # Temporary storage for crop paths
     block_crop_paths: Dict[str, List[Tuple[str, int, int]]] = {}
+    text_block_entries: List[CropManifestEntry] = []  # NEW: individual TEXT crops
     image_block_entries: List[CropManifestEntry] = []
     image_pdf_paths: Dict[str, str] = {}
 
@@ -275,6 +275,20 @@ def pass1_prepare_crops(
                                     height=crop_part.height,
                                 )
                             )
+                        else:
+                            # TEXT/TABLE blocks - save as individual crops (not merged into strips)
+                            text_block_entries.append(
+                                CropManifestEntry(
+                                    block_id=block.id,
+                                    crop_path=crop_path,
+                                    block_type=block.block_type.value,
+                                    page_index=block.page_index,
+                                    part_idx=part_idx,
+                                    total_parts=total_parts,
+                                    width=crop_part.width,
+                                    height=crop_part.height,
+                                )
+                            )
 
                         crop_part.close()
 
@@ -305,25 +319,14 @@ def pass1_prepare_crops(
 
         log_memory_delta("PASS1 after crops", start_mem)
 
-    # Group TEXT/TABLE into strips and save merged images
-    strips = _group_and_merge_strips(
-        blocks, block_crop_paths, strips_dir, compress_level, cfg
-    )
-
-    # Remove intermediate TEXT/TABLE crops (strips already saved)
-    for block in blocks:
-        if block.block_type != BlockType.IMAGE and block.id in block_crop_paths:
-            for crop_path, _, _ in block_crop_paths[block.id]:
-                try:
-                    if os.path.exists(crop_path):
-                        os.remove(crop_path)
-                except:
-                    pass
+    # NOTE: strips are DEPRECATED - each TEXT block is now processed individually
+    # No more merging into strips, no more removing intermediate crops
 
     manifest = TwoPassManifest(
         pdf_path=pdf_path,
         crops_dir=crops_dir,
-        strips=strips,
+        strips=[],  # DEPRECATED - empty for backward compatibility
+        text_blocks=text_block_entries,  # NEW: individual TEXT crops
         image_blocks=image_block_entries,
         total_blocks=len(blocks),
     )
@@ -335,7 +338,7 @@ def pass1_prepare_crops(
     log_memory_delta("PASS1 end", start_mem)
 
     logger.info(
-        f"PASS1 complete: {len(strips)} strips, {len(image_block_entries)} image crops"
+        f"PASS1 complete: {len(text_block_entries)} text crops, {len(image_block_entries)} image crops"
     )
 
     return manifest
@@ -495,7 +498,8 @@ def pass2_ocr_from_manifest(
 
     start_mem = log_memory("PASS2 start")
 
-    total_requests = len(manifest.strips) + len(manifest.image_blocks)
+    # Use text_blocks instead of deprecated strips
+    total_requests = len(manifest.text_blocks) + len(manifest.image_blocks)
     processed = 0
 
     blocks_by_id = {b.id: b for b in blocks}
@@ -517,99 +521,70 @@ def pass2_ocr_from_manifest(
         if on_progress and total_requests > 0:
             on_progress(processed, total_requests, last_block_info["info"])
 
-    # --- Process strips ---
-    def _process_strip(strip: StripManifestEntry, strip_idx: int):
+    # --- Process TEXT blocks (individual crops, no batch) ---
+    def _process_text_block(entry: CropManifestEntry):
         if check_paused and check_paused():
             return None
 
-        if not strip.strip_path or not os.path.exists(strip.strip_path):
-            logger.warning(f"Strip {strip.strip_id} not found: {strip.strip_path}")
+        if not os.path.exists(entry.crop_path):
+            logger.warning(f"Text crop not found: {entry.crop_path}")
+            return None
+
+        block = blocks_by_id.get(entry.block_id)
+        if not block:
             return None
 
         try:
-            with Image.open(strip.strip_path) as merged_image:
-                strip_blocks = [
-                    blocks_by_id[bp["block_id"]]
-                    for bp in strip.block_parts
-                    if bp["block_id"] in blocks_by_id
-                ]
+            logger.info(f"PASS2: processing TEXT block {entry.block_id}")
 
-                if not strip_blocks:
-                    return None
+            with Image.open(entry.crop_path) as crop:
+                # Simple prompt for single block (no batch markers needed)
+                prompt_data = pb.build_strip_prompt([block])
+                text = strip_backend.recognize(crop, prompt=prompt_data)
 
-                prompt_data = pb.build_strip_prompt(strip_blocks)
+            # Check for timeout
+            if text == "[TIMEOUT]":
+                logger.error(f"PASS2: TEXT block {entry.block_id} got TIMEOUT")
+                text = ""
 
-                block_ids = [bp["block_id"] for bp in strip.block_parts]
-                logger.info(
-                    f"PASS2: processing strip {strip.strip_id} ({len(strip.block_parts)} blocks): {block_ids}"
-                )
+            logger.info(f"PASS2: completed TEXT block {entry.block_id}, response {len(text) if text else 0} chars")
 
-                response_text = strip_backend.recognize(
-                    merged_image, prompt=prompt_data
-                )
-
-                # Проверяем на timeout
-                if response_text == "[TIMEOUT]":
-                    logger.error(
-                        f"PASS2: strip {strip.strip_id} got TIMEOUT, "
-                        f"blocks {block_ids} will need retry in verification phase"
-                    )
-                    response_text = ""  # Сбрасываем для парсинга
-
-                response_len = len(response_text) if response_text else 0
-                logger.info(f"PASS2: completed strip {strip.strip_id}, response {response_len} chars")
-
-            index_results = pb.parse_batch_response_by_index(
-                len(strip.block_parts), response_text, block_ids=block_ids
-            )
-
-            parsed_lens = {i: len(v) if v else 0 for i, v in index_results.items()}
-            logger.info(f"PASS2: strip {strip.strip_id} parsing result: {parsed_lens}")
-
-            return strip, index_results, strip_idx
+            return entry.block_id, text, entry.part_idx, entry.total_parts
 
         except Exception as e:
-            logger.error(f"PASS2 strip {strip.strip_id}: {e}")
-            return None
+            logger.error(f"PASS2 text {entry.block_id}: {e}")
+            return entry.block_id, f"[Error: {e}]", entry.part_idx, entry.total_parts
 
     logger.info(
-        f"PASS2: processing {len(manifest.strips)} strips ({max_workers} threads)"
+        f"PASS2: processing {len(manifest.text_blocks)} text blocks ({max_workers} threads)"
     )
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_process_strip, strip, idx): strip
-            for idx, strip in enumerate(manifest.strips)
+            executor.submit(_process_text_block, entry): entry
+            for entry in manifest.text_blocks
         }
 
         for future in as_completed(futures):
             result = future.result()
             if result:
-                strip, index_results, strip_idx = result
+                block_id, text, part_idx, total_parts = result
 
-                for i, bp in enumerate(strip.block_parts):
-                    block_id = bp["block_id"]
-                    part_idx = bp["part_idx"]
-                    total_parts = bp["total_parts"]
-                    text = index_results.get(i, "")
+                if block_id not in text_block_parts:
+                    text_block_parts[block_id] = {}
+                    text_block_total_parts[block_id] = total_parts
 
-                    if block_id not in text_block_parts:
-                        text_block_parts[block_id] = {}
-                        text_block_total_parts[block_id] = total_parts
+                text_block_parts[block_id][part_idx] = text
 
-                    text_block_parts[block_id][part_idx] = text
-
-                num_blocks = len(strip.block_parts)
-                if num_blocks == 1:
-                    suffix = ""
-                elif num_blocks < 5:
-                    suffix = "s"
+                block = blocks_by_id.get(block_id)
+                if block:
+                    page_num = block.page_index + 1
+                    block_info = f"Text (page {page_num})"
                 else:
-                    suffix = "s"
-                block_info = f"Strip ({num_blocks} block{suffix})"
+                    block_info = "Text"
                 _update_progress(block_info)
             else:
-                _update_progress("Strip")
+                _update_progress("Text")
             gc.collect()
 
     # Assemble TEXT/TABLE block parts
@@ -628,7 +603,7 @@ def pass2_ocr_from_manifest(
             f"PASS2 TEXT block {block_id}: ocr_text length = {len(block.ocr_text) if block.ocr_text else 0}"
         )
 
-    log_memory_delta("PASS2 after strips", start_mem)
+    log_memory_delta("PASS2 after text blocks", start_mem)
 
     # --- Process IMAGE blocks ---
     def _process_image(entry: CropManifestEntry):

@@ -115,126 +115,74 @@ def inject_pdfplumber_to_ocr_text(ocr_result: str, pdfplumber_text: str) -> str:
 
 def build_strip_prompt(blocks: list, block_ids: Optional[List[str]] = None) -> dict:
     """
-    Построить промпт для batch запроса (полоса TEXT/TABLE блоков).
-    Формат ответа: BLOCK: XXXX-XXXX-XXX с результатом каждого блока.
+    Build prompt for TEXT block OCR.
+
+    NOTE: Batch processing with multiple blocks is DEPRECATED.
+    Each TEXT block is now processed individually.
     """
-    if len(blocks) == 1:
-        block = blocks[0]
-        if block.prompt:
-            return block.prompt
-        return {
-            "system": "You are an expert OCR system. Extract text accurately.",
-            "user": "Распознай текст на изображении. Сохрани форматирование.",
-        }
+    if len(blocks) != 1:
+        logger.warning(
+            f"build_strip_prompt called with {len(blocks)} blocks, expected 1. "
+            "Batch processing is deprecated."
+        )
 
-    system = (
-        "You are an expert OCR system. Extract text from each block accurately. "
-        "Each block is separated by a black bar with white text 'BLOCK: XXXX-XXXX-XXX'. "
-        "You MUST include these BLOCK markers in your response to separate each block's content."
-    )
-    user = "Распознай текст на изображении."
+    # Use block's custom prompt if available
+    block = blocks[0] if blocks else None
+    if block and block.prompt:
+        return block.prompt
 
-    batch_instruction = (
-        f"\n\nНа изображении {len(blocks)} блоков, разделённых чёрными полосами.\n"
-        f"Каждый блок начинается с маркера 'BLOCK: XXXX-XXXX-XXX' (белый текст на чёрном фоне).\n"
-        f"ВАЖНО: В ответе выводи маркер BLOCK: перед текстом КАЖДОГО блока.\n"
-        f"Формат ответа:\n"
-        f"BLOCK: XXXX-XXXX-XXX\n<текст первого блока>\n\n"
-        f"BLOCK: YYYY-YYYY-YYY\n<текст второго блока>\n...\n\n"
-        f"Не объединяй блоки. Каждый блок — отдельный фрагмент документа."
-    )
-
-    return {"system": system, "user": user + batch_instruction}
+    return {
+        "system": "You are an expert OCR system. Extract text accurately.",
+        "user": "Распознай текст на изображении. Сохрани форматирование.",
+    }
 
 
 def parse_batch_response_by_block_id(
     block_ids: List[str], response_text: str
 ) -> Dict[str, str]:
     """
-    Парсинг ответа с разделителями BLOCK: XXXX-XXXX-XXX (armor код).
-    Также поддерживает legacy формат [[[BLOCK_ID: uuid]]].
+    Парсинг ответа OCR для одного блока.
+
+    NOTE: Batch processing with multiple blocks is DEPRECATED.
+    Each block is now processed individually, so this function
+    expects exactly one block_id.
+
     Returns: Dict[block_id -> text]
     """
-    from rd_domain.ids import match_armor_to_uuid
-
     results: Dict[str, str] = {}
+
+    if not block_ids:
+        return results
+
+    if len(block_ids) > 1:
+        logger.warning(
+            f"parse_batch_response_by_block_id called with {len(block_ids)} blocks, "
+            "expected 1. Batch processing is deprecated."
+        )
 
     if response_text is None:
         for bid in block_ids:
             results[bid] = ""
         return results
 
-    # Новый формат: BLOCK: XXXX-XXXX-XXX
-    armor_pattern = r"BLOCK:\s*([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3})"
-    armor_matches = list(re.finditer(armor_pattern, response_text, re.IGNORECASE))
+    # Для одного блока просто возвращаем весь текст
+    # Убираем маркеры BLOCK если они есть (legacy)
+    text = response_text.strip()
+    text = re.sub(
+        r"BLOCK:\s*[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3}\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\[\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\]\s*", "", text, flags=re.IGNORECASE
+    )
 
-    if armor_matches:
-        logger.info(
-            f"Найдено {len(armor_matches)} разделителей BLOCK (armor) в OCR ответе"
-        )
+    results[block_ids[0]] = text.strip()
 
-        for i, match in enumerate(armor_matches):
-            armor_code = match.group(1)
-            start_pos = match.end()
-
-            if i + 1 < len(armor_matches):
-                end_pos = armor_matches[i + 1].start()
-            else:
-                end_pos = len(response_text)
-
-            block_text = response_text[start_pos:end_pos].strip()
-
-            # Сопоставляем armor код с uuid
-            matched_uuid, score = match_armor_to_uuid(armor_code, block_ids)
-            if matched_uuid:
-                results[matched_uuid] = block_text
-            else:
-                logger.warning(
-                    f"Armor код {armor_code} не сопоставлен ни с одним block_id"
-                )
-
-        for bid in block_ids:
-            if bid not in results:
-                results[bid] = ""
-                logger.warning(f"BLOCK_ID {bid} не найден в OCR ответе")
-
-        return results
-
-    # Legacy формат: [[[BLOCK_ID: uuid]]]
-    legacy_pattern = r"\[\[\[BLOCK_ID:\s*([a-f0-9\-]+)\]\]\]"
-    legacy_matches = list(re.finditer(legacy_pattern, response_text, re.IGNORECASE))
-
-    if legacy_matches:
-        logger.info(
-            f"Найдено {len(legacy_matches)} разделителей BLOCK_ID (legacy) в OCR ответе"
-        )
-
-        for i, match in enumerate(legacy_matches):
-            block_id = match.group(1)
-            start_pos = match.end()
-
-            if i + 1 < len(legacy_matches):
-                end_pos = legacy_matches[i + 1].start()
-            else:
-                end_pos = len(response_text)
-
-            block_text = response_text[start_pos:end_pos].strip()
-            results[block_id] = block_text
-
-        for bid in block_ids:
-            if bid not in results:
-                results[bid] = ""
-                logger.warning(f"BLOCK_ID {bid} не найден в OCR ответе")
-
-        return results
-
-    # Fallback: если разделителей нет, весь текст первому блоку
-    logger.warning("Разделители BLOCK не найдены, текст целиком первому блоку")
-    for i, bid in enumerate(block_ids):
-        if i == 0:
-            results[bid] = response_text.strip()
-        else:
-            results[bid] = ""
+    # Для остальных блоков (если переданы по ошибке) - пустой результат
+    for bid in block_ids[1:]:
+        results[bid] = ""
 
     return results
 
@@ -243,7 +191,12 @@ def parse_batch_response_by_index(
     num_blocks: int, response_text: str, block_ids: Optional[List[str]] = None
 ) -> Dict[int, str]:
     """
-    Парсинг ответа с маркерами [1], [2], ... или BLOCK: XXXX-XXXX-XXX
+    Парсинг ответа OCR для одного блока.
+
+    NOTE: Batch processing with multiple blocks is DEPRECATED.
+    Each block is now processed individually, so this function
+    expects num_blocks == 1.
+
     Returns: Dict[index -> text] (индекс 0-based)
     """
     results: Dict[int, str] = {}
@@ -253,142 +206,27 @@ def parse_batch_response_by_index(
             results[i] = "[Ошибка: пустой ответ OCR]"
         return results
 
-    if num_blocks == 1:
-        # Для одного блока убираем разделитель если есть
-        text = response_text.strip()
-        # Убираем новый формат
-        text = re.sub(
-            r"BLOCK:\s*[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3}\s*",
-            "",
-            text,
-            flags=re.IGNORECASE,
-        )
-        # Убираем legacy формат
-        text = re.sub(
-            r"\[\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\]\s*", "", text, flags=re.IGNORECASE
-        )
-        results[0] = text.strip()
-        return results
-
-    # Новый формат: BLOCK: XXXX-XXXX-XXX
-    armor_pattern = r"BLOCK:\s*([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3})"
-    armor_matches = list(re.finditer(armor_pattern, response_text, re.IGNORECASE))
-
-    if armor_matches:
-        logger.info(
-            f"Парсинг по BLOCK (armor) разделителям: найдено {len(armor_matches)}"
-        )
-
-        # Если есть block_ids - сопоставляем по armor кодам
-        if block_ids:
-            from rd_domain.ids import match_armor_to_uuid
-
-            # Создаём маппинг block_id -> index
-            id_to_index = {bid: i for i, bid in enumerate(block_ids)}
-
-            for i, match in enumerate(armor_matches):
-                armor_code = match.group(1)
-                start_pos = match.end()
-
-                if i + 1 < len(armor_matches):
-                    end_pos = armor_matches[i + 1].start()
-                else:
-                    end_pos = len(response_text)
-
-                block_text = response_text[start_pos:end_pos].strip()
-
-                # Сопоставляем armor код с uuid
-                matched_uuid, score = match_armor_to_uuid(armor_code, block_ids)
-                if matched_uuid and matched_uuid in id_to_index:
-                    idx = id_to_index[matched_uuid]
-                    results[idx] = block_text
-                else:
-                    logger.warning(
-                        f"Armor код {armor_code} не сопоставлен ни с одним block_id"
-                    )
-        else:
-            # Fallback: по порядку (старое поведение)
-            for i, match in enumerate(armor_matches):
-                if i >= num_blocks:
-                    break
-
-                start_pos = match.end()
-                if i + 1 < len(armor_matches):
-                    end_pos = armor_matches[i + 1].start()
-                else:
-                    end_pos = len(response_text)
-
-                block_text = response_text[start_pos:end_pos].strip()
-                results[i] = block_text
-
-        for i in range(num_blocks):
-            if i not in results:
-                results[i] = ""
-
-        return results
-
-    # Legacy: [[[BLOCK_ID: uuid]]]
-    block_id_pattern = r"\[\[\[BLOCK_ID:\s*([a-f0-9\-]+)\]\]\]"
-    block_id_matches = list(re.finditer(block_id_pattern, response_text, re.IGNORECASE))
-
-    if block_id_matches and len(block_id_matches) >= num_blocks:
-        logger.info(
-            f"Парсинг по BLOCK_ID (legacy) разделителям: найдено {len(block_id_matches)}"
-        )
-
-        for i, match in enumerate(block_id_matches):
-            if i >= num_blocks:
-                break
-
-            start_pos = match.end()
-            if i + 1 < len(block_id_matches):
-                end_pos = block_id_matches[i + 1].start()
-            else:
-                end_pos = len(response_text)
-
-            block_text = response_text[start_pos:end_pos].strip()
-            results[i] = block_text
-
-        for i in range(num_blocks):
-            if i not in results:
-                results[i] = ""
-
-        return results
-
-    # Fallback: парсим по [1], [2], ...
-    parts = re.split(r"\n?\[(\d+)\]\s*", response_text)
-
-    parsed = {}
-    for i in range(1, len(parts) - 1, 2):
-        try:
-            idx = int(parts[i]) - 1
-            text = parts[i + 1].strip()
-            if 0 <= idx < num_blocks:
-                parsed[idx] = text
-        except (ValueError, IndexError):
-            continue
-
-    if not parsed:
-        alt_parts = re.split(r"\n{3,}|(?:\n-{3,}\n)", response_text.strip())
-        if len(alt_parts) >= num_blocks:
-            for i in range(num_blocks):
-                results[i] = alt_parts[i].strip()
-            return results
-        for i in range(num_blocks):
-            if i == 0:
-                results[i] = response_text.strip()
-            else:
-                results[i] = ""
+    if num_blocks > 1:
         logger.warning(
-            f"Batch response без маркеров [N], весь текст присвоен первому элементу"
+            f"parse_batch_response_by_index called with {num_blocks} blocks, "
+            "expected 1. Batch processing is deprecated."
         )
-        return results
 
-    for i in range(num_blocks):
-        if i in parsed:
-            results[i] = parsed[i]
-        else:
-            results[i] = ""
-            logger.warning(f"Элемент {i} не найден в batch response")
+    # Для одного блока убираем маркеры если есть (legacy)
+    text = response_text.strip()
+    text = re.sub(
+        r"BLOCK:\s*[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{3}\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\[\[\[BLOCK_ID:\s*[a-f0-9\-]+\]\]\]\s*", "", text, flags=re.IGNORECASE
+    )
+    results[0] = text.strip()
+
+    # Для остальных блоков (если переданы по ошибке) - пустой результат
+    for i in range(1, num_blocks):
+        results[i] = ""
 
     return results

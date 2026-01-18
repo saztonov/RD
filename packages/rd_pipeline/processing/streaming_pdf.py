@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import gc
 import logging
-import os
 from typing import Dict, List, Optional, Tuple
 
 import fitz
@@ -18,15 +17,8 @@ from rd_pipeline.processing.config import ProcessingConfig, default_config
 
 logger = logging.getLogger(__name__)
 
-# Default constants (can be overridden via config)
-BLOCK_SEPARATOR_HEIGHT = default_config.block_separator_height
-
 # Increase PIL limit
 Image.MAX_IMAGE_PIXELS = 500_000_000
-
-# Path to bundled font
-_FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
-BUNDLED_FONT_PATH = os.path.join(_FONT_DIR, "DejaVuSansMono.ttf")
 
 
 class StreamingPDFProcessor:
@@ -279,129 +271,6 @@ def split_large_crop(
             break
 
     return parts
-
-
-def create_block_separator(
-    block_id: str,
-    width: int,
-    height: int = BLOCK_SEPARATOR_HEIGHT,
-) -> Image.Image:
-    """
-    Create separator with white text block_id on black background.
-    Format: BLOCK: XXXX-XXXX-XXX (OCR-resistant code)
-    """
-    from PIL import ImageFont
-    from rd_domain.ids import encode_block_id
-
-    actual_height = max(1, int(height))
-    separator = Image.new("RGB", (width, actual_height), (0, 0, 0))
-    draw = ImageDraw.Draw(separator)
-
-    armor_code = encode_block_id(block_id)
-    text = f"BLOCK: {armor_code}"
-
-    padding_x = max(4, min(int(actual_height * 0.4), max(4, width // 10)))
-    padding_y = max(2, int(actual_height * 0.15))
-    if width - (2 * padding_x) < 1:
-        padding_x = max(0, (width - 1) // 2)
-    if actual_height - (2 * padding_y) < 1:
-        padding_y = max(0, (actual_height - 1) // 2)
-
-    max_text_width = max(1, width - (2 * padding_x))
-    max_text_height = max(1, actual_height - (2 * padding_y))
-    font_size = max(20, int(max_text_height))  # Min 20px for OCR visibility
-
-    def _load_font(size: int):
-        try:
-            return ImageFont.truetype("arial.ttf", size)
-        except (IOError, OSError):
-            try:
-                return ImageFont.truetype(BUNDLED_FONT_PATH, size)
-            except (IOError, OSError):
-                return ImageFont.load_default()
-
-    font = _load_font(font_size)
-    if isinstance(font, ImageFont.FreeTypeFont):
-        min_size = 20  # Increased for OCR visibility
-        while font_size > min_size:
-            bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            if text_width <= max_text_width and text_height <= max_text_height:
-                break
-            font_size -= 1
-            font = _load_font(font_size)
-
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_height = bbox[3] - bbox[1]
-
-    x = padding_x
-    y = max(0, (actual_height - text_height) // 2)
-
-    draw.text((x, y), text, fill=(255, 255, 255), font=font)
-    return separator
-
-
-def merge_crops_vertically(
-    crops: List[Image.Image],
-    gap: int = 20,
-    block_ids: Optional[List[str]] = None,
-    separator_height: int = BLOCK_SEPARATOR_HEIGHT,
-) -> Image.Image:
-    """
-    Merge crops vertically with optional block_id separators.
-    Separator is inserted only when block_id changes.
-    Separator height is fixed.
-    """
-    if not crops:
-        raise ValueError("Empty crops list")
-
-    use_separators = block_ids is not None and len(block_ids) == len(crops)
-    max_width = max(c.width for c in crops)
-
-    actual_sep_height = max(1, int(separator_height))
-
-    if use_separators:
-        separator_count = 0
-        prev_id = None
-        for bid in block_ids:
-            if bid != prev_id:
-                separator_count += 1
-                prev_id = bid
-        total_height = (
-            sum(c.height for c in crops)
-            + actual_sep_height * separator_count
-            + gap * (len(crops) - separator_count)
-        )
-    else:
-        total_height = sum(c.height for c in crops) + gap * (len(crops) - 1)
-
-    merged = Image.new("RGB", (max_width, total_height), (255, 255, 255))
-    y_offset = 0
-    prev_block_id = None
-
-    for i, crop in enumerate(crops):
-        if use_separators:
-            current_block_id = block_ids[i]
-            if current_block_id != prev_block_id:
-                separator = create_block_separator(
-                    current_block_id, max_width, height=actual_sep_height
-                )
-                merged.paste(separator, (0, y_offset))
-                y_offset += separator.height
-                prev_block_id = current_block_id
-            elif i > 0:
-                y_offset += gap
-        elif i > 0:
-            y_offset += gap
-
-        x_offset = 0
-        if crop.mode in ("RGBA", "LA"):
-            crop = crop.convert("RGB")
-        merged.paste(crop, (x_offset, y_offset))
-        y_offset += crop.height
-
-    return merged
 
 
 def get_page_dimensions_streaming(pdf_path: str) -> Dict[int, Tuple[int, int]]:

@@ -179,24 +179,9 @@ class Settings:
             "crop_png_compress", "CROP_PNG_COMPRESS", 6, int
         )
     )
-    max_ocr_batch_size: int = field(
-        default_factory=lambda: _get_setting(
-            "max_ocr_batch_size", "MAX_OCR_BATCH_SIZE", 5, int
-        )
-    )
     pdf_render_dpi: int = field(
         default_factory=lambda: _get_setting(
-            "pdf_render_dpi", "PDF_RENDER_DPI", 150, int  # Уменьшено с 300 для меньшего размера блоков
-        )
-    )
-    max_strip_height: int = field(
-        default_factory=lambda: _get_setting(
-            "max_strip_height", "MAX_STRIP_HEIGHT", 9000, int
-        )
-    )
-    block_separator_height: int = field(
-        default_factory=lambda: _get_setting(
-            "block_separator_height", "BLOCK_SEPARATOR_HEIGHT", 100, int
+            "pdf_render_dpi", "PDF_RENDER_DPI", 150, int
         )
     )
 

@@ -9,7 +9,7 @@ import traceback
 
 from .celery_app import celery_app
 from .job_orchestrator import JobOrchestrator
-from .memory_utils import force_gc, log_memory, log_memory_delta
+from rd_pipeline.utils.memory import force_gc, log_memory, log_memory_delta
 from .storage import get_job, log_db_metrics, update_job_completed, update_job_started, update_job_status
 from .worker_pdf import clear_page_size_cache
 

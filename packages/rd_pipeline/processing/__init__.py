@@ -11,13 +11,10 @@ from rd_pipeline.processing.config import ProcessingConfig
 from rd_pipeline.processing.streaming_pdf import (
     StreamingPDFProcessor,
     split_large_crop,
-    create_block_separator,
-    merge_crops_vertically,
     get_page_dimensions_streaming,
     calculate_adaptive_dpi,
     apply_ocr_preprocessing,
     render_block_crop,
-    BLOCK_SEPARATOR_HEIGHT,
 )
 from rd_pipeline.processing.two_pass import (
     pass1_prepare_crops,
@@ -48,13 +45,10 @@ __all__ = [
     # Streaming PDF
     "StreamingPDFProcessor",
     "split_large_crop",
-    "create_block_separator",
-    "merge_crops_vertically",
     "get_page_dimensions_streaming",
     "calculate_adaptive_dpi",
     "apply_ocr_preprocessing",
     "render_block_crop",
-    "BLOCK_SEPARATOR_HEIGHT",
     # Two-pass
     "pass1_prepare_crops",
     "pass2_ocr_from_manifest",

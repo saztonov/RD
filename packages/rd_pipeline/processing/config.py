@@ -15,8 +15,7 @@ class ProcessingConfig:
     pdf_render_dpi: int = 150
     max_image_pixels: int = 400_000_000
 
-    # Strip/crop settings
-    max_strip_height: int = 9000
+    # Crop settings
     max_single_block_height: int = 9000
     crop_png_compress: int = 6
 
@@ -30,9 +29,6 @@ class ProcessingConfig:
 
     # Threading
     ocr_threads_per_job: int = 2
-
-    # Block separator (increased from 50 for better OCR recognition)
-    block_separator_height: int = 100
 
     @property
     def pdf_render_zoom(self) -> float:
