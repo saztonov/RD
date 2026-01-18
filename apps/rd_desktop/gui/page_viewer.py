@@ -98,7 +98,7 @@ class PageViewer(
         
         # Throttling для mouseMoveEvent при рисовании
         self._last_mouse_move_time = 0
-        self._mouse_move_throttle_ms = 8  # ~120 FPS максимум
+        self._mouse_move_throttle_ms = 4  # ~250 FPS максимум для плавного рисования
         
         self._setup_ui()
 

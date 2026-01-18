@@ -6,7 +6,7 @@ BlocksTreeManager для MainWindow
 import logging
 import uuid
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QInputDialog,
     QMenu,
@@ -29,6 +29,28 @@ class BlocksTreeManager:
     def __init__(self, parent, blocks_tree: QTreeWidget):
         self.parent = parent
         self.blocks_tree = blocks_tree
+
+        # Debounce для update_blocks_tree
+        self._tree_update_timer = None
+        self._tree_update_pending = False
+
+    def schedule_tree_update(self, delay_ms: int = 100):
+        """Отложенное обновление дерева с debounce (для предотвращения частых обновлений)"""
+        if self._tree_update_pending:
+            return
+        self._tree_update_pending = True
+
+        if self._tree_update_timer is None:
+            self._tree_update_timer = QTimer()
+            self._tree_update_timer.setSingleShot(True)
+            self._tree_update_timer.timeout.connect(self._do_tree_update)
+
+        self._tree_update_timer.start(delay_ms)
+
+    def _do_tree_update(self):
+        """Выполнить отложенное обновление дерева"""
+        self._tree_update_pending = False
+        self.update_blocks_tree()
 
     def _get_category_name(self, category_id: str, category_code: str = None) -> str:
         """Получить название категории по ID или коду"""

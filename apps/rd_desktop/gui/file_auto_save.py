@@ -69,6 +69,11 @@ class FileAutoSaveMixin:
         if not self.annotation_document:
             return
 
+        # Откладываем обновление UI если идет рисование
+        if hasattr(self, 'page_viewer') and self.page_viewer.drawing:
+            QTimer.singleShot(100, lambda: self._on_remote_block_added(node_id, block))
+            return
+
         # Добавляем блок в annotation_document
         if block.page_index < len(self.annotation_document.pages):
             page = self.annotation_document.pages[block.page_index]
@@ -81,7 +86,7 @@ class FileAutoSaveMixin:
                         # Используем инкрементальное добавление
                         self.page_viewer.add_block_visual(block)
                     if hasattr(self, 'blocks_tree_manager') and self.blocks_tree_manager:
-                        self.blocks_tree_manager.update_blocks_tree()
+                        self.blocks_tree_manager.schedule_tree_update()
                 self._show_remote_change_toast("Добавлен блок")
                 logger.info(f"Remote block added: {block.id}")
 
@@ -91,6 +96,11 @@ class FileAutoSaveMixin:
             return
 
         if not self.annotation_document:
+            return
+
+        # Откладываем обновление UI если идет рисование
+        if hasattr(self, 'page_viewer') and self.page_viewer.drawing:
+            QTimer.singleShot(100, lambda: self._on_remote_block_updated(node_id, block))
             return
 
         if block.page_index < len(self.annotation_document.pages):
@@ -106,7 +116,7 @@ class FileAutoSaveMixin:
                     # Используем инкрементальное обновление
                     self.page_viewer.update_block_visual(block)
                 if hasattr(self, 'blocks_tree_manager') and self.blocks_tree_manager:
-                    self.blocks_tree_manager.update_blocks_tree()
+                    self.blocks_tree_manager.schedule_tree_update()
             self._show_remote_change_toast("Обновлен блок")
             logger.info(f"Remote block updated: {block.id}")
 
@@ -116,6 +126,11 @@ class FileAutoSaveMixin:
             return
 
         if not self.annotation_document:
+            return
+
+        # Откладываем обновление UI если идет рисование
+        if hasattr(self, 'page_viewer') and self.page_viewer.drawing:
+            QTimer.singleShot(100, lambda: self._on_remote_block_deleted(node_id, block_id))
             return
 
         for page in self.annotation_document.pages:
@@ -128,7 +143,7 @@ class FileAutoSaveMixin:
                             # Используем инкрементальное удаление
                             self.page_viewer.remove_block_visual(block_id)
                         if hasattr(self, 'blocks_tree_manager') and self.blocks_tree_manager:
-                            self.blocks_tree_manager.update_blocks_tree()
+                            self.blocks_tree_manager.schedule_tree_update()
                     self._show_remote_change_toast("Удален блок")
                     logger.info(f"Remote block deleted: {block_id}")
                     return

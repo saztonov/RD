@@ -1,12 +1,14 @@
 """Mixin для обработки событий мыши в PageViewer"""
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPen, QWheelEvent
 from PySide6.QtWidgets import QGraphicsRectItem, QMenu
 
+from apps.rd_desktop.gui.performance_monitor import get_performance_monitor
 from rd_domain.models import BlockType, ShapeType
 
 
@@ -36,9 +38,7 @@ class MouseEventsMixin:
 
     def mousePressEvent(self, event):
         """Обработка нажатия мыши"""
-        from apps.rd_desktop.gui.performance_monitor import get_performance_monitor
         monitor = get_performance_monitor()
-        
         with monitor.measure("mousePressEvent", warn_threshold_ms=50):
             self._handle_left_button_press(event)
     
@@ -180,9 +180,7 @@ class MouseEventsMixin:
             else:
                 # Клик на пустое место - начинаем рисовать новый блок или полигон (только если не read_only)
                 if not self.read_only:
-                    from apps.rd_desktop.gui.performance_monitor import get_performance_monitor
                     monitor = get_performance_monitor()
-                    
                     with monitor.measure("start_drawing_block", warn_threshold_ms=50):
                         shape_type = self.get_current_shape_type()
 
@@ -240,8 +238,7 @@ class MouseEventsMixin:
 
         # Throttling для рисования (оптимизация производительности)
         if self.drawing or self.selecting:
-            import time
-            current_time = time.time() * 1000  # миллисекунды
+            current_time = time.perf_counter() * 1000  # миллисекунды (более точное на Windows)
             if current_time - self._last_mouse_move_time < self._mouse_move_throttle_ms:
                 return
             self._last_mouse_move_time = current_time
@@ -271,9 +268,7 @@ class MouseEventsMixin:
             self.rubber_band_item.setRect(rect)
 
         elif self.drawing and self.start_point and self.rubber_band_item:
-            from apps.rd_desktop.gui.performance_monitor import get_performance_monitor
             monitor = get_performance_monitor()
-            
             with monitor.measure("update_rubber_band", warn_threshold_ms=16):
                 rect = QRectF(self.start_point, clamped_pos).normalized()
                 self.rubber_band_item.setRect(rect)
