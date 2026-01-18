@@ -48,22 +48,6 @@ def get_version_info():
     return f"{__product__} v{__version__} ({__status__})"
 
 
-def get_about_text():
-    """Возвращает текст 'О программе' для GUI"""
-    return f"""
-{__product__}
-Версия {__version__}
-
-{__description__}
-
-Статус: {__status__}
-Лицензия: {__license__}
-Python: {__python_requires__}
-
-© 2026 {__author__}
-"""
-
-
 # Константы для сборки
 BUILD_NAME = "CoreStructure"
 BUILD_DISPLAY_NAME = "Core Structure"

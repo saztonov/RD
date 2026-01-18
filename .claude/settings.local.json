@@ -50,7 +50,10 @@
       "Bash(docker compose:*)",
       "Bash(PYTHONPATH=\"./packages:./apps:.\" python -c:*)",
       "Bash($env:PYTHONPATH = \"c:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\packages\")",
-      "Bash(PYTHONPATH=\"c:/Users/Usr/PycharmProjects/RD/packages\" python:*)"
+      "Bash(PYTHONPATH=\"c:/Users/Usr/PycharmProjects/RD/packages\" python:*)",
+      "Bash(powershell.exe -Command \"docker compose down 2>&1\")",
+      "Skill(push)",
+      "Skill(push:*)"
     ]
   }
 }

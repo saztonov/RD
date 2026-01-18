@@ -73,21 +73,21 @@ class DownloadMixin:
             doc_name = job_details.get("document_name", "result.pdf")
             pdf_stem = Path(pdf_path).stem if pdf_path else Path(doc_name).stem
 
-            # Используем ocr_result_prefix (изолированная папка задачи) с простыми именами
-            # Формат: tree_docs/{node_id}/ocr_runs/{job_id}/result.json
+            # Используем ocr_result_prefix с новой структурой путей
+            # Формат: n/{node_id}/{doc_stem}_result.md (новая структура)
             ocr_prefix = job_details.get("ocr_result_prefix") or r2_prefix
 
             # Инвалидируем кэш метаданных для префикса перед скачиванием
             get_metadata_cache().invalidate_prefix(ocr_prefix + "/")
             logger.debug(f"Invalidated metadata cache for prefix: {ocr_prefix}/")
 
-            # OCR результаты хранятся с простыми именами в изолированной папке задачи
+            # OCR результаты хранятся в R2 с именами: {doc_stem}_result.md, annotation.json и т.д.
             # Локально сохраняем с префиксом pdf_stem для удобства пользователя
             files_to_download = [
                 ("annotation.json", f"{pdf_stem}_annotation.json"),
                 ("ocr.html", f"{pdf_stem}_ocr.html"),
                 ("result.json", f"{pdf_stem}_result.json"),
-                ("document.md", f"{pdf_stem}_document.md"),
+                (f"{pdf_stem}_result.md", f"{pdf_stem}_document.md"),
             ]
 
             self._signals.download_started.emit(job_id, len(files_to_download))
