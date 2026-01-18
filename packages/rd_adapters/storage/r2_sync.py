@@ -1,11 +1,33 @@
 """Synchronous R2 Storage implementation using boto3."""
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# Common content types for R2 uploads
+CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".json": "application/json",
+    ".md": "text/markdown",
+    ".txt": "text/plain",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".html": "text/html",
+}
+
+
+def guess_content_type(file_path: Path) -> str:
+    """Determine MIME type by extension."""
+    extension = file_path.suffix.lower()
+    return CONTENT_TYPES.get(extension, "application/octet-stream")
 
 
 @dataclass
@@ -16,6 +38,32 @@ class R2Config:
     secret_access_key: str
     bucket_name: str
     region: str = "auto"
+
+    @classmethod
+    def from_env(cls) -> "R2Config":
+        """Create R2Config from environment variables."""
+        account_id = os.getenv("R2_ACCOUNT_ID")
+        endpoint_url = os.getenv("R2_ENDPOINT_URL")
+
+        if not endpoint_url and account_id:
+            endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+
+        config = cls(
+            endpoint_url=endpoint_url or "",
+            access_key_id=os.getenv("R2_ACCESS_KEY_ID", ""),
+            secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY", ""),
+            bucket_name=os.getenv("R2_BUCKET_NAME", ""),
+        )
+
+        if not all([config.endpoint_url, config.access_key_id,
+                    config.secret_access_key, config.bucket_name]):
+            raise ValueError(
+                "Missing R2 environment variables: "
+                "R2_ENDPOINT_URL (or R2_ACCOUNT_ID), R2_ACCESS_KEY_ID, "
+                "R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME"
+            )
+
+        return config
 
 
 class R2SyncStorage:
@@ -33,7 +81,7 @@ class R2SyncStorage:
             config: R2 configuration
         """
         if config is None:
-            config = self._config_from_env()
+            config = R2Config.from_env()
 
         self.config = config
         self.bucket_name = config.bucket_name
@@ -76,51 +124,7 @@ class R2SyncStorage:
     @classmethod
     def from_env(cls) -> "R2SyncStorage":
         """Create instance from environment variables."""
-        return cls(cls._config_from_env())
-
-    @classmethod
-    def _config_from_env(cls) -> R2Config:
-        import os
-
-        account_id = os.getenv("R2_ACCOUNT_ID")
-        endpoint_url = os.getenv("R2_ENDPOINT_URL")
-
-        if not endpoint_url and account_id:
-            endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
-
-        config = R2Config(
-            endpoint_url=endpoint_url or "",
-            access_key_id=os.getenv("R2_ACCESS_KEY_ID", ""),
-            secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY", ""),
-            bucket_name=os.getenv("R2_BUCKET_NAME", ""),
-        )
-
-        if not all([config.endpoint_url, config.access_key_id,
-                    config.secret_access_key, config.bucket_name]):
-            raise ValueError(
-                "Missing R2 environment variables: "
-                "R2_ENDPOINT_URL (or R2_ACCOUNT_ID), R2_ACCESS_KEY_ID, "
-                "R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME"
-            )
-
-        return config
-
-    def _guess_content_type(self, file_path: Path) -> str:
-        """Determine MIME type by extension."""
-        extension = file_path.suffix.lower()
-        content_types = {
-            ".pdf": "application/pdf",
-            ".json": "application/json",
-            ".md": "text/markdown",
-            ".txt": "text/plain",
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-            ".html": "text/html",
-        }
-        return content_types.get(extension, "application/octet-stream")
+        return cls(R2Config.from_env())
 
     def upload_file(
         self, local_path: str, remote_key: str, content_type: Optional[str] = None
@@ -136,7 +140,7 @@ class R2SyncStorage:
                 return False
 
             if content_type is None:
-                content_type = self._guess_content_type(local_file)
+                content_type = guess_content_type(local_file)
 
             extra_args = {}
             if content_type:

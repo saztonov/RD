@@ -47,7 +47,10 @@
       "Bash(%cd%apps)",
       "Bash($env:PYTHONPATH=\"$PWD\\\\packages;$PWD\\\\apps\")",
       "Bash(PYTHONPATH=\"packages:apps\" python:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(PYTHONPATH=\"./packages:./apps:.\" python -c:*)",
+      "Bash($env:PYTHONPATH = \"c:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\packages\")",
+      "Bash(PYTHONPATH=\"c:/Users/Usr/PycharmProjects/RD/packages\" python:*)"
     ]
   }
 }

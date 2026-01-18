@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 from datetime import datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Dict, List
 
 from apps.remote_ocr_server.node_storage.file_manager import (
@@ -22,13 +22,8 @@ def _delete_old_ocr_entries(node_id: str) -> int:
     """Удалить старые записи OCR результатов из node_files (кроме pdf)."""
     client = get_client()
     ocr_file_types = [
-        "result_json",
         "annotation",
-        "ocr_html",
         "result_md",
-        "qa_manifest",
-        "text_block",
-        "text_block_batch",
         "crop",
         "crops_folder",
     ]
@@ -46,39 +41,16 @@ def _delete_old_ocr_entries(node_id: str) -> int:
         return 0
 
 
-def _write_latest_ocr_run(node_id: str, job_id: str, files_info: Dict[str, str]) -> bool:
-    """Записать latest_ocr_run.json в R2."""
-    try:
-        from apps.remote_ocr_server.task_helpers import get_r2_storage
-
-        r2 = get_r2_storage()
-        now = datetime.utcnow().isoformat() + "Z"
-
-        latest_run = {
-            "job_id": job_id,
-            "created_at": now,
-            "files": files_info
-        }
-
-        latest_key = f"tree_docs/{node_id}/latest_ocr_run.json"
-        content = json.dumps(latest_run, ensure_ascii=False, indent=2)
-        r2.upload_text(content, latest_key, content_type="application/json")
-
-        logger.info(f"Written latest_ocr_run.json to {latest_key}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to write latest_ocr_run.json: {e}")
-        return False
-
-
 def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_dir) -> int:
-    """Зарегистрировать все OCR результаты в node_files.
+    """Зарегистрировать OCR результаты в node_files.
 
     Файлы загружены в изолированную папку задачи:
       tree_docs/{node_id}/ocr_runs/{job_id}/
 
-    Удаляет старые записи OCR из node_files и записывает latest_ocr_run.json.
-    Кропы сохраняются с метаданными блоков (block_id, page_index, coords, block_type).
+    Регистрируемые файлы:
+      - annotation.json (метаданные блоков)
+      - document.md (результат в Markdown)
+      - crops/*.pdf (кропы блоков с метаданными)
     """
     if not node_id:
         return 0
@@ -93,7 +65,6 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
     _delete_old_ocr_entries(node_id)
 
     registered = 0
-    files_info: Dict[str, str] = {}
 
     # Загружаем annotation.json для получения метаданных блоков
     blocks_by_id: Dict[str, dict] = {}
@@ -108,26 +79,9 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
         except Exception as e:
             logger.warning(f"Failed to load annotation.json for metadata: {e}")
 
-    # result.json (упрощённое имя в изолированной папке)
-    result_json = work_path / "result.json"
-    if result_json.exists():
-        r2_key = f"{job_r2_prefix}/result.json"
-        files_info["result"] = f"ocr_runs/{job_id}/result.json"
-        add_node_file(
-            node_id,
-            "result_json",
-            r2_key,
-            "result.json",
-            result_json.stat().st_size,
-            "application/json",
-            metadata={"ocr_run_id": job_id},
-        )
-        registered += 1
-
     # annotation.json
     if annotation_path.exists():
         r2_key = f"{job_r2_prefix}/annotation.json"
-        files_info["annotation"] = f"ocr_runs/{job_id}/annotation.json"
         add_node_file(
             node_id,
             "annotation",
@@ -139,27 +93,10 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
         )
         registered += 1
 
-    # ocr.html
-    ocr_html = work_path / "ocr_result.html"
-    if ocr_html.exists():
-        r2_key = f"{job_r2_prefix}/ocr.html"
-        files_info["ocr_html"] = f"ocr_runs/{job_id}/ocr.html"
-        add_node_file(
-            node_id,
-            "ocr_html",
-            r2_key,
-            "ocr.html",
-            ocr_html.stat().st_size,
-            "text/html",
-            metadata={"ocr_run_id": job_id},
-        )
-        registered += 1
-
     # document.md
     document_md = work_path / "document.md"
     if document_md.exists():
         r2_key = f"{job_r2_prefix}/document.md"
-        files_info["document_md"] = f"ocr_runs/{job_id}/document.md"
         add_node_file(
             node_id,
             "result_md",
@@ -173,56 +110,6 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
         logger.info(f"Зарегистрирован document.md в node_files (file_type=result_md)")
     else:
         logger.warning(f"document.md не найден для регистрации: {document_md}")
-
-    # qa_manifest.json (для Q&A приложения)
-    qa_manifest = work_path / "qa_manifest.json"
-    if qa_manifest.exists():
-        r2_key = f"{job_r2_prefix}/qa_manifest.json"
-        files_info["qa_manifest"] = f"ocr_runs/{job_id}/qa_manifest.json"
-        add_node_file(
-            node_id,
-            "qa_manifest",
-            r2_key,
-            "qa_manifest.json",
-            qa_manifest.stat().st_size,
-            "application/json",
-            metadata={"ocr_run_id": job_id},
-        )
-        registered += 1
-        logger.info(f"Зарегистрирован qa_manifest.json в node_files")
-
-    text_block_dir = work_path / "text_block"
-    blocks_json = text_block_dir / "blocks.json"
-    if blocks_json.exists():
-        r2_key = f"{job_r2_prefix}/text_block/blocks.json"
-        files_info["text_block"] = f"ocr_runs/{job_id}/text_block/blocks.json"
-        add_node_file(
-            node_id,
-            "text_block",
-            r2_key,
-            "blocks.json",
-            blocks_json.stat().st_size,
-            "application/json",
-            metadata={"ocr_run_id": job_id},
-        )
-        registered += 1
-        logger.info("Зарегистрирован text_block/blocks.json в node_files")
-
-    batches_json = text_block_dir / "batches.json"
-    if batches_json.exists():
-        r2_key = f"{job_r2_prefix}/text_block/batches.json"
-        files_info["text_block_batch"] = f"ocr_runs/{job_id}/text_block/batches.json"
-        add_node_file(
-            node_id,
-            "text_block_batch",
-            r2_key,
-            "batches.json",
-            batches_json.stat().st_size,
-            "application/json",
-            metadata={"ocr_run_id": job_id},
-        )
-        registered += 1
-        logger.info("Зарегистрирован text_block/batches.json в node_files")
 
     # Собираем все кропы из crops/ и crops_final/
     all_crop_files: List[Path] = []
@@ -238,7 +125,6 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
     # Регистрируем папку кропов как сущность
     if all_crop_files:
         r2_key = f"{job_r2_prefix}/crops/"
-        files_info["crops"] = f"ocr_runs/{job_id}/crops/"
         add_node_file(
             node_id,
             "crops_folder",
@@ -252,7 +138,7 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
 
     # Регистрируем каждый кроп с метаданными блока
     for crop_file in all_crop_files:
-        block_id = crop_file.stem  # block_id = имя файла без расширения
+        block_id = crop_file.stem
         block_data = blocks_by_id.get(block_id, {})
 
         add_node_file(
@@ -272,9 +158,6 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
         )
         registered += 1
 
-    # Записываем latest_ocr_run.json в R2
-    _write_latest_ocr_run(node_id, job_id, files_info)
-
     logger.info(
         f"Registered {registered} OCR result files for node {node_id}, job {job_id} ({len(all_crop_files)} crops)"
     )
@@ -282,13 +165,7 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
 
 
 def update_node_pdf_status(node_id: str):
-    """
-    Обновить статус PDF документа в БД
-
-    Args:
-        node_id: ID узла документа
-    """
-    # Добавляем корневую директорию проекта в путь если ещё не добавлено
+    """Обновить статус PDF документа в БД."""
     project_root = Path(__file__).parent.parent.parent.parent.parent
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))

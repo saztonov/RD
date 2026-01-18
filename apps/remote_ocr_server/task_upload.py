@@ -62,15 +62,16 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
       tree_docs/{node_id}/ocr_runs/{job_id}/
     Иначе - в ocr_jobs/{job_id}/ (обратная совместимость)
 
-    Использует batch upload для параллельной загрузки всех файлов.
-    Для кропов сохраняет metadata с информацией о блоке (block_id, page_index, coords_norm, block_type).
+    Загружаемые файлы:
+      - annotation.json (метаданные блоков)
+      - document.md (результат в Markdown)
+      - crops/*.pdf (кропы блоков)
     """
     r2 = get_r2_storage()
 
     # Определяем prefix для загрузки (если не передан)
     if r2_prefix is None:
         if job.node_id:
-            # Изолированная папка для каждой задачи
             r2_prefix = f"tree_docs/{job.node_id}/ocr_runs/{job.id}"
         else:
             r2_prefix = job.r2_prefix
@@ -82,7 +83,7 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     # Формат: (local_path, r2_key, content_type, file_type, filename, size, metadata)
     files_to_upload = []
 
-    # annotation.json (упрощённое имя в изолированной папке)
+    # annotation.json
     annotation_path = work_dir / "annotation.json"
     if annotation_path.exists():
         delete_job_files(job.id, ["blocks"])
@@ -92,25 +93,7 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
             "annotation", "annotation.json", annotation_path.stat().st_size, None
         ))
 
-    # ocr.html (упрощённое имя)
-    html_path = work_dir / "ocr_result.html"
-    if html_path.exists():
-        r2_key = f"{r2_prefix}/ocr.html"
-        files_to_upload.append((
-            str(html_path), r2_key, None,
-            "ocr_html", "ocr.html", html_path.stat().st_size, None
-        ))
-
-    # result.json (упрощённое имя)
-    result_path = work_dir / "result.json"
-    if result_path.exists():
-        r2_key = f"{r2_prefix}/result.json"
-        files_to_upload.append((
-            str(result_path), r2_key, None,
-            "result", "result.json", result_path.stat().st_size, None
-        ))
-
-    # document.md (упрощённое имя)
+    # document.md
     md_path = work_dir / "document.md"
     if md_path.exists():
         r2_key = f"{r2_prefix}/document.md"
@@ -120,50 +103,6 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
         ))
     else:
         logger.warning(f"document.md не найден для загрузки в R2: {md_path}")
-
-    # qa_manifest.json (для Q&A приложения)
-    qa_manifest_path = work_dir / "qa_manifest.json"
-    if qa_manifest_path.exists():
-        r2_key = f"{r2_prefix}/qa_manifest.json"
-        files_to_upload.append((
-            str(qa_manifest_path), r2_key, "application/json",
-            "qa_manifest", "qa_manifest.json", qa_manifest_path.stat().st_size, None
-        ))
-
-    # text_blocks/ (отдельные текстовые блоки с OCR результатами)
-    text_blocks_dir = work_dir / "text_blocks"
-    if text_blocks_dir.exists():
-        for json_file in text_blocks_dir.glob("*.json"):
-            r2_key = f"{r2_prefix}/text_blocks/{json_file.name}"
-            files_to_upload.append((
-                str(json_file), r2_key, "application/json",
-                "text_block", json_file.name, json_file.stat().st_size, None
-            ))
-        logger.info(f"Добавлено {len(list(text_blocks_dir.glob('*.json')))} text_blocks для загрузки")
-
-    # grouped_blocks/ (сгруппированные блоки - strips)
-    grouped_blocks_dir = work_dir / "grouped_blocks"
-    if grouped_blocks_dir.exists():
-        for json_file in grouped_blocks_dir.glob("*.json"):
-            r2_key = f"{r2_prefix}/grouped_blocks/{json_file.name}"
-            files_to_upload.append((
-                str(json_file), r2_key, "application/json",
-                "grouped_block", json_file.name, json_file.stat().st_size, None
-            ))
-        logger.info(f"Добавлено {len(list(grouped_blocks_dir.glob('*.json')))} grouped_blocks для загрузки")
-
-    text_block_dir = work_dir / "text_block"
-    if text_block_dir.exists():
-        for text_file in text_block_dir.iterdir():
-            if text_file.is_file() and text_file.suffix.lower() == ".json":
-                file_type = "text_block"
-                if text_file.name == "batches.json":
-                    file_type = "text_block_batch"
-                r2_key = f"{r2_prefix}/text_block/{text_file.name}"
-                files_to_upload.append((
-                    str(text_file), r2_key, "application/json",
-                    file_type, text_file.name, text_file.stat().st_size, None
-                ))
 
     # crops/ (проверяем оба варианта: crops и crops_final)
     # Исключаем блоки-штампы (category_code='stamp')
@@ -178,7 +117,6 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
                         continue
 
                     r2_key = f"{r2_prefix}/crops/{crop_file.name}"
-                    # Получаем metadata для кропа из annotation.json
                     crop_metadata = blocks_by_id.get(block_id)
                     files_to_upload.append((
                         str(crop_file), r2_key, None,

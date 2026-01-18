@@ -25,13 +25,6 @@ from rd_pipeline.processing.two_pass import (
     DefaultPromptBuilder,
     DefaultTextExtractor,
 )
-from rd_pipeline.processing.merge import (
-    merge_ocr_results,
-    regenerate_html_from_result,
-    regenerate_md_from_result,
-    HTMLSegmentParser,
-    DefaultHTMLSegmentParser,
-)
 from rd_pipeline.processing.image_preprocessing import (
     PreprocessMode,
     get_preprocess_mode_for_block,
@@ -57,12 +50,6 @@ __all__ = [
     "TextExtractor",
     "DefaultPromptBuilder",
     "DefaultTextExtractor",
-    # Merge
-    "merge_ocr_results",
-    "regenerate_html_from_result",
-    "regenerate_md_from_result",
-    "HTMLSegmentParser",
-    "DefaultHTMLSegmentParser",
     # Image preprocessing
     "PreprocessMode",
     "get_preprocess_mode_for_block",

@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from rd_adapters.storage.r2_sync import R2Config
+from rd_adapters.storage.r2_sync import R2Config, guess_content_type
 
 logger = logging.getLogger(__name__)
 
@@ -45,53 +45,13 @@ class R2AsyncStorage:
     @classmethod
     def from_env(cls) -> "R2AsyncStorage":
         """Create instance from environment variables."""
-        import os
-
-        account_id = os.getenv("R2_ACCOUNT_ID")
-        endpoint_url = os.getenv("R2_ENDPOINT_URL")
-
-        if not endpoint_url and account_id:
-            endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
-
-        config = R2Config(
-            endpoint_url=endpoint_url or "",
-            access_key_id=os.getenv("R2_ACCESS_KEY_ID", ""),
-            secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY", ""),
-            bucket_name=os.getenv("R2_BUCKET_NAME", ""),
-        )
-
-        if not all([config.endpoint_url, config.access_key_id,
-                    config.secret_access_key, config.bucket_name]):
-            raise ValueError(
-                "Missing R2 environment variables: "
-                "R2_ENDPOINT_URL (or R2_ACCOUNT_ID), R2_ACCESS_KEY_ID, "
-                "R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME"
-            )
-
-        return cls(config)
+        return cls(R2Config.from_env())
 
     def _get_session(self):
         """Get or create aioboto3 session."""
         if self._session is None:
             self._session = self._aioboto3.Session()
         return self._session
-
-    def _guess_content_type(self, file_path: Path) -> str:
-        """Determine MIME type by extension."""
-        extension = file_path.suffix.lower()
-        content_types = {
-            ".pdf": "application/pdf",
-            ".json": "application/json",
-            ".md": "text/markdown",
-            ".txt": "text/plain",
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-            ".html": "text/html",
-        }
-        return content_types.get(extension, "application/octet-stream")
 
     async def upload_file(
         self, local_path: str, remote_key: str, content_type: Optional[str] = None
@@ -105,7 +65,7 @@ class R2AsyncStorage:
                 return False
 
             if content_type is None:
-                content_type = self._guess_content_type(local_file)
+                content_type = guess_content_type(local_file)
 
             session = self._get_session()
             async with session.client(

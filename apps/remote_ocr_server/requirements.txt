@@ -2,13 +2,13 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
 python-multipart>=0.0.18
-python-dotenv>=1.0.0
-httpx>=0.28.0
+python-dotenv>=1.2.1
+httpx>=0.28.1
 
 # rd_core зависимости
 PyMuPDF>=1.26.7
 Pillow>=12.0.0
-requests>=2.32.0
+requests>=2.32.5
 
 # R2 Storage (async + sync) - версии зафиксированы для ускорения сборки Docker
 boto3==1.40.61

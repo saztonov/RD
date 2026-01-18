@@ -9,14 +9,21 @@ from rd_adapters.storage.errors import (
 )
 from rd_adapters.storage.ports import AsyncStoragePort, StoragePort
 from rd_adapters.storage.r2_async import R2AsyncStorage, R2AsyncStorageSync
-from rd_adapters.storage.r2_sync import R2Config, R2SyncStorage
+from rd_adapters.storage.r2_sync import (
+    CONTENT_TYPES,
+    R2Config,
+    R2SyncStorage,
+    guess_content_type,
+)
 
 __all__ = [
     # Ports (protocols)
     "StoragePort",
     "AsyncStoragePort",
-    # Config
+    # Config and utils
     "R2Config",
+    "CONTENT_TYPES",
+    "guess_content_type",
     # Sync implementation
     "R2SyncStorage",
     # Async implementation

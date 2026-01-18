@@ -6,7 +6,10 @@ from typing import List, Optional, Union
 
 from PIL import Image
 
+import requests
+
 from rd_pipeline.ocr.utils import image_to_base64, image_to_pdf_base64, pdf_file_to_base64
+from rd_pipeline.ocr.http_utils import create_session_with_retries
 
 logger = logging.getLogger(__name__)
 
@@ -29,21 +32,7 @@ class OpenRouterBackend:
         self.model_name = model_name
         self.rate_limiter = rate_limiter
         self._provider_order: Optional[List[str]] = None
-        try:
-            import requests
-            from requests.adapters import HTTPAdapter
-            from urllib3.util.retry import Retry
-
-            self.session = requests.Session()
-            retry = Retry(total=3, backoff_factor=0.5, status_forcelist=[502, 503, 504])
-            adapter = HTTPAdapter(
-                pool_connections=5, pool_maxsize=10, max_retries=retry
-            )
-            self.session.mount("https://", adapter)
-            self.session.mount("http://", adapter)
-            self.requests = requests  # for exceptions
-        except ImportError:
-            raise ImportError("requests required: pip install requests")
+        self.session = create_session_with_retries()
         logger.info(f"OpenRouter initialized (model: {self.model_name})")
 
     def _fetch_cheapest_providers(self) -> Optional[List[str]]:
@@ -220,7 +209,7 @@ class OpenRouterBackend:
             logger.debug(f"OpenRouter OCR: recognized {len(text)} characters")
             return text
 
-        except self.requests.exceptions.Timeout:
+        except requests.exceptions.Timeout:
             logger.error("OpenRouter OCR: timeout exceeded")
             return "[Error: request timeout exceeded]"
         except Exception as e:
@@ -362,7 +351,7 @@ class OpenRouterBackend:
             logger.debug(f"OpenRouter OCR (native PDF): recognized {len(text)} characters")
             return text
 
-        except self.requests.exceptions.Timeout:
+        except requests.exceptions.Timeout:
             logger.error("OpenRouter OCR: timeout exceeded")
             return "[Error: request timeout exceeded]"
         except Exception as e:
