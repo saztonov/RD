@@ -30,7 +30,17 @@ if ($Build) {
     if ($NoCache) {
         $buildArgs += "--no-cache"
     }
-    docker compose @composeFiles @composeArgs @composeProject build @buildArgs web worker
+    if ($Dev) {
+        docker compose @composeFiles @composeArgs @composeProject build @buildArgs web worker
+    } else {
+        docker compose @composeFiles @composeArgs @composeProject build @buildArgs web worker worker-meta worker-text worker-image worker-stamp
+    }
 }
 
-docker compose @composeFiles @composeProject up redis web worker
+if ($Dev) {
+    # Dev: universal worker обрабатывает все очереди
+    docker compose @composeFiles @composeProject up redis web worker
+} else {
+    # Production: все specialized workers
+    docker compose @composeFiles @composeProject up redis web worker worker-meta worker-text worker-image worker-stamp
+}

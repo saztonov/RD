@@ -34,20 +34,12 @@ pytest -v                             # Verbose output
 
 #### Quick Start (Windows PowerShell)
 
-**Option 1: Separate windows (Recommended)**
 ```powershell
-.\start-server.ps1   # Start in separate windows (shows logs)
-.\stop-server.ps1    # Stop all
+.\start-server.ps1           # Production (all workers)
+.\start-server.ps1 -Dev      # Development (universal worker)
+.\start-server.ps1 -Build    # Rebuild images before start
+.\stop-server.ps1            # Stop all containers
 ```
-
-**Option 2: Background jobs**
-```powershell
-.\start-all.ps1      # Start in background
-.\status.ps1         # Check status
-.\stop-all.ps1       # Stop all
-```
-
-See `README_SERVER.md` for details.
 
 #### Docker Compose (Production)
 ```bash
