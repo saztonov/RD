@@ -47,17 +47,12 @@ def calculate_pdf_status(
         pdf_parent = str(pdf_path.parent)
 
         ann_r2_key = f"{pdf_parent}/{pdf_stem}_annotation.json"
-        ocr_r2_key = f"{pdf_parent}/{pdf_stem}_ocr.html"
-        res_r2_key = f"{pdf_parent}/{pdf_stem}_result.json"
 
         # Проверяем наличие файлов на R2 одним запросом list_objects
-        # Вместо 3 отдельных exists() делаем 1 list_objects_with_metadata()
         r2_objects = r2_storage.list_objects_with_metadata(f"{pdf_parent}/")
         r2_keys = {obj["Key"] for obj in r2_objects}
 
         has_annotation_r2 = ann_r2_key in r2_keys
-        has_ocr_html_r2 = ocr_r2_key in r2_keys
-        has_result_json_r2 = res_r2_key in r2_keys
 
         # Проверяем наличие файлов в Supabase
         try:
@@ -68,8 +63,6 @@ def calculate_pdf_status(
             raise
 
         has_annotation_db = FileType.ANNOTATION in file_types_in_db
-        has_ocr_html_db = FileType.OCR_HTML in file_types_in_db
-        has_result_json_db = FileType.RESULT_JSON in file_types_in_db
 
         # Проверяем блоки если требуется
         pages_without_blocks = []
@@ -104,14 +97,6 @@ def calculate_pdf_status(
             missing_r2.append("annotation.json")
         if not has_annotation_db:
             missing_db.append("annotation.json")
-        if not has_ocr_html_r2:
-            missing_r2.append("ocr.html")
-        if not has_ocr_html_db:
-            missing_db.append("ocr.html")
-        if not has_result_json_r2:
-            missing_r2.append("result.json")
-        if not has_result_json_db:
-            missing_db.append("result.json")
 
         # Приоритет 3: Нет annotation.json или есть страницы без блоков
         if not has_annotation_r2:

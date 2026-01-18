@@ -34,7 +34,6 @@ class DatalabOCRBackend:
         self.api_key = api_key
         self.headers = {"X-Api-Key": api_key}
         self.rate_limiter = rate_limiter
-        self.last_html_result: Optional[str] = None  # HTML result of last request
 
         # Polling settings (from parameters or default)
         self.poll_interval = poll_interval if poll_interval is not None else self.DEFAULT_POLL_INTERVAL
@@ -100,7 +99,7 @@ class DatalabOCRBackend:
                         data = {
                             "mode": "accurate",
                             "paginate": "true",
-                            "output_format": "html",
+                            "output_format": "json",
                             "disable_image_extraction": "true",
                             "disable_image_captions": "true",
                             "additional_config": json.dumps(
@@ -192,12 +191,14 @@ class DatalabOCRBackend:
 
                     if status == "complete":
                         logger.info("Datalab: task completed successfully")
-                        html_result = poll_result.get("html", "")
                         logger.debug(
                             f"Datalab: response keys: {list(poll_result.keys())}"
                         )
-                        self.last_html_result = html_result if html_result else None
-                        return html_result if html_result else ""
+                        json_result = poll_result.get("json", "")
+                        if isinstance(json_result, dict):
+                            import json as json_lib
+                            return json_lib.dumps(json_result, ensure_ascii=False)
+                        return json_result if json_result else ""
                     elif status == "failed":
                         error = poll_result.get("error", "Unknown error")
                         logger.error(f"Datalab: task failed with error: {error}")

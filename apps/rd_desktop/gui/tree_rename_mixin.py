@@ -62,7 +62,7 @@ class TreeRenameMixin:
             logger.error(f"Error checking open file: {e}")
 
     def _rename_related_files(self, old_r2_key: str, new_r2_key: str, node_id: str):
-        """Переименовать связанные файлы (annotation.json, ocr.html, result.json)
+        """Переименовать связанные файлы (annotation.json, document.md)
 
         ВАЖНО: Переименовывает файлы в локальном кэше НЕЗАВИСИМО от наличия в R2,
         чтобы избежать потери аннотаций при работе в офлайн режиме.
@@ -78,11 +78,6 @@ class TreeRenameMixin:
             (
                 f"{r2_prefix}/{old_stem}_annotation.json",
                 f"{r2_prefix}/{new_stem}_annotation.json",
-            ),
-            (f"{r2_prefix}/{old_stem}_ocr.html", f"{r2_prefix}/{new_stem}_ocr.html"),
-            (
-                f"{r2_prefix}/{old_stem}_result.json",
-                f"{r2_prefix}/{new_stem}_result.json",
             ),
             (
                 f"{r2_prefix}/{old_stem}_document.md",

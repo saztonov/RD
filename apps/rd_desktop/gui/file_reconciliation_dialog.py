@@ -440,13 +440,9 @@ class FileReconciliationDialog(QDialog):
         elif lower_key.endswith(".json"):
             if "annotation" in lower_key:
                 return "annotation"
-            elif "result" in lower_key:
-                return "result_json"
             return "json"
         elif lower_key.endswith(".md"):
             return "result_md"
-        elif lower_key.endswith(".html"):
-            return "ocr_html"
         elif lower_key.endswith((".png", ".jpg", ".jpeg")):
             return "image/crop"
         return "unknown"

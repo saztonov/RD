@@ -7,7 +7,7 @@ from typing import List, Optional
 class JobFile:
     id: str
     job_id: str  # Ссылка на задачу (каскадное удаление при удалении job)
-    file_type: str  # pdf|blocks|annotation|result_md|result_zip|crop|ocr_html|result
+    file_type: str  # pdf|blocks|annotation|result_md|result_zip|crop
     r2_key: str
     file_name: str
     file_size: int

@@ -29,8 +29,6 @@ FILE_TYPE_ICONS = {
     "annotation": "📋",
     "crop": "🖼️",
     "image": "🖼️",
-    "ocr_html": "🌐",
-    "result_json": "📋",
     "result_md": "📝",
     "result_zip": "📦",
     "crops_folder": "📁",

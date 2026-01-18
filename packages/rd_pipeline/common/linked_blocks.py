@@ -155,8 +155,8 @@ def build_linked_blocks_index_dict(pages: List[Dict]) -> Dict[str, Any]:
 
             derived_ids.add(text_block["id"])
 
-            # Extract text from TEXT block (ocr_html or ocr_text)
-            text_ocr = text_block.get("ocr_html") or text_block.get("ocr_text", "")
+            # Extract text from TEXT block
+            text_ocr = text_block.get("ocr_text", "")
             if text_ocr:
                 clean_text = _extract_clean_text_from_html(text_ocr)
                 if clean_text:

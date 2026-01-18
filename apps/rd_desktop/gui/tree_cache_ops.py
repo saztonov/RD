@@ -174,8 +174,6 @@ class TreeCacheOperationsMixin:
                 files_to_delete = [
                     r2_key,  # PDF
                     get_annotation_r2_key(r2_key),  # аннотация
-                    f"{r2_prefix}/{pdf_stem}_ocr.html",  # OCR HTML
-                    f"{r2_prefix}/{pdf_stem}_result.json",  # result JSON
                     f"{r2_prefix}/{pdf_stem}_document.md",  # document MD
                 ]
 
@@ -220,24 +218,6 @@ class TreeCacheOperationsMixin:
                     logger.info(f"Deleted annotation from cache: {ann_cache_file}")
                 except Exception as e:
                     logger.error(f"Failed to delete annotation from cache: {e}")
-
-            # Удаляем _ocr.html
-            ocr_html_file = cache_file.parent / f"{pdf_stem}_ocr.html"
-            if ocr_html_file.exists():
-                try:
-                    ocr_html_file.unlink()
-                    logger.info(f"Deleted OCR HTML from cache: {ocr_html_file}")
-                except Exception as e:
-                    logger.error(f"Failed to delete OCR HTML from cache: {e}")
-
-            # Удаляем _result.json
-            result_json_file = cache_file.parent / f"{pdf_stem}_result.json"
-            if result_json_file.exists():
-                try:
-                    result_json_file.unlink()
-                    logger.info(f"Deleted result.json from cache: {result_json_file}")
-                except Exception as e:
-                    logger.error(f"Failed to delete result.json from cache: {e}")
 
             # Удаляем _document.md
             document_md_file = cache_file.parent / f"{pdf_stem}_document.md"

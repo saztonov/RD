@@ -1,6 +1,6 @@
 """
 Виджет предварительного просмотра OCR результатов
-Отображает HTML из _result.json для выбранного блока
+Отображает ocr_text из Block для выбранного блока
 """
 
 import json
@@ -203,131 +203,55 @@ class OcrPreviewWidget(QWidget):
         self._current_block_id = None
 
     def load_result_file(self, pdf_path: str, r2_key: Optional[str] = None):
-        """Загрузить _result.json для PDF документа"""
+        """Deprecated: _result.json больше не используется, OCR текст берётся из block.ocr_text"""
         self._result_data = None
         self._result_path = None
         self._r2_key = r2_key
         self._blocks_index: Dict[str, Dict] = {}
-
-        if not pdf_path:
-            return
-
-        pdf_path = Path(pdf_path)
-        result_path = pdf_path.parent / f"{pdf_path.stem}_result.json"
-
-        if not result_path.exists():
-            logger.debug(f"Result file not found: {result_path}")
-            return
-
-        try:
-            with open(result_path, "r", encoding="utf-8") as f:
-                self._result_data = json.load(f)
-            self._result_path = result_path
-
-            # Индексируем блоки по ID из структуры {pages: [{blocks: [...]}]}
-            blocks_count = 0
-            for page in self._result_data.get("pages", []):
-                for block in page.get("blocks", []):
-                    block_id = block.get("id")
-                    if block_id:
-                        self._blocks_index[block_id] = block
-                        blocks_count += 1
-
-            logger.info(f"Loaded result file: {result_path} ({blocks_count} blocks)")
-            self.title_label.setText(f"OCR Preview ({blocks_count} блоков)")
-        except Exception as e:
-            logger.error(f"Failed to load result file: {e}")
-            self.title_label.setText("OCR Preview")
+        self.title_label.setText("OCR Preview")
 
     def show_block(self, block_id: str, block: "Block" = None):
         """Показать OCR результат для блока
 
         Args:
             block_id: ID блока
-            block: объект Block (для fallback на ocr_text если result.json недоступен)
+            block: объект Block с ocr_text
         """
         self._current_block_id = block_id
         self._is_modified = False
         self._is_editing = False
 
-        # Сбрасываем в режим просмотра
+        # Сбрасываем в режим просмотра (редактирование отключено)
         self.editor_widget.hide()
         self.edit_save_btn.setText("✏️ Редактировать")
-        self.edit_save_btn.setToolTip("Редактировать HTML")
+        self.edit_save_btn.setToolTip("Редактирование недоступно")
         self.edit_save_btn.setEnabled(False)
 
         # Обновляем ID блока
         self.block_id_label.setText(block_id if block_id else "")
 
-        if not self._result_data or not block_id:
+        if not block_id:
             self._show_placeholder()
             return
 
-        # Ищем блок по индексу
-        block_data = self._blocks_index.get(block_id)
-
-        if not block_data:
-            # Fallback: используем block.ocr_text напрямую
-            if block and block.ocr_text:
-                markdown_html = self._render_markdown(block.ocr_text)
-                self.preview_edit.setHtml(markdown_html)
-                self.html_edit.blockSignals(True)
-                self.html_edit.setPlainText(block.ocr_text)
-                self.html_edit.blockSignals(False)
-                self.html_edit.setEnabled(False)
-                self.edit_save_btn.setEnabled(False)
-                self.stamp_group.hide()
-                return
-
-            self.preview_edit.setHtml(
-                '<p style="color: #888;">OCR результат для этого блока не найден</p>'
-            )
-            self.html_edit.clear()
+        # Используем ocr_text из Block напрямую
+        if block and block.ocr_text:
+            markdown_html = self._render_markdown(block.ocr_text)
+            self.preview_edit.setHtml(markdown_html)
+            self.html_edit.blockSignals(True)
+            self.html_edit.setPlainText(block.ocr_text)
+            self.html_edit.blockSignals(False)
             self.html_edit.setEnabled(False)
             self.stamp_group.hide()
+            self.title_label.setText("OCR Preview")
             return
 
-        block_type = block_data.get("block_type", "text")
-
-        # Получаем HTML (ocr_html из result.json)
-        html_content = block_data.get("ocr_html", "") or block_data.get("html", "")
-
-        # Для IMAGE блоков: форматируем ocr_json если есть
-        if block_type == "image":
-            html_content = self._format_image_block(block_data, html_content)
-
-        # Fallback: ocr_text если нет HTML
-        if not html_content and block_data.get("ocr_text"):
-            html_content = f"<pre>{block_data['ocr_text']}</pre>"
-
-        # Обрабатываем штамп отдельно
-        stamp_data = block_data.get("stamp_data")
-        if stamp_data:
-            self._show_stamp(stamp_data)
-        else:
-            self.stamp_group.hide()
-
-        if not html_content:
-            self.preview_edit.setHtml(
-                '<p style="color: #888;">Пустой OCR результат</p>'
-            )
-            self.html_edit.clear()
-            self.html_edit.setEnabled(False)
-            return
-
-        # Показываем HTML
-        styled_html = self._apply_preview_styles(html_content)
-        self.preview_edit.setHtml(styled_html)
-
-        # Редактор (загружаем контент, но не показываем)
-        self.html_edit.blockSignals(True)
-        self.html_edit.setPlainText(html_content)
-        self.html_edit.blockSignals(False)
-        self.html_edit.setEnabled(True)
-
-        # Включаем кнопку редактирования
-        self.edit_save_btn.setEnabled(True)
-
+        self.preview_edit.setHtml(
+            '<p style="color: #888;">OCR результат для этого блока не найден</p>'
+        )
+        self.html_edit.clear()
+        self.html_edit.setEnabled(False)
+        self.stamp_group.hide()
         self.title_label.setText("OCR Preview")
 
     def _show_stamp(self, stamp_data: dict):
@@ -569,87 +493,16 @@ class OcrPreviewWidget(QWidget):
         return self._apply_preview_styles(html)
 
     def _toggle_edit_mode(self):
-        """Переключение между режимами просмотра и редактирования"""
-        if not self._current_block_id:
-            return
-
-        if self._is_editing:
-            # Сохраняем и закрываем редактор
-            self._save_all()
-            self._is_editing = False
-            self.editor_widget.hide()
-            self.edit_save_btn.setText("✏️ Редактировать")
-            self.edit_save_btn.setToolTip("Редактировать HTML")
-        else:
-            # Открываем редактор
-            self._is_editing = True
-            self.editor_widget.show()
-            self.edit_save_btn.setText("💾 Сохранить")
-            self.edit_save_btn.setToolTip("Сохранить изменения (локально + R2)")
+        """Deprecated: редактирование отключено"""
+        pass
 
     def _on_text_changed(self):
-        """Обработка изменения текста"""
-        if not self._current_block_id or not self._is_editing:
-            return
-
-        self._is_modified = True
-
-        # Обновляем preview
-        new_html = self.html_edit.toPlainText()
-        styled_html = self._apply_preview_styles(new_html)
-        self.preview_edit.setHtml(styled_html)
+        """Deprecated: редактирование отключено"""
+        pass
 
     def _save_all(self):
-        """Сохранить изменения локально и на R2"""
-        if not self._result_path or not self._current_block_id:
-            return
-
-        try:
-            new_html = self.html_edit.toPlainText()
-
-            # Обновляем данные в структуре {pages: [{blocks: [...]}]}
-            for page in self._result_data.get("pages", []):
-                for b in page.get("blocks", []):
-                    if b.get("id") == self._current_block_id:
-                        b["ocr_html"] = new_html
-                        # Обновляем индекс
-                        self._blocks_index[self._current_block_id] = b
-                        break
-
-            # Сохраняем локально
-            with open(self._result_path, "w", encoding="utf-8") as f:
-                json.dump(self._result_data, f, ensure_ascii=False, indent=2)
-
-            # Сохраняем на R2
-            try:
-                from pathlib import PurePosixPath
-
-                from rd_adapters.storage import R2SyncStorage as R2Storage
-
-                r2 = R2Storage()
-
-                if self._r2_key:
-                    r2_dir = str(PurePosixPath(self._r2_key).parent)
-                    result_r2_key = f"{r2_dir}/{self._result_path.name}"
-                else:
-                    result_r2_key = f"tree_docs/{self._result_path.name}"
-
-                r2.upload_file(str(self._result_path), result_r2_key)
-                logger.info(f"Saved to R2: {result_r2_key}")
-            except Exception as e:
-                logger.error(f"Failed to save to R2: {e}")
-
-            self._is_modified = False
-
-            from apps.rd_desktop.gui.toast import show_toast
-
-            show_toast(self.window(), "Сохранено")
-
-            self.content_changed.emit(self._current_block_id, new_html)
-
-        except Exception as e:
-            logger.error(f"Failed to save: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить:\n{e}")
+        """Deprecated: сохранение в _result.json отключено"""
+        pass
 
     def clear(self):
         """Очистить виджет"""

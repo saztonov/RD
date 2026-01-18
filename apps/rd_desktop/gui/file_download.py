@@ -139,7 +139,7 @@ class FileDownloadMixin:
         Скачиваемые файлы:
         - PDF документ
         - Аннотации (_annotation.json)
-        - OCR результаты (_ocr.html, _result.json, _document.md)
+        - OCR результаты (_result.md)
 
         Кропы НЕ скачиваются для экономии места.
         """
@@ -161,8 +161,6 @@ class FileDownloadMixin:
         # Типы файлов для скачивания (без кропов)
         download_file_types = {
             FileType.ANNOTATION,
-            FileType.OCR_HTML,
-            FileType.RESULT_JSON,
             FileType.RESULT_MD,
         }
 

@@ -6,11 +6,10 @@ and common utilities. Depends only on rd_domain.
 
 Modules:
     ocr: OCR backends and factory (OpenRouter, Datalab, Dummy)
-    common: Shared utilities (sanitizers, stamps, linked blocks, templates)
+    common: Shared utilities (sanitizers, stamps, linked blocks)
     pdf: PDF processing (ports and implementations)
     processing: Two-pass OCR processing algorithms
-    output: HTML and Markdown generators
-    matching: Block ID matching utilities
+    output: Markdown generators
 """
 
 # OCR
@@ -27,12 +26,7 @@ from rd_pipeline.ocr import (
 
 # Common utilities
 from rd_pipeline.common import (
-    HTML_TEMPLATE,
-    HTML_FOOTER,
-    get_html_header,
-    DATALAB_IMG_PATTERN,
     DATALAB_MD_IMG_PATTERN,
-    sanitize_html,
     sanitize_markdown,
     extract_image_ocr_data,
     is_image_ocr_json,
@@ -60,14 +54,8 @@ __all__ = [
     "image_to_base64",
     "image_to_pdf_base64",
     "pdf_file_to_base64",
-    # Common - templates
-    "HTML_TEMPLATE",
-    "HTML_FOOTER",
-    "get_html_header",
     # Common - sanitizers
-    "DATALAB_IMG_PATTERN",
     "DATALAB_MD_IMG_PATTERN",
-    "sanitize_html",
     "sanitize_markdown",
     # Common - image data
     "extract_image_ocr_data",

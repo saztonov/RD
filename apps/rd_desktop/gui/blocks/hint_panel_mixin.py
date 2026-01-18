@@ -43,9 +43,5 @@ class HintPanelMixin:
             self.ocr_preview.clear()
 
     def _load_ocr_result_file(self):
-        """Загрузить _result.json для текущего PDF"""
-        if hasattr(self, "ocr_preview") and self.ocr_preview:
-            pdf_path = getattr(self, "_current_pdf_path", None)
-            r2_key = getattr(self, "_current_r2_key", None)
-            if pdf_path:
-                self.ocr_preview.load_result_file(pdf_path, r2_key)
+        """Deprecated: _result.json больше не используется, OCR текст берётся из block.ocr_text"""
+        pass

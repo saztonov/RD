@@ -63,8 +63,6 @@ class FileType(str, Enum):
     ANNOTATION = "annotation"
     CROP = "crop"
     IMAGE = "image"
-    OCR_HTML = "ocr_html"
-    RESULT_JSON = "result_json"
     RESULT_MD = "result_md"
     RESULT_ZIP = "result_zip"
     CROPS_FOLDER = "crops_folder"

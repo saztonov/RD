@@ -7,7 +7,6 @@ from rd_pipeline.common import (
     is_image_ocr_json,
     sanitize_markdown,
 )
-from rd_pipeline.output.md_converters import html_to_markdown
 
 
 def format_stamp_md(stamp_data: Dict) -> str:
@@ -204,10 +203,6 @@ def process_ocr_content(ocr_text: str) -> str:
     if not text:
         return ""
 
-    # HTML контент (включая случаи, начинающиеся с закрывающего тега)
-    if text.startswith("<") or text.startswith("</"):
-        return html_to_markdown(text)
-
     # JSON контент
     if text.startswith("{") or text.startswith("["):
         try:
@@ -229,12 +224,5 @@ def process_ocr_content(ocr_text: str) -> str:
         except json_module.JSONDecodeError:
             pass
 
-    # Обычный текст - также применяем санитизацию markdown
+    # Обычный текст - применяем санитизацию markdown
     return sanitize_markdown(text)
-
-
-# Алиасы для обратной совместимости
-_format_stamp_md = format_stamp_md
-_format_image_ocr_md = format_image_ocr_md
-_format_generic_json_md = format_generic_json_md
-_process_ocr_content = process_ocr_content

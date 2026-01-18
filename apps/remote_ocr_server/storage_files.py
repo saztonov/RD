@@ -22,7 +22,7 @@ def add_job_file(
 
     Args:
         job_id: ID задачи
-        file_type: Тип файла (pdf, blocks, annotation, result, result_md, ocr_html, crop)
+        file_type: Тип файла (pdf, blocks, annotation, result_md, crop)
         r2_key: Путь к файлу в R2
         file_name: Имя файла
         file_size: Размер файла в байтах

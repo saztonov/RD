@@ -4,11 +4,6 @@ from rd_pipeline.common.block_utils import (
     collect_block_groups,
     get_block_armor_id,
 )
-from rd_pipeline.common.html_template import (
-    HTML_FOOTER,
-    HTML_TEMPLATE,
-    get_html_header,
-)
 from rd_pipeline.common.image_data import (
     extract_image_ocr_data,
     is_image_ocr_json,
@@ -18,9 +13,7 @@ from rd_pipeline.common.linked_blocks import (
     build_linked_blocks_index_dict,
 )
 from rd_pipeline.common.sanitizers import (
-    DATALAB_IMG_PATTERN,
     DATALAB_MD_IMG_PATTERN,
-    sanitize_html,
     sanitize_markdown,
 )
 from rd_pipeline.common.stamp_utils import (
@@ -35,14 +28,8 @@ from rd_pipeline.common.stamp_utils import (
 )
 
 __all__ = [
-    # html_template
-    "HTML_TEMPLATE",
-    "HTML_FOOTER",
-    "get_html_header",
     # sanitizers
-    "DATALAB_IMG_PATTERN",
     "DATALAB_MD_IMG_PATTERN",
-    "sanitize_html",
     "sanitize_markdown",
     # image_data
     "extract_image_ocr_data",
