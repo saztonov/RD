@@ -307,8 +307,7 @@ def pass1_prepare_crops(
     manifest = TwoPassManifest(
         pdf_path=pdf_path,
         crops_dir=crops_dir,
-        strips=[],  # DEPRECATED - empty for backward compatibility
-        text_blocks=text_block_entries,  # NEW: individual TEXT crops
+        text_blocks=text_block_entries,
         image_blocks=image_block_entries,
         total_blocks=len(blocks),
     )
