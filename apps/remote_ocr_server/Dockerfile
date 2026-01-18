@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install server dependencies with BuildKit cache
 COPY apps/remote_ocr_server/requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/requirements.txt
+    pip install --timeout 300 --retries 5 -r /tmp/requirements.txt
 
 # Copy code (new structure)
 COPY packages /app/packages
