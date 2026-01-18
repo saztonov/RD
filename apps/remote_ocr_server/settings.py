@@ -130,11 +130,6 @@ class Settings:
     )
 
     # ===== OCR THREADING =====
-    max_global_ocr_requests: int = field(
-        default_factory=lambda: _get_setting(
-            "max_global_ocr_requests", "MAX_GLOBAL_OCR_REQUESTS", 8, int
-        )
-    )
     ocr_threads_per_job: int = field(
         default_factory=lambda: _get_setting(
             "ocr_threads_per_job", "OCR_THREADS_PER_JOB", 2, int
@@ -146,17 +141,7 @@ class Settings:
         )
     )
 
-    # ===== DATALAB API =====
-    datalab_max_rpm: int = field(
-        default_factory=lambda: _get_setting(
-            "datalab_max_rpm", "DATALAB_MAX_RPM", 180, int
-        )
-    )
-    datalab_max_concurrent: int = field(
-        default_factory=lambda: _get_setting(
-            "datalab_max_concurrent", "DATALAB_MAX_CONCURRENT", 5, int
-        )
-    )
+    # ===== DATALAB API (polling) =====
     datalab_poll_interval: int = field(
         default_factory=lambda: _get_setting(
             "datalab_poll_interval", "DATALAB_POLL_INTERVAL", 3, int

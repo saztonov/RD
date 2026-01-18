@@ -45,13 +45,10 @@ class OCRSettings:
     task_retry_delay: int = 60
 
     # OCR Threading
-    max_global_ocr_requests: int = 8
     ocr_threads_per_job: int = 2
     ocr_request_timeout: int = 120
 
-    # Datalab API
-    datalab_max_rpm: int = 180
-    datalab_max_concurrent: int = 5
+    # Datalab API (polling)
     datalab_poll_interval: int = 3
     datalab_poll_max_attempts: int = 90
     datalab_max_retries: int = 3
@@ -222,13 +219,6 @@ class OCRSettingsDialog(QDialog):
         group1 = QGroupBox("Потоки OCR")
         form1 = QFormLayout(group1)
 
-        self.max_global_ocr_spin = QSpinBox()
-        self.max_global_ocr_spin.setRange(1, 32)
-        self.max_global_ocr_spin.setToolTip(
-            "Глобальный лимит параллельных OCR запросов (все задачи)"
-        )
-        form1.addRow("Глобальный лимит OCR:", self.max_global_ocr_spin)
-
         self.ocr_threads_per_job_spin = QSpinBox()
         self.ocr_threads_per_job_spin.setRange(1, 8)
         self.ocr_threads_per_job_spin.setToolTip("Потоков OCR внутри одной задачи")
@@ -242,19 +232,9 @@ class OCRSettingsDialog(QDialog):
 
         layout.addWidget(group1)
 
-        # Группа: Datalab API
-        group2 = QGroupBox("Datalab API")
+        # Группа: Datalab API (polling)
+        group2 = QGroupBox("Datalab API (polling)")
         form2 = QFormLayout(group2)
-
-        self.datalab_max_rpm_spin = QSpinBox()
-        self.datalab_max_rpm_spin.setRange(10, 1000)
-        self.datalab_max_rpm_spin.setToolTip("Максимум запросов в минуту к Datalab")
-        form2.addRow("Запросов/минуту:", self.datalab_max_rpm_spin)
-
-        self.datalab_max_concurrent_spin = QSpinBox()
-        self.datalab_max_concurrent_spin.setRange(1, 20)
-        self.datalab_max_concurrent_spin.setToolTip("Параллельных запросов к Datalab")
-        form2.addRow("Параллельных:", self.datalab_max_concurrent_spin)
 
         self.datalab_poll_interval_spin = QSpinBox()
         self.datalab_poll_interval_spin.setRange(1, 120)
@@ -480,11 +460,8 @@ class OCRSettingsDialog(QDialog):
         self.task_retry_delay_spin.setValue(s.task_retry_delay)
 
         # OCR
-        self.max_global_ocr_spin.setValue(s.max_global_ocr_requests)
         self.ocr_threads_per_job_spin.setValue(s.ocr_threads_per_job)
         self.ocr_request_timeout_spin.setValue(s.ocr_request_timeout)
-        self.datalab_max_rpm_spin.setValue(s.datalab_max_rpm)
-        self.datalab_max_concurrent_spin.setValue(s.datalab_max_concurrent)
         self.datalab_poll_interval_spin.setValue(s.datalab_poll_interval)
         self.datalab_poll_max_attempts_spin.setValue(s.datalab_poll_max_attempts)
         self.datalab_max_retries_spin.setValue(s.datalab_max_retries)
@@ -521,11 +498,8 @@ class OCRSettingsDialog(QDialog):
             task_max_retries=self.task_max_retries_spin.value(),
             task_retry_delay=self.task_retry_delay_spin.value(),
             # OCR
-            max_global_ocr_requests=self.max_global_ocr_spin.value(),
             ocr_threads_per_job=self.ocr_threads_per_job_spin.value(),
             ocr_request_timeout=self.ocr_request_timeout_spin.value(),
-            datalab_max_rpm=self.datalab_max_rpm_spin.value(),
-            datalab_max_concurrent=self.datalab_max_concurrent_spin.value(),
             datalab_poll_interval=self.datalab_poll_interval_spin.value(),
             datalab_poll_max_attempts=self.datalab_poll_max_attempts_spin.value(),
             datalab_max_retries=self.datalab_max_retries_spin.value(),
