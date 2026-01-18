@@ -5,6 +5,7 @@
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -32,6 +33,11 @@ class ConnectionInfo:
     consecutive_failures: int = 0
 
 
+class _CheckSignals(QObject):
+    """Сигналы для фоновой проверки соединения"""
+    completed = Signal(bool)  # is_connected
+
+
 class ConnectionManager(QObject):
     """
     Менеджер соединения для отслеживания доступности сети
@@ -55,6 +61,12 @@ class ConnectionManager(QObject):
         self._check_timer.timeout.connect(self._check_connection)
         self._lock = threading.Lock()
         self._first_check_done = False  # Флаг первой проверки
+
+        # Фоновая проверка соединения
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="conn_check")
+        self._check_signals = _CheckSignals()
+        self._check_signals.completed.connect(self._on_check_completed)
+        self._is_checking = False
         
     def set_check_callback(self, callback: Callable[[], bool]):
         """
@@ -78,54 +90,68 @@ class ConnectionManager(QObject):
         self._check_timer.stop()
         
     def _check_connection(self):
-        """Проверить соединение"""
-        if not self._check_callback:
+        """Запустить проверку соединения в фоновом потоке"""
+        if not self._check_callback or self._is_checking:
             return
+        self._is_checking = True
+        self._executor.submit(self._check_connection_bg)
 
+    def _check_connection_bg(self):
+        """Фоновая проверка соединения (вызывается в ThreadPoolExecutor)"""
         try:
             is_connected = self._check_callback()
-
-            with self._lock:
-                old_status = self._info.status
-                self._info.last_check = datetime.now()
-                is_first_check = not self._first_check_done
-                self._first_check_done = True
-
-                if is_connected:
-                    # Соединение доступно
-                    if old_status != ConnectionStatus.CONNECTED:
-                        self._info.status = ConnectionStatus.CONNECTED
-                        self._info.consecutive_failures = 0
-                        self._info.error_message = None
-                        logger.info("ConnectionManager: соединение установлено")
-                        self.status_changed.emit(ConnectionStatus.CONNECTED)
-                        # При первой проверке не emit connection_restored (не было потери)
-                        if not is_first_check:
-                            self.connection_restored.emit()
-                    else:
-                        self._info.consecutive_failures = 0
-                else:
-                    # Соединение недоступно
-                    self._info.consecutive_failures += 1
-
-                    if old_status in (ConnectionStatus.CONNECTED, ConnectionStatus.CHECKING):
-                        self._info.status = ConnectionStatus.DISCONNECTED
-                        self._info.error_message = "Нет подключения к интернету"
-                        logger.warning("ConnectionManager: нет соединения")
-                        self.status_changed.emit(ConnectionStatus.DISCONNECTED)
-                        # При первой проверке не emit connection_lost
-                        if not is_first_check:
-                            self.connection_lost.emit()
-                    elif old_status == ConnectionStatus.DISCONNECTED:
-                        # Пытаемся переподключиться
-                        if self._info.consecutive_failures % 3 == 0:
-                            self._info.status = ConnectionStatus.RECONNECTING
-                            logger.info("ConnectionManager: попытка переподключения...")
-                            self.status_changed.emit(ConnectionStatus.RECONNECTING)
-
         except Exception as e:
             logger.error(f"ConnectionManager: ошибка проверки соединения: {e}")
-            
+            is_connected = False
+        self._check_signals.completed.emit(is_connected)
+
+    def _on_check_completed(self, is_connected: bool):
+        """Обработка результата проверки (вызывается в UI потоке)"""
+        self._is_checking = False
+
+        with self._lock:
+            old_status = self._info.status
+            self._info.last_check = datetime.now()
+            is_first_check = not self._first_check_done
+            self._first_check_done = True
+
+            if is_connected:
+                # Соединение доступно
+                if old_status != ConnectionStatus.CONNECTED:
+                    self._info.status = ConnectionStatus.CONNECTED
+                    self._info.consecutive_failures = 0
+                    self._info.error_message = None
+                    logger.info("ConnectionManager: соединение установлено")
+                    self.status_changed.emit(ConnectionStatus.CONNECTED)
+                    # При первой проверке не emit connection_restored (не было потери)
+                    if not is_first_check:
+                        self.connection_restored.emit()
+                else:
+                    self._info.consecutive_failures = 0
+            else:
+                # Соединение недоступно
+                self._info.consecutive_failures += 1
+
+                if old_status in (ConnectionStatus.CONNECTED, ConnectionStatus.CHECKING):
+                    self._info.status = ConnectionStatus.DISCONNECTED
+                    self._info.error_message = "Нет подключения к интернету"
+                    logger.warning("ConnectionManager: нет соединения")
+                    self.status_changed.emit(ConnectionStatus.DISCONNECTED)
+                    # При первой проверке не emit connection_lost
+                    if not is_first_check:
+                        self.connection_lost.emit()
+                elif old_status == ConnectionStatus.DISCONNECTED:
+                    # Пытаемся переподключиться
+                    if self._info.consecutive_failures % 3 == 0:
+                        self._info.status = ConnectionStatus.RECONNECTING
+                        logger.info("ConnectionManager: попытка переподключения...")
+                        self.status_changed.emit(ConnectionStatus.RECONNECTING)
+
+    def cleanup(self):
+        """Освобождение ресурсов"""
+        self._check_timer.stop()
+        self._executor.shutdown(wait=False)
+
     def get_status(self) -> ConnectionStatus:
         """Получить текущий статус соединения"""
         with self._lock:

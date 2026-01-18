@@ -71,7 +71,8 @@ class DownloadMixin:
             # Получаем имя PDF из main_window для локальных имен файлов
             pdf_path = getattr(self.main_window, "_current_pdf_path", None)
             doc_name = job_details.get("document_name", "result.pdf")
-            pdf_stem = Path(pdf_path).stem if pdf_path else Path(doc_name).stem
+            doc_stem = Path(doc_name).stem  # Имя из job для R2 ключа
+            pdf_stem = Path(pdf_path).stem if pdf_path else doc_stem  # Для локальных файлов
 
             # Используем ocr_result_prefix с новой структурой путей
             # Формат: n/{node_id}/{doc_stem}_result.md (новая структура)
@@ -87,7 +88,7 @@ class DownloadMixin:
                 ("annotation.json", f"{pdf_stem}_annotation.json"),
                 ("ocr.html", f"{pdf_stem}_ocr.html"),
                 ("result.json", f"{pdf_stem}_result.json"),
-                (f"{pdf_stem}_result.md", f"{pdf_stem}_document.md"),
+                (f"{doc_stem}_result.md", f"{pdf_stem}_document.md"),
             ]
 
             self._signals.download_started.emit(job_id, len(files_to_download))
