@@ -64,12 +64,6 @@ class ServerPromptBuilder:
             category_id=category_id, category_code=category_code,
         )
 
-    def parse_batch_response_by_index(
-        self, num_blocks: int, response_text: str, block_ids=None
-    ):
-        from .worker_prompts import parse_batch_response_by_index
-        return parse_batch_response_by_index(num_blocks, response_text, block_ids=block_ids)
-
     def inject_pdfplumber_to_ocr_text(self, ocr_text: str, pdfplumber_text):
         from .worker_prompts import inject_pdfplumber_to_ocr_text
         return inject_pdfplumber_to_ocr_text(ocr_text, pdfplumber_text)

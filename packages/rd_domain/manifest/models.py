@@ -23,25 +23,12 @@ class CropManifestEntry:
 
 
 @dataclass
-class StripManifestEntry:
-    """Manifest entry for strip (merged strip)."""
-
-    strip_id: str
-    strip_path: str
-    block_ids: List[str] = field(default_factory=list)
-    block_parts: List[dict] = field(
-        default_factory=list
-    )  # [{block_id, part_idx, total_parts}]
-
-
-@dataclass
 class TwoPassManifest:
     """Full manifest for two-pass processing."""
 
     pdf_path: str
     crops_dir: str
-    strips: List[StripManifestEntry] = field(default_factory=list)  # DEPRECATED
-    text_blocks: List[CropManifestEntry] = field(default_factory=list)  # NEW: individual TEXT crops
+    text_blocks: List[CropManifestEntry] = field(default_factory=list)
     image_blocks: List[CropManifestEntry] = field(default_factory=list)
     total_blocks: int = 0
 
@@ -50,16 +37,7 @@ class TwoPassManifest:
             "pdf_path": self.pdf_path,
             "crops_dir": self.crops_dir,
             "total_blocks": self.total_blocks,
-            "strips": [  # DEPRECATED - kept for backward compatibility
-                {
-                    "strip_id": s.strip_id,
-                    "strip_path": s.strip_path,
-                    "block_ids": s.block_ids,
-                    "block_parts": s.block_parts,
-                }
-                for s in self.strips
-            ],
-            "text_blocks": [  # NEW: individual TEXT crops
+            "text_blocks": [
                 {
                     "block_id": e.block_id,
                     "crop_path": e.crop_path,
@@ -102,18 +80,9 @@ class TwoPassManifest:
             total_blocks=data.get("total_blocks", 0),
         )
 
-        # DEPRECATED - kept for backward compatibility
-        for s in data.get("strips", []):
-            manifest.strips.append(
-                StripManifestEntry(
-                    strip_id=s["strip_id"],
-                    strip_path=s["strip_path"],
-                    block_ids=s.get("block_ids", []),
-                    block_parts=s.get("block_parts", []),
-                )
-            )
+        # Backward compatibility: ignore deprecated strips field
+        _ = data.get("strips", [])
 
-        # NEW: individual TEXT crops
         for e in data.get("text_blocks", []):
             manifest.text_blocks.append(
                 CropManifestEntry(

@@ -14,11 +14,11 @@ import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Protocol, Tuple, Any
+from typing import Callable, List, Optional, Protocol, Tuple, Any
 
 from PIL import Image
 
-from rd_domain.manifest import CropManifestEntry, StripManifestEntry, TwoPassManifest
+from rd_domain.manifest import CropManifestEntry, TwoPassManifest
 from rd_pipeline.utils.memory import force_gc, log_memory, log_memory_delta
 from rd_pipeline.processing.streaming_pdf import (
     StreamingPDFProcessor,
@@ -57,15 +57,6 @@ class PromptBuilder(Protocol):
         category_code: Optional[str] = None,
     ) -> dict:
         """Fill variables in image prompt."""
-        ...
-
-    def parse_batch_response_by_index(
-        self,
-        num_blocks: int,
-        response_text: str,
-        block_ids: Optional[List[str]] = None,
-    ) -> Dict[int, str]:
-        """Parse batch OCR response by index."""
         ...
 
     def inject_pdfplumber_to_ocr_text(
@@ -112,15 +103,6 @@ class DefaultPromptBuilder:
         category_code: Optional[str] = None,
     ) -> dict:
         return prompt_data or {}
-
-    def parse_batch_response_by_index(
-        self,
-        num_blocks: int,
-        response_text: str,
-        block_ids: Optional[List[str]] = None,
-    ) -> Dict[int, str]:
-        # Simple fallback: return the whole response for each block
-        return {i: response_text for i in range(num_blocks)}
 
     def inject_pdfplumber_to_ocr_text(
         self,
