@@ -12,7 +12,8 @@ class OCRBackend(Protocol):
     """
 
     def recognize(
-        self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None
+        self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None,
+        timeout_multiplier: int = 1
     ) -> str:
         """
         Recognize text in image.
@@ -21,6 +22,7 @@ class OCRBackend(Protocol):
             image: image for recognition
             prompt: dict with keys 'system' and 'user' (optional)
             json_mode: force JSON output mode
+            timeout_multiplier: multiplier for timeout settings (for retry logic)
 
         Returns:
             Recognized text
@@ -41,6 +43,7 @@ class OCRBackend(Protocol):
         pdf_path: Union[str, Path],
         prompt: Optional[dict] = None,
         json_mode: bool = None,
+        timeout_multiplier: int = 1,
     ) -> str:
         """
         Recognize text directly from PDF file (optional).
@@ -49,6 +52,7 @@ class OCRBackend(Protocol):
             pdf_path: path to PDF file
             prompt: dict with keys 'system' and 'user' (optional)
             json_mode: force JSON output mode
+            timeout_multiplier: multiplier for timeout settings (for retry logic)
 
         Returns:
             Recognized text

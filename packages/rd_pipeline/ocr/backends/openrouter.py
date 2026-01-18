@@ -100,9 +100,14 @@ class OpenRouterBackend:
             return None
 
     def recognize(
-        self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None
+        self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None,
+        timeout_multiplier: int = 1
     ) -> str:
-        """Recognize text via OpenRouter API."""
+        """Recognize text via OpenRouter API.
+
+        Note: timeout_multiplier is accepted for interface compatibility but not used
+        (OpenRouter uses direct API calls without polling).
+        """
         # Rate limiting
         if self.rate_limiter:
             if not self.rate_limiter.acquire():
@@ -228,6 +233,7 @@ class OpenRouterBackend:
         pdf_path: Union[str, Path],
         prompt: Optional[dict] = None,
         json_mode: bool = None,
+        timeout_multiplier: int = 1,
     ) -> str:
         """
         Recognize text directly from PDF file.
@@ -237,6 +243,7 @@ class OpenRouterBackend:
             pdf_path: path to PDF file
             prompt: dict with keys 'system' and 'user' (optional)
             json_mode: force JSON output mode
+            timeout_multiplier: accepted for interface compatibility (not used)
 
         Returns:
             Recognized text

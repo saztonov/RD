@@ -48,14 +48,28 @@ class DatalabOCRBackend:
         )
 
     def recognize(
-        self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None
+        self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None,
+        timeout_multiplier: int = 1
     ) -> str:
-        """Recognize image via Datalab API."""
+        """Recognize image via Datalab API.
+
+        Args:
+            image: PIL Image to recognize
+            prompt: Optional prompt data
+            json_mode: Not used (for interface compatibility)
+            timeout_multiplier: Multiplier for poll_max_attempts (for retry logic)
+        """
         import os
         import tempfile
         import time
 
-        logger.info(f"Datalab.recognize: получено изображение {image.width}x{image.height}")
+        # Calculate effective poll attempts with multiplier
+        effective_poll_attempts = self.poll_max_attempts * timeout_multiplier
+
+        logger.info(
+            f"Datalab.recognize: изображение {image.width}x{image.height}, "
+            f"timeout_multiplier={timeout_multiplier}, attempts={effective_poll_attempts}"
+        )
 
         if self.rate_limiter:
             if not self.rate_limiter.acquire():
@@ -142,12 +156,12 @@ class DatalabOCRBackend:
                         return json_result
                     return "[Error: no request_check_url]"
 
-                logger.info(f"Datalab: starting polling at URL: {check_url}")
-                for attempt in range(self.poll_max_attempts):
+                logger.info(f"Datalab: starting polling at URL: {check_url} (max attempts: {effective_poll_attempts})")
+                for attempt in range(effective_poll_attempts):
                     time.sleep(self.poll_interval)
 
                     logger.debug(
-                        f"Datalab: polling attempt {attempt + 1}/{self.poll_max_attempts}"
+                        f"Datalab: polling attempt {attempt + 1}/{effective_poll_attempts}"
                     )
                     poll_response = self.session.get(
                         check_url, headers=self.headers, timeout=30
@@ -173,7 +187,7 @@ class DatalabOCRBackend:
                     status = poll_result.get("status", "")
 
                     logger.info(
-                        f"Datalab: current task status: '{status}' (attempt {attempt + 1}/{self.poll_max_attempts})"
+                        f"Datalab: current task status: '{status}' (attempt {attempt + 1}/{effective_poll_attempts})"
                     )
 
                     if status == "complete":
@@ -194,10 +208,8 @@ class DatalabOCRBackend:
                         )
 
                 logger.warning(
-                    f"Datalab: polling timeout after {self.poll_max_attempts} attempts"
-                )
-                logger.warning(
-                    "Datalab: skipping block due to timeout, continuing processing"
+                    f"Datalab: polling timeout after {effective_poll_attempts} attempts "
+                    f"(image size: {image.width}x{image.height}, multiplier: {timeout_multiplier})"
                 )
                 return "[TIMEOUT]"
 

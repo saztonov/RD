@@ -397,6 +397,9 @@ def pass2_ocr_from_manifest(
             on_progress(processed, total_requests, last_block_info["info"])
 
     # --- Process TEXT blocks (individual crops, no batch) ---
+    # Retry configuration for timeout blocks
+    MAX_TIMEOUT_RETRIES = 3
+
     def _process_text_block(entry: CropManifestEntry):
         if check_paused and check_paused():
             return None
@@ -415,11 +418,31 @@ def pass2_ocr_from_manifest(
             with Image.open(entry.crop_path) as crop:
                 # Simple prompt for single block (no batch markers needed)
                 prompt_data = pb.build_strip_prompt([block])
-                text = strip_backend.recognize(crop, prompt=prompt_data)
 
-            # Check for timeout
+                # Retry loop with increasing timeout multiplier
+                text = None
+                for retry_attempt in range(MAX_TIMEOUT_RETRIES):
+                    timeout_multiplier = retry_attempt + 1  # 1x, 2x, 3x
+                    text = strip_backend.recognize(
+                        crop, prompt=prompt_data, timeout_multiplier=timeout_multiplier
+                    )
+
+                    if text != "[TIMEOUT]":
+                        break
+
+                    if retry_attempt < MAX_TIMEOUT_RETRIES - 1:
+                        logger.warning(
+                            f"PASS2: TEXT block {entry.block_id} timeout, "
+                            f"retry {retry_attempt + 1}/{MAX_TIMEOUT_RETRIES} "
+                            f"with multiplier {timeout_multiplier + 1}x"
+                        )
+
+            # Check for final timeout after all retries
             if text == "[TIMEOUT]":
-                logger.error(f"PASS2: TEXT block {entry.block_id} got TIMEOUT")
+                logger.error(
+                    f"PASS2: TEXT block {entry.block_id} got TIMEOUT after "
+                    f"{MAX_TIMEOUT_RETRIES} retries (crop size: {entry.crop_path})"
+                )
                 text = ""
 
             logger.info(f"PASS2: completed TEXT block {entry.block_id}, response {len(text) if text else 0} chars")
@@ -525,24 +548,39 @@ def pass2_ocr_from_manifest(
                 and backend.supports_native_pdf()
             )
 
-            if use_native_pdf:
-                logger.info(f"PASS2: native PDF for {entry.block_id}")
-                text = backend.recognize_pdf(entry.pdf_crop_path, prompt=prompt_data)
-                # Проверяем на timeout для native PDF
-                if text == "[TIMEOUT]":
-                    logger.error(
-                        f"PASS2: native PDF block {entry.block_id} got TIMEOUT"
-                    )
-                    text = ""
-            else:
-                with Image.open(entry.crop_path) as crop:
-                    text = backend.recognize(crop, prompt=prompt_data)
+            # Retry loop with increasing timeout multiplier for IMAGE blocks
+            text = None
+            for retry_attempt in range(MAX_TIMEOUT_RETRIES):
+                timeout_multiplier = retry_attempt + 1  # 1x, 2x, 3x
 
-            # Проверяем на timeout
+                if use_native_pdf:
+                    logger.info(f"PASS2: native PDF for {entry.block_id}")
+                    text = backend.recognize_pdf(
+                        entry.pdf_crop_path, prompt=prompt_data,
+                        timeout_multiplier=timeout_multiplier
+                    )
+                else:
+                    with Image.open(entry.crop_path) as crop:
+                        text = backend.recognize(
+                            crop, prompt=prompt_data,
+                            timeout_multiplier=timeout_multiplier
+                        )
+
+                if text != "[TIMEOUT]":
+                    break
+
+                if retry_attempt < MAX_TIMEOUT_RETRIES - 1:
+                    logger.warning(
+                        f"PASS2: IMAGE block {entry.block_id} timeout, "
+                        f"retry {retry_attempt + 1}/{MAX_TIMEOUT_RETRIES} "
+                        f"with multiplier {timeout_multiplier + 1}x"
+                    )
+
+            # Check for final timeout after all retries
             if text == "[TIMEOUT]":
                 logger.error(
-                    f"PASS2: IMAGE block {entry.block_id} got TIMEOUT, "
-                    f"will need retry in verification phase"
+                    f"PASS2: IMAGE block {entry.block_id} got TIMEOUT after "
+                    f"{MAX_TIMEOUT_RETRIES} retries"
                 )
                 text = ""
 
