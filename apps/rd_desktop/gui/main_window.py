@@ -24,7 +24,7 @@ from rd_pipeline.pdf import PDFDocument
 
 # Импорт метаданных продукта
 try:
-    from _metadata import __product__, get_version_info
+    from rd_domain.metadata import __product__, get_version_info
 except ImportError:
     __product__ = "Core Structure"
 

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Импорт метаданных продукта
 try:
-    from _metadata import __product__
+    from rd_domain.metadata import __product__
 except ImportError:
     __product__ = "Core Structure"
 
