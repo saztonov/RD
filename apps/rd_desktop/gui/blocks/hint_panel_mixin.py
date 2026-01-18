@@ -27,10 +27,15 @@ class HintPanelMixin:
             self.hint_edit.blockSignals(False)
             self.hint_group.setEnabled(False)
 
-    def _show_ocr_preview(self, block_id: str):
-        """Показать OCR preview для блока"""
+    def _show_ocr_preview(self, block_id: str, block=None):
+        """Показать OCR preview для блока
+
+        Args:
+            block_id: ID блока
+            block: объект Block (для fallback на ocr_text если result.json недоступен)
+        """
         if hasattr(self, "ocr_preview") and self.ocr_preview:
-            self.ocr_preview.show_block(block_id)
+            self.ocr_preview.show_block(block_id, block)
 
     def _hide_ocr_preview(self):
         """Скрыть OCR preview"""

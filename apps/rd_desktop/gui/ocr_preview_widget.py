@@ -6,7 +6,10 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from rd_domain.models import Block
 
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QCursor, QFont
@@ -236,8 +239,13 @@ class OcrPreviewWidget(QWidget):
             logger.error(f"Failed to load result file: {e}")
             self.title_label.setText("OCR Preview")
 
-    def show_block(self, block_id: str):
-        """Показать OCR результат для блока"""
+    def show_block(self, block_id: str, block: "Block" = None):
+        """Показать OCR результат для блока
+
+        Args:
+            block_id: ID блока
+            block: объект Block (для fallback на ocr_text если result.json недоступен)
+        """
         self._current_block_id = block_id
         self._is_modified = False
         self._is_editing = False
@@ -259,6 +267,18 @@ class OcrPreviewWidget(QWidget):
         block_data = self._blocks_index.get(block_id)
 
         if not block_data:
+            # Fallback: используем block.ocr_text напрямую
+            if block and block.ocr_text:
+                markdown_html = self._render_markdown(block.ocr_text)
+                self.preview_edit.setHtml(markdown_html)
+                self.html_edit.blockSignals(True)
+                self.html_edit.setPlainText(block.ocr_text)
+                self.html_edit.blockSignals(False)
+                self.html_edit.setEnabled(False)
+                self.edit_save_btn.setEnabled(False)
+                self.stamp_group.hide()
+                return
+
             self.preview_edit.setHtml(
                 '<p style="color: #888;">OCR результат для этого блока не найден</p>'
             )
@@ -513,6 +533,40 @@ class OcrPreviewWidget(QWidget):
         </style>
         """
         return f"<!DOCTYPE html><html><head><meta charset='UTF-8'>{style}</head><body>{html}</body></html>"
+
+    def _render_markdown(self, text: str) -> str:
+        """Рендерить текст (markdown/plain) в HTML
+
+        Args:
+            text: текст в формате markdown или plain text
+
+        Returns:
+            HTML с применёнными стилями для preview
+        """
+        import re
+
+        if not text:
+            return self._apply_preview_styles("<p>Пустой текст</p>")
+
+        html = text
+        # Заголовки
+        html = re.sub(r"^### (.+)$", r"<h3>\1</h3>", html, flags=re.MULTILINE)
+        html = re.sub(r"^## (.+)$", r"<h2>\1</h2>", html, flags=re.MULTILINE)
+        html = re.sub(r"^# (.+)$", r"<h1>\1</h1>", html, flags=re.MULTILINE)
+        # Жирный и курсив
+        html = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html)
+        html = re.sub(r"\*(.+?)\*", r"<i>\1</i>", html)
+        # Списки
+        html = re.sub(r"^- (.+)$", r"<li>\1</li>", html, flags=re.MULTILINE)
+        # Код
+        html = re.sub(r"`(.+?)`", r"<code>\1</code>", html)
+        # Параграфы (двойной перенос строки)
+        html = re.sub(r"\n\n", "</p><p>", html)
+        html = f"<p>{html}</p>"
+        # Одинарные переносы строк
+        html = html.replace("\n", "<br>")
+
+        return self._apply_preview_styles(html)
 
     def _toggle_edit_mode(self):
         """Переключение между режимами просмотра и редактирования"""

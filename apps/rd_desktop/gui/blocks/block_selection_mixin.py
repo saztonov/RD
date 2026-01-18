@@ -33,7 +33,7 @@ class BlockSelectionMixin:
             self._hide_hint_panel()
 
         # Показываем OCR preview для выбранного блока
-        self._show_ocr_preview(block.id)
+        self._show_ocr_preview(block.id, block)
 
         self.blocks_tree_manager.select_block_in_tree(block_idx)
 
@@ -134,4 +134,4 @@ class BlockSelectionMixin:
                 self._hide_hint_panel()
 
             # Показываем OCR preview
-            self._show_ocr_preview(block.id)
+            self._show_ocr_preview(block.id, block)
