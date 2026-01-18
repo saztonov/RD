@@ -30,7 +30,6 @@ from apps.rd_desktop.tree_client import NodeType, TreeClient, TreeNode
 
 from .annotation_operations import AnnotationOperations
 from .pdf_status_manager import PDFStatusManager
-from .r2_viewer_integration import R2ViewerIntegration
 from .tree_item_builder import TreeItemBuilder
 
 logger = logging.getLogger(__name__)
@@ -68,7 +67,6 @@ class ProjectTreeWidget(
         # Вспомогательные компоненты
         self._pdf_status_manager = PDFStatusManager(self)
         self._annotation_ops = AnnotationOperations(self)
-        self._r2_viewer = R2ViewerIntegration(self)
         self._item_builder = TreeItemBuilder(self)
 
         self._setup_ui()
@@ -423,8 +421,11 @@ class ProjectTreeWidget(
     def _upload_annotation_dialog(self, node: TreeNode):
         self._annotation_ops.upload_from_file(node)
 
-    def _view_on_r2(self, node: TreeNode):
-        self._r2_viewer.view_on_r2(node)
+    def _view_storage_info(self, node: TreeNode):
+        """Показать комбинированный диалог R2/Supabase"""
+        from apps.rd_desktop.gui.storage_info_dialog import StorageInfoDialog
+        dialog = StorageInfoDialog(node, self.client, self)
+        dialog.exec()
 
     def _get_pdf_status_icon(self, status: str) -> str:
         return PDFStatusManager.get_status_icon(status)
@@ -482,11 +483,6 @@ class ProjectTreeWidget(
             QMessageBox.warning(self, "Ошибка", "Документ не имеет привязки к R2")
             return
         dialog = BlockVerificationDialog(node.name, r2_key, self)
-        dialog.exec()
-
-    def _view_in_supabase(self, node: TreeNode):
-        from apps.rd_desktop.gui.node_files_dialog import NodeFilesDialog
-        dialog = NodeFilesDialog(node, self.client, self)
         dialog.exec()
 
     def _reconcile_files(self, node: TreeNode):

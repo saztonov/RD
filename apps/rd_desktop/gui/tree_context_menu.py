@@ -119,13 +119,11 @@ class TreeContextMenuMixin:
                         action = menu.addAction("🔄 Сверка R2/Supabase")
                         action.setData(("reconcile_files", node))
 
-                # Посмотреть на R2
-                menu.addSeparator()
-                action = menu.addAction("☁️ Посмотреть на R2")
-                action.setData(("view_on_r2", node))
-
-                action = menu.addAction("🗄️ Показать в Supabase")
-                action.setData(("view_in_supabase", node))
+                    # Показать R2/Supabase (только для PDF документов)
+                    if r2_key and r2_key.lower().endswith(".pdf"):
+                        menu.addSeparator()
+                        action = menu.addAction("☁️ Показать R2/Supabase")
+                        action.setData(("view_storage_info", node))
 
                 menu.addSeparator()
                 menu.addAction("✏️ Переименовать").setData(("rename", node))
@@ -191,9 +189,9 @@ class TreeContextMenuMixin:
         elif action == "detect_stamps":
             node = data[1]
             self._detect_and_assign_stamps(node)
-        elif action == "view_on_r2":
+        elif action == "view_storage_info":
             node = data[1]
-            self._view_on_r2(node)
+            self._view_storage_info(node)
         elif action == "lock_document":
             node = data[1]
             self._lock_document(node)
@@ -203,9 +201,6 @@ class TreeContextMenuMixin:
         elif action == "verify_blocks":
             node = data[1]
             self._verify_blocks(node)
-        elif action == "view_in_supabase":
-            node = data[1]
-            self._view_in_supabase(node)
         elif action == "move_up":
             node = data[1]
             self._move_node_up(node)
