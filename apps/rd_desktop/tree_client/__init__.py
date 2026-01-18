@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from apps.rd_desktop.tree_client.base import TreeClientBase
+from apps.rd_desktop.tree_client.base import TreeClientBase, _get_tree_client
 from apps.rd_desktop.tree_client.categories_mixin import TreeCategoriesMixin
 from apps.rd_desktop.tree_client.client_access_mixin import TreeClientAccessMixin
 from apps.rd_desktop.tree_client.documents_mixin import TreeDocumentsMixin
@@ -63,6 +63,7 @@ class TreeClient(
 __all__ = [
     # Основной класс
     "TreeClient",
+    "_get_tree_client",
     # Модели (реэкспорт для обратной совместимости)
     "NodeType",
     "NodeStatus",
