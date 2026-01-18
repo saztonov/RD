@@ -67,7 +67,7 @@ async def confirm_job_handler(
 
     r2 = _get_r2()
 
-    # Новая структура путей: n/{node_id}/
+    # Структура путей: tree_docs/{node_id}/
     r2_prefix = get_doc_prefix(job.node_id)
 
     # PDF ключ: проверяем существующий или формируем новый

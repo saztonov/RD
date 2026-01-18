@@ -59,7 +59,7 @@ def _load_blocks_metadata(work_dir: Path) -> tuple:
 def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str:
     """Загрузить результаты в R2 и записать в БД.
 
-    Новая структура R2: n/{node_id}/
+    Структура R2: tree_docs/{node_id}/
         {doc_name}.pdf
         {doc_stem}_result.md
         crops/{block_id}.pdf

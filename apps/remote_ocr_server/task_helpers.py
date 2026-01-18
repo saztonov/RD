@@ -20,7 +20,7 @@ def get_r2_storage():
 def download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:
     """Скачать файлы задачи из R2 во временную директорию.
 
-    Новая структура R2: n/{node_id}/
+    Структура R2: tree_docs/{node_id}/
         {doc_name}.pdf
         blocks.json (входные данные для обработки)
 

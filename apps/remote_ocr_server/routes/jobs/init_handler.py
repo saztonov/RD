@@ -63,7 +63,7 @@ async def init_job_handler(
     2. Client uploads files directly to R2 using presigned URLs
     3. POST /jobs/{job_id}/confirm - confirm upload and queue job
 
-    Новая структура R2: n/{node_id}/
+    Структура R2: tree_docs/{node_id}/
         {doc_name}.pdf
         {doc_stem}_result.md
         crops/{block_id}.pdf
@@ -94,7 +94,7 @@ async def init_job_handler(
         f"POST /jobs/init: document_id={document_id[:16]}..., node_id={node_id}"
     )
 
-    # Новая структура путей: n/{node_id}/
+    # Структура путей: tree_docs/{node_id}/
     r2_prefix = get_doc_prefix(node_id)
 
     # Проверяем, есть ли уже PDF в R2

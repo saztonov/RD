@@ -1,7 +1,7 @@
 """Функции формирования путей в R2 Storage.
 
-Новая структура:
-    n/{node_id}/
+Структура:
+    tree_docs/{node_id}/
         {doc_name}.pdf              # PDF документ
         {doc_stem}_result.md        # Markdown результат
         crops/
@@ -31,9 +31,9 @@ def get_doc_prefix(node_id: str) -> str:
         node_id: UUID узла из tree_nodes
 
     Returns:
-        Префикс вида "n/{node_id}"
+        Префикс вида "tree_docs/{node_id}"
     """
-    return f"n/{node_id}"
+    return f"tree_docs/{node_id}"
 
 
 def get_pdf_key(node_id: str, doc_name: str) -> str:
@@ -44,9 +44,9 @@ def get_pdf_key(node_id: str, doc_name: str) -> str:
         doc_name: Имя файла (например: "133-23-45.pdf")
 
     Returns:
-        Ключ вида "n/{node_id}/{doc_name}"
+        Ключ вида "tree_docs/{node_id}/{doc_name}"
     """
-    return f"n/{node_id}/{doc_name}"
+    return f"tree_docs/{node_id}/{doc_name}"
 
 
 def get_result_md_key(node_id: str, doc_name: str) -> str:
@@ -57,10 +57,10 @@ def get_result_md_key(node_id: str, doc_name: str) -> str:
         doc_name: Имя файла (например: "133-23-45.pdf")
 
     Returns:
-        Ключ вида "n/{node_id}/{doc_stem}_result.md"
+        Ключ вида "tree_docs/{node_id}/{doc_stem}_result.md"
     """
     stem = get_doc_stem(doc_name)
-    return f"n/{node_id}/{stem}_result.md"
+    return f"tree_docs/{node_id}/{stem}_result.md"
 
 
 def get_crop_key(node_id: str, block_id: str) -> str:
@@ -71,9 +71,9 @@ def get_crop_key(node_id: str, block_id: str) -> str:
         block_id: ID блока (ArmorID)
 
     Returns:
-        Ключ вида "n/{node_id}/crops/{block_id}.pdf"
+        Ключ вида "tree_docs/{node_id}/crops/{block_id}.pdf"
     """
-    return f"n/{node_id}/crops/{block_id}.pdf"
+    return f"tree_docs/{node_id}/crops/{block_id}.pdf"
 
 
 def get_crops_prefix(node_id: str) -> str:
@@ -83,6 +83,6 @@ def get_crops_prefix(node_id: str) -> str:
         node_id: UUID узла
 
     Returns:
-        Префикс вида "n/{node_id}/crops/"
+        Префикс вида "tree_docs/{node_id}/crops/"
     """
-    return f"n/{node_id}/crops/"
+    return f"tree_docs/{node_id}/crops/"

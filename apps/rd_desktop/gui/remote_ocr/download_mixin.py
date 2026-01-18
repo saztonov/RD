@@ -10,7 +10,7 @@ class DownloadMixin:
     """Миксин для скачивания результатов"""
 
     def _auto_download_result(self, job_id: str):
-        """Запустить скачивание результата из R2 в папку текущего документа"""
+        """Запустить скачивание результата из R2 в папку проекта {projects_dir}/{node_id}/"""
         # Защита от повторного запуска (polling + realtime гонка)
         if job_id in self._downloaded_jobs:
             logger.debug(f"Скачивание {job_id[:8]} уже запущено, пропуск")
@@ -41,8 +41,17 @@ class DownloadMixin:
                 self._downloaded_jobs.discard(job_id)
                 return
 
-            pdf_path = Path(pdf_path)
-            extract_dir = pdf_path.parent
+            # Определяем папку для скачивания: {projects_dir}/{node_id}/
+            from apps.rd_desktop.gui.folder_settings_dialog import get_projects_dir
+
+            node_id = getattr(self.main_window, "_current_node_id", None)
+            projects_dir = get_projects_dir()
+
+            if projects_dir and node_id:
+                extract_dir = Path(projects_dir) / node_id
+            else:
+                # Fallback: папка текущего PDF
+                extract_dir = Path(pdf_path).parent
 
             # Всегда скачиваем новые результаты (перезапуск OCR очищает старые)
             self._executor.submit(
@@ -74,8 +83,7 @@ class DownloadMixin:
             doc_stem = Path(doc_name).stem  # Имя из job для R2 ключа
             pdf_stem = Path(pdf_path).stem if pdf_path else doc_stem  # Для локальных файлов
 
-            # Используем ocr_result_prefix с новой структурой путей
-            # Формат: n/{node_id}/{doc_stem}_result.md (новая структура)
+            # Используем ocr_result_prefix с структурой путей tree_docs/{node_id}/
             ocr_prefix = job_details.get("ocr_result_prefix") or r2_prefix
 
             # Инвалидируем кэш метаданных для префикса перед скачиванием
@@ -83,12 +91,12 @@ class DownloadMixin:
             logger.debug(f"Invalidated metadata cache for prefix: {ocr_prefix}/")
 
             # OCR результаты хранятся в R2 с именами: {doc_stem}_result.md, annotation.json и т.д.
-            # Локально сохраняем с префиксом pdf_stem для удобства пользователя
+            # Локально сохраняем с тем же форматом имён
             files_to_download = [
                 ("annotation.json", f"{pdf_stem}_annotation.json"),
                 ("ocr.html", f"{pdf_stem}_ocr.html"),
                 ("result.json", f"{pdf_stem}_result.json"),
-                (f"{doc_stem}_result.md", f"{pdf_stem}_document.md"),
+                (f"{doc_stem}_result.md", f"{pdf_stem}_result.md"),
             ]
 
             self._signals.download_started.emit(job_id, len(files_to_download))

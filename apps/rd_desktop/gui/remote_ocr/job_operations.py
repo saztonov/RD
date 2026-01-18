@@ -145,6 +145,8 @@ class JobOperationsMixin:
         node_id = getattr(self.main_window, "_current_node_id", None) or None
         r2_key = getattr(self.main_window, "_current_r2_key", None) or None
 
+        logger.info(f"OCR job: node_id={node_id}, r2_key={r2_key}")
+
         if node_id and r2_key:
             try:
                 from rd_adapters.storage import R2SyncStorage as R2Storage

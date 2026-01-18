@@ -121,7 +121,7 @@ async def create_job_handler(
 ) -> dict:
     """Создать новую задачу OCR.
 
-    Новая структура R2: n/{node_id}/
+    Структура R2: tree_docs/{node_id}/
         {doc_name}.pdf
         {doc_stem}_result.md
         crops/{block_id}.pdf
@@ -141,7 +141,7 @@ async def create_job_handler(
 
     job_id = str(uuid.uuid4())
 
-    # Новая структура путей: n/{node_id}/
+    # Структура путей: tree_docs/{node_id}/
     r2_prefix = get_doc_prefix(node_id)
 
     # Проверяем, есть ли уже PDF в R2

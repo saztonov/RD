@@ -49,7 +49,7 @@ def _delete_old_ocr_entries(node_id: str) -> int:
 def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_dir) -> int:
     """Зарегистрировать OCR результаты в node_files.
 
-    Новая структура R2: n/{node_id}/
+    Структура R2: tree_docs/{node_id}/
         {doc_name}.pdf
         {doc_stem}_result.md
         crops/{block_id}.pdf

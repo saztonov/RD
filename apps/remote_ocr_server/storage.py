@@ -68,15 +68,15 @@ from .storage_settings import get_job_settings, save_job_settings
 def job_to_dict(job: Job) -> dict:
     """Конвертировать Job в dict для JSON ответа.
 
-    Новая структура R2: n/{node_id}/
+    Структура R2: tree_docs/{node_id}/
         {doc_name}.pdf
         {doc_stem}_result.md
         crops/{block_id}.pdf
     """
     from .r2_paths import get_doc_prefix
 
-    # Новая структура: r2_prefix = n/{node_id}
-    # ocr_result_prefix теперь совпадает с r2_prefix (нет вложенности ocr_runs/{job_id})
+    # Структура: r2_prefix = tree_docs/{node_id}
+    # ocr_result_prefix совпадает с r2_prefix
     r2_prefix = job.r2_prefix
     if job.node_id:
         r2_prefix = get_doc_prefix(job.node_id)

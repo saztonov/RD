@@ -71,7 +71,7 @@ def generate_results(
             Page(page_number=page_idx, width=width, height=height, blocks=page_blocks)
         )
 
-    # Новая структура путей: n/{node_id}/
+    # Структура путей: tree_docs/{node_id}/
     if not job.node_id:
         raise ValueError("node_id is required for OCR job")
     r2_prefix = get_doc_prefix(job.node_id)
