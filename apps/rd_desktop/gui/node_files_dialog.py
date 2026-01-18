@@ -1,15 +1,12 @@
-"""Диалог для просмотра файлов узла в Supabase (иерархический вид)"""
+"""Диалог для просмотра файлов узла в Supabase (плоская структура)"""
 from __future__ import annotations
 
-import json
 import logging
 from collections import defaultdict
 from datetime import datetime
-from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -49,7 +46,6 @@ class NodeFilesDialog(QDialog):
         self.node = node
         self.client = client
         self.files: List[dict] = []
-        self.latest_job_id: Optional[str] = None
 
         self.setWindowTitle(f"Файлы узла: {node.name}")
         self.resize(900, 600)
@@ -130,7 +126,6 @@ class NodeFilesDialog(QDialog):
             response = self.client._request("get", path)
             if response and response.status_code == 200:
                 self.files = response.json()
-                self._load_latest_job_id()
                 self._populate_tree()
             else:
                 QMessageBox.warning(
@@ -146,35 +141,23 @@ class NodeFilesDialog(QDialog):
             self.refresh_btn.setEnabled(True)
             self.refresh_btn.setText("🔄 Обновить")
 
-    def _load_latest_job_id(self):
-        """Загрузить ID последнего OCR запуска"""
-        try:
-            from rd_adapters.storage import R2SyncStorage as R2Storage
-
-            r2 = R2Storage()
-            latest_run_key = f"tree_docs/{self.node.id}/latest_ocr_run.json"
-            content = r2.download_text(latest_run_key)
-            if content:
-                data = json.loads(content)
-                self.latest_job_id = data.get("job_id")
-        except Exception as e:
-            logger.debug(f"Failed to get latest OCR job_id: {e}")
-            self.latest_job_id = None
-
     def _populate_tree(self):
-        """Заполнить дерево данными"""
+        """Заполнить дерево данными.
+
+        Структура R2: tree_docs/{node_id}/
+            {doc_name}.pdf
+            {doc_stem}_result.md
+            {doc_stem}_annotation.json
+            crops/{block_id}.pdf
+        """
         self.tree.clear()
 
-        # Группируем файлы по папкам на основе r2_key
-        # Структура: tree_docs/{node_id}/ocr_runs/{job_id}/file.ext
-        #            tree_docs/{node_id}/document.pdf
-
+        # Группируем файлы: корневые и в папке crops/
         folders: Dict[str, List[dict]] = defaultdict(list)
         root_files: List[dict] = []
 
         for file_data in self.files:
             r2_key = file_data.get("r2_key", "")
-            # Извлекаем относительный путь от node_id
             prefix = f"tree_docs/{self.node.id}/"
             if r2_key.startswith(prefix):
                 rel_path = r2_key[len(prefix):]
@@ -183,9 +166,9 @@ class NodeFilesDialog(QDialog):
 
             parts = rel_path.split("/")
             if len(parts) > 1:
-                # Файл в подпапке
-                folder_key = "/".join(parts[:-1])  # ocr_runs/{job_id}
-                folders[folder_key].append(file_data)
+                # Файл в подпапке (crops/)
+                folder_name = parts[0]
+                folders[folder_name].append(file_data)
             else:
                 # Корневой файл
                 root_files.append(file_data)
@@ -195,89 +178,24 @@ class NodeFilesDialog(QDialog):
             item = self._create_file_item(file_data)
             self.tree.addTopLevelItem(item)
 
-        # Добавляем папки и их содержимое
-        # Сортируем папки: ocr_runs в конце, внутри ocr_runs - по дате
-        sorted_folders = sorted(folders.keys())
+        # Добавляем папки (crops/)
+        for folder_name in sorted(folders.keys()):
+            folder_files = folders[folder_name]
 
-        # Группируем по первому уровню (ocr_runs, etc.)
-        top_folders: Dict[str, Dict[str, List[dict]]] = defaultdict(dict)
-        for folder_key, files in folders.items():
-            parts = folder_key.split("/")
-            if len(parts) >= 2:
-                top_folder = parts[0]  # ocr_runs
-                sub_folder = "/".join(parts[1:])  # {job_id}
-                top_folders[top_folder][sub_folder] = files
-            else:
-                # Одноуровневая папка
-                top_folders[folder_key][""] = files
-
-        for top_folder_name in sorted(top_folders.keys()):
-            sub_folders = top_folders[top_folder_name]
-
-            # Создаём родительский элемент папки
             folder_item = QTreeWidgetItem()
-            folder_item.setText(0, f"📁 {top_folder_name}")
-            folder_item.setData(0, Qt.UserRole, {"is_folder": True, "name": top_folder_name})
+            folder_item.setText(0, f"📁 {folder_name} ({len(folder_files)})")
+            folder_item.setData(0, Qt.UserRole, {"is_folder": True, "name": folder_name})
 
-            if top_folder_name == "ocr_runs":
-                # Сортируем job_id по дате создания файлов внутри (последние сверху)
-                sub_items = []
-                for sub_folder_name, files in sub_folders.items():
-                    if sub_folder_name:
-                        # Получаем дату первого файла в папке
-                        earliest_date = min(
-                            (f.get("created_at", "") for f in files),
-                            default=""
-                        )
-                        sub_items.append((sub_folder_name, files, earliest_date))
-
-                # Сортируем по дате (новые сверху)
-                sub_items.sort(key=lambda x: x[2], reverse=True)
-
-                for sub_folder_name, files, _ in sub_items:
-                    is_latest = self.latest_job_id and sub_folder_name == self.latest_job_id
-
-                    sub_folder_item = QTreeWidgetItem()
-                    display_name = f"📁 {sub_folder_name}"
-                    if is_latest:
-                        display_name = f"📁 {sub_folder_name}  ✅ (последний распознанный вариант)"
-                        sub_folder_item.setForeground(0, Qt.darkGreen)
-                        font = sub_folder_item.font(0)
-                        font.setBold(True)
-                        sub_folder_item.setFont(0, font)
-
-                    sub_folder_item.setText(0, display_name)
-                    sub_folder_item.setData(0, Qt.UserRole, {"is_folder": True, "name": sub_folder_name})
-
-                    # Добавляем файлы в подпапку
-                    for file_data in files:
-                        file_item = self._create_file_item(file_data)
-                        sub_folder_item.addChild(file_item)
-
-                    folder_item.addChild(sub_folder_item)
-            else:
-                # Обычная папка - добавляем файлы напрямую
-                for sub_folder_name, files in sub_folders.items():
-                    if sub_folder_name:
-                        sub_folder_item = QTreeWidgetItem()
-                        sub_folder_item.setText(0, f"📁 {sub_folder_name}")
-                        sub_folder_item.setData(0, Qt.UserRole, {"is_folder": True, "name": sub_folder_name})
-                        for file_data in files:
-                            file_item = self._create_file_item(file_data)
-                            sub_folder_item.addChild(file_item)
-                        folder_item.addChild(sub_folder_item)
-                    else:
-                        # Файлы в первом уровне папки
-                        for file_data in files:
-                            file_item = self._create_file_item(file_data)
-                            folder_item.addChild(file_item)
+            for file_data in folder_files:
+                file_item = self._create_file_item(file_data)
+                folder_item.addChild(file_item)
 
             self.tree.addTopLevelItem(folder_item)
 
-        # Раскрываем папку ocr_runs по умолчанию
+        # Раскрываем всё
         self.tree.expandAll()
 
-        # Установить заголовок с количеством
+        # Заголовок с количеством
         self.setWindowTitle(f"Файлы узла: {self.node.name} ({len(self.files)})")
 
     def _create_file_item(self, file_data: dict) -> QTreeWidgetItem:

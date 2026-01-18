@@ -6,7 +6,7 @@ import logging
 import shutil
 from pathlib import Path
 
-from .r2_paths import get_doc_prefix, get_result_md_key, get_crop_key
+from .r2_paths import get_doc_prefix, get_result_md_key, get_annotation_key, get_crop_key
 from .storage import Job, add_job_file, delete_job_files
 from .task_helpers import get_r2_storage
 
@@ -62,10 +62,12 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     Структура R2: tree_docs/{node_id}/
         {doc_name}.pdf
         {doc_stem}_result.md
+        {doc_stem}_annotation.json
         crops/{block_id}.pdf
 
-    Загружаемые файлы (annotation.json НЕ загружается - метаданные в БД):
+    Загружаемые файлы:
       - {doc_stem}_result.md (результат в Markdown)
+      - {doc_stem}_annotation.json (аннотации с OCR текстом)
       - crops/*.pdf (кропы блоков)
     """
     r2 = get_r2_storage()
@@ -85,7 +87,17 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     # Формат: (local_path, r2_key, content_type, file_type, filename, size, metadata)
     files_to_upload = []
 
-    # annotation.json НЕ загружаем в R2 - метаданные хранятся в job_files.metadata
+    # {doc_stem}_annotation.json (с OCR текстом)
+    annotation_path = work_dir / "annotation.json"
+    if annotation_path.exists():
+        r2_key = get_annotation_key(job.node_id, job.document_name)
+        annotation_filename = f"{Path(job.document_name).stem}_annotation.json"
+        files_to_upload.append((
+            str(annotation_path), r2_key, "application/json",
+            "annotation", annotation_filename, annotation_path.stat().st_size, None
+        ))
+    else:
+        logger.warning(f"annotation.json не найден для загрузки в R2: {annotation_path}")
 
     # {doc_stem}_result.md
     md_path = work_dir / "document.md"

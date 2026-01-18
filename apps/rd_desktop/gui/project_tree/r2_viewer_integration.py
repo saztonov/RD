@@ -1,10 +1,9 @@
 """Интеграция с R2 Storage для просмотра файлов"""
-import json
 import logging
 import os
 from collections import defaultdict
-from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Dict, List, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, List, Optional
 
 from PySide6.QtWidgets import QMessageBox
 
@@ -45,21 +44,6 @@ class R2ViewerIntegration:
         """
         self._widget = widget
 
-    def _get_latest_ocr_job_id(self, node_id: str) -> Optional[str]:
-        """Получить job_id последнего OCR запуска из latest_ocr_run.json"""
-        from rd_adapters.storage import R2SyncStorage as R2Storage
-
-        try:
-            r2 = R2Storage()
-            latest_run_key = f"tree_docs/{node_id}/latest_ocr_run.json"
-            content = r2.download_text(latest_run_key)
-            if content:
-                data = json.loads(content)
-                return data.get("job_id")
-        except Exception as e:
-            logger.debug(f"Failed to get latest OCR job_id: {e}")
-        return None
-
     def view_on_r2(self, node: TreeNode) -> None:
         """Показать файлы узла на R2 Storage"""
         from apps.rd_desktop.gui.r2_viewer import R2FilesDialog
@@ -91,9 +75,6 @@ class R2ViewerIntegration:
             # Определяем локальную папку
             local_folder = self._get_local_folder(node, r2_prefix)
 
-            # Получаем ID последнего OCR запуска
-            latest_job_id = self._get_latest_ocr_job_id(node.id)
-
             self._widget.status_label.setText("")
 
             dialog = R2FilesDialog(
@@ -103,7 +84,6 @@ class R2ViewerIntegration:
                 r2_prefix=r2_prefix,
                 node_id=node.id,
                 local_folder=local_folder,
-                latest_job_id=latest_job_id,
             )
             dialog.exec()
 
@@ -117,13 +97,12 @@ class R2ViewerIntegration:
     def _get_r2_prefix(self, node: TreeNode) -> str:
         """Определить R2 префикс для узла.
 
-        Для документов используем tree_docs/{node_id}/ чтобы видеть:
-        - PDF файл (если он там)
-        - OCR результаты в папке ocr_runs/{job_id}/
-        - Другие связанные файлы
+        Структура: tree_docs/{node_id}/
+            {doc_name}.pdf
+            {doc_stem}_result.md
+            {doc_stem}_annotation.json
+            crops/{block_id}.pdf
         """
-        # Для любого типа узла используем tree_docs/{node_id}/
-        # Это гарантирует отображение всех файлов включая ocr_runs/
         return f"tree_docs/{node.id}/"
 
     def _get_local_folder(self, node: TreeNode, r2_prefix: str):

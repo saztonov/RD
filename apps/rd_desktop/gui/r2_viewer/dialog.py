@@ -40,7 +40,6 @@ class R2FilesDialog(QDialog):
         r2_prefix: str = "",
         node_id: Optional[str] = None,
         local_folder: Optional[Path] = None,
-        latest_job_id: Optional[str] = None,
     ):
         super().__init__(parent)
         self.r2_base_url = r2_base_url
@@ -48,7 +47,6 @@ class R2FilesDialog(QDialog):
         self.r2_prefix = r2_prefix
         self.node_id = node_id
         self.local_folder = local_folder
-        self.latest_job_id = latest_job_id  # ID последнего OCR запуска
         self.current_path = []
         self._worker = None
         self.setWindowTitle("Файлы на R2 Storage")
@@ -128,33 +126,14 @@ class R2FilesDialog(QDialog):
             self.download_btn.setText("📥 Скачать")
             self.delete_btn.setText("🗑️ Удалить")
 
-    def _is_inside_ocr_runs(self) -> bool:
-        """Проверить, находимся ли внутри папки ocr_runs"""
-        if not self.current_path:
-            return False
-        # Проверяем, есть ли в пути папка ocr_runs
-        return any(p.get("name") == "ocr_runs" for p in self.current_path)
-
     def _populate_files(self, files: list):
         """Заполнить список файлов"""
         self.files_list.clear()
-
-        # Проверяем, находимся ли внутри папки ocr_runs
-        inside_ocr_runs = self._is_inside_ocr_runs()
 
         for file_info in files:
             icon = file_info.get("icon", "📄")
             name = file_info.get("name", "")
             size = file_info.get("size", 0)
-            is_dir = file_info.get("is_dir", False)
-
-            # Проверяем, является ли это последней распознанной папкой
-            is_latest = (
-                inside_ocr_runs
-                and is_dir
-                and self.latest_job_id
-                and name == self.latest_job_id
-            )
 
             if size > 0:
                 if size < 1024:
@@ -167,21 +146,8 @@ class R2FilesDialog(QDialog):
             else:
                 display = f"{icon}  {name}"
 
-            # Добавляем метку для последней распознанной папки
-            if is_latest:
-                display = f"{display}  ✅ (последний распознанный вариант)"
-
             item = QListWidgetItem(display)
             item.setData(Qt.UserRole, file_info)
-
-            # Подсвечиваем последнюю папку зелёным
-            if is_latest:
-                item.setForeground(Qt.darkGreen)
-                from PySide6.QtGui import QFont
-                font = item.font()
-                font.setBold(True)
-                item.setFont(font)
-
             self.files_list.addItem(item)
 
     def _on_file_double_clicked(self, item: QListWidgetItem):

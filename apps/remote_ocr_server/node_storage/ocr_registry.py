@@ -16,6 +16,7 @@ from apps.remote_ocr_server.node_storage.file_manager import (
 from apps.remote_ocr_server.r2_paths import (
     get_doc_prefix,
     get_result_md_key,
+    get_annotation_key,
     get_crop_key,
     get_crops_prefix,
 )
@@ -28,6 +29,7 @@ def _delete_old_ocr_entries(node_id: str) -> int:
     """Удалить старые записи OCR результатов из node_files (кроме pdf)."""
     client = get_client()
     ocr_file_types = [
+        "annotation",
         "result_md",
         "crop",
         "crops_folder",
@@ -52,9 +54,11 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
     Структура R2: tree_docs/{node_id}/
         {doc_name}.pdf
         {doc_stem}_result.md
+        {doc_stem}_annotation.json
         crops/{block_id}.pdf
 
-    Регистрируемые файлы (annotation.json НЕ регистрируется - метаданные в job_files):
+    Регистрируемые файлы:
+      - {doc_stem}_annotation.json (аннотации с OCR текстом)
       - {doc_stem}_result.md (результат в Markdown)
       - crops/*.pdf (кропы блоков с метаданными)
     """
@@ -70,7 +74,7 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
 
     registered = 0
 
-    # Загружаем annotation.json для получения метаданных блоков (не для регистрации)
+    # Загружаем annotation.json для получения метаданных блоков
     blocks_by_id: Dict[str, dict] = {}
     annotation_path = work_path / "annotation.json"
     if annotation_path.exists():
@@ -83,7 +87,21 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
         except Exception as e:
             logger.warning(f"Failed to load annotation.json for metadata: {e}")
 
-    # annotation.json НЕ регистрируем в node_files - метаданные в job_files.metadata
+    # {doc_stem}_annotation.json (с OCR текстом)
+    if annotation_path.exists():
+        r2_key = get_annotation_key(node_id, doc_name)
+        annotation_filename = f"{doc_stem}_annotation.json"
+        add_node_file(
+            node_id,
+            "annotation",
+            r2_key,
+            annotation_filename,
+            annotation_path.stat().st_size,
+            "application/json",
+            metadata={"ocr_run_id": job_id},
+        )
+        registered += 1
+        logger.info(f"Зарегистрирован {annotation_filename} в node_files (file_type=annotation)")
 
     # {doc_stem}_result.md
     document_md = work_path / "document.md"

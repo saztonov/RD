@@ -1,4 +1,4 @@
-"""Диалог верификации блоков - сравнение annotation.json, ocr.html, result.json"""
+"""Диалог верификации блоков - сравнение {doc_stem}_annotation.json и result файлов"""
 
 import json
 import logging
@@ -101,41 +101,19 @@ class VerificationWorker(QThread):
         result = VerificationResult()
 
         # Формируем ключи файлов
+        # Структура R2: tree_docs/{node_id}/
+        #     {doc_name}.pdf
+        #     {doc_stem}_annotation.json
+        #     {doc_stem}_result.md
+        #     crops/{block_id}.pdf
         pdf_path = PurePosixPath(self.r2_key)
         pdf_stem = pdf_path.stem
         pdf_parent = str(pdf_path.parent)
 
-        # Сначала пробуем найти latest_ocr_run.json для актуальных путей
-        # Извлекаем node_id из r2_key (формат: tree_docs/{node_id}/... или другой)
-        parts = self.r2_key.split("/")
-        node_id = parts[1] if len(parts) > 1 and parts[0] == "tree_docs" else None
-
-        ocr_prefix = None
-        if node_id:
-            latest_run_key = f"tree_docs/{node_id}/latest_ocr_run.json"
-            latest_run_content = r2.download_text(latest_run_key)
-            if latest_run_content:
-                try:
-                    latest_run = json.loads(latest_run_content)
-                    job_id = latest_run.get("job_id")
-                    if job_id:
-                        ocr_prefix = f"tree_docs/{node_id}/ocr_runs/{job_id}"
-                        logger.info(f"Using OCR prefix from latest_ocr_run.json: {ocr_prefix}")
-                except Exception as e:
-                    logger.warning(f"Failed to parse latest_ocr_run.json: {e}")
-
-        # Если нашли ocr_prefix - используем простые имена файлов
-        if ocr_prefix:
-            ann_r2_key = f"{ocr_prefix}/annotation.json"
-            ocr_r2_key = f"{ocr_prefix}/ocr.html"
-            res_r2_key = f"{ocr_prefix}/result.json"
-            md_r2_key = f"{ocr_prefix}/document.md"
-        else:
-            # Fallback: старый формат с префиксом pdf_stem
-            ann_r2_key = f"{pdf_parent}/{pdf_stem}_annotation.json"
-            ocr_r2_key = f"{pdf_parent}/{pdf_stem}_ocr.html"
-            res_r2_key = f"{pdf_parent}/{pdf_stem}_result.json"
-            md_r2_key = f"{pdf_parent}/{pdf_stem}_document.md"
+        ann_r2_key = f"{pdf_parent}/{pdf_stem}_annotation.json"
+        ocr_r2_key = f"{pdf_parent}/{pdf_stem}_ocr.html"
+        res_r2_key = f"{pdf_parent}/{pdf_stem}_result.json"
+        md_r2_key = f"{pdf_parent}/{pdf_stem}_result.md"
 
         # 1. Загружаем и парсим annotation.json
         self.progress.emit("Загрузка annotation.json...")

@@ -1,17 +1,15 @@
 """Диалог для просмотра информации о хранении документа в R2 и Supabase"""
 from __future__ import annotations
 
-import json
 import logging
 import os
 import webbrowser
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -86,7 +84,6 @@ class StorageInfoDialog(QDialog):
         self.r2_files: List[dict] = []
         self.node_files: List[dict] = []
         self.jobs: List[dict] = []
-        self.latest_job_id: Optional[str] = None
         self.current_r2_path: List[dict] = []
         self._download_worker = None
         self._delete_worker = None
@@ -281,9 +278,6 @@ class StorageInfoDialog(QDialog):
             else:
                 self.r2_files = []
 
-            # Получаем последний job_id
-            self._load_latest_job_id()
-
             # Обновляем заголовок
             r2_public = os.getenv("R2_PUBLIC_URL", "https://rd1.svarovsky.ru")
             self.r2_header.setText(f"📦 {r2_public}/{r2_prefix}")
@@ -294,21 +288,6 @@ class StorageInfoDialog(QDialog):
         except Exception as e:
             logger.error(f"Failed to load R2 files: {e}")
             self.r2_header.setText(f"❌ Ошибка загрузки: {e}")
-
-    def _load_latest_job_id(self):
-        """Загрузить ID последнего OCR запуска"""
-        from rd_adapters.storage import R2SyncStorage as R2Storage
-
-        try:
-            r2 = R2Storage()
-            latest_run_key = f"tree_docs/{self.node.id}/latest_ocr_run.json"
-            content = r2.download_text(latest_run_key)
-            if content:
-                data = json.loads(content)
-                self.latest_job_id = data.get("job_id")
-        except Exception as e:
-            logger.debug(f"Failed to get latest OCR job_id: {e}")
-            self.latest_job_id = None
 
     def _build_file_tree(self, r2_objects: List[dict], prefix: str) -> List[dict]:
         """Построить дерево файлов из списка R2 объектов"""
@@ -357,20 +336,10 @@ class StorageInfoDialog(QDialog):
         """Заполнить список R2 файлов"""
         self.r2_list.clear()
 
-        inside_ocr_runs = self._r2_is_inside_ocr_runs()
-
         for file_info in files:
             icon = file_info.get("icon", "📄")
             name = file_info.get("name", "")
             size = file_info.get("size", 0)
-            is_dir = file_info.get("is_dir", False)
-
-            is_latest = (
-                inside_ocr_runs
-                and is_dir
-                and self.latest_job_id
-                and name == self.latest_job_id
-            )
 
             if size > 0:
                 size_str = self._format_size(size)
@@ -378,23 +347,9 @@ class StorageInfoDialog(QDialog):
             else:
                 display = f"{icon}  {name}"
 
-            if is_latest:
-                display = f"{display}  ✅ (последний)"
-
             item = QListWidgetItem(display)
             item.setData(Qt.UserRole, file_info)
-
-            if is_latest:
-                item.setForeground(Qt.darkGreen)
-                font = item.font()
-                font.setBold(True)
-                item.setFont(font)
-
             self.r2_list.addItem(item)
-
-    def _r2_is_inside_ocr_runs(self) -> bool:
-        """Проверить, находимся ли внутри папки ocr_runs"""
-        return any(p.get("name") == "ocr_runs" for p in self.current_r2_path)
 
     def _r2_on_double_click(self, item: QListWidgetItem):
         """Обработчик двойного клика в R2 списке"""
@@ -662,7 +617,14 @@ class StorageInfoDialog(QDialog):
             logger.error(f"Failed to load jobs: {e}")
 
     def _populate_node_files_tree(self):
-        """Заполнить дерево node_files"""
+        """Заполнить дерево node_files.
+
+        Структура R2: tree_docs/{node_id}/
+            {doc_name}.pdf
+            {doc_stem}_result.md
+            {doc_stem}_annotation.json
+            crops/{block_id}.pdf
+        """
         self.sb_files_tree.clear()
 
         folders: Dict[str, List[dict]] = defaultdict(list)
@@ -678,9 +640,11 @@ class StorageInfoDialog(QDialog):
 
             parts = rel_path.split("/")
             if len(parts) > 1:
-                folder_key = "/".join(parts[:-1])
-                folders[folder_key].append(file_data)
+                # Файл в подпапке (crops/)
+                folder_name = parts[0]
+                folders[folder_name].append(file_data)
             else:
+                # Корневой файл
                 root_files.append(file_data)
 
         # Добавляем корневые файлы
@@ -688,70 +652,17 @@ class StorageInfoDialog(QDialog):
             item = self._create_node_file_item(file_data)
             self.sb_files_tree.addTopLevelItem(item)
 
-        # Группируем по первому уровню
-        top_folders: Dict[str, Dict[str, List[dict]]] = defaultdict(dict)
-        for folder_key, files in folders.items():
-            parts = folder_key.split("/")
-            if len(parts) >= 2:
-                top_folder = parts[0]
-                sub_folder = "/".join(parts[1:])
-                top_folders[top_folder][sub_folder] = files
-            else:
-                top_folders[folder_key][""] = files
-
-        for top_folder_name in sorted(top_folders.keys()):
-            sub_folders = top_folders[top_folder_name]
+        # Добавляем папки (crops/)
+        for folder_name in sorted(folders.keys()):
+            folder_files = folders[folder_name]
 
             folder_item = QTreeWidgetItem()
-            folder_item.setText(0, f"📁 {top_folder_name}")
-            folder_item.setData(0, Qt.UserRole, {"is_folder": True, "name": top_folder_name})
+            folder_item.setText(0, f"📁 {folder_name} ({len(folder_files)})")
+            folder_item.setData(0, Qt.UserRole, {"is_folder": True, "name": folder_name})
 
-            if top_folder_name == "ocr_runs":
-                sub_items = []
-                for sub_folder_name, files in sub_folders.items():
-                    if sub_folder_name:
-                        earliest_date = min(
-                            (f.get("created_at", "") for f in files),
-                            default=""
-                        )
-                        sub_items.append((sub_folder_name, files, earliest_date))
-
-                sub_items.sort(key=lambda x: x[2], reverse=True)
-
-                for sub_folder_name, files, _ in sub_items:
-                    is_latest = self.latest_job_id and sub_folder_name == self.latest_job_id
-
-                    sub_folder_item = QTreeWidgetItem()
-                    display_name = f"📁 {sub_folder_name}"
-                    if is_latest:
-                        display_name = f"📁 {sub_folder_name}  ✅ (последний)"
-                        sub_folder_item.setForeground(0, Qt.darkGreen)
-                        font = sub_folder_item.font(0)
-                        font.setBold(True)
-                        sub_folder_item.setFont(0, font)
-
-                    sub_folder_item.setText(0, display_name)
-                    sub_folder_item.setData(0, Qt.UserRole, {"is_folder": True, "name": sub_folder_name})
-
-                    for file_data in files:
-                        file_item = self._create_node_file_item(file_data)
-                        sub_folder_item.addChild(file_item)
-
-                    folder_item.addChild(sub_folder_item)
-            else:
-                for sub_folder_name, files in sub_folders.items():
-                    if sub_folder_name:
-                        sub_folder_item = QTreeWidgetItem()
-                        sub_folder_item.setText(0, f"📁 {sub_folder_name}")
-                        sub_folder_item.setData(0, Qt.UserRole, {"is_folder": True, "name": sub_folder_name})
-                        for file_data in files:
-                            file_item = self._create_node_file_item(file_data)
-                            sub_folder_item.addChild(file_item)
-                        folder_item.addChild(sub_folder_item)
-                    else:
-                        for file_data in files:
-                            file_item = self._create_node_file_item(file_data)
-                            folder_item.addChild(file_item)
+            for file_data in folder_files:
+                file_item = self._create_node_file_item(file_data)
+                folder_item.addChild(file_item)
 
             self.sb_files_tree.addTopLevelItem(folder_item)
 
@@ -786,25 +697,14 @@ class StorageInfoDialog(QDialog):
             created_at = job_data.get("created_at", "")
             completed_at = job_data.get("completed_at", "")
 
-            is_latest = self.latest_job_id and job_id == self.latest_job_id
-
             status_icon = JOB_STATUS_ICONS.get(status, "❓")
-            display_id = job_id
-            if is_latest:
-                display_id = f"{job_id}  ✅ (последний)"
 
-            item.setText(0, display_id)
+            item.setText(0, job_id)
             item.setText(1, f"{status_icon} {status}")
             item.setText(2, doc_name)
             item.setText(3, self._format_datetime(created_at))
             item.setText(4, self._format_datetime(completed_at))
             item.setData(0, Qt.UserRole, job_data)
-
-            if is_latest:
-                item.setForeground(0, Qt.darkGreen)
-                font = item.font(0)
-                font.setBold(True)
-                item.setFont(0, font)
 
             self.sb_jobs_tree.addTopLevelItem(item)
 

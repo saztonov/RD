@@ -18,14 +18,23 @@ coords_norm = Block.px_to_norm(coords_px, page_width, page_height)
 
 ## R2 Storage Keys
 
-| Context | Key Pattern |
-|---------|-------------|
-| With node_id | `tree_docs/{node_id}/ocr_runs/{job_id}/` |
-| Without node_id | `ocr_jobs/{job_id}/` |
-| PDF (always) | `{prefix}/document.pdf` |
-| Blocks | `{prefix}/blocks.json` or `{prefix}/annotation.json` |
-| Results | `{prefix}/result.json` |
-| Crops | `{prefix}/crops/{block_id}.png` |
+Плоская структура хранения файлов в R2:
+
+```
+tree_docs/{node_id}/
+    {doc_name}.pdf              # PDF документ
+    {doc_stem}_result.md        # Markdown результат OCR
+    {doc_stem}_annotation.json  # Аннотации с OCR текстом
+    crops/
+        {block_id}.pdf          # Кропы блоков
+```
+
+| File Type | Key Pattern |
+|-----------|-------------|
+| PDF | `tree_docs/{node_id}/{doc_name}.pdf` |
+| Result MD | `tree_docs/{node_id}/{doc_stem}_result.md` |
+| Annotation | `tree_docs/{node_id}/{doc_stem}_annotation.json` |
+| Crop | `tree_docs/{node_id}/crops/{block_id}.pdf` |
 
 ## Job Statuses
 

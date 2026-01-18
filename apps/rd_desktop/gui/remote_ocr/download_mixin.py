@@ -90,12 +90,14 @@ class DownloadMixin:
             get_metadata_cache().invalidate_prefix(ocr_prefix + "/")
             logger.debug(f"Invalidated metadata cache for prefix: {ocr_prefix}/")
 
-            # OCR результаты хранятся в R2 с именами: {doc_stem}_result.md, annotation.json и т.д.
+            # Структура R2: tree_docs/{node_id}/
+            #     {doc_name}.pdf
+            #     {doc_stem}_annotation.json
+            #     {doc_stem}_result.md
+            #     crops/{block_id}.pdf
             # Локально сохраняем с тем же форматом имён
             files_to_download = [
-                ("annotation.json", f"{pdf_stem}_annotation.json"),
-                ("ocr.html", f"{pdf_stem}_ocr.html"),
-                ("result.json", f"{pdf_stem}_result.json"),
+                (f"{doc_stem}_annotation.json", f"{pdf_stem}_annotation.json"),
                 (f"{doc_stem}_result.md", f"{pdf_stem}_result.md"),
             ]
 
