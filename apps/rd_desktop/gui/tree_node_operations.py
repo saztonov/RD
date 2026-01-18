@@ -1,28 +1,28 @@
-"""Mixin для операций с узлами дерева проектов"""
+"""Mixin для операций с узлами дерева проектов
+
+Модуль разбит на компоненты:
+- tree_constants.py: NODE_ICONS, STATUS_COLORS, get_node_icon
+- tree_upload_mixin.py: загрузка файлов в R2
+- tree_rename_mixin.py: переименование узлов и файлов
+"""
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, List
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
-    QFileDialog,
     QInputDialog,
     QMessageBox,
-    QTreeWidgetItem,
 )
 
-from apps.rd_desktop.gui.file_transfer_worker import FileTransferWorker, TransferTask, TransferType
-from apps.rd_desktop.gui.r2_operation_worker import (
-    R2Operation,
-    R2OperationType,
-    R2OperationWorker,
-)
 from apps.rd_desktop.gui.tree_cache_ops import TreeCacheOperationsMixin
+from apps.rd_desktop.gui.tree_constants import NODE_ICONS, STATUS_COLORS, get_node_icon
 from apps.rd_desktop.gui.tree_folder_ops import TreeFolderOperationsMixin
+from apps.rd_desktop.gui.tree_rename_mixin import TreeRenameMixin
+from apps.rd_desktop.gui.tree_upload_mixin import TreeUploadMixin
 from apps.rd_desktop.tree_client import NodeStatus, NodeType, TreeNode
 
 if TYPE_CHECKING:
@@ -30,43 +30,21 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-NODE_ICONS = {
-    # Новые типы v2
-    NodeType.FOLDER: "📁",
-    NodeType.DOCUMENT: "📄",
-    # Legacy aliases (для обратной совместимости с данными в БД)
-    "project": "📁",
-    "stage": "🏗",
-    "section": "📚",
-    "task_folder": "📂",
-    "document": "📄",
-    "folder": "📁",
-}
+# Реэкспорт для обратной совместимости
+__all__ = [
+    "NODE_ICONS",
+    "STATUS_COLORS",
+    "get_node_icon",
+    "TreeNodeOperationsMixin",
+]
 
 
-def get_node_icon(node: TreeNode) -> str:
-    """Получить иконку для узла (учитывает legacy_node_type)."""
-    # Сначала проверяем legacy_node_type в attributes
-    legacy_type = node.legacy_node_type
-    if legacy_type and legacy_type in NODE_ICONS:
-        return NODE_ICONS[legacy_type]
-
-    # Используем node_type
-    if node.node_type in NODE_ICONS:
-        return NODE_ICONS[node.node_type]
-
-    # Fallback
-    return "📁" if node.is_folder else "📄"
-
-STATUS_COLORS = {
-    NodeStatus.ACTIVE: "#e0e0e0",
-    NodeStatus.COMPLETED: "#4caf50",
-    NodeStatus.ARCHIVED: "#9e9e9e",
-}
-
-
-class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixin):
+class TreeNodeOperationsMixin(
+    TreeCacheOperationsMixin,
+    TreeFolderOperationsMixin,
+    TreeUploadMixin,
+    TreeRenameMixin,
+):
     """Миксин для CRUD операций с узлами дерева"""
 
     def _pause_timers(self):
@@ -162,348 +140,6 @@ class TreeNodeOperationsMixin(TreeCacheOperationsMixin, TreeFolderOperationsMixi
     def _get_user_role(self):
         """Получить Qt.UserRole"""
         return Qt.UserRole
-
-    def _close_if_open(self, r2_key: str):
-        """Закрыть файл в редакторе если он открыт (по r2_key)"""
-        if not r2_key:
-            return
-
-        from apps.rd_desktop.gui.folder_settings_dialog import get_projects_dir
-
-        projects_dir = get_projects_dir()
-        if not projects_dir:
-            return
-
-        # Формируем локальный путь из r2_key
-        if r2_key.startswith("tree_docs/"):
-            rel_path = r2_key[len("tree_docs/") :]
-        else:
-            rel_path = r2_key
-
-        cache_path = Path(projects_dir) / "cache" / rel_path
-
-        # Получаем главное окно
-        main_window = self.window()
-        if (
-            not hasattr(main_window, "_current_pdf_path")
-            or not main_window._current_pdf_path
-        ):
-            return
-
-        # Сравниваем пути
-        try:
-            current_path = Path(main_window._current_pdf_path).resolve()
-            target_path = cache_path.resolve()
-
-            if current_path == target_path:
-                # Закрываем файл
-                if hasattr(main_window, "_clear_interface"):
-                    main_window._clear_interface()
-                    logger.info(f"Closed file in editor: {cache_path}")
-        except Exception as e:
-            logger.error(f"Error checking open file: {e}")
-
-    def _upload_file(self, node: TreeNode):
-        """Добавить файл в папку заданий (асинхронная загрузка в R2)"""
-        paths, _ = QFileDialog.getOpenFileNames(
-            self, "Выберите файлы", "", "PDF Files (*.pdf);;All Files (*)"
-        )
-        if not paths:
-            return
-
-        # Создаём worker для асинхронной загрузки
-        self._upload_worker = FileTransferWorker(self)
-        self._upload_target_node = node
-
-        for path in paths:
-            file_path = Path(path)
-            filename = file_path.name
-            file_size = file_path.stat().st_size
-            r2_key = f"tree_docs/{node.id}/{filename}"
-
-            task = TransferTask(
-                transfer_type=TransferType.UPLOAD,
-                local_path=str(file_path),
-                r2_key=r2_key,
-                node_id="",  # Будет заполнен после создания узла
-                file_size=file_size,
-                filename=filename,
-                parent_node_id=node.id,
-            )
-            self._upload_worker.add_task(task)
-
-        # Подключаем сигналы
-        main_window = self.window()
-        self._upload_worker.progress.connect(
-            lambda msg, cur, tot: main_window.show_transfer_progress(msg, cur, tot)
-        )
-        self._upload_worker.finished_task.connect(self._on_upload_task_finished)
-        self._upload_worker.all_finished.connect(self._on_all_uploads_finished)
-
-        # Запускаем
-        self._upload_worker.start()
-
-    def _on_upload_task_finished(self, task: TransferTask, success: bool, error: str):
-        """Обработка завершения загрузки одного файла"""
-        if not success:
-            QMessageBox.critical(
-                self,
-                "Ошибка",
-                f"Не удалось загрузить файл в R2:\n{task.filename}\n{error}",
-            )
-            return
-
-        logger.info(f"File uploaded to R2: {task.r2_key}")
-
-        # Проверка уникальности имени в папке
-        if not self._check_name_unique(task.parent_node_id, task.filename):
-            QMessageBox.warning(
-                self,
-                "Ошибка",
-                f"Файл с именем '{task.filename}' уже существует в этой папке",
-            )
-            return
-
-        # Копируем файл в локальный кэш ДО создания узла (чтобы открытие было мгновенным)
-        self._copy_to_cache(task.local_path, task.r2_key)
-
-        parent_item = self._node_map.get(task.parent_node_id)
-
-        try:
-            doc_node = self.client.add_document(
-                parent_id=task.parent_node_id,
-                name=task.filename,
-                r2_key=task.r2_key,
-                file_size=task.file_size,
-            )
-
-            if parent_item:
-                if parent_item.childCount() == 1:
-                    child = parent_item.child(0)
-                    if child.data(0, self._get_user_role()) == "placeholder":
-                        parent_item.removeChild(child)
-
-                child_item = self._item_builder.create_item(doc_node)
-                parent_item.addChild(child_item)
-                parent_item.setExpanded(True)
-                self.tree.setCurrentItem(child_item)
-                self.highlight_document(doc_node.id)
-
-            logger.info(f"Document added: {doc_node.id} with r2_key={task.r2_key}")
-            # Сигнал с node_id и r2_key для открытия
-            self.file_uploaded_r2.emit(doc_node.id, task.r2_key)
-
-        except Exception as e:
-            logger.exception(f"Failed to add document: {e}")
-            QMessageBox.critical(
-                self, "Ошибка", f"Файл загружен в R2, но не добавлен в дерево:\n{e}"
-            )
-
-    def _on_all_uploads_finished(self):
-        """Все загрузки завершены"""
-        main_window = self.window()
-        main_window.hide_transfer_progress()
-        self._upload_worker = None
-
-    def _rename_related_files(self, old_r2_key: str, new_r2_key: str, node_id: str):
-        """Переименовать связанные файлы (annotation.json, ocr.html, result.json)
-
-        ВАЖНО: Переименовывает файлы в локальном кэше НЕЗАВИСИМО от наличия в R2,
-        чтобы избежать потери аннотаций при работе в офлайн режиме.
-
-        R2 операции выполняются асинхронно в фоне.
-        """
-        from pathlib import PurePosixPath
-
-        old_stem = PurePosixPath(old_r2_key).stem
-        new_stem = PurePosixPath(new_r2_key).stem
-        r2_prefix = str(PurePosixPath(old_r2_key).parent)
-
-        # Список связанных файлов для переименования
-        related_files = [
-            (
-                f"{r2_prefix}/{old_stem}_annotation.json",
-                f"{r2_prefix}/{new_stem}_annotation.json",
-            ),
-            (f"{r2_prefix}/{old_stem}_ocr.html", f"{r2_prefix}/{new_stem}_ocr.html"),
-            (
-                f"{r2_prefix}/{old_stem}_result.json",
-                f"{r2_prefix}/{new_stem}_result.json",
-            ),
-            (
-                f"{r2_prefix}/{old_stem}_document.md",
-                f"{r2_prefix}/{new_stem}_document.md",
-            ),
-        ]
-
-        # 1. СИНХРОННО: Переименовываем в локальном кэше (мгновенно)
-        for old_key, new_key in related_files:
-            self._rename_cache_file(old_key, new_key)
-            # Обновляем запись в node_files (быстрая DB операция)
-            self._update_node_file_r2_key(node_id, old_key, new_key)
-
-        # 2. АСИНХРОННО: Переименовываем в R2 в фоне
-        self._start_async_r2_renames(related_files)
-
-    def _start_async_r2_renames(self, related_files: list):
-        """Запустить асинхронное переименование файлов в R2"""
-        # Создаём worker для переименования
-        self._rename_worker = R2OperationWorker()
-
-        for old_key, new_key in related_files:
-            self._rename_worker.add_operation(R2Operation(
-                operation_type=R2OperationType.RENAME,
-                remote_key=old_key,
-                new_key=new_key,
-                callback_data={"old_key": old_key, "new_key": new_key}
-            ))
-
-        self._rename_worker.signals.operation_completed.connect(
-            self._on_rename_r2_completed
-        )
-        self._rename_worker.finished.connect(self._on_all_renames_finished)
-        self._rename_worker.start()
-
-    def _on_rename_r2_completed(self, op, success: bool, result, error: str):
-        """Callback после переименования файла в R2"""
-        if success:
-            logger.info(f"Renamed in R2: {op.remote_key} → {op.new_key}")
-        else:
-            # Не критично - локальный кэш уже переименован
-            logger.debug(f"R2 rename skipped (file may not exist): {op.remote_key}")
-
-    def _on_all_renames_finished(self):
-        """Все R2 переименования завершены"""
-        self._rename_worker = None
-
-    def _start_async_main_file_rename(self, old_r2_key: str, new_r2_key: str):
-        """Запустить асинхронное переименование основного PDF файла в R2"""
-        self._main_rename_worker = R2OperationWorker()
-        self._main_rename_worker.add_operation(R2Operation(
-            operation_type=R2OperationType.RENAME,
-            remote_key=old_r2_key,
-            new_key=new_r2_key,
-            callback_data={"old_key": old_r2_key, "new_key": new_r2_key}
-        ))
-        self._main_rename_worker.signals.operation_completed.connect(
-            self._on_main_file_rename_completed
-        )
-        self._main_rename_worker.start()
-
-    def _on_main_file_rename_completed(self, op, success: bool, result, error: str):
-        """Callback после переименования основного PDF в R2"""
-        if success:
-            logger.info(f"Main PDF renamed in R2: {op.remote_key} → {op.new_key}")
-        else:
-            logger.warning(f"Main PDF R2 rename failed (may not exist): {op.remote_key} - {error}")
-        self._main_rename_worker = None
-
-    def _update_node_file_r2_key(self, node_id: str, old_r2_key: str, new_r2_key: str):
-        """Обновить r2_key в таблице node_files"""
-        try:
-            node_file = self.client.get_node_file_by_r2_key(node_id, old_r2_key)
-            if node_file:
-                # Обновляем r2_key и file_name
-                new_file_name = Path(new_r2_key).name
-                self.client.update_node_file(
-                    node_file.id, r2_key=new_r2_key, file_name=new_file_name
-                )
-                logger.info(f"Updated node_file: {old_r2_key} → {new_r2_key}")
-        except Exception as e:
-            logger.error(f"Failed to update node_file: {e}")
-
-    def _rename_node(self, node: TreeNode):
-        """Переименовать узел (для документов также переименовывает в R2)"""
-        # Проверка блокировки документа
-        if self._check_document_locked(node):
-            return
-
-        self._pause_timers()
-        try:
-            new_name, ok = QInputDialog.getText(
-                self, "Переименовать", "Новое название:", text=node.name
-            )
-            if ok and new_name.strip() and new_name.strip() != node.name:
-                try:
-                    new_name_clean = new_name.strip()
-
-                    # Проверка уникальности имени в папке
-                    if node.parent_id and not self._check_name_unique(
-                        node.parent_id, new_name_clean, node.id
-                    ):
-                        QMessageBox.warning(
-                            self,
-                            "Ошибка",
-                            f"Элемент с именем '{new_name_clean}' уже существует в этой папке",
-                        )
-                        return
-
-                    # Для документов проверяем и добавляем расширение .pdf
-                    if node.node_type == NodeType.DOCUMENT:
-                        # Проверяем что имя заканчивается на .pdf (регистронезависимо)
-                        if not new_name_clean.lower().endswith(".pdf"):
-                            # Автоматически добавляем расширение .pdf
-                            new_name_clean = f"{new_name_clean}.pdf"
-                            logger.info(
-                                f"Added .pdf extension to document name: {new_name_clean}"
-                            )
-                            # Повторная проверка уникальности после добавления расширения
-                            if node.parent_id and not self._check_name_unique(
-                                node.parent_id, new_name_clean, node.id
-                            ):
-                                QMessageBox.warning(
-                                    self,
-                                    "Ошибка",
-                                    f"Элемент с именем '{new_name_clean}' уже существует в этой папке",
-                                )
-                                return
-
-                    # Для документов переименовываем файл в R2 (асинхронно)
-                    if node.node_type == NodeType.DOCUMENT:
-                        old_r2_key = node.attributes.get("r2_key", "")
-
-                        # Закрываем файл если он открыт в редакторе
-                        self._close_if_open(old_r2_key)
-
-                        if old_r2_key:
-                            from pathlib import PurePosixPath
-
-                            # Формируем новый ключ (меняем только имя файла)
-                            old_path = PurePosixPath(old_r2_key)
-                            new_r2_key = str(old_path.parent / new_name_clean)
-
-                            # 1. СИНХРОННО: Обновляем локальный кэш и метаданные (мгновенно)
-                            self._rename_cache_file(old_r2_key, new_r2_key)
-                            self._update_node_file_r2_key(node.id, old_r2_key, new_r2_key)
-
-                            # Переименовываем связанные файлы (локально + async R2)
-                            self._rename_related_files(old_r2_key, new_r2_key, node.id)
-
-                            # Обновляем метаданные в БД
-                            node.attributes["r2_key"] = new_r2_key
-                            node.attributes["original_name"] = new_name_clean
-                            self.client.update_node(
-                                node.id,
-                                name=new_name_clean,
-                                attributes=node.attributes,
-                            )
-
-                            # 2. АСИНХРОННО: Переименовываем основной PDF в R2
-                            self._start_async_main_file_rename(old_r2_key, new_r2_key)
-                        else:
-                            self.client.update_node(node.id, name=new_name_clean)
-                    else:
-                        self.client.update_node(node.id, name=new_name_clean)
-
-                    # Обновляем UI
-                    node.name = new_name_clean
-                    from PySide6.QtCore import QTimer
-
-                    QTimer.singleShot(100, self._refresh_tree)
-                except Exception as e:
-                    QMessageBox.critical(self, "Ошибка", str(e))
-        finally:
-            self._resume_timers()
 
     def _set_status(self, node: TreeNode, status: NodeStatus):
         """Установить статус узла"""
