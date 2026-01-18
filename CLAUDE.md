@@ -1,50 +1,60 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Руководство для Claude Code при работе с кодом этого репозитория.
 
-## Project Overview
+## Оглавление
 
-**Core Structure** - Desktop PDF annotation tool with distributed OCR processing.
+- [Обзор проекта](#обзор-проекта)
+- [Команды](#команды)
+- [Архитектура](#архитектура)
+- [Точки расширения](#точки-расширения)
+- [Конфигурация](#конфигурация)
+- [Стиль кода](#стиль-кода)
+- [Язык](#язык)
 
-Stack: PySide6 (Qt 6), FastAPI, Celery + Redis, Supabase (PostgreSQL), Cloudflare R2.
+## Обзор проекта
 
-Python 3.11+ required.
+**Core Structure** — десктоп-приложение для аннотирования PDF с распределённой OCR-обработкой.
 
-## Commands
+Стек: PySide6 (Qt 6), FastAPI, Celery + Redis, Supabase (PostgreSQL), Cloudflare R2.
 
-### Setup
+Python 3.11+ обязателен.
+
+## Команды
+
+### Установка
 ```bash
 pip install -r requirements.txt
 ```
 
-### Desktop Client
+### Десктоп клиент
 ```bash
-python apps/rd_desktop/main.py         # Run application
-python build.py                        # Build executable → dist/CoreStructure.exe
+python apps/rd_desktop/main.py         # Запуск приложения
+python build.py                        # Сборка → dist/CoreStructure.exe
 ```
 
-### Tests
+### Тесты
 ```bash
-pytest                                # Run all tests
-pytest tests/test_crop_determinism.py  # Run single test file
-pytest -v                             # Verbose output
+pytest                                # Все тесты
+pytest tests/test_crop_determinism.py  # Один файл
+pytest -v                             # Подробный вывод
 ```
 
 ### Remote OCR Server
 
-#### Quick Start (Windows PowerShell)
+#### Быстрый старт (Windows PowerShell)
 
 ```powershell
-.\start-server.ps1           # Production (all workers)
-.\start-server.ps1 -Dev      # Development (universal worker)
-.\start-server.ps1 -Build    # Rebuild images before start
-.\stop-server.ps1            # Stop all containers
+.\start-server.ps1           # Production (все воркеры)
+.\start-server.ps1 -Dev      # Development (один универсальный воркер)
+.\start-server.ps1 -Build    # Пересборка образов
+.\stop-server.ps1            # Остановка контейнеров
 ```
 
 #### Docker Compose (Production)
 ```bash
-cp env.example .env              # Configure environment variables
-docker compose up -d --build     # Start server (listens on 127.0.0.1:18000)
+cp env.example .env              # Настройка переменных окружения
+docker compose up -d --build     # Запуск (порт 127.0.0.1:18000)
 ```
 
 #### Development
@@ -52,116 +62,123 @@ docker compose up -d --build     # Start server (listens on 127.0.0.1:18000)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
-**RAM requirements:**
-- Production: ~12GB (5 specialized workers с лимитами)
-- Development: без лимитов (1 universal worker)
+**Требования к RAM:**
+- Production: ~12GB (5 специализированных воркеров с лимитами)
+- Development: без лимитов (1 универсальный воркер)
 
-**Desktop client connection:** Set `REMOTE_OCR_BASE_URL=http://localhost:18000` in `.env`
+**Подключение клиента:** Установите `REMOTE_OCR_BASE_URL=http://localhost:18000` в `.env`
 
-#### Manual (without Docker)
+#### Без Docker
 ```bash
-redis-server                                                              # Terminal 1
-uvicorn apps.remote_ocr_server.main:app --host 0.0.0.0 --port 8000 --reload  # Terminal 2
-celery -A apps.remote_ocr_server.celery_app worker --loglevel=info --concurrency=1  # Terminal 3
+redis-server                                                              # Терминал 1
+uvicorn apps.remote_ocr_server.main:app --host 0.0.0.0 --port 8000 --reload  # Терминал 2
+celery -A apps.remote_ocr_server.celery_app worker --loglevel=info --concurrency=1  # Терминал 3
 ```
 
 ### Health Checks
 ```bash
-curl http://localhost:18000/health   # Production (default port)
+curl http://localhost:18000/health   # Production (порт по умолчанию)
 curl http://localhost:18000/queue
 ```
 
-## Architecture
+## Архитектура
 
 ```
 Desktop Client (PySide6)
     ├─→ RemoteOCRClient (HTTP) ──→ Remote OCR Server (FastAPI)
     │                                 ├─→ Celery Workers (Redis)
     │                                 ├─→ Supabase (jobs, tree_nodes)
-    │                                 └─→ R2 Storage (files)
-    ├─→ TreeClient (REST) ──→ Supabase (project hierarchy)
-    └─→ R2Storage (boto3) ──→ Cloudflare R2 (prompts, results)
+    │                                 └─→ R2 Storage (файлы)
+    ├─→ TreeClient (REST) ──→ Supabase (иерархия проектов)
+    └─→ R2Storage (boto3) ──→ Cloudflare R2 (промпты, результаты)
 ```
 
-### Key Components (Clean/Hexagonal Architecture)
+### Ключевые компоненты (Clean/Hexagonal Architecture)
 
-| Directory | Layer | Purpose |
-|-----------|-------|---------|
-| `packages/rd_domain/` | 0 - Domain | Domain models, ArmorID, annotation I/O (no dependencies) |
-| `packages/rd_pipeline/` | 1 - Business | OCR backends, PDF utils, output generators, processing |
-| `packages/rd_adapters/` | 2 - Infrastructure | R2 storage adapters, caching |
-| `apps/rd_desktop/` | Application | Desktop GUI (PySide6). Entry: `apps/rd_desktop/main.py` |
-| `apps/remote_ocr_server/` | Application | FastAPI server + Celery tasks |
-| `database/migrations/` | - | SQL migration files |
+| Директория | Слой | Назначение |
+|------------|------|------------|
+| `packages/rd_domain/` | 0 - Domain | Доменные модели, ArmorID, аннотации (без зависимостей) |
+| `packages/rd_pipeline/` | 1 - Business | OCR backends, PDF утилиты, генераторы вывода |
+| `packages/rd_adapters/` | 2 - Infrastructure | R2 storage адаптеры, кэширование |
+| `apps/rd_desktop/` | Application | Desktop GUI (PySide6). Точка входа: `apps/rd_desktop/main.py` |
+| `apps/remote_ocr_server/` | Application | FastAPI сервер + Celery задачи |
+| `database/migrations/` | - | SQL миграции |
 
-### Architectural Patterns
+Подробная документация пакетов:
+- [packages/rd_domain/README.md](packages/rd_domain/README.md)
+- [packages/rd_pipeline/README.md](packages/rd_pipeline/README.md)
+- [packages/rd_adapters/README.md](packages/rd_adapters/README.md)
 
-**Mixin Pattern (GUI)**: `MainWindow` composes multiple mixins - each handles specific responsibility (menus, file ops, block handlers).
+### Архитектурные паттерны
 
-**Protocol Pattern (OCR)**: `OCRBackend` protocol in `rd_pipeline/ocr/ports.py`. Implementations: `OpenRouterBackend`, `DatalabOCRBackend`. Factory: `create_ocr_engine()`.
+**Mixin Pattern (GUI)**: `MainWindow` компонует несколько миксинов — каждый отвечает за свою область (меню, файловые операции, обработчики блоков).
 
-**Context Manager (PDF)**: `PDFDocument` in `rd_pipeline/pdf/utils.py` uses `__enter__`/`__exit__` for resource cleanup.
+**Protocol Pattern (OCR)**: Протокол `OCRBackend` в `rd_pipeline/ocr/ports.py`. Реализации: `OpenRouterBackend`, `DatalabOCRBackend`. Фабрика: `create_ocr_engine()`.
 
-**ArmorID (Block IDs)**: OCR-resistant ID format `XXXX-XXXX-XXX` using 26-character alphabet. See `rd_domain/ids/armor_id.py`. Use `generate_armor_id()` for new blocks.
+**Context Manager (PDF)**: `PDFDocument` в `rd_pipeline/pdf/utils.py` использует `__enter__`/`__exit__` для управления ресурсами.
 
-**Offline Mode**: App queues operations when disconnected. `ConnectionManager` monitors connectivity, `SyncQueue` stores pending operations. Auto-syncs on reconnection.
+**ArmorID (Block IDs)**: OCR-устойчивый формат ID `XXXX-XXXX-XXX` с 26-символьным алфавитом. См. `rd_domain/ids/armor_id.py`. Используйте `generate_armor_id()` для новых блоков.
 
-### Data Models (`rd_domain/models/`)
+**Offline Mode**: Приложение ставит операции в очередь при отключении. `ConnectionManager` мониторит соединение, `SyncQueue` хранит отложенные операции. Автосинхронизация при переподключении.
+
+### Модели данных (`rd_domain/models/`)
 
 ```python
-Block      # Annotation unit: id, page_index, coords_px, coords_norm, block_type, shape_type, polygon_points, ocr_text
-Document   # Collection of pages
-Page       # Page with blocks list
+Block      # Единица аннотации: id, page_index, coords_px, coords_norm, block_type, shape_type, polygon_points, ocr_text
+Document   # Коллекция страниц
+Page       # Страница со списком блоков
 ```
 
-Block types: `TEXT`, `IMAGE`. Shape types: `RECTANGLE`, `POLYGON`. Block source: `MANUAL`, `OCR`.
+Типы блоков: `TEXT`, `IMAGE`. Типы форм: `RECTANGLE`, `POLYGON`. Источник блока: `MANUAL`, `OCR`.
 
-### Database Tables (Supabase)
+### Таблицы БД (Supabase)
 
-- `jobs` - OCR task records (status: draft/queued/processing/done/error)
-- `job_files` - File references (pdf, blocks, results, crops)
-- `job_settings` - Model selections per job
-- `tree_nodes` - Hierarchical project structure
-- `tree_documents` - Document versioning
+- `jobs` — записи OCR задач (статус: draft/queued/processing/done/error)
+- `job_files` — ссылки на файлы (pdf, blocks, results, crops)
+- `job_settings` — выбор моделей для задачи
+- `tree_nodes` — иерархия проектов
+- `tree_documents` — версионирование документов
 
-### OCR Job Lifecycle
+### Жизненный цикл OCR задачи
 
-1. User selects blocks → `RemoteOCRClient.create_job()` → POST /jobs
-2. Server stores PDF + blocks.json → R2, creates job → Supabase (status=queued)
-3. Celery worker: download → crop → OCR → merge → upload results → status=done
-4. Client polls GET /jobs/{id} → downloads result
+1. Пользователь выделяет блоки → `RemoteOCRClient.create_job()` → POST /jobs
+2. Сервер сохраняет PDF + blocks.json → R2, создаёт job → Supabase (status=queued)
+3. Celery worker: скачивание → crop → OCR → merge → загрузка результатов → status=done
+4. Клиент опрашивает GET /jobs/{id} → скачивает результат
 
-## Extension Points
+**API документация:** [docs/API.md](docs/API.md)
 
-**Add GUI feature**: Create mixin in `apps/rd_desktop/gui/`, add to MainWindow inheritance.
+## Точки расширения
 
-**Add OCR engine**: Implement `OCRBackend` protocol in `rd_pipeline/ocr/backends/`, register in `factory.py`.
+**Добавить GUI feature**: Создать mixin в `apps/rd_desktop/gui/`, добавить в наследование MainWindow.
 
-**Add API endpoint**: Create route in `apps/remote_ocr_server/routes/`, include in `main.py`.
+**Добавить OCR engine**: Реализовать протокол `OCRBackend` в `rd_pipeline/ocr/backends/`, зарегистрировать в `factory.py`.
 
-**Modify database**: Add migration in `database/migrations/`, document in `docs/DATABASE.md`.
+**Добавить API endpoint**: Создать route в `apps/remote_ocr_server/routes/`, подключить в `main.py`.
 
-## Configuration
+**Изменить БД**: Добавить миграцию в `database/migrations/`, задокументировать в `docs/DATABASE.md`.
 
-Copy `env.example` to `.env` and configure:
+## Конфигурация
 
-Required `.env` variables:
-- `SUPABASE_URL`, `SUPABASE_KEY` - Database
-- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` - Storage
-- `OPENROUTER_API_KEY` and/or `DATALAB_API_KEY` - OCR engines
-- `REMOTE_OCR_BASE_URL` - Server URL (default: http://localhost:18000)
-- `REDIS_URL` - For server (default: redis://redis:6379/0)
+Скопируйте `env.example` в `.env` и настройте:
 
-Docker-specific (optional):
-- `REMOTE_OCR_BIND_ADDR` - Bind address (default: 127.0.0.1)
-- `REMOTE_OCR_PORT` - External port (default: 18000)
+Обязательные переменные `.env`:
+- `SUPABASE_URL`, `SUPABASE_KEY` — База данных
+- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` — Хранилище
+- `OPENROUTER_API_KEY` и/или `DATALAB_API_KEY` — OCR движки
+- `REMOTE_OCR_BASE_URL` — URL сервера (по умолчанию: http://localhost:18000)
+- `REDIS_URL` — Для сервера (по умолчанию: redis://redis:6379/0)
 
-## Code Style
+Docker-специфичные (опционально):
+- `REMOTE_OCR_BIND_ADDR` — Адрес привязки (по умолчанию: 127.0.0.1)
+- `REMOTE_OCR_PORT` — Внешний порт (по умолчанию: 18000)
 
-From `.cursorrules`: Be maximally concise. Code only in code blocks. Changes as minimal diff. No explanations unless asked. If text needed - max 5 points, each ≤ 12 words.
+## Стиль кода
+
+Из `.cursorrules`: Будь максимально лаконичен. Код только в блоках кода. Изменения как минимальный diff. Без объяснений, если не спрошено. Если нужен текст — максимум 5 пунктов, каждый ≤ 12 слов.
 
 **Git workflow**: После внесения изменений в код ВСЕГДА делай коммит и пуш. Сообщения коммитов пиши на русском языке.
 
-## Language
+## Язык
 
 Все планы, ответы и объяснения генерируй на русском языке.

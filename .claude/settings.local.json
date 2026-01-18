@@ -53,7 +53,13 @@
       "Bash(PYTHONPATH=\"c:/Users/Usr/PycharmProjects/RD/packages\" python:*)",
       "Bash(powershell.exe -Command \"docker compose down 2>&1\")",
       "Skill(push)",
-      "Skill(push:*)"
+      "Skill(push:*)",
+      "Bash(Remove-Item -Recurse -Force \"c:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\apps\\\\rd_desktop\\\\gui\\\\ocr_monitor\")",
+      "Bash(git clone:*)",
+      "Bash(claude plugin marketplace add:*)",
+      "Bash(claude plugin install voltagent-lang)",
+      "Bash(claude plugin install:*)",
+      "Bash(claude plugin list:*)"
     ]
   }
 }
