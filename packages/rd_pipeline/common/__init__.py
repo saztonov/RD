@@ -14,6 +14,7 @@ from rd_pipeline.common.linked_blocks import (
 )
 from rd_pipeline.common.sanitizers import (
     DATALAB_MD_IMG_PATTERN,
+    html_to_markdown,
     sanitize_markdown,
 )
 from rd_pipeline.common.stamp_utils import (
@@ -30,6 +31,7 @@ from rd_pipeline.common.stamp_utils import (
 __all__ = [
     # sanitizers
     "DATALAB_MD_IMG_PATTERN",
+    "html_to_markdown",
     "sanitize_markdown",
     # image_data
     "extract_image_ocr_data",
