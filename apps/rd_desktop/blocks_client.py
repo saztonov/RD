@@ -139,10 +139,7 @@ class BlocksClient:
                 "source": block.source.value,
                 "shape_type": block.shape_type.value,
                 "polygon_points": [list(p) for p in block.polygon_points] if block.polygon_points else None,
-                "ocr_text": block.ocr_text,
-                "prompt": block.prompt,
-                "hint": block.hint,
-                "pdfplumber_text": block.pdfplumber_text,
+                # OCR данные (ocr_text, prompt, hint, pdfplumber_text) хранятся только в annotation.json
                 "linked_block_id": block.linked_block_id,
                 "group_id": block.group_id,
                 "group_name": block.group_name,
@@ -272,10 +269,7 @@ class BlocksClient:
             "source": block.source.value,
             "shape_type": block.shape_type.value,
             "polygon_points": [list(p) for p in block.polygon_points] if block.polygon_points else None,
-            "ocr_text": block.ocr_text,
-            "prompt": block.prompt,
-            "hint": block.hint,
-            "pdfplumber_text": block.pdfplumber_text,
+            # OCR данные (ocr_text, prompt, hint, pdfplumber_text) хранятся только в annotation.json
             "linked_block_id": block.linked_block_id,
             "group_id": block.group_id,
             "group_name": block.group_name,
