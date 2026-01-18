@@ -66,24 +66,20 @@ from .storage_settings import get_job_settings, save_job_settings
 
 
 def job_to_dict(job: Job) -> dict:
-    """Конвертировать Job в dict для JSON ответа"""
-    from pathlib import PurePosixPath
+    """Конвертировать Job в dict для JSON ответа.
 
-    # ocr_result_prefix - папка где лежат результаты OCR (изолированная папка задачи)
-    # Формат: tree_docs/{node_id}/ocr_runs/{job_id}/
-    if job.node_id:
-        ocr_result_prefix = f"tree_docs/{job.node_id}/ocr_runs/{job.id}"
-    else:
-        ocr_result_prefix = job.r2_prefix
+    Новая структура R2: n/{node_id}/
+        {doc_name}.pdf
+        {doc_stem}_result.md
+        crops/{block_id}.pdf
+    """
+    from .r2_paths import get_doc_prefix
 
-    # result_prefix (legacy) - папка PDF документа для обратной совместимости
-    result_prefix = job.r2_prefix
+    # Новая структура: r2_prefix = n/{node_id}
+    # ocr_result_prefix теперь совпадает с r2_prefix (нет вложенности ocr_runs/{job_id})
+    r2_prefix = job.r2_prefix
     if job.node_id:
-        pdf_r2_key = get_node_pdf_r2_key(job.node_id)
-        if pdf_r2_key:
-            result_prefix = str(PurePosixPath(pdf_r2_key).parent)
-        else:
-            result_prefix = f"tree_docs/{job.node_id}"
+        r2_prefix = get_doc_prefix(job.node_id)
 
     return {
         "id": job.id,
@@ -98,10 +94,10 @@ def job_to_dict(job: Job) -> dict:
         "completed_at": job.completed_at,
         "error_message": job.error_message,
         "engine": job.engine,
-        "r2_prefix": job.r2_prefix,
+        "r2_prefix": r2_prefix,
         "node_id": job.node_id,
-        "result_prefix": result_prefix,
-        "ocr_result_prefix": ocr_result_prefix,
+        "result_prefix": r2_prefix,  # теперь совпадает с r2_prefix
+        "ocr_result_prefix": r2_prefix,  # теперь совпадает с r2_prefix
         "status_message": job.status_message,
         "block_stats": job.block_stats,
     }

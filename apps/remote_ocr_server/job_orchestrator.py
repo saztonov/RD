@@ -154,18 +154,35 @@ class JobOrchestrator:
                 max_retries=settings.datalab_max_retries,
             )
         elif settings.openrouter_api_key:
+            # Parse fallback models from settings
+            fallback_models = [
+                m.strip()
+                for m in settings.openrouter_fallback_models.split(",")
+                if m.strip()
+            ]
+
             strip_model = text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
             strip_backend = create_ocr_engine(
                 "openrouter",
                 api_key=settings.openrouter_api_key,
                 model_name=strip_model,
                 rate_limiter=CompatRateLimiter("openrouter", job_context),
+                fallback_models=fallback_models,
+                max_fallback_attempts=settings.openrouter_max_fallback_attempts,
             )
         else:
             strip_backend = create_ocr_engine("dummy")
 
         # Image and stamp backends
         if settings.openrouter_api_key:
+            # Parse fallback models (if not already done)
+            if "fallback_models" not in dir():
+                fallback_models = [
+                    m.strip()
+                    for m in settings.openrouter_fallback_models.split(",")
+                    if m.strip()
+                ]
+
             img_model = (
                 image_model or text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
             )
@@ -174,6 +191,8 @@ class JobOrchestrator:
                 api_key=settings.openrouter_api_key,
                 model_name=img_model,
                 rate_limiter=CompatRateLimiter("openrouter", job_context),
+                fallback_models=fallback_models,
+                max_fallback_attempts=settings.openrouter_max_fallback_attempts,
             )
 
             stmp_model = (
@@ -188,6 +207,8 @@ class JobOrchestrator:
                 api_key=settings.openrouter_api_key,
                 model_name=stmp_model,
                 rate_limiter=CompatRateLimiter("openrouter", job_context),
+                fallback_models=fallback_models,
+                max_fallback_attempts=settings.openrouter_max_fallback_attempts,
             )
         else:
             image_backend = create_ocr_engine("dummy")

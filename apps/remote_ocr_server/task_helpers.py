@@ -20,8 +20,9 @@ def get_r2_storage():
 def download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:
     """Скачать файлы задачи из R2 во временную директорию.
 
-    Если есть node_id - берём из tree_docs/{node_id}/ (через node_files)
-    Иначе - из ocr_jobs/{job_id}/ (обратная совместимость)
+    Новая структура R2: n/{node_id}/
+        {doc_name}.pdf
+        blocks.json (входные данные для обработки)
 
     Использует batch download для параллельного скачивания PDF и blocks.
     """
@@ -29,35 +30,20 @@ def download_job_files(job: Job, work_dir: Path) -> tuple[Path, Path]:
     pdf_path = work_dir / "document.pdf"
     blocks_path = work_dir / "blocks.json"
 
-    # Определяем R2 ключи для обоих файлов
-    if job.node_id:
-        # Берём PDF из node_files или tree_nodes.attributes
-        pdf_r2_key = get_node_pdf_r2_key(job.node_id)
-        if not pdf_r2_key:
-            raise RuntimeError(f"PDF r2_key not found for node {job.node_id}")
+    # node_id обязателен
+    if not job.node_id:
+        raise RuntimeError(f"node_id is required for job {job.id}")
 
-        # annotation.json берём из job_files (записан при создании задачи)
-        blocks_file = get_job_file_by_type(job.id, "blocks")
-        if blocks_file:
-            blocks_r2_key = blocks_file.r2_key
-        else:
-            # Fallback: {pdf_parent}/{doc_stem}_annotation.json
-            from pathlib import PurePosixPath
+    # PDF берём из node_files или tree_nodes.attributes
+    pdf_r2_key = get_node_pdf_r2_key(job.node_id)
+    if not pdf_r2_key:
+        raise RuntimeError(f"PDF r2_key not found for node {job.node_id}")
 
-            pdf_parent = str(PurePosixPath(pdf_r2_key).parent)
-            doc_stem = PurePosixPath(job.document_name).stem
-            blocks_r2_key = f"{pdf_parent}/{doc_stem}_annotation.json"
-    else:
-        # Обратная совместимость: файлы из ocr_jobs
-        pdf_file = get_job_file_by_type(job.id, "pdf")
-        if not pdf_file:
-            raise RuntimeError(f"PDF file not found for job {job.id}")
-        pdf_r2_key = pdf_file.r2_key
-
-        blocks_file = get_job_file_by_type(job.id, "blocks")
-        if not blocks_file:
-            raise RuntimeError(f"Blocks file not found for job {job.id}")
-        blocks_r2_key = blocks_file.r2_key
+    # blocks.json берём из job_files (записан при создании задачи)
+    blocks_file = get_job_file_by_type(job.id, "blocks")
+    if not blocks_file:
+        raise RuntimeError(f"Blocks file not found for job {job.id}")
+    blocks_r2_key = blocks_file.r2_key
 
     # Параллельное скачивание обоих файлов
     downloads = [

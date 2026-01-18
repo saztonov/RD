@@ -5,6 +5,7 @@ import json
 import logging
 from pathlib import Path
 
+from .r2_paths import get_doc_prefix
 from .storage import Job, get_node_full_path
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,12 @@ logger = logging.getLogger(__name__)
 def generate_results(
     job: Job, pdf_path: Path, blocks: list, work_dir: Path, datalab_backend=None
 ) -> str:
-    """Генерация результатов OCR (annotation.json + document.md)"""
+    """Генерация результатов OCR.
+
+    Генерируемые файлы:
+      - annotation.json (локально, для метаданных блоков - не загружается в R2)
+      - document.md (загружается в R2 как {doc_stem}_result.md)
+    """
     from rd_domain.models import Block, Document, Page, ShapeType
     from rd_pipeline.output import generate_md_from_pages
     from rd_pipeline.processing.streaming_pdf import get_page_dimensions_streaming
@@ -65,22 +71,17 @@ def generate_results(
             Page(page_number=page_idx, width=width, height=height, blocks=page_blocks)
         )
 
-    # Вычисляем r2_prefix (изолированный для каждой задачи)
-    if job.node_id:
-        r2_prefix = f"tree_docs/{job.node_id}/ocr_runs/{job.id}"
-    else:
-        r2_prefix = job.r2_prefix
+    # Новая структура путей: n/{node_id}/
+    if not job.node_id:
+        raise ValueError("node_id is required for OCR job")
+    r2_prefix = get_doc_prefix(job.node_id)
 
-    # Получаем полный путь из дерева проектов
-    if job.node_id:
-        full_path = get_node_full_path(job.node_id)
-        doc_name = full_path if full_path else pdf_path.name
-        project_name = f"{job.node_id}/ocr_runs/{job.id}"
-    else:
-        doc_name = pdf_path.name
-        project_name = job.id
+    # Получаем полный путь из дерева проектов для имени документа
+    full_path = get_node_full_path(job.node_id)
+    doc_name = full_path if full_path else pdf_path.name
+    project_name = job.node_id  # упрощено, без /ocr_runs/{job_id}
 
-    # annotation.json (для хранения разметки блоков)
+    # annotation.json (локально, для метаданных - не загружается в R2)
     annotation_path = work_dir / "annotation.json"
     doc = Document(pdf_path=doc_name, pages=pages)
     with open(annotation_path, "w", encoding="utf-8") as f:

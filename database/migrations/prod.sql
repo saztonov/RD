@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-17T20:40:38.955816
+-- Generated: 2026-01-18T15:57:33.933272
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -379,6 +379,59 @@ COMMENT ON COLUMN public.app_settings.value IS 'Значение настрой�
 COMMENT ON COLUMN public.app_settings.description IS 'Описание настройки для администратора';
 COMMENT ON COLUMN public.app_settings.created_at IS 'Дата и время создания настройки';
 COMMENT ON COLUMN public.app_settings.updated_at IS 'Дата и время последнего обновления';
+
+-- Table: public.blocks
+-- Description: Блоки аннотаций PDF документов (замена annotation.json)
+CREATE TABLE IF NOT EXISTS public.blocks (
+    id text NOT NULL,
+    node_id uuid NOT NULL,
+    page_index integer NOT NULL,
+    coords_px integer[] NOT NULL,
+    coords_norm real[] NOT NULL,
+    block_type text NOT NULL DEFAULT 'text'::text,
+    source text NOT NULL DEFAULT 'user'::text,
+    shape_type text NOT NULL DEFAULT 'rectangle'::text,
+    polygon_points jsonb,
+    ocr_text text,
+    prompt jsonb,
+    hint text,
+    pdfplumber_text text,
+    linked_block_id text,
+    group_id text,
+    group_name text,
+    category_id uuid,
+    category_code text,
+    client_id text,
+    version integer NOT NULL DEFAULT 1,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT blocks_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.image_categories(id),
+    CONSTRAINT blocks_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
+    CONSTRAINT blocks_pkey PRIMARY KEY (id)
+);
+COMMENT ON TABLE public.blocks IS 'Блоки аннотаций PDF документов (замена annotation.json)';
+COMMENT ON COLUMN public.blocks.id IS 'ArmorID блока (формат XXXX-XXXX-XXX)';
+COMMENT ON COLUMN public.blocks.node_id IS 'Ссылка на документ в tree_nodes';
+COMMENT ON COLUMN public.blocks.page_index IS 'Индекс страницы (0-based)';
+COMMENT ON COLUMN public.blocks.coords_px IS 'Координаты в пикселях [x1, y1, x2, y2]';
+COMMENT ON COLUMN public.blocks.coords_norm IS 'Нормализованные координаты [x1, y1, x2, y2] в диапазоне 0..1';
+COMMENT ON COLUMN public.blocks.block_type IS 'Тип блока: text или image';
+COMMENT ON COLUMN public.blocks.source IS 'Источник блока: user (ручной) или auto (OCR)';
+COMMENT ON COLUMN public.blocks.shape_type IS 'Форма блока: rectangle или polygon';
+COMMENT ON COLUMN public.blocks.polygon_points IS 'Точки полигона [[x1,y1], [x2,y2], ...] для shape_type=polygon';
+COMMENT ON COLUMN public.blocks.ocr_text IS 'Результат OCR распознавания';
+COMMENT ON COLUMN public.blocks.prompt IS 'Промпт для OCR {"system": "...", "user": "..."}';
+COMMENT ON COLUMN public.blocks.hint IS 'Подсказка пользователя для OCR';
+COMMENT ON COLUMN public.blocks.pdfplumber_text IS 'Сырой текст извлеченный pdfplumber';
+COMMENT ON COLUMN public.blocks.linked_block_id IS 'ID связанного блока (для пар IMAGE+TEXT)';
+COMMENT ON COLUMN public.blocks.group_id IS 'ID группы блоков';
+COMMENT ON COLUMN public.blocks.group_name IS 'Название группы блоков';
+COMMENT ON COLUMN public.blocks.category_id IS 'ID категории изображения';
+COMMENT ON COLUMN public.blocks.category_code IS 'Код категории (stamp, table, etc)';
+COMMENT ON COLUMN public.blocks.client_id IS 'ID клиента для мультиклиентности';
+COMMENT ON COLUMN public.blocks.version IS 'Версия для optimistic concurrency control';
+COMMENT ON COLUMN public.blocks.created_at IS 'Дата и время создания блока';
+COMMENT ON COLUMN public.blocks.updated_at IS 'Дата и время последнего обновления';
 
 -- Table: public.image_categories
 -- Description: Категории изображений с промптами для OCR
@@ -1024,6 +1077,20 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_20 (
     CONSTRAINT messages_2026_01_20_pkey PRIMARY KEY (inserted_at)
 );
 
+-- Table: realtime.messages_2026_01_21
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_21 (
+    topic text NOT NULL,
+    extension text NOT NULL,
+    payload jsonb,
+    event text,
+    private boolean DEFAULT false,
+    updated_at timestamp without time zone NOT NULL DEFAULT now(),
+    inserted_at timestamp without time zone NOT NULL DEFAULT now(),
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT messages_2026_01_21_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_21_pkey PRIMARY KEY (inserted_at)
+);
+
 -- Table: realtime.schema_migrations
 CREATE TABLE IF NOT EXISTS realtime.schema_migrations (
     version bigint NOT NULL,
@@ -1357,7 +1424,7 @@ $function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
+CREATE OR REPLACE FUNCTION extensions.armor(bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1365,7 +1432,7 @@ AS '$libdir/pgcrypto', $function$pg_armor$function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea)
+CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1612,7 +1679,7 @@ $function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1620,7 +1687,7 @@ AS '$libdir/pgcrypto', $function$pg_hmac$function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1668,7 +1735,7 @@ AS '$libdir/pgcrypto', $function$pgp_key_id_w$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1676,7 +1743,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1700,14 +1767,6 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
- RETURNS bytea
- LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
-
-
--- Function: extensions.pgp_pub_decrypt_bytea
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
  RETURNS bytea
  LANGUAGE c
@@ -1715,12 +1774,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, 
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
--- Function: extensions.pgp_pub_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
+-- Function: extensions.pgp_pub_decrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_encrypt
@@ -1731,12 +1790,12 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
--- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
+-- Function: extensions.pgp_pub_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt(text, bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
@@ -1747,8 +1806,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
+-- Function: extensions.pgp_pub_encrypt_bytea
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
+
+
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1756,7 +1823,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1780,14 +1847,6 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)
- RETURNS bytea
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
-
-
--- Function: extensions.pgp_sym_encrypt
 CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
  RETURNS bytea
  LANGUAGE c
@@ -1795,8 +1854,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
 AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
 
 
+-- Function: extensions.pgp_sym_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
+
+
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1804,7 +1871,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -2445,6 +2512,18 @@ $function$
 
 -- Function: public.update_app_settings_timestamp
 CREATE OR REPLACE FUNCTION public.update_app_settings_timestamp()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$function$
+
+
+-- Function: public.update_blocks_updated_at
+CREATE OR REPLACE FUNCTION public.update_blocks_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
@@ -4275,6 +4354,9 @@ $function$
 -- Trigger: app_settings_updated_at on public.app_settings
 CREATE TRIGGER app_settings_updated_at BEFORE UPDATE ON public.app_settings FOR EACH ROW EXECUTE FUNCTION update_app_settings_timestamp()
 
+-- Trigger: tr_blocks_updated_at on public.blocks
+CREATE TRIGGER tr_blocks_updated_at BEFORE UPDATE ON public.blocks FOR EACH ROW EXECUTE FUNCTION update_blocks_updated_at()
+
 -- Trigger: trigger_image_categories_updated_at on public.image_categories
 CREATE TRIGGER trigger_image_categories_updated_at BEFORE UPDATE ON public.image_categories FOR EACH ROW EXECUTE FUNCTION update_image_categories_updated_at()
 
@@ -4514,6 +4596,21 @@ CREATE INDEX users_is_anonymous_idx ON auth.users USING btree (is_anonymous);
 -- Index on auth.users
 CREATE UNIQUE INDEX users_phone_key ON auth.users USING btree (phone);
 
+-- Index on public.blocks
+CREATE INDEX idx_blocks_client_id ON public.blocks USING btree (client_id) WHERE (client_id IS NOT NULL);
+
+-- Index on public.blocks
+CREATE INDEX idx_blocks_group_id ON public.blocks USING btree (group_id) WHERE (group_id IS NOT NULL);
+
+-- Index on public.blocks
+CREATE INDEX idx_blocks_node_id ON public.blocks USING btree (node_id);
+
+-- Index on public.blocks
+CREATE INDEX idx_blocks_node_page ON public.blocks USING btree (node_id, page_index);
+
+-- Index on public.blocks
+CREATE INDEX idx_blocks_updated_at ON public.blocks USING btree (updated_at DESC);
+
 -- Index on public.image_categories
 CREATE INDEX idx_image_categories_code ON public.image_categories USING btree (code);
 
@@ -4714,6 +4811,9 @@ CREATE INDEX messages_2026_01_19_inserted_at_topic_idx ON realtime.messages_2026
 
 -- Index on realtime.messages_2026_01_20
 CREATE INDEX messages_2026_01_20_inserted_at_topic_idx ON realtime.messages_2026_01_20 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+
+-- Index on realtime.messages_2026_01_21
+CREATE INDEX messages_2026_01_21_inserted_at_topic_idx ON realtime.messages_2026_01_21 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
 -- Index on realtime.subscription
 CREATE INDEX ix_realtime_subscription_entity ON realtime.subscription USING btree (entity);

@@ -6,7 +6,8 @@ import logging
 import shutil
 from pathlib import Path
 
-from .storage import Job, add_job_file, delete_job_files, get_node_pdf_r2_key
+from .r2_paths import get_doc_prefix, get_result_md_key, get_crop_key
+from .storage import Job, add_job_file, delete_job_files
 from .task_helpers import get_r2_storage
 
 logger = logging.getLogger(__name__)
@@ -58,48 +59,42 @@ def _load_blocks_metadata(work_dir: Path) -> tuple:
 def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str:
     """Загрузить результаты в R2 и записать в БД.
 
-    Если есть node_id - загружаем в изолированную папку задачи:
-      tree_docs/{node_id}/ocr_runs/{job_id}/
-    Иначе - в ocr_jobs/{job_id}/ (обратная совместимость)
+    Новая структура R2: n/{node_id}/
+        {doc_name}.pdf
+        {doc_stem}_result.md
+        crops/{block_id}.pdf
 
-    Загружаемые файлы:
-      - annotation.json (метаданные блоков)
-      - document.md (результат в Markdown)
+    Загружаемые файлы (annotation.json НЕ загружается - метаданные в БД):
+      - {doc_stem}_result.md (результат в Markdown)
       - crops/*.pdf (кропы блоков)
     """
     r2 = get_r2_storage()
 
-    # Определяем prefix для загрузки (если не передан)
-    if r2_prefix is None:
-        if job.node_id:
-            r2_prefix = f"tree_docs/{job.node_id}/ocr_runs/{job.id}"
-        else:
-            r2_prefix = job.r2_prefix
+    # node_id обязателен
+    if not job.node_id:
+        raise ValueError("node_id is required for R2 upload")
 
-    # Загружаем метаданные блоков из annotation.json
+    # Определяем prefix для загрузки
+    if r2_prefix is None:
+        r2_prefix = get_doc_prefix(job.node_id)
+
+    # Загружаем метаданные блоков из annotation.json (для metadata в БД)
     stamp_ids, blocks_by_id = _load_blocks_metadata(work_dir)
 
     # Собираем все файлы для batch upload
     # Формат: (local_path, r2_key, content_type, file_type, filename, size, metadata)
     files_to_upload = []
 
-    # annotation.json
-    annotation_path = work_dir / "annotation.json"
-    if annotation_path.exists():
-        delete_job_files(job.id, ["blocks"])
-        r2_key = f"{r2_prefix}/annotation.json"
-        files_to_upload.append((
-            str(annotation_path), r2_key, None,
-            "annotation", "annotation.json", annotation_path.stat().st_size, None
-        ))
+    # annotation.json НЕ загружаем в R2 - метаданные хранятся в job_files.metadata
 
-    # document.md
+    # {doc_stem}_result.md
     md_path = work_dir / "document.md"
     if md_path.exists():
-        r2_key = f"{r2_prefix}/document.md"
+        r2_key = get_result_md_key(job.node_id, job.document_name)
+        result_filename = f"{Path(job.document_name).stem}_result.md"
         files_to_upload.append((
             str(md_path), r2_key, None,
-            "result_md", "document.md", md_path.stat().st_size, None
+            "result_md", result_filename, md_path.stat().st_size, None
         ))
     else:
         logger.warning(f"document.md не найден для загрузки в R2: {md_path}")
@@ -116,7 +111,7 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
                         logger.debug(f"Пропущен кроп штампа: {crop_file.name}")
                         continue
 
-                    r2_key = f"{r2_prefix}/crops/{crop_file.name}"
+                    r2_key = get_crop_key(job.node_id, block_id)
                     crop_metadata = blocks_by_id.get(block_id)
                     files_to_upload.append((
                         str(crop_file), r2_key, None,

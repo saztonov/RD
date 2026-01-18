@@ -4,11 +4,11 @@ from typing import Optional
 
 from fastapi import Header, HTTPException, Path
 
+from apps.remote_ocr_server.r2_paths import get_doc_prefix, get_pdf_key
 from apps.remote_ocr_server.routes.common import check_api_key
 from apps.remote_ocr_server.storage import (
     add_job_file,
     add_node_file,
-    delete_job,
     get_job,
     get_node_pdf_r2_key,
     update_job_status,
@@ -61,34 +61,22 @@ async def confirm_job_handler(
 
     _logger.info(f"POST /jobs/{job_id}/confirm: verifying uploads...")
 
+    # node_id обязателен
+    if not job.node_id:
+        raise HTTPException(400, "node_id is required for OCR job")
+
     r2 = _get_r2()
 
-    # Determine expected R2 keys
-    if job.node_id:
-        from pathlib import PurePosixPath
+    # Новая структура путей: n/{node_id}/
+    r2_prefix = get_doc_prefix(job.node_id)
 
-        pdf_r2_key = get_node_pdf_r2_key(job.node_id)
-        if not pdf_r2_key:
-            # New PDF - check in node parent folder
-            node_info = None
-            try:
-                from apps.remote_ocr_server.storage import get_node_info
-                node_info = get_node_info(job.node_id)
-            except Exception:
-                pass
+    # PDF ключ: проверяем существующий или формируем новый
+    pdf_r2_key = get_node_pdf_r2_key(job.node_id)
+    if not pdf_r2_key:
+        pdf_r2_key = get_pdf_key(job.node_id, job.document_name)
 
-            if node_info and node_info.get("parent_id"):
-                pdf_parent = f"tree_docs/{node_info['parent_id']}"
-            else:
-                pdf_parent = f"tree_docs/{job.node_id}"
-            pdf_r2_key = f"{pdf_parent}/{job.document_name}"
-
-        r2_prefix = f"tree_docs/{job.node_id}/ocr_runs/{job.id}"
-        blocks_r2_key = f"{r2_prefix}/annotation.json"
-    else:
-        r2_prefix = job.r2_prefix or f"ocr_jobs/{job.id}"
-        pdf_r2_key = f"{r2_prefix}/document.pdf"
-        blocks_r2_key = f"{r2_prefix}/annotation.json"
+    # blocks.json в папке документа
+    blocks_r2_key = f"{r2_prefix}/blocks.json"
 
     # Verify files exist in R2
     pdf_exists = r2.exists(pdf_r2_key)
@@ -103,27 +91,22 @@ async def confirm_job_handler(
 
     # Register files in database
     try:
-        if job.node_id:
-            # Register in node_files if new PDF
-            existing_pdf_key = get_node_pdf_r2_key(job.node_id)
-            if not existing_pdf_key:
-                add_node_file(
-                    job.node_id,
-                    "pdf",
-                    pdf_r2_key,
-                    job.document_name,
-                    0,  # Size unknown from direct upload
-                    "application/pdf",
-                )
-                update_node_r2_key(job.node_id, pdf_r2_key)
+        # Register in node_files if new PDF
+        existing_pdf_key = get_node_pdf_r2_key(job.node_id)
+        if not existing_pdf_key:
+            add_node_file(
+                job.node_id,
+                "pdf",
+                pdf_r2_key,
+                job.document_name,
+                0,  # Size unknown from direct upload
+                "application/pdf",
+            )
+            update_node_r2_key(job.node_id, pdf_r2_key)
 
-            # Register blocks in job_files
-            add_job_file(job.id, "blocks", blocks_r2_key, "annotation.json", 0)
-            add_job_file(job.id, "pdf", pdf_r2_key, job.document_name, 0)
-        else:
-            # Register both files in job_files
-            add_job_file(job.id, "pdf", pdf_r2_key, "document.pdf", 0)
-            add_job_file(job.id, "blocks", blocks_r2_key, "blocks.json", 0)
+        # Register files in job_files
+        add_job_file(job.id, "blocks", blocks_r2_key, "blocks.json", 0)
+        add_job_file(job.id, "pdf", pdf_r2_key, job.document_name, 0)
 
     except Exception as e:
         _logger.error(f"Failed to register files: {e}")

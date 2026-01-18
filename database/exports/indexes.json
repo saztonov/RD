@@ -439,6 +439,46 @@
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX users_phone_key ON auth.users USING btree (phone)"
   },
+  "public.blocks.idx_blocks_client_id": {
+    "schema": "public",
+    "name": "idx_blocks_client_id",
+    "table_name": "blocks",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_blocks_client_id ON public.blocks USING btree (client_id) WHERE (client_id IS NOT NULL)"
+  },
+  "public.blocks.idx_blocks_group_id": {
+    "schema": "public",
+    "name": "idx_blocks_group_id",
+    "table_name": "blocks",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_blocks_group_id ON public.blocks USING btree (group_id) WHERE (group_id IS NOT NULL)"
+  },
+  "public.blocks.idx_blocks_node_id": {
+    "schema": "public",
+    "name": "idx_blocks_node_id",
+    "table_name": "blocks",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_blocks_node_id ON public.blocks USING btree (node_id)"
+  },
+  "public.blocks.idx_blocks_node_page": {
+    "schema": "public",
+    "name": "idx_blocks_node_page",
+    "table_name": "blocks",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_blocks_node_page ON public.blocks USING btree (node_id, page_index)"
+  },
+  "public.blocks.idx_blocks_updated_at": {
+    "schema": "public",
+    "name": "idx_blocks_updated_at",
+    "table_name": "blocks",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_blocks_updated_at ON public.blocks USING btree (updated_at DESC)"
+  },
   "public.image_categories.idx_image_categories_code": {
     "schema": "public",
     "name": "idx_image_categories_code",
@@ -974,6 +1014,14 @@
     "is_unique": false,
     "is_primary": false,
     "sql": "CREATE INDEX messages_2026_01_20_inserted_at_topic_idx ON realtime.messages_2026_01_20 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+  },
+  "realtime.messages_2026_01_21.messages_2026_01_21_inserted_at_topic_idx": {
+    "schema": "realtime",
+    "name": "messages_2026_01_21_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_21",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX messages_2026_01_21_inserted_at_topic_idx ON realtime.messages_2026_01_21 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
   "realtime.subscription.ix_realtime_subscription_entity": {
     "schema": "realtime",

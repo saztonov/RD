@@ -265,5 +265,23 @@ class Settings:
         )
     )
 
+    # ===== OPENROUTER FALLBACK =====
+    openrouter_fallback_models: str = field(
+        default_factory=lambda: _get_setting(
+            "openrouter_fallback_models",
+            "OPENROUTER_FALLBACK_MODELS",
+            "qwen/qwen3-vl-8b-instruct,google/gemini-2.0-flash-001",
+            str,
+        )
+    )
+    openrouter_max_fallback_attempts: int = field(
+        default_factory=lambda: _get_setting(
+            "openrouter_max_fallback_attempts",
+            "OPENROUTER_MAX_FALLBACK_ATTEMPTS",
+            2,
+            int,
+        )
+    )
+
 
 settings = Settings()

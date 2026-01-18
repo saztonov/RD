@@ -13,6 +13,12 @@ from apps.remote_ocr_server.node_storage.file_manager import (
     add_node_file,
     get_node_pdf_r2_key,
 )
+from apps.remote_ocr_server.r2_paths import (
+    get_doc_prefix,
+    get_result_md_key,
+    get_crop_key,
+    get_crops_prefix,
+)
 from apps.remote_ocr_server.storage_client import get_client
 
 logger = logging.getLogger(__name__)
@@ -22,7 +28,6 @@ def _delete_old_ocr_entries(node_id: str) -> int:
     """Удалить старые записи OCR результатов из node_files (кроме pdf)."""
     client = get_client()
     ocr_file_types = [
-        "annotation",
         "result_md",
         "crop",
         "crops_folder",
@@ -44,12 +49,13 @@ def _delete_old_ocr_entries(node_id: str) -> int:
 def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_dir) -> int:
     """Зарегистрировать OCR результаты в node_files.
 
-    Файлы загружены в изолированную папку задачи:
-      tree_docs/{node_id}/ocr_runs/{job_id}/
+    Новая структура R2: n/{node_id}/
+        {doc_name}.pdf
+        {doc_stem}_result.md
+        crops/{block_id}.pdf
 
-    Регистрируемые файлы:
-      - annotation.json (метаданные блоков)
-      - document.md (результат в Markdown)
+    Регистрируемые файлы (annotation.json НЕ регистрируется - метаданные в job_files):
+      - {doc_stem}_result.md (результат в Markdown)
       - crops/*.pdf (кропы блоков с метаданными)
     """
     if not node_id:
@@ -57,16 +63,14 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
 
     work_path = Path(work_dir)
     now = datetime.utcnow().isoformat()
-
-    # Изолированная папка для этой задачи
-    job_r2_prefix = f"tree_docs/{node_id}/ocr_runs/{job_id}"
+    doc_stem = Path(doc_name).stem
 
     # Удаляем старые OCR записи из node_files (кроме pdf)
     _delete_old_ocr_entries(node_id)
 
     registered = 0
 
-    # Загружаем annotation.json для получения метаданных блоков
+    # Загружаем annotation.json для получения метаданных блоков (не для регистрации)
     blocks_by_id: Dict[str, dict] = {}
     annotation_path = work_path / "annotation.json"
     if annotation_path.exists():
@@ -79,35 +83,24 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
         except Exception as e:
             logger.warning(f"Failed to load annotation.json for metadata: {e}")
 
-    # annotation.json
-    if annotation_path.exists():
-        r2_key = f"{job_r2_prefix}/annotation.json"
-        add_node_file(
-            node_id,
-            "annotation",
-            r2_key,
-            "annotation.json",
-            annotation_path.stat().st_size,
-            "application/json",
-            metadata={"ocr_run_id": job_id},
-        )
-        registered += 1
+    # annotation.json НЕ регистрируем в node_files - метаданные в job_files.metadata
 
-    # document.md
+    # {doc_stem}_result.md
     document_md = work_path / "document.md"
     if document_md.exists():
-        r2_key = f"{job_r2_prefix}/document.md"
+        r2_key = get_result_md_key(node_id, doc_name)
+        result_filename = f"{doc_stem}_result.md"
         add_node_file(
             node_id,
             "result_md",
             r2_key,
-            "document.md",
+            result_filename,
             document_md.stat().st_size,
             "text/markdown",
             metadata={"ocr_run_id": job_id},
         )
         registered += 1
-        logger.info(f"Зарегистрирован document.md в node_files (file_type=result_md)")
+        logger.info(f"Зарегистрирован {result_filename} в node_files (file_type=result_md)")
     else:
         logger.warning(f"document.md не найден для регистрации: {document_md}")
 
@@ -124,7 +117,7 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
 
     # Регистрируем папку кропов как сущность
     if all_crop_files:
-        r2_key = f"{job_r2_prefix}/crops/"
+        r2_key = get_crops_prefix(node_id)
         add_node_file(
             node_id,
             "crops_folder",
@@ -144,7 +137,7 @@ def register_ocr_results_to_node(node_id: str, job_id: str, doc_name: str, work_
         add_node_file(
             node_id,
             "crop",
-            f"{job_r2_prefix}/crops/{crop_file.name}",
+            get_crop_key(node_id, block_id),
             crop_file.name,
             crop_file.stat().st_size,
             "application/pdf",

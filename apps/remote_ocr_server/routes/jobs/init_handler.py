@@ -7,11 +7,11 @@ from fastapi import Form, Header, HTTPException
 from pydantic import BaseModel
 
 from apps.remote_ocr_server.queue_checker import check_queue_capacity
+from apps.remote_ocr_server.r2_paths import get_doc_prefix, get_pdf_key
 from apps.remote_ocr_server.routes.common import check_api_key
 from apps.remote_ocr_server.storage import (
     create_job,
     delete_job,
-    get_node_info,
     get_node_pdf_r2_key,
     save_job_settings,
 )
@@ -51,7 +51,7 @@ async def init_job_handler(
     table_model: str = Form(""),
     image_model: str = Form(""),
     stamp_model: str = Form(""),
-    node_id: Optional[str] = Form(None),
+    node_id: str = Form(...),  # node_id теперь обязателен
     pdf_size: int = Form(..., description="PDF file size in bytes"),
     blocks_size: int = Form(..., description="Blocks JSON size in bytes"),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -63,10 +63,10 @@ async def init_job_handler(
     2. Client uploads files directly to R2 using presigned URLs
     3. POST /jobs/{job_id}/confirm - confirm upload and queue job
 
-    Benefits:
-    - PDF bypasses server completely (direct client -> R2)
-    - Reduces server memory and bandwidth usage
-    - Better scalability for large files
+    Новая структура R2: n/{node_id}/
+        {doc_name}.pdf
+        {doc_stem}_result.md
+        crops/{block_id}.pdf
     """
     check_api_key(x_api_key)
 
@@ -94,33 +94,22 @@ async def init_job_handler(
         f"POST /jobs/init: document_id={document_id[:16]}..., node_id={node_id}"
     )
 
-    # Determine r2_prefix and PDF key
-    if node_id:
-        from pathlib import PurePosixPath
+    # Новая структура путей: n/{node_id}/
+    r2_prefix = get_doc_prefix(node_id)
 
-        pdf_r2_key = get_node_pdf_r2_key(node_id)
-        if pdf_r2_key:
-            # PDF exists - use existing location
-            pdf_parent = str(PurePosixPath(pdf_r2_key).parent)
-            pdf_key = pdf_r2_key
-            pdf_needs_presigned = False
-        else:
-            # New PDF - determine location
-            node_info = get_node_info(node_id)
-            if node_info and node_info.get("parent_id"):
-                pdf_parent = f"tree_docs/{node_info['parent_id']}"
-            else:
-                pdf_parent = f"tree_docs/{node_id}"
-            pdf_key = f"{pdf_parent}/{document_name}"
-            pdf_needs_presigned = True
+    # Проверяем, есть ли уже PDF в R2
+    pdf_r2_key = get_node_pdf_r2_key(node_id)
+    pdf_needs_presigned = True
 
-        r2_prefix = f"tree_docs/{node_id}/ocr_runs/{job_id}"
+    if pdf_r2_key:
+        # PDF уже существует - проверим через head_object в generate_presigned_put_url
+        pdf_key = pdf_r2_key
+        pdf_needs_presigned = False
     else:
-        r2_prefix = f"ocr_jobs/{job_id}"
-        pdf_key = f"{r2_prefix}/document.pdf"
-        pdf_needs_presigned = True
+        # Новый PDF - формируем ключ
+        pdf_key = get_pdf_key(node_id, document_name)
 
-    blocks_key = f"{r2_prefix}/annotation.json"
+    blocks_key = f"{r2_prefix}/blocks.json"
 
     # Create job with pending_upload status
     try:

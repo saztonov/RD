@@ -8,6 +8,15 @@
     "comment": null,
     "sql": "CREATE TRIGGER app_settings_updated_at BEFORE UPDATE ON public.app_settings FOR EACH ROW EXECUTE FUNCTION update_app_settings_timestamp()"
   },
+  "public.blocks.tr_blocks_updated_at": {
+    "schema": "public",
+    "name": "tr_blocks_updated_at",
+    "table_name": "blocks",
+    "event": null,
+    "timing": null,
+    "comment": null,
+    "sql": "CREATE TRIGGER tr_blocks_updated_at BEFORE UPDATE ON public.blocks FOR EACH ROW EXECUTE FUNCTION update_blocks_updated_at()"
+  },
   "public.image_categories.trigger_image_categories_updated_at": {
     "schema": "public",
     "name": "trigger_image_categories_updated_at",

@@ -2138,6 +2138,193 @@
       }
     ]
   },
+  "public.blocks": {
+    "schema": "public",
+    "name": "blocks",
+    "comment": "Блоки аннотаций PDF документов (замена annotation.json)",
+    "columns": [
+      {
+        "name": "id",
+        "comment": "ArmorID блока (формат XXXX-XXXX-XXX)",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "node_id",
+        "comment": "Ссылка на документ в tree_nodes",
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": false
+      },
+      {
+        "name": "page_index",
+        "comment": "Индекс страницы (0-based)",
+        "default": null,
+        "data_type": "integer",
+        "is_nullable": false
+      },
+      {
+        "name": "coords_px",
+        "comment": "Координаты в пикселях [x1, y1, x2, y2]",
+        "default": null,
+        "data_type": "integer[]",
+        "is_nullable": false
+      },
+      {
+        "name": "coords_norm",
+        "comment": "Нормализованные координаты [x1, y1, x2, y2] в диапазоне 0..1",
+        "default": null,
+        "data_type": "real[]",
+        "is_nullable": false
+      },
+      {
+        "name": "block_type",
+        "comment": "Тип блока: text или image",
+        "default": "'text'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "source",
+        "comment": "Источник блока: user (ручной) или auto (OCR)",
+        "default": "'user'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "shape_type",
+        "comment": "Форма блока: rectangle или polygon",
+        "default": "'rectangle'::text",
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "polygon_points",
+        "comment": "Точки полигона [[x1,y1], [x2,y2], ...] для shape_type=polygon",
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "ocr_text",
+        "comment": "Результат OCR распознавания",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "prompt",
+        "comment": "Промпт для OCR {\"system\": \"...\", \"user\": \"...\"}",
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "hint",
+        "comment": "Подсказка пользователя для OCR",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "pdfplumber_text",
+        "comment": "Сырой текст извлеченный pdfplumber",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "linked_block_id",
+        "comment": "ID связанного блока (для пар IMAGE+TEXT)",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "group_id",
+        "comment": "ID группы блоков",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "group_name",
+        "comment": "Название группы блоков",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "category_id",
+        "comment": "ID категории изображения",
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "category_code",
+        "comment": "Код категории (stamp, table, etc)",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "client_id",
+        "comment": "ID клиента для мультиклиентности",
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "version",
+        "comment": "Версия для optimistic concurrency control",
+        "default": "1",
+        "data_type": "integer",
+        "is_nullable": false
+      },
+      {
+        "name": "created_at",
+        "comment": "Дата и время создания блока",
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "updated_at",
+        "comment": "Дата и время последнего обновления",
+        "default": "now()",
+        "data_type": "timestamp with time zone",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "blocks_category_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "category_id",
+        "foreign_table": "image_categories",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "blocks_node_id_fkey",
+        "type": "FOREIGN KEY",
+        "column": "node_id",
+        "foreign_table": "tree_nodes",
+        "foreign_column": "id",
+        "foreign_table_schema": "public"
+      },
+      {
+        "name": "blocks_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
   "public.image_categories": {
     "schema": "public",
     "name": "image_categories",
@@ -4562,6 +4749,87 @@
       },
       {
         "name": "messages_2026_01_20_pkey",
+        "type": "PRIMARY KEY",
+        "column": "inserted_at",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      }
+    ]
+  },
+  "realtime.messages_2026_01_21": {
+    "schema": "realtime",
+    "name": "messages_2026_01_21",
+    "comment": null,
+    "columns": [
+      {
+        "name": "topic",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "extension",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
+      },
+      {
+        "name": "payload",
+        "comment": null,
+        "default": null,
+        "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "event",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "private",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
+      },
+      {
+        "name": "updated_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "inserted_at",
+        "comment": null,
+        "default": "now()",
+        "data_type": "timestamp without time zone",
+        "is_nullable": false
+      },
+      {
+        "name": "id",
+        "comment": null,
+        "default": "gen_random_uuid()",
+        "data_type": "uuid",
+        "is_nullable": false
+      }
+    ],
+    "constraints": [
+      {
+        "name": "messages_2026_01_21_pkey",
+        "type": "PRIMARY KEY",
+        "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "messages_2026_01_21_pkey",
         "type": "PRIMARY KEY",
         "column": "inserted_at",
         "foreign_table": null,

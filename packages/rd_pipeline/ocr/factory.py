@@ -21,6 +21,13 @@ def create_ocr_engine(backend: str = "dummy", **kwargs) -> OCRBackend:
     if backend == "openrouter":
         from rd_pipeline.ocr.backends.openrouter import OpenRouterBackend
 
+        # Support fallback_models as CSV string or list
+        fallback_models = kwargs.get("fallback_models")
+        if isinstance(fallback_models, str):
+            kwargs["fallback_models"] = [
+                m.strip() for m in fallback_models.split(",") if m.strip()
+            ]
+
         return OpenRouterBackend(**kwargs)
     elif backend == "datalab":
         from rd_pipeline.ocr.backends.datalab import DatalabOCRBackend

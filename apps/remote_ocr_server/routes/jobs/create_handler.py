@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import File, Form, Header, HTTPException, UploadFile
 
 from apps.remote_ocr_server.queue_checker import check_queue_capacity
+from apps.remote_ocr_server.r2_paths import get_doc_prefix, get_pdf_key
 from apps.remote_ocr_server.routes.common import (
     check_api_key,
     get_r2_sync_client,
@@ -20,7 +21,6 @@ from apps.remote_ocr_server.storage import (
     add_node_file,
     create_job,
     delete_job,
-    get_node_info,
     get_node_pdf_r2_key,
     save_job_settings,
     update_node_r2_key,
@@ -114,14 +114,17 @@ async def create_job_handler(
     table_model: str = Form(""),
     image_model: str = Form(""),
     stamp_model: str = Form(""),
-    node_id: Optional[str] = Form(None),
+    node_id: str = Form(...),  # node_id теперь обязателен
     blocks_file: UploadFile = File(..., alias="blocks_file"),
     pdf: UploadFile = File(...),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> dict:
     """Создать новую задачу OCR.
 
-    Если node_id указан - файлы берутся из tree_docs/{node_id}/, не дублируем.
+    Новая структура R2: n/{node_id}/
+        {doc_name}.pdf
+        {doc_stem}_result.md
+        crops/{block_id}.pdf
     """
     check_api_key(x_api_key)
 
@@ -138,35 +141,24 @@ async def create_job_handler(
 
     job_id = str(uuid.uuid4())
 
-    # Определяем r2_prefix - папку для файлов задачи
-    pdf_needs_upload = False
+    # Новая структура путей: n/{node_id}/
+    r2_prefix = get_doc_prefix(node_id)
 
-    if node_id:
-        from pathlib import PurePosixPath
+    # Проверяем, есть ли уже PDF в R2
+    pdf_r2_key = get_node_pdf_r2_key(node_id)
+    pdf_needs_upload = True
 
-        pdf_r2_key = get_node_pdf_r2_key(node_id)
-        if pdf_r2_key:
-            try:
-                s3_check, bucket_check = get_r2_sync_client()
-                s3_check.head_object(Bucket=bucket_check, Key=pdf_r2_key)
-            except Exception:
-                _logger.warning(f"PDF not found in R2, will upload: {pdf_r2_key}")
-                pdf_needs_upload = True
-            # PDF остаётся в родительской папке node
-            pdf_parent = str(PurePosixPath(pdf_r2_key).parent)
-        else:
-            node_info = get_node_info(node_id)
-            if node_info and node_info.get("parent_id"):
-                pdf_parent = f"tree_docs/{node_info['parent_id']}"
-            else:
-                pdf_parent = f"tree_docs/{node_id}"
-            pdf_r2_key = f"{pdf_parent}/{document_name}"
-            pdf_needs_upload = True
+    if pdf_r2_key:
+        try:
+            s3_check, bucket_check = get_r2_sync_client()
+            s3_check.head_object(Bucket=bucket_check, Key=pdf_r2_key)
+            pdf_needs_upload = False
+        except Exception:
+            _logger.warning(f"PDF not found in R2, will upload: {pdf_r2_key}")
 
-        # r2_prefix теперь изолирован для каждой задачи
-        r2_prefix = f"tree_docs/{node_id}/ocr_runs/{job_id}"
-    else:
-        r2_prefix = f"ocr_jobs/{job_id}"
+    # Если PDF нет - формируем новый ключ
+    if not pdf_r2_key or pdf_needs_upload:
+        pdf_r2_key = get_pdf_key(node_id, document_name)
 
     job = create_job(
         client_id=client_id,
@@ -191,61 +183,42 @@ async def create_job_handler(
     try:
         s3_client, bucket_name = get_r2_sync_client()
 
-        if node_id:
-            if pdf_needs_upload:
-                pdf_key = pdf_r2_key or f"{pdf_parent}/{document_name}"
-                pdf_size = await _stream_upload_pdf(
-                    pdf, s3_client, bucket_name, pdf_key
-                )
-                _logger.info(f"Uploaded PDF to R2: {pdf_key} ({pdf_size} bytes)")
+        # Загрузка PDF если нужно
+        if pdf_needs_upload:
+            pdf_size = await _stream_upload_pdf(
+                pdf, s3_client, bucket_name, pdf_r2_key
+            )
+            _logger.info(f"Uploaded PDF to R2: {pdf_r2_key} ({pdf_size} bytes)")
 
-                add_node_file(
-                    node_id,
-                    "pdf",
-                    pdf_key,
-                    document_name,
-                    pdf_size,
-                    "application/pdf",
-                )
-                update_node_r2_key(node_id, pdf_key)
-            else:
-                pdf_key = pdf_r2_key
+            add_node_file(
+                node_id,
+                "pdf",
+                pdf_r2_key,
+                document_name,
+                pdf_size,
+                "application/pdf",
+            )
+            update_node_r2_key(node_id, pdf_r2_key)
 
-            # Blocks сохраняются в изолированной папке задачи
-            blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode(
-                "utf-8"
-            )
-            blocks_key = f"{r2_prefix}/annotation.json"
-            s3_client.put_object(
-                Bucket=bucket_name,
-                Key=blocks_key,
-                Body=blocks_bytes,
-                ContentType="application/json",
-            )
-            add_job_file(
-                job.id,
-                "blocks",
-                blocks_key,
-                "annotation.json",
-                len(blocks_bytes),
-            )
-            add_job_file(job.id, "pdf", pdf_key, document_name, 0)
-        else:
-            pdf_key = f"{r2_prefix}/document.pdf"
-            pdf_size = await _stream_upload_pdf(pdf, s3_client, bucket_name, pdf_key)
-            add_job_file(job.id, "pdf", pdf_key, "document.pdf", pdf_size)
-
-            blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode(
-                "utf-8"
-            )
-            blocks_key = f"{r2_prefix}/blocks.json"
-            s3_client.put_object(
-                Bucket=bucket_name,
-                Key=blocks_key,
-                Body=blocks_bytes,
-                ContentType="application/json",
-            )
-            add_job_file(job.id, "blocks", blocks_key, "blocks.json", len(blocks_bytes))
+        # Блоки сохраняем в R2 как входные данные для обработки
+        blocks_bytes = json.dumps(blocks_data, ensure_ascii=False, indent=2).encode(
+            "utf-8"
+        )
+        blocks_key = f"{r2_prefix}/blocks.json"
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=blocks_key,
+            Body=blocks_bytes,
+            ContentType="application/json",
+        )
+        add_job_file(
+            job.id,
+            "blocks",
+            blocks_key,
+            "blocks.json",
+            len(blocks_bytes),
+        )
+        add_job_file(job.id, "pdf", pdf_r2_key, document_name, 0)
 
     except Exception as e:
         _logger.error(f"R2 upload failed: {e}")
