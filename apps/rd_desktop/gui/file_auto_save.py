@@ -1,6 +1,7 @@
-"""Авто-сохранение аннотаций через кеш"""
+"""Авто-сохранение аннотаций через BlocksSyncManager и fallback через кеш"""
 import logging
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import QTimer
 
@@ -23,24 +24,151 @@ def get_annotation_r2_key(pdf_r2_key: str) -> str:
 
 
 class FileAutoSaveMixin:
-    """Миксин для авто-сохранения аннотаций через кеш"""
+    """Миксин для авто-сохранения аннотаций через BlocksSyncManager и fallback кеш"""
 
     _current_r2_key: str = ""
     _current_node_id: str = ""
     _annotation_synced: bool = False
+    _blocks_sync_manager = None
+    _use_db_sync: bool = True  # Использовать синхронизацию через БД
+
+    def _init_blocks_sync(self):
+        """Инициализация менеджера синхронизации блоков"""
+        if self._blocks_sync_manager is not None:
+            return
+
+        from apps.rd_desktop.gui.blocks_sync_manager import BlocksSyncManager
+
+        self._blocks_sync_manager = BlocksSyncManager(self)
+
+        # Подключаем сигналы для обновления UI
+        self._blocks_sync_manager.block_added_remote.connect(self._on_remote_block_added)
+        self._blocks_sync_manager.block_updated_remote.connect(self._on_remote_block_updated)
+        self._blocks_sync_manager.block_deleted_remote.connect(self._on_remote_block_deleted)
+        self._blocks_sync_manager.sync_error.connect(self._on_blocks_sync_error)
+
+        logger.info("BlocksSyncManager initialized")
+
+    def _set_document_for_sync(self, node_id: str):
+        """Установить документ для синхронизации блоков"""
+        if not self._use_db_sync:
+            return
+
+        if self._blocks_sync_manager is None:
+            self._init_blocks_sync()
+
+        from apps.rd_desktop.client_id import get_client_id
+        client_id = get_client_id()
+        self._blocks_sync_manager.set_document(node_id, client_id)
+
+    def _on_remote_block_added(self, node_id: str, block):
+        """Обработка добавления блока другим клиентом"""
+        if node_id != self._current_node_id:
+            return
+
+        if not self.annotation_document:
+            return
+
+        # Добавляем блок в annotation_document
+        if block.page_index < len(self.annotation_document.pages):
+            page = self.annotation_document.pages[block.page_index]
+            # Проверяем что блока еще нет
+            if not any(b.id == block.id for b in page.blocks):
+                page.blocks.append(block)
+                # Обновляем UI если эта страница открыта
+                if hasattr(self, 'current_page') and self.current_page == block.page_index:
+                    if hasattr(self, 'page_viewer'):
+                        # Используем инкрементальное добавление
+                        self.page_viewer.add_block_visual(block)
+                    if hasattr(self, 'blocks_tree_manager') and self.blocks_tree_manager:
+                        self.blocks_tree_manager.update_blocks_tree()
+                self._show_remote_change_toast("Добавлен блок")
+                logger.info(f"Remote block added: {block.id}")
+
+    def _on_remote_block_updated(self, node_id: str, block):
+        """Обработка обновления блока другим клиентом"""
+        if node_id != self._current_node_id:
+            return
+
+        if not self.annotation_document:
+            return
+
+        if block.page_index < len(self.annotation_document.pages):
+            page = self.annotation_document.pages[block.page_index]
+            # Находим и обновляем блок
+            for i, b in enumerate(page.blocks):
+                if b.id == block.id:
+                    page.blocks[i] = block
+                    break
+
+            if hasattr(self, 'current_page') and self.current_page == block.page_index:
+                if hasattr(self, 'page_viewer'):
+                    # Используем инкрементальное обновление
+                    self.page_viewer.update_block_visual(block)
+                if hasattr(self, 'blocks_tree_manager') and self.blocks_tree_manager:
+                    self.blocks_tree_manager.update_blocks_tree()
+            self._show_remote_change_toast("Обновлен блок")
+            logger.info(f"Remote block updated: {block.id}")
+
+    def _on_remote_block_deleted(self, node_id: str, block_id: str):
+        """Обработка удаления блока другим клиентом"""
+        if node_id != self._current_node_id:
+            return
+
+        if not self.annotation_document:
+            return
+
+        for page in self.annotation_document.pages:
+            for i, block in enumerate(page.blocks):
+                if block.id == block_id:
+                    page_index = page.page_number
+                    del page.blocks[i]
+                    if hasattr(self, 'current_page') and self.current_page == page_index:
+                        if hasattr(self, 'page_viewer'):
+                            # Используем инкрементальное удаление
+                            self.page_viewer.remove_block_visual(block_id)
+                        if hasattr(self, 'blocks_tree_manager') and self.blocks_tree_manager:
+                            self.blocks_tree_manager.update_blocks_tree()
+                    self._show_remote_change_toast("Удален блок")
+                    logger.info(f"Remote block deleted: {block_id}")
+                    return
+
+    def _show_remote_change_toast(self, message: str):
+        """Показать уведомление об изменении от другого клиента"""
+        try:
+            from apps.rd_desktop.gui.toast import show_toast
+            show_toast(self, f"{message} (другим пользователем)", duration=2000)
+        except Exception:
+            pass
+
+    def _on_blocks_sync_error(self, node_id: str, error: str):
+        """Обработка ошибки синхронизации блоков"""
+        logger.error(f"Blocks sync error for {node_id}: {error}")
 
     def _auto_save_annotation(self):
-        """Авто-сохранение разметки через кеш (мгновенно)"""
+        """Авто-сохранение разметки через BlocksSyncManager или кеш"""
         if not self.annotation_document or not self._current_pdf_path:
             return
-        
+
         if not self._current_node_id:
             return
-        
+
+        # Используем синхронизацию через БД если доступна
+        if self._use_db_sync and self._blocks_sync_manager:
+            # Собираем все блоки документа
+            all_blocks = []
+            for page in self.annotation_document.pages:
+                all_blocks.extend(page.blocks)
+
+            # Помечаем для синхронизации (debounced)
+            self._blocks_sync_manager.mark_blocks_changed(all_blocks)
+            return
+
+        # Fallback на старый кеш аннотаций
         from apps.rd_desktop.gui.annotation_cache import get_annotation_cache
-        
+
         cache = get_annotation_cache()
-        
+
         # Обновляем кеш (мгновенно)
         cache.set(
             self._current_node_id,
@@ -49,15 +177,21 @@ class FileAutoSaveMixin:
             self._current_r2_key,
             str(get_annotation_path(self._current_pdf_path))
         )
-        
+
         # Помечаем как измененную (запустит отложенное сохранение)
         cache.mark_dirty(self._current_node_id)
 
     def _flush_pending_save(self):
-        """Принудительно синхронизировать с R2"""
+        """Принудительно синхронизировать"""
         if not self._current_node_id:
             return
-        
+
+        # Используем синхронизацию через БД если доступна
+        if self._use_db_sync and self._blocks_sync_manager:
+            self._blocks_sync_manager.force_sync()
+            return
+
+        # Fallback на старый кеш
         from apps.rd_desktop.gui.annotation_cache import get_annotation_cache
         cache = get_annotation_cache()
         cache.force_sync(self._current_node_id)

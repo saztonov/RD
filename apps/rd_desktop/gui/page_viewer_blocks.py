@@ -17,12 +17,79 @@ class BlockRenderingMixin:
     _redraw_pending: bool = False
     _last_redraw_time: float = 0
     _redraw_timer: QTimer = None
+    _block_hashes: Dict[str, int] = None  # Хеши блоков для детекции изменений
 
-    def set_blocks(self, blocks: List[Block]):
-        """Установить список блоков для отображения"""
+    def set_blocks(self, blocks: List[Block], force_redraw: bool = False):
+        """
+        Установить список блоков для отображения.
+
+        Использует инкрементальное обновление:
+        - Удаляет только отсутствующие блоки
+        - Добавляет только новые блоки
+        - Обновляет только измененные блоки
+
+        Args:
+            blocks: список блоков
+            force_redraw: принудительная полная перерисовка
+        """
+        if self._block_hashes is None:
+            self._block_hashes = {}
+
+        new_blocks_by_id = {b.id: b for b in blocks}
+        new_ids = set(new_blocks_by_id.keys())
+        current_ids = set(self.block_items.keys())
+
+        # Полная перерисовка если force или первая загрузка
+        if force_redraw or not current_ids:
+            self.current_blocks = blocks
+            self._clear_block_items()
+            self._block_hashes.clear()
+            self._draw_all_blocks()
+            return
+
+        # Инкрементальное обновление
+        ids_to_remove = current_ids - new_ids
+        ids_to_add = new_ids - current_ids
+        ids_to_check = current_ids & new_ids
+
+        # 1. Удаляем отсутствующие блоки
+        for block_id in ids_to_remove:
+            self._remove_block_visual(block_id)
+
+        # Обновляем current_blocks для корректной индексации
         self.current_blocks = blocks
-        self._clear_block_items()
-        self._draw_all_blocks()
+
+        # 2. Проверяем изменения существующих блоков
+        for block_id in ids_to_check:
+            block = new_blocks_by_id[block_id]
+            block_hash = self._compute_block_hash(block)
+
+            if self._block_hashes.get(block_id) != block_hash:
+                # Блок изменился - обновляем
+                idx = next((i for i, b in enumerate(blocks) if b.id == block_id), None)
+                if idx is not None:
+                    self._update_block_visual(block, idx)
+                    self._block_hashes[block_id] = block_hash
+
+        # 3. Добавляем новые блоки
+        for block_id in ids_to_add:
+            block = new_blocks_by_id[block_id]
+            idx = next((i for i, b in enumerate(blocks) if b.id == block_id), None)
+            if idx is not None:
+                self._draw_block(block, idx)
+                self._block_hashes[block_id] = self._compute_block_hash(block)
+
+    def _compute_block_hash(self, block: Block) -> int:
+        """Вычислить хеш блока для детекции изменений"""
+        return hash((
+            tuple(block.coords_px),
+            block.block_type,
+            block.source,
+            block.shape_type,
+            tuple(block.polygon_points) if block.polygon_points else None,
+            block.group_id,
+            block.category_code if hasattr(block, 'category_code') else None,
+        ))
 
     def _clear_block_items(self):
         """Очистить все QGraphicsRectItem блоков"""
@@ -35,6 +102,90 @@ class BlockRenderingMixin:
                 self.scene.removeItem(label)
         self.block_labels.clear()
         self._clear_resize_handles()
+        if self._block_hashes:
+            self._block_hashes.clear()
+
+    def _remove_block_visual(self, block_id: str):
+        """Удалить визуальное представление одного блока"""
+        # Удаляем item блока
+        if block_id in self.block_items:
+            item = self.block_items[block_id]
+            if isValid(item):
+                self.scene.removeItem(item)
+            del self.block_items[block_id]
+
+        # Удаляем метку с номером
+        if block_id in self.block_labels:
+            label = self.block_labels[block_id]
+            if isValid(label):
+                self.scene.removeItem(label)
+            del self.block_labels[block_id]
+
+        # Удаляем метку галочки для групп
+        check_key = block_id + "_check"
+        if check_key in self.block_labels:
+            check_label = self.block_labels[check_key]
+            if isValid(check_label):
+                self.scene.removeItem(check_label)
+            del self.block_labels[check_key]
+
+        # Удаляем хеш
+        if self._block_hashes and block_id in self._block_hashes:
+            del self._block_hashes[block_id]
+
+    def _update_block_visual(self, block: Block, idx: int):
+        """Обновить визуальное представление блока без пересоздания сцены"""
+        # Удаляем старое представление
+        self._remove_block_visual(block.id)
+        # Рисуем заново
+        self._draw_block(block, idx)
+
+    def add_block_visual(self, block: Block):
+        """
+        Добавить визуальное представление нового блока.
+        Используется для real-time добавления от других клиентов.
+        """
+        if block.id in self.block_items:
+            return  # Уже существует
+
+        # Добавляем в current_blocks если еще нет
+        if not any(b.id == block.id for b in self.current_blocks):
+            self.current_blocks.append(block)
+
+        idx = next((i for i, b in enumerate(self.current_blocks) if b.id == block.id), None)
+        if idx is not None:
+            self._draw_block(block, idx)
+            if self._block_hashes is None:
+                self._block_hashes = {}
+            self._block_hashes[block.id] = self._compute_block_hash(block)
+
+    def remove_block_visual(self, block_id: str):
+        """
+        Удалить визуальное представление блока.
+        Используется для real-time удаления от других клиентов.
+        """
+        self._remove_block_visual(block_id)
+
+        # Удаляем из current_blocks
+        self.current_blocks = [b for b in self.current_blocks if b.id != block_id]
+
+    def update_block_visual(self, block: Block):
+        """
+        Обновить визуальное представление блока.
+        Используется для real-time обновления от других клиентов.
+        """
+        # Обновляем в current_blocks
+        for i, b in enumerate(self.current_blocks):
+            if b.id == block.id:
+                self.current_blocks[i] = block
+                self._update_block_visual(block, i)
+                if self._block_hashes is None:
+                    self._block_hashes = {}
+                self._block_hashes[block.id] = self._compute_block_hash(block)
+                return
+
+        # Если блока не было - добавляем
+        self.add_block_visual(block)
 
     def _draw_all_blocks(self):
         """Отрисовать все блоки"""

@@ -619,13 +619,34 @@ class TreeClient:
         data = resp.json()
         return NodeFile.from_dict(data[0]) if data else None
 
-    def delete_node_file(self, file_id: str) -> bool:
-        """Удалить файл узла"""
+    def delete_node_file(self, file_id: str = None, node_id: str = None, file_type: str = None, r2_key: str = None) -> bool:
+        """Удалить файл узла по ID или по комбинации node_id + file_type/r2_key
+
+        Args:
+            file_id: ID файла (если указан - удаляет по ID)
+            node_id: ID узла (для фильтрации)
+            file_type: Тип файла (annotation, pdf, etc)
+            r2_key: R2 ключ файла
+
+        Returns:
+            True если удалено успешно
+        """
         try:
-            self._request("delete", f"/node_files?id=eq.{file_id}")
+            if file_id:
+                self._request("delete", f"/node_files?id=eq.{file_id}")
+            elif node_id:
+                params = f"node_id=eq.{node_id}"
+                if file_type:
+                    params += f"&file_type=eq.{file_type}"
+                if r2_key:
+                    params += f"&r2_key=eq.{r2_key}"
+                self._request("delete", f"/node_files?{params}")
+            else:
+                logger.warning("delete_node_file called without file_id or node_id")
+                return False
             return True
         except Exception as e:
-            logger.error(f"Failed to delete node file {file_id}: {e}")
+            logger.error(f"Failed to delete node file: {e}")
             return False
 
     def delete_jobs_by_node_id(self, node_id: str) -> int:

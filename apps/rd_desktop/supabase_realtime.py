@@ -46,6 +46,7 @@ class SupabaseRealtimeClient(QObject):
     disconnected = Signal()
     connection_error = Signal(str)
     job_changed = Signal(dict)  # Emits job data on INSERT/UPDATE/DELETE
+    block_changed = Signal(dict)  # Emits block data on INSERT/UPDATE/DELETE
     state_changed = Signal(str)  # Emits new state name
 
     # Phoenix protocol constants
@@ -69,6 +70,8 @@ class SupabaseRealtimeClient(QObject):
         self._ref = 0
         self._subscriptions: Dict[str, str] = {}  # topic -> subscription_id
         self._pending_subscriptions: List[str] = []
+        self._blocks_subscriptions: Dict[str, str] = {}  # node_id -> topic
+        self._pending_blocks_subscriptions: List[str] = []  # node_ids pending
 
         # Heartbeat timer
         self._heartbeat_timer = QTimer(self)
@@ -164,6 +167,81 @@ class SupabaseRealtimeClient(QObject):
             self._pending_subscriptions.append(topic)
             logger.debug(f"Queued subscription to {topic}")
 
+    def subscribe_to_blocks(self, node_id: str):
+        """
+        Subscribe to changes on blocks for a specific document.
+
+        Args:
+            node_id: Document node ID to filter blocks
+        """
+        if node_id in self._blocks_subscriptions:
+            logger.debug(f"Already subscribed to blocks for {node_id}")
+            return
+
+        topic = f"realtime:public:blocks:node_id=eq.{node_id}"
+
+        if self._state == RealtimeConnectionState.CONNECTED:
+            self._send_blocks_subscription(node_id, topic)
+        else:
+            self._pending_blocks_subscriptions.append(node_id)
+            logger.debug(f"Queued blocks subscription for {node_id}")
+
+    def unsubscribe_from_blocks(self, node_id: str):
+        """
+        Unsubscribe from blocks changes for a document.
+
+        Args:
+            node_id: Document node ID to unsubscribe
+        """
+        if node_id not in self._blocks_subscriptions:
+            return
+
+        topic = self._blocks_subscriptions[node_id]
+
+        # Send unsubscribe message
+        if self._state == RealtimeConnectionState.CONNECTED:
+            ref = self._get_next_ref()
+            message = {
+                "topic": topic,
+                "event": "phx_leave",
+                "payload": {},
+                "ref": ref,
+            }
+            self._send_message(message)
+            logger.info(f"Unsubscribed from blocks for {node_id}")
+
+        # Cleanup
+        del self._blocks_subscriptions[node_id]
+        self._subscriptions.pop(topic, None)
+
+    def _send_blocks_subscription(self, node_id: str, topic: str):
+        """Send subscription message for blocks of a document."""
+        ref = self._get_next_ref()
+        message = {
+            "topic": topic,
+            "event": "phx_join",
+            "payload": {
+                "config": {
+                    "broadcast": {"self": False},
+                    "presence": {"key": ""},
+                    "postgres_changes": [
+                        {
+                            "event": "*",  # INSERT, UPDATE, DELETE
+                            "schema": "public",
+                            "table": "blocks",
+                            "filter": f"node_id=eq.{node_id}"
+                        }
+                    ]
+                }
+            },
+            "ref": ref,
+        }
+
+        self._send_message(message)
+        self._subscriptions[topic] = ref
+        self._blocks_subscriptions[node_id] = topic
+        logger.info(f"Subscribed to blocks for {node_id}")
+
     def _send_subscription(self, topic: str):
         """Send subscription message for a topic."""
         ref = self._get_next_ref()
@@ -222,6 +300,12 @@ class SupabaseRealtimeClient(QObject):
         for topic in self._pending_subscriptions:
             self._send_subscription(topic)
         self._pending_subscriptions.clear()
+
+        # Send pending blocks subscriptions
+        for node_id in self._pending_blocks_subscriptions:
+            topic = f"realtime:public:blocks:node_id=eq.{node_id}"
+            self._send_blocks_subscription(node_id, topic)
+        self._pending_blocks_subscriptions.clear()
 
         self.connected.emit()
 
@@ -285,18 +369,26 @@ class SupabaseRealtimeClient(QObject):
         record = data.get("record", {})
         old_record = data.get("old_record", {})
 
-        if table != "jobs":
-            return
+        if table == "jobs":
+            logger.info(f"Job change: {change_type} - {record.get('id', 'unknown')[:8]}...")
+            job_data = {
+                "type": change_type,
+                "record": record,
+                "old_record": old_record,
+            }
+            self.job_changed.emit(job_data)
 
-        logger.info(f"Job change: {change_type} - {record.get('id', 'unknown')[:8]}...")
-
-        # Emit signal with job data
-        job_data = {
-            "type": change_type,
-            "record": record,
-            "old_record": old_record,
-        }
-        self.job_changed.emit(job_data)
+        elif table == "blocks":
+            block_id = record.get("id") or old_record.get("id", "unknown")
+            node_id = record.get("node_id") or old_record.get("node_id")
+            logger.info(f"Block change: {change_type} - {block_id[:8] if block_id else 'unknown'}...")
+            block_data = {
+                "type": change_type,
+                "record": record,
+                "old_record": old_record,
+                "node_id": node_id,
+            }
+            self.block_changed.emit(block_data)
 
     @Slot()
     def _on_error(self):
@@ -327,6 +419,10 @@ class SupabaseRealtimeClient(QObject):
         # Re-queue subscriptions
         self._pending_subscriptions = list(self._subscriptions.keys())
         self._subscriptions.clear()
+
+        # Re-queue blocks subscriptions
+        self._pending_blocks_subscriptions = list(self._blocks_subscriptions.keys())
+        self._blocks_subscriptions.clear()
 
         try:
             url = self._get_realtime_url()

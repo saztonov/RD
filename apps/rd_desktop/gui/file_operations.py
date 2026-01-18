@@ -126,13 +126,31 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             logger.debug(f"Update has_annotation failed: {e}")
 
     def _load_annotation_if_exists(self, pdf_path: str, r2_key: str = ""):
-        """Загрузить annotation.json если существует (локально или в R2)
+        """Загрузить блоки - сначала из БД, потом миграция из файла
 
-        Если аннотация есть локально - загружает синхронно.
-        Если нет локально но есть r2_key - запускает асинхронную загрузку.
+        Порядок загрузки:
+        1. Если есть node_id - пробуем загрузить из БД
+        2. Если в БД пусто - проверяем annotation.json (локально или R2)
+        3. Если есть annotation.json - мигрируем в БД и предлагаем удалить файл
         """
         from apps.rd_desktop.gui.toast import show_toast
 
+        # === 1. Пробуем загрузить из БД ===
+        if self._current_node_id and self._use_db_sync:
+            # Инициализируем sync manager
+            self._set_document_for_sync(self._current_node_id)
+
+            if self._blocks_sync_manager and self._blocks_sync_manager.has_blocks(self._current_node_id):
+                # Блоки есть в БД - загружаем
+                blocks = self._blocks_sync_manager.load_blocks(self._current_node_id)
+                if blocks:
+                    self.annotation_document = self._create_empty_annotation(pdf_path)
+                    self._populate_document_from_blocks(blocks)
+                    self._annotation_synced = True
+                    logger.info(f"Loaded {len(blocks)} blocks from DB for {self._current_node_id}")
+                    return True
+
+        # === 2. Проверяем annotation.json ===
         ann_path = get_annotation_path(pdf_path)
 
         # Попробовать скачать из R2 если нет локально
@@ -167,40 +185,62 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
                 )
 
                 if reply == QMessageBox.Yes:
-                    # Удаляем битый файл и создаём пустую аннотацию
                     try:
                         ann_path.unlink()
                     except Exception:
                         pass
                     show_toast(self, "Создана новая разметка", success=True)
-                    return False  # Будет создана пустая аннотация
+                    return False
                 else:
                     return False
 
             if loaded:
                 self.annotation_document = loaded
-                logger.info(f"Annotation loaded: {ann_path}")
-                
-                # Инициализируем кеш аннотаций
-                if self._current_node_id:
-                    from apps.rd_desktop.gui.annotation_cache import get_annotation_cache
-                    cache = get_annotation_cache()
-                    cache.set(
-                        self._current_node_id,
-                        self.annotation_document,
-                        pdf_path,
-                        r2_key,
-                        str(ann_path)
-                    )
+                logger.info(f"Annotation loaded from file: {ann_path}")
 
-                # Миграция формата выполнена - сохраняем и уведомляем
-                if result.migrated:
+                # === 3. Миграция в БД ===
+                if self._current_node_id and self._use_db_sync and self._blocks_sync_manager:
+                    all_blocks = []
+                    for page in loaded.pages:
+                        all_blocks.extend(page.blocks)
+
+                    if all_blocks:
+                        success = self._blocks_sync_manager.sync_all_blocks(all_blocks)
+                        if success:
+                            logger.info(f"Migrated {len(all_blocks)} blocks to DB")
+                            # Предлагаем удалить старую аннотацию
+                            self._offer_delete_legacy_annotation(ann_path, r2_key)
+                        else:
+                            logger.warning("Failed to migrate blocks to DB, using file fallback")
+                            # Fallback - используем старый кеш
+                            from apps.rd_desktop.gui.annotation_cache import get_annotation_cache
+                            cache = get_annotation_cache()
+                            cache.set(
+                                self._current_node_id,
+                                self.annotation_document,
+                                pdf_path,
+                                r2_key,
+                                str(ann_path)
+                            )
+                else:
+                    # Нет node_id - используем старый кеш
+                    if self._current_node_id:
+                        from apps.rd_desktop.gui.annotation_cache import get_annotation_cache
+                        cache = get_annotation_cache()
+                        cache.set(
+                            self._current_node_id,
+                            self.annotation_document,
+                            pdf_path,
+                            r2_key,
+                            str(ann_path)
+                        )
+
+                # Миграция формата выполнена - сохраняем
+                if result.migrated and not (self._use_db_sync and self._blocks_sync_manager):
                     logger.info(f"Annotation format migrated, saving")
                     AnnotationIO.save_annotation(loaded, str(ann_path))
-                    # Синхронизируем с R2
                     self._sync_annotation_to_r2()
 
-                    # Уведомление пользователю
                     warn_count = len(result.warnings)
                     if warn_count > 0:
                         show_toast(
@@ -212,12 +252,83 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
                     else:
                         show_toast(self, "Формат разметки обновлён", success=True)
 
-                # Аннотация уже есть - значит синхронизирована
                 self._annotation_synced = True
-                # Обновляем флаг has_annotation в дереве
                 self._update_has_annotation_flag(True)
                 return True
         return False
+
+    def _populate_document_from_blocks(self, blocks):
+        """Заполнить annotation_document блоками из БД"""
+        if not self.annotation_document:
+            return
+
+        for block in blocks:
+            if block.page_index < len(self.annotation_document.pages):
+                page = self.annotation_document.pages[block.page_index]
+                page.blocks.append(block)
+
+    def _offer_delete_legacy_annotation(self, local_path: Path, r2_key: str):
+        """Предложить удалить annotation.json после миграции в БД"""
+        from PySide6.QtWidgets import QMessageBox
+        from PySide6.QtCore import QTimer
+
+        def show_dialog():
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Миграция завершена")
+            msg.setText("Блоки успешно перенесены в базу данных.")
+            msg.setInformativeText(
+                "Файл аннотации (annotation.json) больше не нужен.\n"
+                "Удалить его из R2 и локальной папки?"
+            )
+            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            msg.setDefaultButton(QMessageBox.Yes)
+
+            if msg.exec() == QMessageBox.Yes:
+                self._delete_legacy_annotation(local_path, r2_key)
+
+        # Показываем диалог с небольшой задержкой
+        QTimer.singleShot(500, show_dialog)
+
+    def _delete_legacy_annotation(self, local_path: Path, r2_key: str):
+        """Удалить annotation.json из всех мест"""
+        from apps.rd_desktop.gui.toast import show_toast
+
+        deleted_count = 0
+
+        # 1. Удалить локально
+        if local_path.exists():
+            try:
+                local_path.unlink()
+                logger.info(f"Deleted local annotation: {local_path}")
+                deleted_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete local annotation: {e}")
+
+        # 2. Удалить из R2
+        if r2_key:
+            ann_r2_key = get_annotation_r2_key(r2_key)
+            try:
+                from rd_adapters.storage import R2SyncStorage
+                r2 = R2SyncStorage()
+                r2.delete_file(ann_r2_key)
+                logger.info(f"Deleted R2 annotation: {ann_r2_key}")
+                deleted_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete R2 annotation: {e}")
+
+        # 3. Удалить запись из node_files (Supabase)
+        if self._current_node_id:
+            try:
+                from apps.rd_desktop.tree_client import TreeClient
+                client = TreeClient()
+                client.delete_node_file(self._current_node_id, file_type="annotation")
+                logger.info(f"Deleted node_files annotation record")
+                deleted_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete node_files record: {e}")
+
+        if deleted_count > 0:
+            show_toast(self, "Старая аннотация удалена", duration=2000, success=True)
 
     def _start_async_annotation_download(
         self, pdf_path: str, r2_key: str, ann_r2_key: str, ann_path: str
