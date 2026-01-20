@@ -19,7 +19,7 @@ python build.py                        # Build executable → dist/CoreStructure
 ### Remote OCR Server
 ```bash
 # Docker (recommended)
-docker compose -f docker-compose.remote-ocr.dev.yml up --build
+docker compose up --build
 
 # Manual
 redis-server                                                              # Terminal 1

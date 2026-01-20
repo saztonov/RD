@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   web:
     build:
@@ -13,6 +11,8 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+    volumes:
+      - ocr_data:/data
     depends_on:
       - redis
     restart: always
@@ -40,6 +40,8 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+    volumes:
+      - ocr_data:/data
     depends_on:
       - redis
     restart: always
@@ -56,3 +58,4 @@ services:
 
 volumes:
   redis_data:
+  ocr_data:
