@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-10T13:19:11.939141
+-- Generated: 2026-01-20T09:49:57.388771
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -376,6 +376,9 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
 COMMENT ON TABLE public.app_settings IS 'Глобальные настройки приложения (key-value JSON)';
 COMMENT ON COLUMN public.app_settings.key IS 'Уникальный ключ настройки (например: ocr_server_settings)';
 COMMENT ON COLUMN public.app_settings.value IS 'Значение настройки в формате JSON';
+COMMENT ON COLUMN public.app_settings.description IS 'Описание настройки для администратора';
+COMMENT ON COLUMN public.app_settings.created_at IS 'Дата и время создания настройки';
+COMMENT ON COLUMN public.app_settings.updated_at IS 'Дата и время последнего обновления';
 
 -- Table: public.image_categories
 -- Description: Категории изображений с промптами для OCR
@@ -394,11 +397,16 @@ CREATE TABLE IF NOT EXISTS public.image_categories (
     CONSTRAINT image_categories_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.image_categories IS 'Категории изображений с промптами для OCR';
+COMMENT ON COLUMN public.image_categories.id IS 'Уникальный идентификатор категории';
 COMMENT ON COLUMN public.image_categories.name IS 'Отображаемое название категории';
 COMMENT ON COLUMN public.image_categories.code IS 'Уникальный код категории (slug)';
+COMMENT ON COLUMN public.image_categories.description IS 'Описание категории для пользователя';
 COMMENT ON COLUMN public.image_categories.system_prompt IS 'System/Role промпт для модели';
 COMMENT ON COLUMN public.image_categories.user_prompt IS 'User Input промпт для модели';
 COMMENT ON COLUMN public.image_categories.is_default IS 'Категория по умолчанию для всех новых IMAGE блоков';
+COMMENT ON COLUMN public.image_categories.sort_order IS 'Порядок сортировки в списке';
+COMMENT ON COLUMN public.image_categories.created_at IS 'Дата и время создания категории';
+COMMENT ON COLUMN public.image_categories.updated_at IS 'Дата и время последнего обновления';
 
 -- Table: public.job_files
 -- Description: Файлы связанные с OCR задачами
@@ -415,7 +423,13 @@ CREATE TABLE IF NOT EXISTS public.job_files (
     CONSTRAINT job_files_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.job_files IS 'Файлы связанные с OCR задачами';
+COMMENT ON COLUMN public.job_files.id IS 'Уникальный идентификатор файла';
 COMMENT ON COLUMN public.job_files.job_id IS 'Ссылка на задачу (каскадное удаление при удалении job)';
+COMMENT ON COLUMN public.job_files.file_type IS 'Тип файла: pdf, blocks, annotation, result, result_md, ocr_html, crop';
+COMMENT ON COLUMN public.job_files.r2_key IS 'Полный путь к файлу в R2 storage';
+COMMENT ON COLUMN public.job_files.file_name IS 'Имя файла для отображения';
+COMMENT ON COLUMN public.job_files.file_size IS 'Размер файла в байтах';
+COMMENT ON COLUMN public.job_files.created_at IS 'Дата и время создания записи';
 COMMENT ON COLUMN public.job_files.metadata IS 'Метаданные файла (для кропов: block_id, page_index, coords_norm, block_type)';
 
 -- Table: public.job_settings
@@ -434,6 +448,13 @@ CREATE TABLE IF NOT EXISTS public.job_settings (
     CONSTRAINT job_settings_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.job_settings IS 'Настройки моделей для OCR задач';
+COMMENT ON COLUMN public.job_settings.id IS 'Уникальный идентификатор настроек';
+COMMENT ON COLUMN public.job_settings.job_id IS 'Ссылка на задачу (один-к-одному)';
+COMMENT ON COLUMN public.job_settings.text_model IS 'Модель для распознавания текста';
+COMMENT ON COLUMN public.job_settings.table_model IS 'Модель для распознавания таблиц';
+COMMENT ON COLUMN public.job_settings.image_model IS 'Модель для распознавания изображений';
+COMMENT ON COLUMN public.job_settings.created_at IS 'Дата и время создания настроек';
+COMMENT ON COLUMN public.job_settings.updated_at IS 'Дата и время последнего обновления';
 COMMENT ON COLUMN public.job_settings.stamp_model IS 'Модель для распознавания штампов (IMAGE блоки с code=stamp)';
 
 -- Table: public.jobs
@@ -454,15 +475,35 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     status_message text,
     migrated_to_node boolean DEFAULT false,
     migrated_at timestamp with time zone,
+    client_id text NOT NULL,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    block_stats jsonb,
+    phase_data jsonb,
     CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT jobs_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.jobs IS 'OCR задачи обработки документов';
+COMMENT ON COLUMN public.jobs.id IS 'Уникальный идентификатор задачи';
 COMMENT ON COLUMN public.jobs.document_id IS 'Хеш PDF файла для идентификации';
+COMMENT ON COLUMN public.jobs.document_name IS 'Имя PDF файла (например: report.pdf)';
+COMMENT ON COLUMN public.jobs.task_name IS 'Пользовательское название задания';
+COMMENT ON COLUMN public.jobs.status IS 'Статус задачи: queued, processing, done, error, paused, draft';
+COMMENT ON COLUMN public.jobs.progress IS 'Прогресс выполнения (0.0 - 1.0)';
+COMMENT ON COLUMN public.jobs.created_at IS 'Дата и время создания задачи';
+COMMENT ON COLUMN public.jobs.updated_at IS 'Дата и время последнего обновления';
+COMMENT ON COLUMN public.jobs.error_message IS 'Текст ошибки при status=error';
+COMMENT ON COLUMN public.jobs.engine IS 'OCR движок: openrouter или datalab';
+COMMENT ON COLUMN public.jobs.r2_prefix IS 'Базовый путь файлов задачи в R2 storage';
 COMMENT ON COLUMN public.jobs.node_id IS 'ID узла дерева документа (для связи OCR результатов с деревом проектов)';
 COMMENT ON COLUMN public.jobs.status_message IS 'Детальное сообщение о текущей операции (отображается в колонке "Детали")';
 COMMENT ON COLUMN public.jobs.migrated_to_node IS 'Флаг: результаты перенесены в node_files';
 COMMENT ON COLUMN public.jobs.migrated_at IS 'Время переноса результатов в node_files';
+COMMENT ON COLUMN public.jobs.client_id IS 'Идентификатор клиента (из ~/.config/CoreStructure/client_id.txt)';
+COMMENT ON COLUMN public.jobs.started_at IS 'Время начала обработки задачи';
+COMMENT ON COLUMN public.jobs.completed_at IS 'Время завершения обработки задачи';
+COMMENT ON COLUMN public.jobs.block_stats IS 'Статистика обработанных блоков (количество по типам)';
+COMMENT ON COLUMN public.jobs.phase_data IS 'Детальная информация о фазах обработки OCR (PASS1, PASS2 strips/images)';
 
 -- Table: public.node_files
 -- Description: Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)
@@ -483,220 +524,19 @@ CREATE TABLE IF NOT EXISTS public.node_files (
     CONSTRAINT node_files_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.node_files IS 'Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)';
-COMMENT ON COLUMN public.node_files.file_type IS 'Тип файла: pdf, annotation, result_md, result_zip, crop, image, ocr_html, result_json, crops_folder';
+COMMENT ON COLUMN public.node_files.id IS 'Уникальный идентификатор файла';
+COMMENT ON COLUMN public.node_files.node_id IS 'Ссылка на узел дерева';
+COMMENT ON COLUMN public.node_files.file_type IS 'Тип файла: pdf, annotation, result_md, result_zip, crop, image, ocr_html, result_json, crops_folder, qa_manifest';
 COMMENT ON COLUMN public.node_files.r2_key IS 'Ключ объекта в R2 storage';
+COMMENT ON COLUMN public.node_files.file_name IS 'Имя файла для отображения';
+COMMENT ON COLUMN public.node_files.file_size IS 'Размер файла в байтах';
+COMMENT ON COLUMN public.node_files.mime_type IS 'MIME тип файла (например: application/pdf)';
 COMMENT ON COLUMN public.node_files.metadata IS 'Метаданные: version, page_index для кропов и т.д.';
-
--- Table: public.qa_app_settings
--- Description: Global application settings (credentials, defaults, etc.)
-CREATE TABLE IF NOT EXISTS public.qa_app_settings (
-    key text NOT NULL,
-    value text,
-    value_type text NOT NULL DEFAULT 'string'::text,
-    description text,
-    updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_app_settings_pkey PRIMARY KEY (key)
-);
-COMMENT ON TABLE public.qa_app_settings IS 'Global application settings (credentials, defaults, etc.)';
-COMMENT ON COLUMN public.qa_app_settings.key IS 'Setting key (e.g., gemini_api_key, max_history_pairs)';
-COMMENT ON COLUMN public.qa_app_settings.value IS 'Setting value as text (convert based on value_type)';
-COMMENT ON COLUMN public.qa_app_settings.value_type IS 'Type hint: string, int, bool, json';
-
--- Table: public.qa_artifacts
-CREATE TABLE IF NOT EXISTS public.qa_artifacts (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    conversation_id uuid NOT NULL,
-    artifact_type text NOT NULL,
-    r2_key text NOT NULL,
-    file_name text NOT NULL,
-    mime_type text NOT NULL,
-    file_size bigint,
-    metadata jsonb DEFAULT '{}'::jsonb,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_artifacts_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
-    CONSTRAINT qa_artifacts_pkey PRIMARY KEY (id)
-);
-
--- Table: public.qa_clients
-CREATE TABLE IF NOT EXISTS public.qa_clients (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    client_id text NOT NULL,
-    api_token uuid NOT NULL DEFAULT gen_random_uuid(),
-    name text,
-    default_model text DEFAULT 'gemini-3-flash-preview'::text,
-    is_active boolean DEFAULT true,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_clients_api_token_key UNIQUE (api_token),
-    CONSTRAINT qa_clients_client_id_key UNIQUE (client_id),
-    CONSTRAINT qa_clients_pkey PRIMARY KEY (id)
-);
-
--- Table: public.qa_conversation_context_files
--- Description: Хранит файлы контекста диалога и их статус загрузки в Gemini Files API
-CREATE TABLE IF NOT EXISTS public.qa_conversation_context_files (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    conversation_id uuid NOT NULL,
-    node_file_id uuid NOT NULL,
-    gemini_name text,
-    gemini_uri text,
-    status text NOT NULL DEFAULT 'local'::text,
-    uploaded_at timestamp with time zone,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_conversation_context_files_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
-    CONSTRAINT qa_conversation_context_files_conversation_id_node_file_id_key UNIQUE (conversation_id),
-    CONSTRAINT qa_conversation_context_files_conversation_id_node_file_id_key UNIQUE (node_file_id),
-    CONSTRAINT qa_conversation_context_files_node_file_id_fkey FOREIGN KEY (node_file_id) REFERENCES public.node_files(id),
-    CONSTRAINT qa_conversation_context_files_pkey PRIMARY KEY (id)
-);
-COMMENT ON TABLE public.qa_conversation_context_files IS 'Хранит файлы контекста диалога и их статус загрузки в Gemini Files API';
-COMMENT ON COLUMN public.qa_conversation_context_files.gemini_name IS 'Имя файла в Gemini Files API (например: files/xyz123)';
-COMMENT ON COLUMN public.qa_conversation_context_files.gemini_uri IS 'URI файла в Gemini Files API';
-COMMENT ON COLUMN public.qa_conversation_context_files.status IS 'Статус: local, downloaded, uploaded';
-
--- Table: public.qa_conversation_gemini_files
-CREATE TABLE IF NOT EXISTS public.qa_conversation_gemini_files (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    conversation_id uuid NOT NULL,
-    gemini_file_id uuid NOT NULL,
-    added_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_conversation_gemini_files_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
-    CONSTRAINT qa_conversation_gemini_files_conversation_id_gemini_file_id_key UNIQUE (conversation_id),
-    CONSTRAINT qa_conversation_gemini_files_conversation_id_gemini_file_id_key UNIQUE (gemini_file_id),
-    CONSTRAINT qa_conversation_gemini_files_gemini_file_id_fkey FOREIGN KEY (gemini_file_id) REFERENCES public.qa_gemini_files(id),
-    CONSTRAINT qa_conversation_gemini_files_pkey PRIMARY KEY (id)
-);
-
--- Table: public.qa_conversation_nodes
-CREATE TABLE IF NOT EXISTS public.qa_conversation_nodes (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    conversation_id uuid NOT NULL,
-    node_id uuid NOT NULL,
-    added_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_conversation_nodes_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
-    CONSTRAINT qa_conversation_nodes_conversation_id_node_id_key UNIQUE (conversation_id),
-    CONSTRAINT qa_conversation_nodes_conversation_id_node_id_key UNIQUE (node_id),
-    CONSTRAINT qa_conversation_nodes_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
-    CONSTRAINT qa_conversation_nodes_pkey PRIMARY KEY (id)
-);
-
--- Table: public.qa_conversations
-CREATE TABLE IF NOT EXISTS public.qa_conversations (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    client_id text NOT NULL,
-    title text NOT NULL DEFAULT ''::text,
-    model_default text NOT NULL DEFAULT 'gemini-3-flash-preview'::text,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_conversations_pkey PRIMARY KEY (id)
-);
-
--- Table: public.qa_gemini_files
-CREATE TABLE IF NOT EXISTS public.qa_gemini_files (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    client_id text NOT NULL,
-    gemini_name text NOT NULL,
-    gemini_uri text NOT NULL,
-    display_name text,
-    mime_type text NOT NULL,
-    size_bytes bigint,
-    sha256 text,
-    source_node_file_id uuid,
-    source_r2_key text,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    expires_at timestamp with time zone,
-    token_count bigint,
-    crop_index jsonb,
-    CONSTRAINT qa_gemini_files_gemini_name_key UNIQUE (gemini_name),
-    CONSTRAINT qa_gemini_files_pkey PRIMARY KEY (id),
-    CONSTRAINT qa_gemini_files_source_node_file_id_fkey FOREIGN KEY (source_node_file_id) REFERENCES public.node_files(id)
-);
-COMMENT ON COLUMN public.qa_gemini_files.token_count IS 'Token count calculated by tiktoken';
-COMMENT ON COLUMN public.qa_gemini_files.crop_index IS 'JSON array: [{context_item_id, crop_id, r2_key, r2_url}] для agentic loop';
-
--- Table: public.qa_jobs
--- Description: Tracks async LLM job processing for client-server architecture
-CREATE TABLE IF NOT EXISTS public.qa_jobs (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    conversation_id uuid NOT NULL,
-    client_id text NOT NULL,
-    user_text text NOT NULL,
-    system_prompt text DEFAULT ''::text,
-    user_text_template text DEFAULT ''::text,
-    model_name text NOT NULL,
-    thinking_level text NOT NULL DEFAULT 'low'::text,
-    thinking_budget integer,
-    file_refs jsonb DEFAULT '[]'::jsonb,
-    status text NOT NULL DEFAULT 'queued'::text,
-    progress real DEFAULT 0,
-    result_message_id uuid,
-    result_text text,
-    result_actions jsonb DEFAULT '[]'::jsonb,
-    result_is_final boolean DEFAULT false,
-    error_message text,
-    retry_count integer DEFAULT 0,
-    max_retries integer DEFAULT 3,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    started_at timestamp with time zone,
-    completed_at timestamp with time zone,
-    updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    context_catalog text DEFAULT ''::text,
-    CONSTRAINT qa_jobs_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
-    CONSTRAINT qa_jobs_pkey PRIMARY KEY (id),
-    CONSTRAINT qa_jobs_result_message_id_fkey FOREIGN KEY (result_message_id) REFERENCES public.qa_messages(id)
-);
-COMMENT ON TABLE public.qa_jobs IS 'Tracks async LLM job processing for client-server architecture';
-COMMENT ON COLUMN public.qa_jobs.status IS 'Job status: queued, processing, completed, failed';
-COMMENT ON COLUMN public.qa_jobs.result_message_id IS 'FK to the assistant message created when job completes';
-COMMENT ON COLUMN public.qa_jobs.context_catalog IS 'JSON string with available context items (crops) for agentic requests';
-
--- Table: public.qa_messages
-CREATE TABLE IF NOT EXISTS public.qa_messages (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    conversation_id uuid NOT NULL,
-    role text NOT NULL,
-    content text NOT NULL,
-    meta jsonb DEFAULT '{}'::jsonb,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
-    CONSTRAINT qa_messages_pkey PRIMARY KEY (id)
-);
-
--- Table: public.qa_model_traces
--- Description: Stores model call traces for the Model Inspector
-CREATE TABLE IF NOT EXISTS public.qa_model_traces (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    ts timestamp with time zone NOT NULL DEFAULT now(),
-    conversation_id uuid NOT NULL,
-    client_id text NOT NULL DEFAULT 'default'::text,
-    model text NOT NULL,
-    thinking_level text NOT NULL DEFAULT 'low'::text,
-    system_prompt text DEFAULT ''::text,
-    user_text text NOT NULL,
-    input_files jsonb DEFAULT '[]'::jsonb,
-    response_json jsonb,
-    parsed_actions jsonb DEFAULT '[]'::jsonb,
-    latency_ms real,
-    errors jsonb DEFAULT '[]'::jsonb,
-    is_final boolean DEFAULT false,
-    assistant_text text DEFAULT ''::text,
-    full_thoughts text DEFAULT ''::text,
-    input_tokens integer,
-    output_tokens integer,
-    total_tokens integer,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT qa_model_traces_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.qa_conversations(id),
-    CONSTRAINT qa_model_traces_pkey PRIMARY KEY (id)
-);
-COMMENT ON TABLE public.qa_model_traces IS 'Stores model call traces for the Model Inspector';
-COMMENT ON COLUMN public.qa_model_traces.ts IS 'Timestamp when the request was initiated';
-COMMENT ON COLUMN public.qa_model_traces.input_files IS 'Array of file refs: [{name, uri, mime_type, display_name}]';
-COMMENT ON COLUMN public.qa_model_traces.response_json IS 'Raw JSON response from model';
-COMMENT ON COLUMN public.qa_model_traces.parsed_actions IS 'Parsed actions from model response';
-COMMENT ON COLUMN public.qa_model_traces.errors IS 'Array of error messages if any';
+COMMENT ON COLUMN public.node_files.created_at IS 'Дата и время создания записи';
+COMMENT ON COLUMN public.node_files.updated_at IS 'Дата и время последнего обновления';
 
 -- Table: public.section_types
+-- Description: Справочник типов разделов документации (АР, КР, ОВ и др.)
 CREATE TABLE IF NOT EXISTS public.section_types (
     id integer NOT NULL DEFAULT nextval('section_types_id_seq'::regclass),
     code text NOT NULL,
@@ -705,8 +545,14 @@ CREATE TABLE IF NOT EXISTS public.section_types (
     CONSTRAINT section_types_code_key UNIQUE (code),
     CONSTRAINT section_types_pkey PRIMARY KEY (id)
 );
+COMMENT ON TABLE public.section_types IS 'Справочник типов разделов документации (АР, КР, ОВ и др.)';
+COMMENT ON COLUMN public.section_types.id IS 'Уникальный идентификатор типа раздела';
+COMMENT ON COLUMN public.section_types.code IS 'Код раздела (например: АР, КР, ОВ)';
+COMMENT ON COLUMN public.section_types.name IS 'Полное название раздела';
+COMMENT ON COLUMN public.section_types.sort_order IS 'Порядок сортировки в списке';
 
 -- Table: public.stage_types
+-- Description: Справочник типов стадий проекта (ПД, РД)
 CREATE TABLE IF NOT EXISTS public.stage_types (
     id integer NOT NULL DEFAULT nextval('stage_types_id_seq'::regclass),
     code text NOT NULL,
@@ -715,6 +561,11 @@ CREATE TABLE IF NOT EXISTS public.stage_types (
     CONSTRAINT stage_types_code_key UNIQUE (code),
     CONSTRAINT stage_types_pkey PRIMARY KEY (id)
 );
+COMMENT ON TABLE public.stage_types IS 'Справочник типов стадий проекта (ПД, РД)';
+COMMENT ON COLUMN public.stage_types.id IS 'Уникальный идентификатор типа стадии';
+COMMENT ON COLUMN public.stage_types.code IS 'Код стадии (например: ПД, РД)';
+COMMENT ON COLUMN public.stage_types.name IS 'Полное название стадии';
+COMMENT ON COLUMN public.stage_types.sort_order IS 'Порядок сортировки в списке';
 
 -- Table: public.tree_nodes
 -- Description: Дерево проектов - иерархическая структура узлов
@@ -743,8 +594,20 @@ CREATE TABLE IF NOT EXISTS public.tree_nodes (
     CONSTRAINT tree_nodes_pkey PRIMARY KEY (id)
 );
 COMMENT ON TABLE public.tree_nodes IS 'Дерево проектов - иерархическая структура узлов';
+COMMENT ON COLUMN public.tree_nodes.id IS 'Уникальный идентификатор узла';
+COMMENT ON COLUMN public.tree_nodes.parent_id IS 'Ссылка на родительский узел (NULL для корневых)';
 COMMENT ON COLUMN public.tree_nodes.node_type IS 'Тип узла: client, project, section, stage, task, document';
+COMMENT ON COLUMN public.tree_nodes.name IS 'Отображаемое имя узла в дереве';
+COMMENT ON COLUMN public.tree_nodes.code IS 'Опциональный код узла для идентификации';
+COMMENT ON COLUMN public.tree_nodes.version IS 'Номер версии узла для оптимистичной блокировки';
+COMMENT ON COLUMN public.tree_nodes.status IS 'Статус узла: active, completed, archived';
 COMMENT ON COLUMN public.tree_nodes.attributes IS 'Дополнительные атрибуты узла (JSON)';
+COMMENT ON COLUMN public.tree_nodes.sort_order IS 'Порядок сортировки в дереве';
+COMMENT ON COLUMN public.tree_nodes.created_at IS 'Дата и время создания узла';
+COMMENT ON COLUMN public.tree_nodes.updated_at IS 'Дата и время последнего обновления';
+COMMENT ON COLUMN public.tree_nodes.pdf_status IS 'Статус PDF: unknown, processing, done, error';
+COMMENT ON COLUMN public.tree_nodes.pdf_status_message IS 'Детальное сообщение о статусе PDF';
+COMMENT ON COLUMN public.tree_nodes.pdf_status_updated_at IS 'Время последнего обновления статуса PDF';
 COMMENT ON COLUMN public.tree_nodes.is_locked IS 'Флаг блокировки документа от изменений (удаление, переименование, изменение блоков, запуск OCR)';
 COMMENT ON COLUMN public.tree_nodes.path IS 'Materialized path: uuid1.uuid2.uuid3 для быстрого поиска предков/потомков';
 COMMENT ON COLUMN public.tree_nodes.depth IS 'Глубина узла от корня (0 = корневой проект)';
@@ -752,29 +615,8 @@ COMMENT ON COLUMN public.tree_nodes.children_count IS 'Количество пр
 COMMENT ON COLUMN public.tree_nodes.descendants_count IS 'Количество всех потомков (обновляется триггером)';
 COMMENT ON COLUMN public.tree_nodes.files_count IS 'Количество файлов в node_files для этого узла (обновляется триггером)';
 
--- Table: public.user_prompts
--- Description: User custom prompts for AI conversations
-CREATE TABLE IF NOT EXISTS public.user_prompts (
-    id uuid NOT NULL DEFAULT gen_random_uuid(),
-    title text NOT NULL,
-    system_prompt text NOT NULL DEFAULT ''::text,
-    user_text text NOT NULL DEFAULT ''::text,
-    r2_key text,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    client_id text NOT NULL DEFAULT 'default'::text,
-    CONSTRAINT user_prompts_pkey PRIMARY KEY (id)
-);
-COMMENT ON TABLE public.user_prompts IS 'User custom prompts for AI conversations';
-COMMENT ON COLUMN public.user_prompts.id IS 'Unique prompt identifier';
-COMMENT ON COLUMN public.user_prompts.title IS 'Prompt title';
-COMMENT ON COLUMN public.user_prompts.system_prompt IS 'System prompt text';
-COMMENT ON COLUMN public.user_prompts.user_text IS 'User prompt text';
-COMMENT ON COLUMN public.user_prompts.r2_key IS 'R2 storage key for full content';
-COMMENT ON COLUMN public.user_prompts.client_id IS 'Client identifier for multi-tenant support';
-
--- Table: realtime.messages_2026_01_07
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_07 (
+-- Table: realtime.messages_2026_01_16
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_16 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -783,12 +625,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_07 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_07_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_07_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_16_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_16_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_08
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_08 (
+-- Table: realtime.messages_2026_01_17
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_17 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -797,12 +639,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_08 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_08_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_08_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_17_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_17_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_09
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_09 (
+-- Table: realtime.messages_2026_01_18
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_18 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -811,12 +653,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_09 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_09_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_09_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_18_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_18_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_10
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_10 (
+-- Table: realtime.messages_2026_01_19
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_19 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -825,12 +667,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_10 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_10_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_10_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_19_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_19_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_11
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_11 (
+-- Table: realtime.messages_2026_01_20
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_20 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -839,12 +681,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_11 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_11_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_11_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_20_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_20_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_12
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_12 (
+-- Table: realtime.messages_2026_01_21
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_21 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -853,12 +695,12 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_12 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_12_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_12_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_21_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_21_pkey PRIMARY KEY (inserted_at)
 );
 
--- Table: realtime.messages_2026_01_13
-CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_13 (
+-- Table: realtime.messages_2026_01_22
+CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_22 (
     topic text NOT NULL,
     extension text NOT NULL,
     payload jsonb,
@@ -867,8 +709,8 @@ CREATE TABLE IF NOT EXISTS realtime.messages_2026_01_13 (
     updated_at timestamp without time zone NOT NULL DEFAULT now(),
     inserted_at timestamp without time zone NOT NULL DEFAULT now(),
     id uuid NOT NULL DEFAULT gen_random_uuid(),
-    CONSTRAINT messages_2026_01_13_pkey PRIMARY KEY (id),
-    CONSTRAINT messages_2026_01_13_pkey PRIMARY KEY (inserted_at)
+    CONSTRAINT messages_2026_01_22_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_2026_01_22_pkey PRIMARY KEY (inserted_at)
 );
 
 -- Table: realtime.schema_migrations
@@ -1204,7 +1046,7 @@ $function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
+CREATE OR REPLACE FUNCTION extensions.armor(bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1212,7 +1054,7 @@ AS '$libdir/pgcrypto', $function$pg_armor$function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea)
+CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1300,19 +1142,19 @@ AS '$libdir/pgcrypto', $function$pg_random_uuid$function$
 
 
 -- Function: extensions.gen_salt
-CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)
- RETURNS text
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$
-
-
--- Function: extensions.gen_salt
 CREATE OR REPLACE FUNCTION extensions.gen_salt(text)
  RETURNS text
  LANGUAGE c
  PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pg_gen_salt$function$
+
+
+-- Function: extensions.gen_salt
+CREATE OR REPLACE FUNCTION extensions.gen_salt(text, integer)
+ RETURNS text
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$
 
 
 -- Function: extensions.grant_pg_cron_access
@@ -1459,7 +1301,7 @@ $function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1467,7 +1309,7 @@ AS '$libdir/pgcrypto', $function$pg_hmac$function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1539,7 +1381,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1555,7 +1397,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1579,7 +1421,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1587,7 +1429,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_encrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1611,7 +1453,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1619,7 +1461,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -2088,57 +1930,6 @@ BEGIN
 
     RETURN true;
 END;
-$function$
-
-
--- Function: public.qa_get_descendants
-CREATE OR REPLACE FUNCTION public.qa_get_descendants(p_client_id text, p_root_ids uuid[], p_node_types text[] DEFAULT NULL::text[])
- RETURNS TABLE(id uuid, parent_id uuid, node_type text, name text, code text, version integer, status text, attributes jsonb, sort_order integer, depth integer)
- LANGUAGE plpgsql
- STABLE
-AS $function$
-    BEGIN
-        RETURN QUERY
-        WITH RECURSIVE descendants AS (
-            SELECT t.id, t.parent_id, t.node_type, t.name, t.code, t.version, t.status, t.attributes, t.sort_order, 0 AS depth
-            FROM public.tree_nodes t
-            WHERE t.id = ANY(p_root_ids)
-            UNION ALL
-            SELECT t.id, t.parent_id, t.node_type, t.name, t.code, t.version, t.status, t.attributes, t.sort_order, d.depth + 1
-            FROM public.tree_nodes t
-            INNER JOIN descendants d ON t.parent_id = d.id
-        )
-        SELECT d.id, d.parent_id, d.node_type, d.name, d.code, d.version, d.status, d.attributes, d.sort_order, d.depth
-        FROM descendants d
-        WHERE (p_node_types IS NULL OR d.node_type = ANY(p_node_types))
-        ORDER BY d.depth, d.sort_order, d.name;
-    END;
-  $function$
-
-
--- Function: public.qa_list_conversations_with_stats
-CREATE OR REPLACE FUNCTION public.qa_list_conversations_with_stats(p_client_id text DEFAULT 'default'::text, p_limit integer DEFAULT 50)
- RETURNS TABLE(id uuid, client_id text, title text, model_default text, created_at timestamp with time zone, updated_at timestamp with time zone, message_count bigint, file_count bigint, last_message_at timestamp with time zone)
- LANGUAGE sql
- STABLE
-AS $function$
-    SELECT 
-        c.id,
-        c.client_id,
-        c.title,
-        c.model_default,
-        c.created_at,
-        c.updated_at,
-        COALESCE(COUNT(DISTINCT m.id), 0) AS message_count,
-        COALESCE(COUNT(DISTINCT cgf.id), 0) AS file_count,
-        MAX(m.created_at) AS last_message_at
-    FROM qa_conversations c
-    LEFT JOIN qa_messages m ON m.conversation_id = c.id
-    LEFT JOIN qa_conversation_gemini_files cgf ON cgf.conversation_id = c.id
-    WHERE c.client_id = p_client_id
-    GROUP BY c.id, c.client_id, c.title, c.model_default, c.created_at, c.updated_at
-    ORDER BY c.updated_at DESC
-    LIMIT p_limit;
 $function$
 
 
@@ -4137,18 +3928,6 @@ CREATE TRIGGER tr_node_files_count AFTER INSERT OR DELETE OR UPDATE OF node_id O
 -- Trigger: update_node_files_updated_at on public.node_files
 CREATE TRIGGER update_node_files_updated_at BEFORE UPDATE ON public.node_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
--- Trigger: qa_clients_updated_at on public.qa_clients
-CREATE TRIGGER qa_clients_updated_at BEFORE UPDATE ON public.qa_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
-
--- Trigger: qa_conversations_updated_at on public.qa_conversations
-CREATE TRIGGER qa_conversations_updated_at BEFORE UPDATE ON public.qa_conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
-
--- Trigger: qa_gemini_files_updated_at on public.qa_gemini_files
-CREATE TRIGGER qa_gemini_files_updated_at BEFORE UPDATE ON public.qa_gemini_files FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
-
--- Trigger: qa_jobs_updated_at on public.qa_jobs
-CREATE TRIGGER qa_jobs_updated_at BEFORE UPDATE ON public.qa_jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
-
 -- Trigger: tr_tree_nodes_children_count on public.tree_nodes
 CREATE TRIGGER tr_tree_nodes_children_count AFTER INSERT OR DELETE OR UPDATE OF parent_id ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_parent_children_count()
 
@@ -4163,9 +3942,6 @@ CREATE TRIGGER tr_tree_nodes_path_update BEFORE UPDATE OF parent_id ON public.tr
 
 -- Trigger: update_tree_nodes_updated_at on public.tree_nodes
 CREATE TRIGGER update_tree_nodes_updated_at BEFORE UPDATE ON public.tree_nodes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
-
--- Trigger: user_prompts_updated_at on public.user_prompts
-CREATE TRIGGER user_prompts_updated_at BEFORE UPDATE ON public.user_prompts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
 
 -- Trigger: tr_check_filters on realtime.subscription
 CREATE TRIGGER tr_check_filters BEFORE INSERT OR UPDATE ON realtime.subscription FOR EACH ROW EXECUTE FUNCTION realtime.subscription_check_filters()
@@ -4392,6 +4168,9 @@ CREATE UNIQUE INDEX job_settings_job_id_key ON public.job_settings USING btree (
 CREATE INDEX idx_jobs_active_status ON public.jobs USING btree (status, updated_at DESC) WHERE (status = ANY (ARRAY['queued'::text, 'processing'::text]));
 
 -- Index on public.jobs
+CREATE INDEX idx_jobs_client_id ON public.jobs USING btree (client_id);
+
+-- Index on public.jobs
 CREATE INDEX idx_jobs_created_at ON public.jobs USING btree (created_at DESC);
 
 -- Index on public.jobs
@@ -4420,87 +4199,6 @@ CREATE INDEX idx_node_files_type ON public.node_files USING btree (file_type);
 
 -- Index on public.node_files
 CREATE UNIQUE INDEX node_files_node_id_r2_key_unique ON public.node_files USING btree (node_id, r2_key);
-
--- Index on public.qa_app_settings
-CREATE INDEX idx_qa_app_settings_key ON public.qa_app_settings USING btree (key);
-
--- Index on public.qa_artifacts
-CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC);
-
--- Index on public.qa_clients
-CREATE INDEX idx_qa_clients_api_token ON public.qa_clients USING btree (api_token);
-
--- Index on public.qa_clients
-CREATE INDEX idx_qa_clients_client_id ON public.qa_clients USING btree (client_id);
-
--- Index on public.qa_clients
-CREATE UNIQUE INDEX qa_clients_api_token_key ON public.qa_clients USING btree (api_token);
-
--- Index on public.qa_clients
-CREATE UNIQUE INDEX qa_clients_client_id_key ON public.qa_clients USING btree (client_id);
-
--- Index on public.qa_conversation_context_files
-CREATE INDEX idx_qa_context_files_conversation ON public.qa_conversation_context_files USING btree (conversation_id);
-
--- Index on public.qa_conversation_context_files
-CREATE INDEX idx_qa_context_files_node_file ON public.qa_conversation_context_files USING btree (node_file_id);
-
--- Index on public.qa_conversation_context_files
-CREATE INDEX idx_qa_context_files_status ON public.qa_conversation_context_files USING btree (status);
-
--- Index on public.qa_conversation_context_files
-CREATE UNIQUE INDEX qa_conversation_context_files_conversation_id_node_file_id_key ON public.qa_conversation_context_files USING btree (conversation_id, node_file_id);
-
--- Index on public.qa_conversation_gemini_files
-CREATE INDEX idx_qa_conv_gemini_files_conv ON public.qa_conversation_gemini_files USING btree (conversation_id);
-
--- Index on public.qa_conversation_gemini_files
-CREATE INDEX idx_qa_conv_gemini_files_file ON public.qa_conversation_gemini_files USING btree (gemini_file_id);
-
--- Index on public.qa_conversation_gemini_files
-CREATE UNIQUE INDEX qa_conversation_gemini_files_conversation_id_gemini_file_id_key ON public.qa_conversation_gemini_files USING btree (conversation_id, gemini_file_id);
-
--- Index on public.qa_conversation_nodes
-CREATE INDEX idx_qa_conversation_nodes_conv ON public.qa_conversation_nodes USING btree (conversation_id);
-
--- Index on public.qa_conversation_nodes
-CREATE INDEX idx_qa_conversation_nodes_node ON public.qa_conversation_nodes USING btree (node_id);
-
--- Index on public.qa_conversation_nodes
-CREATE UNIQUE INDEX qa_conversation_nodes_conversation_id_node_id_key ON public.qa_conversation_nodes USING btree (conversation_id, node_id);
-
--- Index on public.qa_conversations
-CREATE INDEX idx_qa_conversations_client_updated ON public.qa_conversations USING btree (client_id, updated_at DESC);
-
--- Index on public.qa_gemini_files
-CREATE INDEX idx_qa_gemini_files_client_expires ON public.qa_gemini_files USING btree (client_id, expires_at);
-
--- Index on public.qa_gemini_files
-CREATE UNIQUE INDEX qa_gemini_files_gemini_name_key ON public.qa_gemini_files USING btree (gemini_name);
-
--- Index on public.qa_jobs
-CREATE INDEX qa_jobs_client_id_idx ON public.qa_jobs USING btree (client_id);
-
--- Index on public.qa_jobs
-CREATE INDEX qa_jobs_conversation_id_idx ON public.qa_jobs USING btree (conversation_id);
-
--- Index on public.qa_jobs
-CREATE INDEX qa_jobs_created_at_idx ON public.qa_jobs USING btree (created_at DESC);
-
--- Index on public.qa_jobs
-CREATE INDEX qa_jobs_status_idx ON public.qa_jobs USING btree (status);
-
--- Index on public.qa_messages
-CREATE INDEX idx_qa_messages_conversation_created ON public.qa_messages USING btree (conversation_id, created_at);
-
--- Index on public.qa_model_traces
-CREATE INDEX qa_model_traces_client_id_idx ON public.qa_model_traces USING btree (client_id);
-
--- Index on public.qa_model_traces
-CREATE INDEX qa_model_traces_conversation_id_idx ON public.qa_model_traces USING btree (conversation_id);
-
--- Index on public.qa_model_traces
-CREATE INDEX qa_model_traces_ts_idx ON public.qa_model_traces USING btree (ts DESC);
 
 -- Index on public.section_types
 CREATE UNIQUE INDEX section_types_code_key ON public.section_types USING btree (code);
@@ -4538,32 +4236,29 @@ CREATE INDEX idx_tree_nodes_sort ON public.tree_nodes USING btree (parent_id, so
 -- Index on public.tree_nodes
 CREATE INDEX idx_tree_nodes_type ON public.tree_nodes USING btree (node_type);
 
--- Index on public.user_prompts
-CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (client_id);
-
 -- Index on realtime.messages
 CREATE INDEX messages_inserted_at_topic_index ON ONLY realtime.messages USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_07
-CREATE INDEX messages_2026_01_07_inserted_at_topic_idx ON realtime.messages_2026_01_07 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_16
+CREATE INDEX messages_2026_01_16_inserted_at_topic_idx ON realtime.messages_2026_01_16 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_08
-CREATE INDEX messages_2026_01_08_inserted_at_topic_idx ON realtime.messages_2026_01_08 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_17
+CREATE INDEX messages_2026_01_17_inserted_at_topic_idx ON realtime.messages_2026_01_17 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_09
-CREATE INDEX messages_2026_01_09_inserted_at_topic_idx ON realtime.messages_2026_01_09 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_18
+CREATE INDEX messages_2026_01_18_inserted_at_topic_idx ON realtime.messages_2026_01_18 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_10
-CREATE INDEX messages_2026_01_10_inserted_at_topic_idx ON realtime.messages_2026_01_10 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_19
+CREATE INDEX messages_2026_01_19_inserted_at_topic_idx ON realtime.messages_2026_01_19 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_11
-CREATE INDEX messages_2026_01_11_inserted_at_topic_idx ON realtime.messages_2026_01_11 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_20
+CREATE INDEX messages_2026_01_20_inserted_at_topic_idx ON realtime.messages_2026_01_20 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_12
-CREATE INDEX messages_2026_01_12_inserted_at_topic_idx ON realtime.messages_2026_01_12 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_21
+CREATE INDEX messages_2026_01_21_inserted_at_topic_idx ON realtime.messages_2026_01_21 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
--- Index on realtime.messages_2026_01_13
-CREATE INDEX messages_2026_01_13_inserted_at_topic_idx ON realtime.messages_2026_01_13 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
+-- Index on realtime.messages_2026_01_22
+CREATE INDEX messages_2026_01_22_inserted_at_topic_idx ON realtime.messages_2026_01_22 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE));
 
 -- Index on realtime.subscription
 CREATE INDEX ix_realtime_subscription_entity ON realtime.subscription USING btree (entity);

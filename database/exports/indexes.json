@@ -519,6 +519,14 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_jobs_active_status ON public.jobs USING btree (status, updated_at DESC) WHERE (status = ANY (ARRAY['queued'::text, 'processing'::text]))"
   },
+  "public.jobs.idx_jobs_client_id": {
+    "schema": "public",
+    "name": "idx_jobs_client_id",
+    "table_name": "jobs",
+    "is_unique": false,
+    "is_primary": false,
+    "sql": "CREATE INDEX idx_jobs_client_id ON public.jobs USING btree (client_id)"
+  },
   "public.jobs.idx_jobs_created_at": {
     "schema": "public",
     "name": "idx_jobs_created_at",
@@ -598,222 +606,6 @@
     "is_unique": true,
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX node_files_node_id_r2_key_unique ON public.node_files USING btree (node_id, r2_key)"
-  },
-  "public.qa_app_settings.idx_qa_app_settings_key": {
-    "schema": "public",
-    "name": "idx_qa_app_settings_key",
-    "table_name": "qa_app_settings",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_app_settings_key ON public.qa_app_settings USING btree (key)"
-  },
-  "public.qa_artifacts.idx_qa_artifacts_conversation_created": {
-    "schema": "public",
-    "name": "idx_qa_artifacts_conversation_created",
-    "table_name": "qa_artifacts",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_artifacts_conversation_created ON public.qa_artifacts USING btree (conversation_id, created_at DESC)"
-  },
-  "public.qa_clients.idx_qa_clients_api_token": {
-    "schema": "public",
-    "name": "idx_qa_clients_api_token",
-    "table_name": "qa_clients",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_clients_api_token ON public.qa_clients USING btree (api_token)"
-  },
-  "public.qa_clients.idx_qa_clients_client_id": {
-    "schema": "public",
-    "name": "idx_qa_clients_client_id",
-    "table_name": "qa_clients",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_clients_client_id ON public.qa_clients USING btree (client_id)"
-  },
-  "public.qa_clients.qa_clients_api_token_key": {
-    "schema": "public",
-    "name": "qa_clients_api_token_key",
-    "table_name": "qa_clients",
-    "is_unique": true,
-    "is_primary": false,
-    "sql": "CREATE UNIQUE INDEX qa_clients_api_token_key ON public.qa_clients USING btree (api_token)"
-  },
-  "public.qa_clients.qa_clients_client_id_key": {
-    "schema": "public",
-    "name": "qa_clients_client_id_key",
-    "table_name": "qa_clients",
-    "is_unique": true,
-    "is_primary": false,
-    "sql": "CREATE UNIQUE INDEX qa_clients_client_id_key ON public.qa_clients USING btree (client_id)"
-  },
-  "public.qa_conversation_context_files.idx_qa_context_files_conversation": {
-    "schema": "public",
-    "name": "idx_qa_context_files_conversation",
-    "table_name": "qa_conversation_context_files",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_context_files_conversation ON public.qa_conversation_context_files USING btree (conversation_id)"
-  },
-  "public.qa_conversation_context_files.idx_qa_context_files_node_file": {
-    "schema": "public",
-    "name": "idx_qa_context_files_node_file",
-    "table_name": "qa_conversation_context_files",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_context_files_node_file ON public.qa_conversation_context_files USING btree (node_file_id)"
-  },
-  "public.qa_conversation_context_files.idx_qa_context_files_status": {
-    "schema": "public",
-    "name": "idx_qa_context_files_status",
-    "table_name": "qa_conversation_context_files",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_context_files_status ON public.qa_conversation_context_files USING btree (status)"
-  },
-  "public.qa_conversation_context_files.qa_conversation_context_files_conversation_id_node_file_id_key": {
-    "schema": "public",
-    "name": "qa_conversation_context_files_conversation_id_node_file_id_key",
-    "table_name": "qa_conversation_context_files",
-    "is_unique": true,
-    "is_primary": false,
-    "sql": "CREATE UNIQUE INDEX qa_conversation_context_files_conversation_id_node_file_id_key ON public.qa_conversation_context_files USING btree (conversation_id, node_file_id)"
-  },
-  "public.qa_conversation_gemini_files.idx_qa_conv_gemini_files_conv": {
-    "schema": "public",
-    "name": "idx_qa_conv_gemini_files_conv",
-    "table_name": "qa_conversation_gemini_files",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_conv_gemini_files_conv ON public.qa_conversation_gemini_files USING btree (conversation_id)"
-  },
-  "public.qa_conversation_gemini_files.idx_qa_conv_gemini_files_file": {
-    "schema": "public",
-    "name": "idx_qa_conv_gemini_files_file",
-    "table_name": "qa_conversation_gemini_files",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_conv_gemini_files_file ON public.qa_conversation_gemini_files USING btree (gemini_file_id)"
-  },
-  "public.qa_conversation_gemini_files.qa_conversation_gemini_files_conversation_id_gemini_file_id_key": {
-    "schema": "public",
-    "name": "qa_conversation_gemini_files_conversation_id_gemini_file_id_key",
-    "table_name": "qa_conversation_gemini_files",
-    "is_unique": true,
-    "is_primary": false,
-    "sql": "CREATE UNIQUE INDEX qa_conversation_gemini_files_conversation_id_gemini_file_id_key ON public.qa_conversation_gemini_files USING btree (conversation_id, gemini_file_id)"
-  },
-  "public.qa_conversation_nodes.idx_qa_conversation_nodes_conv": {
-    "schema": "public",
-    "name": "idx_qa_conversation_nodes_conv",
-    "table_name": "qa_conversation_nodes",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_conversation_nodes_conv ON public.qa_conversation_nodes USING btree (conversation_id)"
-  },
-  "public.qa_conversation_nodes.idx_qa_conversation_nodes_node": {
-    "schema": "public",
-    "name": "idx_qa_conversation_nodes_node",
-    "table_name": "qa_conversation_nodes",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_conversation_nodes_node ON public.qa_conversation_nodes USING btree (node_id)"
-  },
-  "public.qa_conversation_nodes.qa_conversation_nodes_conversation_id_node_id_key": {
-    "schema": "public",
-    "name": "qa_conversation_nodes_conversation_id_node_id_key",
-    "table_name": "qa_conversation_nodes",
-    "is_unique": true,
-    "is_primary": false,
-    "sql": "CREATE UNIQUE INDEX qa_conversation_nodes_conversation_id_node_id_key ON public.qa_conversation_nodes USING btree (conversation_id, node_id)"
-  },
-  "public.qa_conversations.idx_qa_conversations_client_updated": {
-    "schema": "public",
-    "name": "idx_qa_conversations_client_updated",
-    "table_name": "qa_conversations",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_conversations_client_updated ON public.qa_conversations USING btree (client_id, updated_at DESC)"
-  },
-  "public.qa_gemini_files.idx_qa_gemini_files_client_expires": {
-    "schema": "public",
-    "name": "idx_qa_gemini_files_client_expires",
-    "table_name": "qa_gemini_files",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_gemini_files_client_expires ON public.qa_gemini_files USING btree (client_id, expires_at)"
-  },
-  "public.qa_gemini_files.qa_gemini_files_gemini_name_key": {
-    "schema": "public",
-    "name": "qa_gemini_files_gemini_name_key",
-    "table_name": "qa_gemini_files",
-    "is_unique": true,
-    "is_primary": false,
-    "sql": "CREATE UNIQUE INDEX qa_gemini_files_gemini_name_key ON public.qa_gemini_files USING btree (gemini_name)"
-  },
-  "public.qa_jobs.qa_jobs_client_id_idx": {
-    "schema": "public",
-    "name": "qa_jobs_client_id_idx",
-    "table_name": "qa_jobs",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX qa_jobs_client_id_idx ON public.qa_jobs USING btree (client_id)"
-  },
-  "public.qa_jobs.qa_jobs_conversation_id_idx": {
-    "schema": "public",
-    "name": "qa_jobs_conversation_id_idx",
-    "table_name": "qa_jobs",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX qa_jobs_conversation_id_idx ON public.qa_jobs USING btree (conversation_id)"
-  },
-  "public.qa_jobs.qa_jobs_created_at_idx": {
-    "schema": "public",
-    "name": "qa_jobs_created_at_idx",
-    "table_name": "qa_jobs",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX qa_jobs_created_at_idx ON public.qa_jobs USING btree (created_at DESC)"
-  },
-  "public.qa_jobs.qa_jobs_status_idx": {
-    "schema": "public",
-    "name": "qa_jobs_status_idx",
-    "table_name": "qa_jobs",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX qa_jobs_status_idx ON public.qa_jobs USING btree (status)"
-  },
-  "public.qa_messages.idx_qa_messages_conversation_created": {
-    "schema": "public",
-    "name": "idx_qa_messages_conversation_created",
-    "table_name": "qa_messages",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_qa_messages_conversation_created ON public.qa_messages USING btree (conversation_id, created_at)"
-  },
-  "public.qa_model_traces.qa_model_traces_client_id_idx": {
-    "schema": "public",
-    "name": "qa_model_traces_client_id_idx",
-    "table_name": "qa_model_traces",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX qa_model_traces_client_id_idx ON public.qa_model_traces USING btree (client_id)"
-  },
-  "public.qa_model_traces.qa_model_traces_conversation_id_idx": {
-    "schema": "public",
-    "name": "qa_model_traces_conversation_id_idx",
-    "table_name": "qa_model_traces",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX qa_model_traces_conversation_id_idx ON public.qa_model_traces USING btree (conversation_id)"
-  },
-  "public.qa_model_traces.qa_model_traces_ts_idx": {
-    "schema": "public",
-    "name": "qa_model_traces_ts_idx",
-    "table_name": "qa_model_traces",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX qa_model_traces_ts_idx ON public.qa_model_traces USING btree (ts DESC)"
   },
   "public.section_types.section_types_code_key": {
     "schema": "public",
@@ -911,14 +703,6 @@
     "is_primary": false,
     "sql": "CREATE INDEX idx_tree_nodes_type ON public.tree_nodes USING btree (node_type)"
   },
-  "public.user_prompts.idx_user_prompts_client_id": {
-    "schema": "public",
-    "name": "idx_user_prompts_client_id",
-    "table_name": "user_prompts",
-    "is_unique": false,
-    "is_primary": false,
-    "sql": "CREATE INDEX idx_user_prompts_client_id ON public.user_prompts USING btree (client_id)"
-  },
   "realtime.messages.messages_inserted_at_topic_index": {
     "schema": "realtime",
     "name": "messages_inserted_at_topic_index",
@@ -927,61 +711,61 @@
     "is_primary": false,
     "sql": "CREATE INDEX messages_inserted_at_topic_index ON ONLY realtime.messages USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_07.messages_2026_01_07_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_16.messages_2026_01_16_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_07_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_07",
+    "name": "messages_2026_01_16_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_16",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_07_inserted_at_topic_idx ON realtime.messages_2026_01_07 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_16_inserted_at_topic_idx ON realtime.messages_2026_01_16 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_08.messages_2026_01_08_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_17.messages_2026_01_17_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_08_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_08",
+    "name": "messages_2026_01_17_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_17",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_08_inserted_at_topic_idx ON realtime.messages_2026_01_08 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_17_inserted_at_topic_idx ON realtime.messages_2026_01_17 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_09.messages_2026_01_09_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_18.messages_2026_01_18_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_09_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_09",
+    "name": "messages_2026_01_18_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_18",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_09_inserted_at_topic_idx ON realtime.messages_2026_01_09 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_18_inserted_at_topic_idx ON realtime.messages_2026_01_18 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_10.messages_2026_01_10_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_19.messages_2026_01_19_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_10_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_10",
+    "name": "messages_2026_01_19_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_19",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_10_inserted_at_topic_idx ON realtime.messages_2026_01_10 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_19_inserted_at_topic_idx ON realtime.messages_2026_01_19 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_11.messages_2026_01_11_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_20.messages_2026_01_20_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_11_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_11",
+    "name": "messages_2026_01_20_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_20",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_11_inserted_at_topic_idx ON realtime.messages_2026_01_11 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_20_inserted_at_topic_idx ON realtime.messages_2026_01_20 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_12.messages_2026_01_12_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_21.messages_2026_01_21_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_12_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_12",
+    "name": "messages_2026_01_21_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_21",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_12_inserted_at_topic_idx ON realtime.messages_2026_01_12 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_21_inserted_at_topic_idx ON realtime.messages_2026_01_21 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
-  "realtime.messages_2026_01_13.messages_2026_01_13_inserted_at_topic_idx": {
+  "realtime.messages_2026_01_22.messages_2026_01_22_inserted_at_topic_idx": {
     "schema": "realtime",
-    "name": "messages_2026_01_13_inserted_at_topic_idx",
-    "table_name": "messages_2026_01_13",
+    "name": "messages_2026_01_22_inserted_at_topic_idx",
+    "table_name": "messages_2026_01_22",
     "is_unique": false,
     "is_primary": false,
-    "sql": "CREATE INDEX messages_2026_01_13_inserted_at_topic_idx ON realtime.messages_2026_01_13 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
+    "sql": "CREATE INDEX messages_2026_01_22_inserted_at_topic_idx ON realtime.messages_2026_01_22 USING btree (inserted_at DESC, topic) WHERE ((extension = 'broadcast'::text) AND (private IS TRUE))"
   },
   "realtime.subscription.ix_realtime_subscription_entity": {
     "schema": "realtime",

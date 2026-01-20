@@ -40,7 +40,8 @@
       "Bash(del \"C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\docs\\\\FIX_CROPS_FOLDER_FILE_TYPE.md\")",
       "Bash(del \"C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\docs\\\\ANNOTATION_CACHE.md\")",
       "Bash(del \"C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\docs\\\\MIGRATION_TO_UNIFIED_CLIENT.md\")",
-      "Bash(timeout 60 git push)"
+      "Bash(timeout 60 git push)",
+      "Bash(docker compose:*)"
     ]
   }
 }
