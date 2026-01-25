@@ -11,7 +11,9 @@ Pillow>=11.0.0
 requests>=2.32.0
 
 # R2 Storage (async + sync)
-boto3>=1.40.0
+# Версии зафиксированы для совместимости aioboto3 + boto3
+boto3==1.40.61
+aiobotocore==2.25.1
 aioboto3>=14.0.0
 aiofiles>=24.0.0
 
