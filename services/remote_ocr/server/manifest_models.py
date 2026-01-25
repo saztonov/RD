@@ -18,6 +18,7 @@ class CropManifestEntry:
     total_parts: int = 1
     width: int = 0
     height: int = 0
+    pdf_crop_path: str = ""  # Путь к PDF-кропу (векторный, для Gemini 3)
 
 
 @dataclass
@@ -66,6 +67,7 @@ class TwoPassManifest:
                     "total_parts": e.total_parts,
                     "width": e.width,
                     "height": e.height,
+                    "pdf_crop_path": e.pdf_crop_path,
                 }
                 for e in self.image_blocks
             ],
@@ -105,6 +107,7 @@ class TwoPassManifest:
                     total_parts=e.get("total_parts", 1),
                     width=e.get("width", 0),
                     height=e.get("height", 0),
+                    pdf_crop_path=e.get("pdf_crop_path", ""),
                 )
             )
 

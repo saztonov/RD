@@ -1,5 +1,7 @@
 """OpenRouter OCR Backend"""
+import base64
 import logging
+import os
 from typing import List, Optional
 
 from PIL import Image
@@ -104,8 +106,16 @@ class OpenRouterBackend:
             logger.warning(f"Ошибка получения провайдеров: {e}")
             return None
 
+    def supports_pdf_input(self) -> bool:
+        """Возвращает True для моделей Gemini 3, поддерживающих PDF"""
+        return "gemini-3" in self.model_name.lower()
+
     def recognize(
-        self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None
+        self,
+        image: Optional[Image.Image],
+        prompt: Optional[dict] = None,
+        json_mode: bool = None,
+        pdf_file_path: Optional[str] = None,
     ) -> str:
         """Распознать текст через OpenRouter API"""
         try:
@@ -127,12 +137,20 @@ class OpenRouterBackend:
 
             is_gemini3 = "gemini-3" in self.model_name.lower()
 
-            if is_gemini3:
+            # Приоритет: PDF файл для Gemini 3
+            if is_gemini3 and pdf_file_path and os.path.exists(pdf_file_path):
+                with open(pdf_file_path, "rb") as f:
+                    file_b64 = base64.b64encode(f.read()).decode("utf-8")
+                media_type = "application/pdf"
+                logger.info(f"Используется PDF-кроп: {pdf_file_path}")
+            elif is_gemini3 and image:
                 file_b64 = image_to_pdf_base64(image)
                 media_type = "application/pdf"
-            else:
+            elif image:
                 file_b64 = image_to_base64(image)
                 media_type = "image/png"
+            else:
+                return "[Ошибка: нет изображения или PDF]"
 
             payload = {
                 "model": self.model_name,

@@ -57,10 +57,20 @@ class DatalabOCRBackend:
             f"poll_max_attempts={self.poll_max_attempts}, max_retries={self.max_retries})"
         )
 
+    def supports_pdf_input(self) -> bool:
+        """Datalab не поддерживает прямой PDF ввод"""
+        return False
+
     def recognize(
-        self, image: Image.Image, prompt: Optional[dict] = None, json_mode: bool = None
+        self,
+        image: Optional[Image.Image],
+        prompt: Optional[dict] = None,
+        json_mode: bool = None,
+        pdf_file_path: Optional[str] = None,
     ) -> str:
         """Распознать изображение через Datalab API"""
+        if image is None:
+            return "[Ошибка: Datalab требует изображение, PDF не поддерживается]"
         import os
         import tempfile
         import time
