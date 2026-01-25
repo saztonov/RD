@@ -5,7 +5,6 @@
 
 import logging
 import sys
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -14,66 +13,17 @@ load_dotenv()  # Загрузка .env до импорта остальных м
 from PySide6.QtWidgets import QApplication
 
 from app.gui.main_window import MainWindow
-
-
-def setup_logging(log_level=logging.DEBUG):
-    """
-    Настройка логирования приложения
-
-    Args:
-        log_level: уровень логирования (DEBUG, INFO, WARNING, ERROR)
-    """
-    # Создаём директорию для логов
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
-
-    # Формат логов
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    date_format = "%Y-%m-%d %H:%M:%S"
-
-    # Настраиваем корневой логгер
-    logging.basicConfig(
-        level=log_level,
-        format=log_format,
-        datefmt=date_format,
-        handlers=[
-            # Вывод в файл
-            logging.FileHandler(log_dir / "app.log", encoding="utf-8", mode="a"),
-            # Вывод в консоль
-            logging.StreamHandler(sys.stdout),
-        ],
-        force=True,  # Принудительная перенастройка
-    )
-
-    # Устанавливаем уровни для отдельных модулей
-    logging.getLogger("app.pdf_utils").setLevel(log_level)
-    logging.getLogger("app.ocr").setLevel(log_level)
-    logging.getLogger("app.gui.main_window").setLevel(log_level)
-
-    # Отключаем DEBUG сообщения от сторонних библиотек
-    logging.getLogger("PIL").setLevel(logging.WARNING)
-    logging.getLogger("botocore").setLevel(logging.WARNING)
-    logging.getLogger("boto3").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("s3transfer").setLevel(logging.WARNING)
-    logging.getLogger("PIL").setLevel(logging.INFO)
-
-    logger = logging.getLogger(__name__)
-    logger.info("=" * 60)
-    logger.info("PDF Annotation Tool - запуск приложения")
-    logger.info(f"Уровень логирования: {logging.getLevelName(log_level)}")
-    logger.info("=" * 60)
+from app.logging_manager import get_logging_manager
 
 
 def main():
     """
     Главная функция - точка входа в приложение
     """
-    # Настраиваем логирование
+    # Настраиваем логирование через менеджер
     # Для отладки используйте logging.DEBUG
-    setup_logging(log_level=logging.INFO)
+    log_manager = get_logging_manager()
+    log_manager.setup(log_level=logging.INFO)
 
     logger = logging.getLogger(__name__)
     

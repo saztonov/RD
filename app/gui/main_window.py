@@ -260,6 +260,11 @@ class MainWindow(
         self.pdf_document = None
         self.annotation_document = None
         self._current_pdf_path = None
+
+        # Вернуть логи в папку проектов или дефолтную
+        from app.logging_manager import get_logging_manager
+        get_logging_manager().switch_to_projects_folder()
+
         self.page_images.clear()
         self._page_images_order.clear()
         self.page_viewer.set_page_image(None, 0)
