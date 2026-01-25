@@ -19,7 +19,8 @@
       "Bash(grep:*)",
       "Bash(find:*)",
       "Bash(where:*)",
-      "Bash(cmd:*)"
+      "Bash(cmd:*)",
+      "Bash(cd:*)"
     ]
   }
 }
