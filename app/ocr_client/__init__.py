@@ -1,6 +1,6 @@
 """Модуль Remote OCR клиента"""
 
-from app.ocr_client.client import RemoteOCRClient, RemoteOcrClient
+from app.ocr_client.client import RemoteOCRClient, RemoteOcrClient, get_or_create_client_id
 from app.ocr_client.exceptions import (
     AuthenticationError,
     PayloadTooLargeError,
@@ -17,4 +17,5 @@ __all__ = [
     "AuthenticationError",
     "PayloadTooLargeError",
     "ServerError",
+    "get_or_create_client_id",
 ]

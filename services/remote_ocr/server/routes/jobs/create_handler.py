@@ -29,6 +29,7 @@ _logger = logging.getLogger(__name__)
 async def create_job_handler(
     document_id: str = Form(...),
     document_name: str = Form(...),
+    client_id: str = Form(...),
     task_name: str = Form(""),
     engine: str = Form("openrouter"),
     text_model: str = Form(""),
@@ -91,6 +92,7 @@ async def create_job_handler(
         task_name=task_name,
         engine=engine,
         r2_prefix=r2_prefix,
+        client_id=client_id,
         status="queued",
         node_id=node_id,
     )

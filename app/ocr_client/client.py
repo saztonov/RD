@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -23,6 +24,59 @@ from app.ocr_client.models import JobInfo
 from rd_core.models import Block
 
 logger = logging.getLogger(__name__)
+
+# Кэшированный client_id
+_cached_client_id: Optional[str] = None
+
+
+def get_or_create_client_id() -> str:
+    """
+    Получить или создать идентификатор клиента.
+
+    Читает из ~/.config/CoreStructure/client_id.txt или генерирует новый UUID.
+    Результат кэшируется в памяти для повторных вызовов.
+
+    Returns:
+        str: Уникальный идентификатор клиента
+    """
+    global _cached_client_id
+    if _cached_client_id:
+        return _cached_client_id
+
+    # Определяем путь к файлу
+    if os.name == "nt":
+        # Windows: %USERPROFILE%\.config\CoreStructure\client_id.txt
+        config_dir = Path.home() / ".config" / "CoreStructure"
+    else:
+        # Linux/macOS: ~/.config/CoreStructure/client_id.txt
+        config_dir = Path.home() / ".config" / "CoreStructure"
+
+    client_id_file = config_dir / "client_id.txt"
+
+    # Пытаемся прочитать существующий
+    if client_id_file.exists():
+        try:
+            client_id = client_id_file.read_text(encoding="utf-8").strip()
+            if client_id:
+                _cached_client_id = client_id
+                logger.info(f"Client ID loaded from {client_id_file}")
+                return client_id
+        except Exception as e:
+            logger.warning(f"Failed to read client_id file: {e}")
+
+    # Генерируем новый
+    client_id = str(uuid.uuid4())
+
+    # Сохраняем
+    try:
+        config_dir.mkdir(parents=True, exist_ok=True)
+        client_id_file.write_text(client_id, encoding="utf-8")
+        logger.info(f"New client ID generated and saved to {client_id_file}")
+    except Exception as e:
+        logger.warning(f"Failed to save client_id file: {e}")
+
+    _cached_client_id = client_id
+    return client_id
 
 
 @dataclass
@@ -176,6 +230,7 @@ class RemoteOCRClient:
         self,
         pdf_path: str,
         selected_blocks: List[Block],
+        client_id: str,
         task_name: str = "",
         engine: str = "openrouter",
         text_model: Optional[str] = None,
@@ -191,6 +246,7 @@ class RemoteOCRClient:
         Args:
             pdf_path: путь к PDF файлу
             selected_blocks: список выбранных блоков
+            client_id: идентификатор клиента
             task_name: название задания
             engine: движок OCR
             text_model: модель для текста
@@ -224,6 +280,7 @@ class RemoteOCRClient:
             form_data = {
                 "document_id": document_id,
                 "document_name": document_name,
+                "client_id": client_id,
                 "task_name": task_name,
                 "engine": engine,
             }

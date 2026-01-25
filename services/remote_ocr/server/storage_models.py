@@ -37,8 +37,13 @@ class Job:
     error_message: Optional[str]
     engine: str
     r2_prefix: str
+    client_id: str  # Идентификатор клиента (из ~/.config/CoreStructure/client_id.txt)
     node_id: Optional[str] = None  # ID узла дерева (для связи с деревом проектов)
     status_message: Optional[str] = None  # Детальное сообщение о прогрессе
+    started_at: Optional[str] = None  # Время начала обработки
+    completed_at: Optional[str] = None  # Время завершения обработки
+    block_stats: Optional[dict] = None  # Статистика блоков
+    phase_data: Optional[dict] = None  # Данные о фазах OCR
     # Вложенные данные (опционально загружаются)
     files: List[JobFile] = field(default_factory=list)
     settings: Optional[JobSettings] = None

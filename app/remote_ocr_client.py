@@ -13,6 +13,7 @@ from app.ocr_client import (
     RemoteOCRError,
     RemoteOcrClient,
     ServerError,
+    get_or_create_client_id,
 )
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "AuthenticationError",
     "PayloadTooLargeError",
     "ServerError",
+    "get_or_create_client_id",
 ]

@@ -43,6 +43,7 @@ def create_job(
     task_name: str,
     engine: str,
     r2_prefix: str,
+    client_id: str,
     status: str = "queued",
     node_id: Optional[str] = None,
 ) -> Job:
@@ -62,6 +63,7 @@ def create_job(
         error_message=None,
         engine=engine,
         r2_prefix=r2_prefix,
+        client_id=client_id,
         node_id=node_id,
     )
 
@@ -78,6 +80,7 @@ def create_job(
         "error_message": job.error_message,
         "engine": job.engine,
         "r2_prefix": job.r2_prefix,
+        "client_id": job.client_id,
     }
     if node_id:
         insert_data["node_id"] = node_id
@@ -300,6 +303,11 @@ def _row_to_job(row: dict) -> Job:
         error_message=row.get("error_message"),
         engine=row.get("engine", ""),
         r2_prefix=row.get("r2_prefix", ""),
+        client_id=row.get("client_id", ""),
         node_id=row.get("node_id"),
         status_message=row.get("status_message"),
+        started_at=row.get("started_at"),
+        completed_at=row.get("completed_at"),
+        block_stats=row.get("block_stats"),
+        phase_data=row.get("phase_data"),
     )

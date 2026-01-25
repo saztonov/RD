@@ -253,14 +253,17 @@ class JobOperationsMixin:
                 AuthenticationError,
                 PayloadTooLargeError,
                 ServerError,
+                get_or_create_client_id,
             )
 
+            client_id = get_or_create_client_id()
             logger.info(
                 f"Начало создания задачи: engine={engine}, blocks={len(blocks)}"
             )
             job_info = client.create_job(
                 pdf_path,
                 blocks,
+                client_id=client_id,
                 task_name=task_name,
                 engine=engine,
                 text_model=text_model,
