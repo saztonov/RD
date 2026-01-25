@@ -10,7 +10,12 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
+import aiofiles
 from aiobotocore.config import AioConfig
+
+# Константы для multipart upload
+MULTIPART_THRESHOLD = 8 * 1024 * 1024  # 8 MB - порог для multipart
+MULTIPART_CHUNKSIZE = 8 * 1024 * 1024  # 8 MB - размер чанка
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +58,7 @@ class AsyncR2Storage:
         return aioboto3.Session()
 
     async def download_file(self, remote_key: str, local_path: str) -> bool:
-        """Асинхронно скачать файл из R2"""
+        """Асинхронно скачать файл из R2 (streaming)"""
         try:
             local_file = Path(local_path)
             local_file.parent.mkdir(parents=True, exist_ok=True)
@@ -71,13 +76,13 @@ class AsyncR2Storage:
                     Bucket=self.bucket_name, Key=remote_key
                 )
 
-                # Streaming download
-                body = response["Body"]
-                data = await body.read()
-                with open(local_file, "wb") as f:
-                    f.write(data)
+                # Streaming download чанками - не загружаем весь файл в память
+                async with aiofiles.open(local_file, "wb") as f:
+                    body = response["Body"]
+                    async for chunk in body.iter_chunks():
+                        await f.write(chunk)
 
-            logger.debug(f"✅ Async download: {remote_key}")
+            logger.debug(f"✅ Async download (streaming): {remote_key}")
             return True
 
         except Exception as e:
@@ -87,13 +92,14 @@ class AsyncR2Storage:
     async def upload_file(
         self, local_path: str, remote_key: str, content_type: Optional[str] = None
     ) -> bool:
-        """Асинхронно загрузить файл в R2"""
+        """Асинхронно загрузить файл в R2 (streaming/multipart для больших файлов)"""
         try:
             local_file = Path(local_path)
             if not local_file.exists():
                 logger.error(f"File not found: {local_path}")
                 return False
 
+            file_size = local_file.stat().st_size
             if content_type is None:
                 content_type = self._guess_content_type(local_file)
 
@@ -106,21 +112,83 @@ class AsyncR2Storage:
                 region_name="auto",
                 config=self._config,
             ) as client:
-                # Streaming upload
-                with open(local_file, "rb") as f:
-                    await client.put_object(
-                        Bucket=self.bucket_name,
-                        Key=remote_key,
-                        Body=f.read(),
-                        ContentType=content_type,
+                if file_size < MULTIPART_THRESHOLD:
+                    # Маленькие файлы - простой upload
+                    async with aiofiles.open(local_file, "rb") as f:
+                        data = await f.read()
+                        await client.put_object(
+                            Bucket=self.bucket_name,
+                            Key=remote_key,
+                            Body=data,
+                            ContentType=content_type,
+                        )
+                else:
+                    # Большие файлы - multipart upload
+                    await self._multipart_upload(
+                        client, local_file, remote_key, content_type
                     )
 
-            logger.debug(f"✅ Async upload: {remote_key}")
+            logger.debug(f"✅ Async upload: {remote_key} ({file_size} bytes)")
             return True
 
         except Exception as e:
             logger.error(f"❌ Async upload error {remote_key}: {e}")
             return False
+
+    async def _multipart_upload(
+        self, client, local_file: Path, remote_key: str, content_type: str
+    ) -> None:
+        """Multipart upload для больших файлов (>8MB)"""
+        # Инициализация multipart upload
+        response = await client.create_multipart_upload(
+            Bucket=self.bucket_name,
+            Key=remote_key,
+            ContentType=content_type,
+        )
+        upload_id = response["UploadId"]
+
+        parts = []
+        part_number = 1
+
+        try:
+            async with aiofiles.open(local_file, "rb") as f:
+                while True:
+                    chunk = await f.read(MULTIPART_CHUNKSIZE)
+                    if not chunk:
+                        break
+
+                    # Upload part
+                    part_response = await client.upload_part(
+                        Bucket=self.bucket_name,
+                        Key=remote_key,
+                        UploadId=upload_id,
+                        PartNumber=part_number,
+                        Body=chunk,
+                    )
+
+                    parts.append({
+                        "PartNumber": part_number,
+                        "ETag": part_response["ETag"],
+                    })
+                    part_number += 1
+
+            # Complete multipart upload
+            await client.complete_multipart_upload(
+                Bucket=self.bucket_name,
+                Key=remote_key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+            logger.debug(f"✅ Multipart upload completed: {remote_key} ({part_number - 1} parts)")
+
+        except Exception:
+            # Abort on error - очищаем незавершённый multipart
+            await client.abort_multipart_upload(
+                Bucket=self.bucket_name,
+                Key=remote_key,
+                UploadId=upload_id,
+            )
+            raise
 
     async def download_text(self, remote_key: str) -> Optional[str]:
         """Асинхронно скачать текст из R2"""

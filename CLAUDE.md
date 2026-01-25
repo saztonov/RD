@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Stack: PySide6 (Qt 6), FastAPI, Celery + Redis, Supabase (PostgreSQL), Cloudflare R2.
 
+## Language / Язык
+
+**Все планы и описания задач выводить на русском языке.**
+
 ## Commands
 
 ### Desktop Client
@@ -50,7 +54,7 @@ Desktop Client (PySide6)
 | Directory | Purpose |
 |-----------|---------|
 | `app/` | Desktop GUI (PySide6). Entry: `app/main.py` |
-| `app/gui/` | 57 GUI modules. Core: `main_window.py`, `page_viewer.py` |
+| `app/gui/` | GUI modules (~80). Core: `main_window.py`, `page_viewer.py` |
 | `rd_core/` | Core logic: models, PDF utils, R2 storage, OCR engines |
 | `rd_core/ocr/` | OCR backends (OpenRouter, Datalab). Protocol: `base.py` |
 | `services/remote_ocr/server/` | FastAPI server + Celery tasks |
@@ -65,30 +69,52 @@ Desktop Client (PySide6)
 
 **Context Manager (PDF)**: `PDFDocument` in `rd_core/pdf_utils.py` uses `__enter__`/`__exit__` for resource cleanup.
 
-### Data Models (`rd_core/models.py`)
+### Data Models (`rd_core/models/`)
 
 ```python
-Block      # Annotation unit: id, page_index, coords_px, coords_norm, block_type, shape_type, polygon_points, ocr_text
-Document   # Collection of pages
-Page       # Page with blocks list
+Block      # block.py - annotation with ArmorID, coords, groups, categories
+Document   # document.py - collection of pages
+Page       # document.py - page with blocks list
+BlockType  # enums.py - TEXT, IMAGE
+ShapeType  # enums.py - RECTANGLE, POLYGON
 ```
 
-Block types: `TEXT`, `TABLE`, `IMAGE`. Shape types: `RECTANGLE`, `POLYGON`.
+### Database Tables (Supabase v2)
 
-### Database Tables (Supabase)
+- `jobs` - OCR tasks (status: draft/queued/processing/done/error/paused)
+- `job_files` - Job files (pdf, blocks, results, crops)
+- `job_settings` - Model settings per job
+- `tree_nodes` - Project hierarchy v2 (path, depth, pdf_status, is_locked)
+- `node_files` - Node files (replaces tree_documents)
 
-- `jobs` - OCR task records (status: draft/queued/processing/done/error/paused)
-- `job_files` - File references (pdf, blocks, results, crops)
-- `job_settings` - Model selections per job
-- `tree_nodes` - Hierarchical project structure
-- `tree_documents` - Document versioning
+node_type v2: `folder` | `document` (legacy types in attributes.legacy_node_type)
 
-### OCR Job Lifecycle
+### Server Components v2
+
+| Module | Purpose |
+|--------|---------|
+| `task_ocr_twopass.py` | Two-pass OCR (memory-efficient) |
+| `pdf_streaming_twopass.py` | Streaming PDF for large files |
+| `async_r2_storage.py` | Async R2 operations |
+| `block_verification.py` | Block coordinate verification |
+
+### Client Caching & Sync
+
+| Module | Purpose |
+|--------|---------|
+| `annotation_cache.py` | Annotation cache with R2 sync |
+| `sync_queue.py` | Offline sync queue |
+| `tree_cache_ops.py` | Tree operations caching |
+
+### OCR Job Lifecycle (Two-Pass)
 
 1. User selects blocks → `RemoteOCRClient.create_job()` → POST /jobs
-2. Server stores PDF + blocks.json → R2, creates job → Supabase (status=queued)
-3. Celery worker: download → crop → OCR → merge → upload results → status=done
-4. Client polls GET /jobs/{id} → downloads result
+2. Server: PDF + blocks.json → R2, job → Supabase (status=queued)
+3. Celery worker two-pass:
+   - PASS 1: Stream PDF → crops to disk (memory-efficient)
+   - PASS 2: OCR from manifest → merge results
+4. Upload results → status=done
+5. Client polls GET /jobs/{id} → downloads result
 
 ## Extension Points
 
