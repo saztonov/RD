@@ -3,7 +3,14 @@ from __future__ import annotations
 
 from celery import Celery
 
+from .logging_config import setup_logging
 from .settings import settings
+
+# Инициализация логирования для воркера
+setup_logging()
+
+# Импорт signals для регистрации handlers (важно: после setup_logging)
+from . import celery_signals  # noqa: F401, E402
 
 celery_app = Celery("ocr_worker", broker=settings.redis_url, backend=settings.redis_url)
 

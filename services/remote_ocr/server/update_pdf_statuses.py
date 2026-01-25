@@ -2,8 +2,6 @@
 Скрипт для обновления статусов PDF документов
 Запускается по cron ежедневно в 02:00
 """
-import json
-import logging
 import os
 import sys
 from pathlib import Path
@@ -14,10 +12,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from rd_core.pdf_status import calculate_pdf_status
 from rd_core.r2_storage import R2Storage
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def update_all_pdf_statuses():

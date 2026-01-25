@@ -47,16 +47,6 @@ ALLOWED_CHILDREN: Dict[Optional[NodeType], List[NodeType]] = {
     NodeType.DOCUMENT: [],  # Документы - листовые узлы
 }
 
-# Legacy mapping для обратной совместимости (deprecated)
-LEGACY_ALLOWED_CHILDREN: Dict[Optional[str], List[str]] = {
-    None: ["project"],
-    "project": ["stage"],
-    "stage": ["section"],
-    "section": ["task_folder"],
-    "task_folder": ["document"],
-    "document": [],
-}
-
 
 class FileType(str, Enum):
     PDF = "pdf"

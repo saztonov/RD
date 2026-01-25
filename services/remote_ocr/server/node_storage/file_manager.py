@@ -1,14 +1,14 @@
 """Операции с файлами узлов (node_files)"""
 from __future__ import annotations
 
-import logging
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from services.remote_ocr.server.logging_config import get_logger
 from services.remote_ocr.server.storage_client import get_client
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def get_node_files(node_id: str, file_type: Optional[str] = None) -> List[Dict]:

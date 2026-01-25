@@ -1,12 +1,12 @@
 """Обработчики чтения задач OCR"""
 import json
-import logging
 import os
 from datetime import datetime
 from typing import Optional
 
 from fastapi import Header, HTTPException, Query
 
+from services.remote_ocr.server.logging_config import get_logger
 from services.remote_ocr.server.routes.common import (
     check_api_key,
     get_file_icon,
@@ -20,7 +20,7 @@ from services.remote_ocr.server.storage import (
     list_jobs_changed_since,
 )
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 def list_jobs_handler(

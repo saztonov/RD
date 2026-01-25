@@ -1,6 +1,15 @@
-"""Модуль Remote OCR клиента"""
+"""
+Модуль Remote OCR клиента.
 
-from app.ocr_client.client import RemoteOCRClient, RemoteOcrClient, get_or_create_client_id
+Компоненты:
+- client.py - RemoteOCRClient
+- utils.py - get_or_create_client_id, hash_pdf
+- models.py - JobInfo
+- exceptions.py - RemoteOCRError, AuthenticationError, etc.
+- http_pool.py - Connection pooling
+"""
+
+from app.ocr_client.client import RemoteOCRClient, RemoteOcrClient
 from app.ocr_client.exceptions import (
     AuthenticationError,
     PayloadTooLargeError,
@@ -8,6 +17,7 @@ from app.ocr_client.exceptions import (
     ServerError,
 )
 from app.ocr_client.models import JobInfo
+from app.ocr_client.utils import get_or_create_client_id, hash_pdf
 
 __all__ = [
     "RemoteOCRClient",
@@ -18,4 +28,5 @@ __all__ = [
     "PayloadTooLargeError",
     "ServerError",
     "get_or_create_client_id",
+    "hash_pdf",
 ]

@@ -5,7 +5,9 @@ import os
 import sys
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 try:
     import psutil

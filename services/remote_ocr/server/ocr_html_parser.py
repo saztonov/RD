@@ -1,7 +1,6 @@
 """HTML парсинг для OCR результатов"""
 from __future__ import annotations
 
-import logging
 import re
 from typing import Optional
 
@@ -11,8 +10,9 @@ from .block_id_matcher import (
     match_armor_code,
     match_uuid,
 )
+from .logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _extract_blocks_by_div_structure(

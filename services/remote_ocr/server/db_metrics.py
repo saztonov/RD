@@ -1,13 +1,14 @@
 """Database call metrics tracking per job"""
 from __future__ import annotations
 
-import logging
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

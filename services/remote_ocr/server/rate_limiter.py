@@ -1,11 +1,12 @@
 """Глобальный rate limiter для Datalab API и OpenRouter"""
 from __future__ import annotations
 
-import logging
 import threading
 import time
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Глобальный семафор для ограничения ВСЕХ параллельных OCR запросов
 _global_ocr_semaphore: threading.Semaphore | None = None

@@ -2,16 +2,16 @@
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from datetime import datetime
 from typing import Any, List, Optional
 
+from .logging_config import get_logger
 from .queue_checker import _get_redis_client
 from .storage_client import get_client
 from .storage_models import Job, JobFile, JobSettings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Redis кеш для list_jobs() - TTL 5 секунд
 JOBS_CACHE_TTL = 5

@@ -3,10 +3,13 @@ import threading
 
 from supabase import Client, create_client
 
+from .logging_config import get_logger
 from .settings import settings
 
 # Thread-local storage для Supabase клиентов
 _thread_local = threading.local()
+
+logger = get_logger(__name__)
 
 
 def get_client() -> Client:
@@ -22,14 +25,10 @@ def get_client() -> Client:
 
 def init_db() -> None:
     """Инициализировать подключение к Supabase (проверка соединения)"""
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     try:
         client = get_client()
         client.table("jobs").select("id").limit(1).execute()
-        logger.info("✅ Supabase: подключение установлено")
+        logger.info("Supabase: подключение установлено")
     except Exception as e:
-        logger.error(f"❌ Supabase: ошибка подключения: {e}")
+        logger.error(f"Supabase: ошибка подключения: {e}")
         raise

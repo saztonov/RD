@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 from pathlib import Path
 
+from .logging_config import get_logger
 from .ocr_result_merger import merge_ocr_results
 from .storage import Job, get_node_full_path, get_node_pdf_r2_key
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def generate_blocks_json(

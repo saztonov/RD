@@ -1,11 +1,11 @@
 """Обработчик создания задачи OCR"""
 import json
-import logging
 import uuid
 from typing import Optional
 
 from fastapi import File, Form, Header, HTTPException, UploadFile
 
+from services.remote_ocr.server.logging_config import get_logger
 from services.remote_ocr.server.queue_checker import check_queue_capacity
 from services.remote_ocr.server.routes.common import (
     check_api_key,
@@ -23,7 +23,7 @@ from services.remote_ocr.server.storage import (
 )
 from services.remote_ocr.server.tasks import run_ocr_task
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 async def create_job_handler(

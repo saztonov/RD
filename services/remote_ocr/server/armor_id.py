@@ -3,6 +3,8 @@
 import itertools
 from typing import List, Optional, Tuple
 
+from .string_utils import levenshtein_ratio
+
 
 class ArmorID:
     """
@@ -182,37 +184,6 @@ class ArmorID:
         return False, None, "Не удалось восстановить"
 
     @classmethod
-    def _levenshtein_ratio(cls, s1: str, s2: str) -> float:
-        """
-        Вычислить схожесть двух строк (0-100%) на основе расстояния Левенштейна.
-        """
-        if not s1 or not s2:
-            return 0.0
-        if s1 == s2:
-            return 100.0
-
-        len1, len2 = len(s1), len(s2)
-
-        # Матрица расстояний (оптимизация памяти - только 2 строки)
-        prev = list(range(len2 + 1))
-        curr = [0] * (len2 + 1)
-
-        for i in range(1, len1 + 1):
-            curr[0] = i
-            for j in range(1, len2 + 1):
-                cost = 0 if s1[i - 1] == s2[j - 1] else 1
-                curr[j] = min(
-                    prev[j] + 1,  # удаление
-                    curr[j - 1] + 1,  # вставка
-                    prev[j - 1] + cost,  # замена
-                )
-            prev, curr = curr, prev
-
-        distance = prev[len2]
-        max_len = max(len1, len2)
-        return ((max_len - distance) / max_len) * 100
-
-    @classmethod
     def match_to_uuid(
         cls, armor_code: str, expected_uuids: List[str], score_cutoff: float = 70.0
     ) -> Tuple[Optional[str], float]:
@@ -264,7 +235,7 @@ class ArmorID:
                 continue
 
             # Сравниваем очищенные коды
-            score = cls._levenshtein_ratio(input_clean, expected_clean)
+            score = levenshtein_ratio(input_clean, expected_clean)
 
             if score > best_score:
                 best_score = score

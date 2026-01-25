@@ -1,21 +1,21 @@
 """Двухпроходный OCR алгоритм (экономия памяти)"""
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
+from .debounced_updater import get_debounced_updater
+from .logging_config import get_logger
 from .memory_utils import log_memory_delta
 from .pdf_streaming_twopass import (
     cleanup_manifest_files,
     pass1_prepare_crops,
     pass2_ocr_from_manifest,
 )
-from .debounced_updater import get_debounced_updater
 from .storage import Job, is_job_paused
 from .task_helpers import check_paused
 from .task_upload import copy_crops_to_final
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def run_two_pass_ocr(

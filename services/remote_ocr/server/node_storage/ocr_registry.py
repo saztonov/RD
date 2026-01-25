@@ -2,19 +2,19 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import sys
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Dict, List
 
+from services.remote_ocr.server.logging_config import get_logger
 from services.remote_ocr.server.node_storage.file_manager import (
     add_node_file,
     get_node_pdf_r2_key,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:

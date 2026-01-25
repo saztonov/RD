@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from PIL import Image
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def verify_and_retry_missing_blocks(

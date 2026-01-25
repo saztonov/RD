@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 import tempfile
 import traceback
@@ -11,6 +10,7 @@ from pathlib import Path
 from .celery_app import celery_app
 from .db_metrics import get_metrics_collector
 from .debounced_updater import cleanup_updater
+from .logging_config import get_logger
 from .memory_utils import force_gc, log_memory, log_memory_delta
 from .rate_limiter import get_datalab_limiter
 from .settings import settings
@@ -21,7 +21,7 @@ from .task_results import generate_results
 from .task_upload import upload_results_to_r2
 from .worker_pdf import clear_page_size_cache
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @celery_app.task(bind=True, name="run_ocr_task", max_retries=3, rate_limit="4/m")

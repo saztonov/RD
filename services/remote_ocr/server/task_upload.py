@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 from pathlib import Path
 
+from .logging_config import get_logger
 from .storage import Job, add_job_file, delete_job_files, get_node_pdf_r2_key
 from .task_helpers import get_r2_storage
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _load_blocks_metadata(work_dir: Path) -> tuple:

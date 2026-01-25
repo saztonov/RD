@@ -1,9 +1,9 @@
 """Обработчик удаления задачи OCR"""
-import logging
 from typing import Optional
 
 from fastapi import Header, HTTPException
 
+from services.remote_ocr.server.logging_config import get_logger
 from services.remote_ocr.server.routes.common import (
     check_api_key,
     get_r2_sync_client,
@@ -13,7 +13,7 @@ from services.remote_ocr.server.storage import (
     get_job,
 )
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 
 def delete_job_handler(

@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+# NOTE: settings.py загружается раньше logging_config, поэтому используем стандартный logging
 logger = logging.getLogger(__name__)
 
 

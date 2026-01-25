@@ -1,13 +1,14 @@
 """Debounced job status updater to reduce Supabase load"""
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

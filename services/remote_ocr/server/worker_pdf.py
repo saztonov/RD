@@ -1,9 +1,10 @@
 """PDF-утилиты для OCR воркера"""
 
-import logging
 from typing import Dict
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Кэш размеров страниц PDF
 _page_size_cache: Dict[str, Dict[int, tuple]] = {}

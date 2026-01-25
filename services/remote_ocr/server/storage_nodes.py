@@ -4,6 +4,15 @@
 DEPRECATED: Этот модуль перемещён в services.remote_ocr.server.node_storage.
 Этот файл сохранён для обратной совместимости.
 """
+import warnings
+
+warnings.warn(
+    "Модуль services.remote_ocr.server.storage_nodes устарел. "
+    "Используйте services.remote_ocr.server.node_storage вместо него.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 # Реэкспорт из нового модуля
 from services.remote_ocr.server.node_storage import (
     add_node_file,

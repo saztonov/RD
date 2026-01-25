@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from pathlib import Path
 from typing import List, Optional
@@ -13,11 +12,13 @@ from typing import List, Optional
 import aiofiles
 from aiobotocore.config import AioConfig
 
+from .logging_config import get_logger
+
 # Константы для multipart upload
 MULTIPART_THRESHOLD = 8 * 1024 * 1024  # 8 MB - порог для multipart
 MULTIPART_CHUNKSIZE = 8 * 1024 * 1024  # 8 MB - размер чанка
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AsyncR2Storage:
@@ -86,7 +87,16 @@ class AsyncR2Storage:
             return True
 
         except Exception as e:
-            logger.error(f"❌ Async download error {remote_key}: {e}")
+            logger.error(
+                f"R2 download failed: {remote_key}",
+                extra={
+                    "event": "r2_download_error",
+                    "remote_key": remote_key,
+                    "local_path": local_path,
+                    "exception_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
             return False
 
     async def upload_file(
@@ -96,7 +106,14 @@ class AsyncR2Storage:
         try:
             local_file = Path(local_path)
             if not local_file.exists():
-                logger.error(f"File not found: {local_path}")
+                logger.error(
+                    f"R2 upload failed: file not found",
+                    extra={
+                        "event": "r2_upload_file_not_found",
+                        "local_path": local_path,
+                        "remote_key": remote_key,
+                    },
+                )
                 return False
 
             file_size = local_file.stat().st_size
@@ -132,7 +149,17 @@ class AsyncR2Storage:
             return True
 
         except Exception as e:
-            logger.error(f"❌ Async upload error {remote_key}: {e}")
+            logger.error(
+                f"R2 upload failed: {remote_key}",
+                extra={
+                    "event": "r2_upload_error",
+                    "remote_key": remote_key,
+                    "local_path": local_path,
+                    "file_size": file_size if "file_size" in dir() else None,
+                    "exception_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
             return False
 
     async def _multipart_upload(
@@ -209,7 +236,15 @@ class AsyncR2Storage:
                     data = await stream.read()
                     return data.decode("utf-8")
         except Exception as e:
-            logger.error(f"❌ Async download_text error {remote_key}: {e}")
+            logger.error(
+                f"R2 download_text failed: {remote_key}",
+                extra={
+                    "event": "r2_download_text_error",
+                    "remote_key": remote_key,
+                    "exception_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
             return None
 
     async def upload_text(
@@ -240,7 +275,15 @@ class AsyncR2Storage:
                 )
             return True
         except Exception as e:
-            logger.error(f"❌ Async upload_text error {remote_key}: {e}")
+            logger.error(
+                f"R2 upload_text failed: {remote_key}",
+                extra={
+                    "event": "r2_upload_text_error",
+                    "remote_key": remote_key,
+                    "exception_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
             return False
 
     async def exists(self, remote_key: str) -> bool:
@@ -275,7 +318,15 @@ class AsyncR2Storage:
                 await client.delete_object(Bucket=self.bucket_name, Key=remote_key)
             return True
         except Exception as e:
-            logger.error(f"❌ Async delete error {remote_key}: {e}")
+            logger.error(
+                f"R2 delete failed: {remote_key}",
+                extra={
+                    "event": "r2_delete_error",
+                    "remote_key": remote_key,
+                    "exception_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
             return False
 
     async def list_objects(self, prefix: str = "") -> List[str]:
@@ -297,7 +348,15 @@ class AsyncR2Storage:
                     return []
                 return [obj["Key"] for obj in response["Contents"]]
         except Exception as e:
-            logger.error(f"❌ Async list error: {e}")
+            logger.error(
+                f"R2 list_objects failed",
+                extra={
+                    "event": "r2_list_error",
+                    "prefix": prefix,
+                    "exception_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
             return []
 
     async def download_files_batch(
@@ -481,5 +540,14 @@ class AsyncR2StorageSync:
                 ExpiresIn=expiration,
             )
         except Exception as e:
-            logger.error(f"Presigned URL error: {e}")
+            logger.error(
+                f"R2 presigned URL generation failed: {remote_key}",
+                extra={
+                    "event": "r2_presigned_url_error",
+                    "remote_key": remote_key,
+                    "expiration": expiration,
+                    "exception_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
             return None

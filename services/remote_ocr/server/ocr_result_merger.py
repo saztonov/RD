@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -20,9 +19,10 @@ from rd_core.ocr.generator_common import (
     sanitize_html,
 )
 
+from .logging_config import get_logger
 from .ocr_html_parser import build_segments_from_html
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _build_crop_url(block_id: str, r2_public_url: str, project_name: str) -> str:

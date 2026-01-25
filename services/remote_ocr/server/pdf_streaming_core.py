@@ -5,16 +5,16 @@ Streaming обработка PDF через fitz (PyMuPDF)
 from __future__ import annotations
 
 import gc
-import logging
 from typing import Dict, List, Optional, Tuple
 
 import fitz
 from PIL import Image, ImageDraw
 
+from .logging_config import get_logger
 from .memory_utils import get_pil_image_size_mb
 from .settings import settings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Константы из настроек
 PDF_RENDER_DPI = settings.pdf_render_dpi

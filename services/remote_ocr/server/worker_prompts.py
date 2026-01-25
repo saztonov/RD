@@ -1,11 +1,12 @@
 """Промпты и парсинг для OCR воркера"""
 
 import json
-import logging
 import re
 from typing import Dict, List, Optional
 
-logger = logging.getLogger(__name__)
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_image_block_prompt(

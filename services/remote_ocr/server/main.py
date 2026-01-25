@@ -1,7 +1,7 @@
 """FastAPI сервер для удалённого OCR (все данные через Supabase + R2)"""
 from __future__ import annotations
 
-import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -9,43 +9,96 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .logging_config import get_logger, setup_logging
 from .routes.jobs import router as jobs_router
 from .routes.storage import router as storage_router
 from .routes.tree import router as tree_router
 from .settings import settings
 from .storage import init_db
 
-_logger = logging.getLogger(__name__)
+# Инициализация логирования при импорте модуля
+setup_logging()
+
+_logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle: инициализация БД (воркер запускается отдельно через Celery)"""
+    # Логируем конфигурацию при старте (без секретов)
+    _logger.info(
+        "Server starting with configuration",
+        extra={
+            "event": "server_startup",
+            "config": {
+                "max_concurrent_jobs": settings.max_concurrent_jobs,
+                "ocr_threads_per_job": settings.ocr_threads_per_job,
+                "max_global_ocr_requests": settings.max_global_ocr_requests,
+                "task_soft_timeout": settings.task_soft_timeout,
+                "task_hard_timeout": settings.task_hard_timeout,
+                "max_queue_size": settings.max_queue_size,
+                "has_openrouter_key": bool(settings.openrouter_api_key),
+                "has_datalab_key": bool(settings.datalab_api_key),
+            },
+        },
+    )
+
     init_db()
     yield
+
+    _logger.info("Server shutting down", extra={"event": "server_shutdown"})
 
 
 app = FastAPI(title="rd-remote-ocr", lifespan=lifespan)
 
 
-class LogRequestMiddleware(BaseHTTPMiddleware):
+class RequestTimingMiddleware(BaseHTTPMiddleware):
+    """Middleware для логирования времени выполнения всех запросов."""
+
     async def dispatch(self, request: Request, call_next):
-        if request.method == "POST" and "/jobs" in str(request.url.path):
-            content_type = request.headers.get("content-type", "")
-            _logger.info(f"POST /jobs Content-Type: {content_type}")
+        start_time = time.time()
+
+        method = request.method
+        path = request.url.path
+        client_ip = request.client.host if request.client else "unknown"
+
         try:
             response = await call_next(request)
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            log_data = {
+                "event": "http_request",
+                "method": method,
+                "path": path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+                "client_ip": client_ip,
+            }
+
             if response.status_code >= 400:
-                _logger.error(
-                    f"{request.method} {request.url.path} -> {response.status_code}"
-                )
+                _logger.warning(f"{method} {path} -> {response.status_code}", extra=log_data)
+            else:
+                _logger.info(f"{method} {path} -> {response.status_code}", extra=log_data)
+
             return response
+
         except Exception as e:
-            _logger.exception(f"Exception in {request.method} {request.url.path}: {e}")
+            duration_ms = int((time.time() - start_time) * 1000)
+            _logger.exception(
+                f"Request failed: {method} {path}",
+                extra={
+                    "event": "http_request_error",
+                    "method": method,
+                    "path": path,
+                    "duration_ms": duration_ms,
+                    "client_ip": client_ip,
+                    "exception_type": type(e).__name__,
+                },
+            )
             raise
 
 
-app.add_middleware(LogRequestMiddleware)
+app.add_middleware(RequestTimingMiddleware)
 
 
 @app.exception_handler(RequestValidationError)
