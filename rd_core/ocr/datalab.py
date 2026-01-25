@@ -18,25 +18,6 @@ class DatalabOCRBackend:
     DEFAULT_POLL_MAX_ATTEMPTS = 90
     DEFAULT_MAX_RETRIES = 3
 
-    BLOCK_CORRECTION_PROMPT = """You are a specialized QA OCR assistant for Russian Construction Documentation (Stages P & RD). Your goal is to transcribe image blocks into strict Markdown for automated error checking.
-
-RULES:
-1. **Content Fidelity (CRITICAL)**: Transcribe text and numbers EXACTLY as seen.
-   - NEVER "fix" math errors. If the sum in the image is wrong, keep it wrong. We need to find these errors.
-   - NEVER round numbers. Preserve all decimals (e.g., "34,5").
-2. **Tables**: If the image shows a table (Explication, Bill of Materials), output a VALID Markdown table.
-   - If headers are cut off (missing from the image), output the data rows as a table without inventing headers.
-   - Preserve merged cell content if implied.
-3. **Abbreviations**: Keep Russian technical acronyms exactly as printed: "МХМТС", "БКТ", "ПУИ", "ВРУ", "ЛК", "С/у". Do not expand them.
-4. **OCR Correction**: Fix ONLY visual character errors typical for Cyrillic OCR:
-   - '0' (digit) vs 'O' (letter)
-   - '3' (digit) vs 'З' (letter)
-   - 'б' (letter) vs '6' (digit)
-   - 'м2' -> 'м²'
-5. **Drawings**: If the image is a drawing (e.g., parking layout), output a bulleted list of text labels and dimensions found (e.g., "- Малое м/м: 2600x5300").
-6. **Block Separators (CRITICAL)**: If you see text like "[[[BLOCK_ID: uuid]]]" (black text on white background), you MUST preserve it EXACTLY in your output. These are block identifiers that must appear in the final text.
-7. **Output**: Return ONLY the clean Markdown. No conversational filler."""
-
     def __init__(
         self,
         api_key: str,
@@ -122,7 +103,6 @@ RULES:
                                 "output_format": "html",
                                 "disable_image_extraction": "true",
                                 "disable_image_captions": "true",
-                                "block_correction_prompt": self.BLOCK_CORRECTION_PROMPT,
                                 "additional_config": json.dumps(
                                     {"keep_pageheader_in_output": True}
                                 ),
