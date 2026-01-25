@@ -426,6 +426,18 @@ def generate_md_from_pages(
         # Собираем данные штампа
         inherited_stamp_data = collect_inheritable_stamp_data(pages)
 
+        # Собираем связи IMAGE→TEXT для объединения
+        image_to_text = _collect_image_text_links_from_pages(pages)
+
+        # Индекс всех блоков для быстрого доступа по ID
+        all_blocks_index: Dict[str, Any] = {}
+        for page in pages:
+            for block in page.blocks:
+                all_blocks_index[block.id] = block
+
+        # TEXT блоки, которые будут встроены в IMAGE (не выводить отдельно)
+        embedded_text_ids = set(image_to_text.values())
+
         md_parts = []
 
         # === HEADER ===
@@ -483,6 +495,10 @@ def generate_md_from_pages(
                 if getattr(block, "category_code", None) == "stamp":
                     continue
 
+                # Пропускаем TEXT блоки, которые встроены в IMAGE
+                if block.id in embedded_text_ids:
+                    continue
+
                 block_count += 1
                 armor_code = get_block_armor_id(block.id)
                 block_type = block.block_type.value.upper()
@@ -493,9 +509,10 @@ def generate_md_from_pages(
                 # Метаданные - компактно в одну строку под заголовком
                 meta_parts = []
 
-                # Linked block
+                # Linked block - НЕ выводим для IMAGE с встроенным TEXT
                 linked_id = getattr(block, "linked_block_id", None)
-                if linked_id:
+                has_embedded_text = block.id in image_to_text
+                if linked_id and not has_embedded_text:
                     meta_parts.append(f"→{get_block_armor_id(linked_id)}")
 
                 # Grouped blocks
@@ -513,6 +530,17 @@ def generate_md_from_pages(
                 content = _process_ocr_content(block.ocr_text)
                 if content:
                     md_parts.append(content)
+
+                # Для IMAGE блоков - добавляем встроенный текст из связанного TEXT блока
+                if has_embedded_text:
+                    text_block_id = image_to_text[block.id]
+                    embedded_content = _get_text_block_content(
+                        text_block_id, all_blocks_index, is_dict=False
+                    )
+                    if embedded_content:
+                        md_parts.append("")
+                        md_parts.append("**Распознанный OCR текст на чертеже:**")
+                        md_parts.append(embedded_content)
 
                 md_parts.append("")
 
@@ -579,6 +607,21 @@ def generate_md_from_result(
                     groups[group_id] = []
                 groups[group_id].append(blk.get("id", ""))
 
+    # Собираем связи IMAGE→TEXT для объединения
+    pages_list = result.get("pages", [])
+    image_to_text = _collect_image_text_links_from_result(pages_list)
+
+    # Индекс всех блоков для быстрого доступа по ID
+    all_blocks_index: Dict[str, Dict] = {}
+    for page in pages_list:
+        for blk in page.get("blocks", []):
+            block_id = blk.get("id", "")
+            if block_id:
+                all_blocks_index[block_id] = blk
+
+    # TEXT блоки, которые будут встроены в IMAGE (не выводить отдельно)
+    embedded_text_ids = set(image_to_text.values())
+
     # === БЛОКИ - группировка по страницам ===
     block_count = 0
     current_page_num = None
@@ -625,6 +668,11 @@ def generate_md_from_result(
                 continue
 
             block_id = blk.get("id", "")
+
+            # Пропускаем TEXT блоки, которые встроены в IMAGE
+            if block_id in embedded_text_ids:
+                continue
+
             block_type = blk.get("block_type", "text").upper()
             ocr_html = blk.get("ocr_html", "")
             ocr_text = blk.get("ocr_text", "")
@@ -637,8 +685,9 @@ def generate_md_from_result(
             # Метаданные - компактно в одну строку под заголовком
             meta_parts = []
 
-            # Linked block
-            if blk.get("linked_block_id"):
+            # Linked block - НЕ выводим для IMAGE с встроенным TEXT
+            has_embedded_text = block_id in image_to_text
+            if blk.get("linked_block_id") and not has_embedded_text:
                 meta_parts.append(f"→{blk['linked_block_id']}")
 
             # Grouped blocks
@@ -663,6 +712,17 @@ def generate_md_from_result(
                 md_parts.append(content)
             else:
                 md_parts.append("*(нет данных)*")
+
+            # Для IMAGE блоков - добавляем встроенный текст из связанного TEXT блока
+            if has_embedded_text:
+                text_block_id = image_to_text[block_id]
+                embedded_content = _get_text_block_content(
+                    text_block_id, all_blocks_index, is_dict=True
+                )
+                if embedded_content:
+                    md_parts.append("")
+                    md_parts.append("**Распознанный OCR текст на чертеже:**")
+                    md_parts.append(embedded_content)
 
             md_parts.append("")
 
