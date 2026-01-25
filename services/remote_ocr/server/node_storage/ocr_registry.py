@@ -115,6 +115,23 @@ def register_ocr_results_to_node(node_id: str, doc_name: str, work_dir) -> int:
             f"⚠️ document.md не найден для регистрации в node_files: {document_md}"
         )
 
+    # _blocks.json -> {doc_stem}_blocks.json (file_type=blocks_index)
+    blocks_json = work_path / "_blocks.json"
+    if blocks_json.exists():
+        blocks_filename = f"{doc_stem}_blocks.json"
+        add_node_file(
+            node_id,
+            "blocks_index",
+            f"{tree_prefix}/{blocks_filename}",
+            blocks_filename,
+            blocks_json.stat().st_size,
+            "application/json",
+        )
+        registered += 1
+        logger.info(
+            f"✅ Зарегистрирован _blocks.json в node_files: {blocks_filename} (file_type=blocks_index)"
+        )
+
     # Собираем все кропы из crops/ и crops_final/
     all_crop_files: List[Path] = []
     for crops_subdir in ["crops", "crops_final"]:

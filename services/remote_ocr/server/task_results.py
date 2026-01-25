@@ -3,12 +3,59 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from .ocr_result_merger import merge_ocr_results
 from .storage import Job, get_node_full_path, get_node_pdf_r2_key
 
 logger = logging.getLogger(__name__)
+
+
+def generate_blocks_json(
+    blocks: list,
+    work_dir: Path,
+    r2_prefix: str,
+) -> Path:
+    """Генерация _blocks.json с информацией об IMAGE блоках и их кропах.
+
+    Args:
+        blocks: список Block объектов
+        work_dir: рабочая директория
+        r2_prefix: префикс R2 (tree_docs/{node_id})
+
+    Returns:
+        Path к созданному файлу
+    """
+    from rd_core.models.enums import BlockType
+
+    r2_public_url = os.getenv("R2_PUBLIC_URL", "https://rd1.svarovsky.ru").rstrip("/")
+
+    image_blocks = []
+    for block in blocks:
+        if block.block_type == BlockType.IMAGE:
+            # Исключаем штампы (у них нет кропов в R2)
+            if getattr(block, "category_code", None) == "stamp":
+                continue
+
+            crop_url = f"{r2_public_url}/{r2_prefix}/crops/{block.id}.pdf"
+
+            image_blocks.append({
+                "id": block.id,
+                "page_index": block.page_index,
+                "block_type": "image",
+                "category_code": getattr(block, "category_code", None),
+                "crop_url": crop_url,
+            })
+
+    blocks_json_path = work_dir / "_blocks.json"
+    with open(blocks_json_path, "w", encoding="utf-8") as f:
+        json.dump({"blocks": image_blocks}, f, ensure_ascii=False, indent=2)
+
+    logger.info(
+        f"_blocks.json сгенерирован: {blocks_json_path} ({len(image_blocks)} IMAGE блоков)"
+    )
+    return blocks_json_path
 
 
 def generate_results(
@@ -133,6 +180,12 @@ def generate_results(
         )
     except Exception as e:
         logger.warning(f"Ошибка генерации result.json: {e}")
+
+    # Генерация _blocks.json (список IMAGE блоков с URL кропов)
+    try:
+        generate_blocks_json(blocks, work_dir, r2_prefix)
+    except Exception as e:
+        logger.warning(f"Ошибка генерации _blocks.json: {e}")
 
     # Верификация и повторное распознавание пропущенных блоков
     if datalab_backend and result_path.exists():

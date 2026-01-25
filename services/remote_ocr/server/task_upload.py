@@ -131,6 +131,16 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     else:
         logger.warning(f"document.md не найден для загрузки в R2: {md_path}")
 
+    # _blocks.json -> {doc_stem}_blocks.json (индекс IMAGE блоков с URL кропов)
+    blocks_json_path = work_dir / "_blocks.json"
+    if blocks_json_path.exists():
+        blocks_filename = f"{doc_stem}_blocks.json"
+        r2_key = f"{r2_prefix}/{blocks_filename}"
+        files_to_upload.append((
+            str(blocks_json_path), r2_key, None,
+            "blocks_index", blocks_filename, blocks_json_path.stat().st_size, None
+        ))
+
     # crops/ (проверяем оба варианта: crops и crops_final)
     # Исключаем блоки-штампы (category_code='stamp')
     for crops_subdir in ["crops", "crops_final"]:
