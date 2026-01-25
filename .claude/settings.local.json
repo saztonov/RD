@@ -20,7 +20,10 @@
       "Bash(find:*)",
       "Bash(where:*)",
       "Bash(cmd:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(set \"LOG_FORMAT=text\")",
+      "Bash(set PYTHONPATH=.)",
+      "Bash(more:*)"
     ]
   }
 }

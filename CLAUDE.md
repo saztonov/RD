@@ -135,6 +135,43 @@ Required `.env` variables:
 - `REMOTE_OCR_BASE_URL` - Server URL (default: http://localhost:8000)
 - `REDIS_URL` - For server (default: redis://redis:6379/0)
 
+## Logging (Server)
+
+Централизованная система логирования в `services/remote_ocr/server/`.
+
+### Конфигурация
+
+| Переменная | Значения | По умолчанию |
+|------------|----------|--------------|
+| `LOG_LEVEL` | DEBUG, INFO, WARNING, ERROR | INFO |
+| `LOG_FORMAT` | json, text | json |
+
+### Ключевые модули
+
+| Модуль | Назначение |
+|--------|------------|
+| `logging_config.py` | JSONFormatter, setup_logging(), get_logger() |
+| `celery_signals.py` | Celery lifecycle (task_prerun/postrun/failure) |
+
+### Использование
+
+```python
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
+logger.info("Message", extra={"job_id": "abc-123", "event": "task_started"})
+```
+
+### JSON формат (production)
+
+```json
+{"timestamp": "2026-01-25T12:34:56Z", "level": "INFO", "logger": "tasks", "message": "Task completed", "job_id": "abc-123", "duration_ms": 45230}
+```
+
+### Extra поля
+
+Поддерживаемые поля для `extra={}`: `job_id`, `task_id`, `block_id`, `strip_id`, `page_index`, `duration_ms`, `memory_mb`, `event`, `status`, `status_code`, `method`, `path`, `exception_type`.
+
 ## Code Style
 
 From `.cursorrules`: Be maximally concise. Code only in code blocks. Changes as minimal diff. No explanations unless asked. If text needed - max 5 points, each ≤ 12 words.
