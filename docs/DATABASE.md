@@ -602,7 +602,7 @@ CREATE POLICY tree_nodes_client_policy ON tree_nodes
 pg_dump -h db.xxx.supabase.co -U postgres -d postgres \
     --data-only \
     -t jobs -t job_files -t job_settings \
-    -t tree_nodes -t tree_documents \
+    -t tree_nodes -t node_files \
     > backup_$(date +%Y%m%d).sql
 ```
 

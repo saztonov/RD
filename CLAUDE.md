@@ -85,7 +85,7 @@ ShapeType  # enums.py - RECTANGLE, POLYGON
 - `job_files` - Job files (pdf, blocks, results, crops)
 - `job_settings` - Model settings per job
 - `tree_nodes` - Project hierarchy v2 (path, depth, pdf_status, is_locked)
-- `node_files` - Node files (replaces tree_documents)
+- `node_files` - Node files (PDF, annotations, OCR results, crops)
 
 node_type v2: `folder` | `document` (legacy types in attributes.legacy_node_type)
 

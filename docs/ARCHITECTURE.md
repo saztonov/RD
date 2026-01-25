@@ -771,18 +771,6 @@ DELETE /jobs/{job_id}        → {"ok": true, "deleted_job_id": "..."}
 | attributes | jsonb | {r2_key, local_path, file_size, ...} |
 | sort_order | integer | Порядок сортировки |
 
-#### tree_documents
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid PK | |
-| node_id | uuid FK | → tree_nodes.id |
-| file_name | text | |
-| r2_key | text | |
-| file_size | bigint | |
-| mime_type | text | |
-| version | integer | |
-
 #### stage_types / section_types
 
 Справочники типов стадий и разделов.
