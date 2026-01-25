@@ -130,33 +130,55 @@ def get_node_info(node_id: str) -> Optional[Dict]:
 
 
 def get_node_full_path(node_id: str) -> str:
-    """Получить полный путь узла (для логирования/отладки)"""
-    parts = []
-    current_id = node_id
+    """
+    Получить полный путь узла (для логирования/отладки).
 
+    Оптимизировано: использует materialized path вместо рекурсивного обхода.
+    Делает максимум 2 запроса к БД вместо до 20.
+    """
     client = get_client()
 
-    for _ in range(20):  # Защита от бесконечного цикла
-        result = (
-            client.table("tree_nodes")
-            .select("name,parent_id")
-            .eq("id", current_id)
-            .limit(1)
-            .execute()
-        )
-        if not result.data:
-            break
+    # Запрос 1: получить path и name текущего узла
+    result = (
+        client.table("tree_nodes")
+        .select("path,name")
+        .eq("id", node_id)
+        .limit(1)
+        .execute()
+    )
 
-        node = result.data[0]
-        parts.insert(0, node.get("name", ""))
+    if not result.data:
+        return ""
 
-        parent_id = node.get("parent_id")
-        if not parent_id:
-            break
+    node = result.data[0]
+    path_str = node.get("path")
+    node_name = node.get("name", "")
 
-        current_id = parent_id
+    # Если нет path, возвращаем только имя узла
+    if not path_str:
+        return node_name
 
-    return " / ".join(parts)
+    # Запрос 2: получить имена всех предков одним запросом
+    # Формат path: "uuid1.uuid2.uuid3" (от корня к текущему узлу)
+    path_ids = path_str.split(".")
+
+    if not path_ids or path_ids == [""]:
+        return node_name
+
+    result = (
+        client.table("tree_nodes")
+        .select("id,name")
+        .in_("id", path_ids)
+        .execute()
+    )
+
+    # Строим маппинг id -> name
+    id_to_name = {row["id"]: row.get("name", "") for row in result.data}
+
+    # Восстанавливаем порядок по path_ids
+    names = [id_to_name.get(uid, "") for uid in path_ids]
+
+    return " / ".join(filter(None, names))
 
 
 def update_node_r2_key(node_id: str, r2_key: str) -> bool:

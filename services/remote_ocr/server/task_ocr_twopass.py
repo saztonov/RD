@@ -10,7 +10,8 @@ from .pdf_streaming_twopass import (
     pass1_prepare_crops,
     pass2_ocr_from_manifest,
 )
-from .storage import Job, is_job_paused, update_job_status
+from .debounced_updater import get_debounced_updater
+from .storage import Job, is_job_paused
 from .task_helpers import check_paused
 from .task_upload import copy_crops_to_final
 
@@ -35,6 +36,7 @@ def run_two_pass_ocr(
         f"Используется двухпроходный алгоритм (OCR потоков: {settings.ocr_threads_per_job})"
     )
     manifest = None
+    updater = get_debounced_updater(job.id)
 
     try:
         # PASS 1: Подготовка кропов на диск
@@ -42,7 +44,7 @@ def run_two_pass_ocr(
             progress = 0.1 + 0.3 * (current / total)
             status_msg = f"📦 PASS 1: Подготовка кропов (стр. {current}/{total})"
             if not is_job_paused(job.id):
-                update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
+                updater.update("processing", progress=progress, status_message=status_msg)
 
         manifest = pass1_prepare_crops(
             str(pdf_path),
@@ -69,7 +71,7 @@ def run_two_pass_ocr(
             else:
                 status_msg = f"🔍 PASS 2: Распознавание ({current}/{total})"
             if not is_job_paused(job.id):
-                update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
+                updater.update("processing", progress=progress, status_message=status_msg)
 
         pass2_ocr_from_manifest(
             manifest,

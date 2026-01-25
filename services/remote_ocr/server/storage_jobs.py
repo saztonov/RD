@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 JOBS_CACHE_TTL = 5
 JOBS_CACHE_PREFIX = "jobs:list:"
 
+# Redis кеш для is_job_paused() - TTL 15 секунд
+PAUSE_CACHE_TTL = 15
+PAUSE_CACHE_PREFIX = "job:paused:"
+
 
 def _get_jobs_cache_key(document_id: Optional[str]) -> str:
     """Формирует ключ кеша для list_jobs"""
@@ -35,6 +39,44 @@ def _invalidate_jobs_cache() -> None:
             logger.debug(f"Invalidated {len(keys)} jobs cache keys")
     except Exception as e:
         logger.warning(f"Failed to invalidate jobs cache: {e}")
+
+
+def _get_pause_cache_key(job_id: str) -> str:
+    """Get Redis key for pause status cache"""
+    return f"{PAUSE_CACHE_PREFIX}{job_id}"
+
+
+def _set_pause_cache(job_id: str, is_paused: bool) -> None:
+    """Set pause status in Redis cache"""
+    try:
+        client = _get_redis_client()
+        key = _get_pause_cache_key(job_id)
+        client.setex(key, PAUSE_CACHE_TTL, "1" if is_paused else "0")
+    except Exception as e:
+        logger.debug(f"Failed to set pause cache: {e}")
+
+
+def _get_pause_cache(job_id: str) -> Optional[bool]:
+    """Get pause status from Redis cache. Returns None if not cached."""
+    try:
+        client = _get_redis_client()
+        key = _get_pause_cache_key(job_id)
+        cached = client.get(key)
+        if cached is not None:
+            return cached == "1"
+    except Exception as e:
+        logger.debug(f"Failed to get pause cache: {e}")
+    return None
+
+
+def _invalidate_pause_cache(job_id: str) -> None:
+    """Invalidate pause cache for a job"""
+    try:
+        client = _get_redis_client()
+        key = _get_pause_cache_key(job_id)
+        client.delete(key)
+    except Exception as e:
+        logger.debug(f"Failed to invalidate pause cache: {e}")
 
 
 def create_job(
@@ -253,6 +295,7 @@ def pause_job(job_id: str) -> bool:
 
     if result.data:
         _invalidate_jobs_cache()
+        _set_pause_cache(job_id, True)
         return True
 
     result = (
@@ -265,6 +308,7 @@ def pause_job(job_id: str) -> bool:
 
     if result.data:
         _invalidate_jobs_cache()
+        _set_pause_cache(job_id, True)
     return len(result.data) > 0
 
 
@@ -281,13 +325,25 @@ def resume_job(job_id: str) -> bool:
     )
     if result.data:
         _invalidate_jobs_cache()
+        _set_pause_cache(job_id, False)
     return len(result.data) > 0
 
 
 def is_job_paused(job_id: str) -> bool:
-    """Проверить, поставлена ли задача на паузу"""
+    """Проверить, поставлена ли задача на паузу (с Redis кешированием)"""
+    # Check cache first
+    cached = _get_pause_cache(job_id)
+    if cached is not None:
+        return cached
+
+    # Cache miss - query DB
     job = get_job(job_id)
-    return job.status == "paused" if job else False
+    is_paused = job.status == "paused" if job else False
+
+    # Update cache
+    _set_pause_cache(job_id, is_paused)
+
+    return is_paused
 
 
 def _row_to_job(row: dict) -> Job:
