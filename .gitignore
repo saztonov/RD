@@ -114,6 +114,7 @@ tests/__pycache__/
 # ============================================
 # ПРОЕКТ СПЕЦИФИЧНЫЕ
 # ============================================
+awesome-claude-code-subagents/
 output/
 examples/all_pages/
 examples/zoom_comparison/
