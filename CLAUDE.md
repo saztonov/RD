@@ -72,7 +72,8 @@ Desktop Client (PySide6)
 ### Data Models (`rd_core/models/`)
 
 ```python
-Block      # block.py - annotation with ArmorID, coords, groups, categories
+Block      # block.py - annotation with coords, groups, categories
+ArmorID    # armor_id.py - OCR-resistant ID format (XXXX-XXXX-XXX)
 Document   # document.py - collection of pages
 Page       # document.py - page with blocks list
 BlockType  # enums.py - TEXT, IMAGE
@@ -97,6 +98,8 @@ node_type v2: `folder` | `document` (legacy types in attributes.legacy_node_type
 | `pdf_streaming_twopass.py` | Streaming PDF for large files |
 | `async_r2_storage.py` | Async R2 operations |
 | `block_verification.py` | Block coordinate verification |
+| `debounced_updater.py` | Debounce status updates to Supabase |
+| `block_id_matcher.py` | Match OCR results to blocks |
 
 ### Client Caching & Sync
 
