@@ -32,6 +32,7 @@ class BlockInfo:
     page_index: int
     block_type: str  # "text", "image"
     category_code: Optional[str] = None  # "stamp" для штампов
+    linked_block_id: Optional[str] = None  # ID связанного блока (для TEXT→IMAGE)
 
     @property
     def is_stamp(self) -> bool:
@@ -60,6 +61,9 @@ class VerificationResult:
 
     # Ожидаемые блоки (без штампов)
     expected_blocks: Set[str] = field(default_factory=set)
+
+    # Embedded TEXT блоки (связаны с IMAGE через linked_block_id)
+    embedded_text_ids: Set[str] = field(default_factory=set)
 
     # Отсутствующие блоки
     missing_in_ocr_html: List[BlockInfo] = field(default_factory=list)
@@ -124,12 +128,14 @@ class VerificationWorker(QThread):
                 block_id = block.get("id", "")
                 block_type = block.get("block_type", "text")
                 category_code = block.get("category_code")
+                linked_block_id = block.get("linked_block_id")
 
                 block_info = BlockInfo(
                     id=block_id,
                     page_index=page_num,
                     block_type=block_type,
                     category_code=category_code,
+                    linked_block_id=linked_block_id,
                 )
                 result.ann_blocks.append(block_info)
                 result.ann_total += 1
@@ -142,6 +148,16 @@ class VerificationWorker(QThread):
                 elif block_type == "image":
                     result.ann_image += 1
                     result.expected_blocks.add(block_id)
+
+        # Определяем embedded TEXT блоки (связаны с IMAGE через linked_block_id)
+        all_blocks_by_id = {b.id: b for b in result.ann_blocks}
+        for block_info in result.ann_blocks:
+            if block_info.block_type == "text" and block_info.linked_block_id:
+                linked_id = block_info.linked_block_id
+                if linked_id in all_blocks_by_id:
+                    linked_block = all_blocks_by_id[linked_id]
+                    if linked_block.block_type == "image":
+                        result.embedded_text_ids.add(block_info.id)
 
         # 2. Загружаем и парсим ocr.html
         self.progress.emit("Загрузка ocr.html...")
@@ -190,7 +206,9 @@ class VerificationWorker(QThread):
                 result.missing_in_result.append(block_info)
 
             if block_info.id not in result.document_md_blocks:
-                result.missing_in_document_md.append(block_info)
+                # Не считать отсутствующим, если это embedded TEXT (связан с IMAGE)
+                if block_info.id not in result.embedded_text_ids:
+                    result.missing_in_document_md.append(block_info)
 
         return result
 
@@ -342,7 +360,8 @@ class BlockVerificationDialog(QDialog):
             f"<b>Всего блоков:</b> {r.ann_total}<br>"
             f"<b>Текстовых:</b> {r.ann_text}<br>"
             f"<b>Изображений:</b> {r.ann_image}<br>"
-            f"<b>Штампов (code=stamp):</b> {r.ann_stamp}"
+            f"<b>Штампов (code=stamp):</b> {r.ann_stamp}<br>"
+            f"<b>Встроенных TEXT→IMAGE:</b> {len(r.embedded_text_ids)}"
         )
         self.ann_group.show()
 
@@ -435,6 +454,7 @@ class BlockVerificationDialog(QDialog):
             f"Текстовых: {r.ann_text}",
             f"Изображений: {r.ann_image}",
             f"Штампов: {r.ann_stamp}",
+            f"Встроенных TEXT→IMAGE: {len(r.embedded_text_ids)}",
             "",
             "=== OCR.html ===",
             f"Найдено блоков: {len(r.ocr_html_blocks)}",
