@@ -23,7 +23,12 @@
       "Bash(cd:*)",
       "Bash(set \"LOG_FORMAT=text\")",
       "Bash(set PYTHONPATH=.)",
-      "Bash(more:*)"
+      "Bash(more:*)",
+      "Bash(wc:*)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\rd_core\" -Filter \"*.py\" -Recurse)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\app\\\\gui\" -Filter \"*.py\" -Recurse)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Usr\\\\PycharmProjects\\\\RD\\\\services\\\\remote_ocr\\\\server\" -Filter \"*.py\" -Recurse)"
     ]
   }
 }
