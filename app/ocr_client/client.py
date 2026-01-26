@@ -264,7 +264,7 @@ class RemoteOCRClient:
 
     def list_jobs(
         self, document_id: Optional[str] = None
-    ) -> List[JobInfo]:
+    ) -> tuple[List[JobInfo], str]:
         """
         Получить список задач
 
@@ -272,7 +272,7 @@ class RemoteOCRClient:
             document_id: опционально фильтр по document_id
 
         Returns:
-            Список задач
+            Кортеж (список задач, server_time для синхронизации)
         """
         params = {}
         if document_id:
@@ -283,7 +283,7 @@ class RemoteOCRClient:
         logger.debug(f"list_jobs response: {resp.status_code}, len={len(resp.content)}")
         data = resp.json()
 
-        return [
+        jobs = [
             JobInfo(
                 id=j["id"],
                 status=j["status"],
@@ -297,8 +297,9 @@ class RemoteOCRClient:
                 node_id=j.get("node_id"),
                 status_message=j.get("status_message"),
             )
-            for j in data
+            for j in data.get("jobs", [])
         ]
+        return jobs, data.get("server_time", "")
 
     def get_jobs_changes(self, since: str) -> tuple[List[JobInfo], str]:
         """

@@ -2,7 +2,6 @@
 
 import logging
 import time
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +16,12 @@ class PollingControllerMixin:
         self._is_fetching = True
         self._is_manual_refresh = manual
 
-        if manual:
+        # Проверяем флаг принудительной полной загрузки (после ошибки)
+        force_full = getattr(self, "_force_full_refresh", False)
+
+        if manual or force_full:
             self.status_label.setText("🔄 Загрузка...")
-            # При ручном обновлении - полный список
+            # При ручном обновлении или после ошибки - полный список
             self._executor.submit(self._fetch_jobs_bg)
         elif self._last_server_time and self._jobs_cache:
             # Incremental polling - только изменения
@@ -36,9 +38,9 @@ class PollingControllerMixin:
             return
         try:
             logger.debug(f"Fetching full jobs list from {client.base_url}")
-            jobs = client.list_jobs(document_id=None)
-            logger.debug(f"Fetched {len(jobs)} jobs")
-            self._signals.jobs_loaded.emit(jobs)
+            jobs, server_time = client.list_jobs(document_id=None)
+            logger.debug(f"Fetched {len(jobs)} jobs, server_time={server_time}")
+            self._signals.jobs_loaded.emit(jobs, server_time)
         except Exception as e:
             logger.error(
                 f"Ошибка получения списка задач от {client.base_url}: {e}",
@@ -69,23 +71,26 @@ class PollingControllerMixin:
             all_jobs = list(self._jobs_cache.values())
             # Сортируем по времени создания (новые первыми)
             all_jobs.sort(key=lambda j: j.created_at, reverse=True)
-            self._signals.jobs_loaded.emit(all_jobs)
+            self._signals.jobs_loaded.emit(all_jobs, server_time or self._last_server_time or "")
         except Exception as e:
             logger.error(f"Ошибка получения изменений: {e}", exc_info=True)
-            # При ошибке incremental - пробуем полную загрузку
-            self._last_server_time = None
-            self._jobs_cache.clear()
+            # При ошибке incremental - НЕ очищаем кеш, пробуем полную загрузку
+            # при следующем poll
+            self._force_full_refresh = True
             self._signals.jobs_error.emit(str(e))
 
-    def _on_jobs_loaded(self, jobs):
+    def _on_jobs_loaded(self, jobs, server_time: str = ""):
         """Слот: список задач получен"""
         self._is_fetching = False
+        self._force_full_refresh = False
 
         # При первой полной загрузке инициализируем кеш и server_time
         if self._is_manual_refresh or not self._last_server_time:
             self._jobs_cache = {j.id: j for j in jobs}
-            self._last_server_time = datetime.utcnow().isoformat()
-            logger.debug(f"Jobs cache initialized with {len(self._jobs_cache)} jobs")
+            # Используем server_time от сервера для синхронизации
+            if server_time:
+                self._last_server_time = server_time
+            logger.debug(f"Jobs cache initialized with {len(self._jobs_cache)} jobs, server_time={self._last_server_time}")
 
         # Добавляем оптимистично добавленные задачи, которых ещё нет в ответе сервера
         jobs_ids = {j.id for j in jobs}

@@ -69,6 +69,7 @@ class RemoteOCRPanel(
         self._optimistic_jobs: dict = {}
         self._last_server_time: Optional[str] = None
         self._jobs_cache: dict = {}
+        self._force_full_refresh: bool = False
 
         self._setup_ui()
         self._setup_timer()

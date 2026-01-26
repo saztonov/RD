@@ -26,26 +26,30 @@ _logger = get_logger(__name__)
 def list_jobs_handler(
     document_id: Optional[str] = None,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-) -> list:
+) -> dict:
     """Получить список задач"""
     check_api_key(x_api_key)
 
     jobs = list_jobs(document_id)
-    return [
-        {
-            "id": j.id,
-            "status": j.status,
-            "progress": j.progress,
-            "document_name": j.document_name,
-            "task_name": j.task_name,
-            "document_id": j.document_id,
-            "created_at": j.created_at,
-            "updated_at": j.updated_at,
-            "error_message": j.error_message,
-            "node_id": j.node_id,
-        }
-        for j in jobs
-    ]
+    return {
+        "jobs": [
+            {
+                "id": j.id,
+                "status": j.status,
+                "progress": j.progress,
+                "document_name": j.document_name,
+                "task_name": j.task_name,
+                "document_id": j.document_id,
+                "created_at": j.created_at,
+                "updated_at": j.updated_at,
+                "error_message": j.error_message,
+                "node_id": j.node_id,
+                "status_message": j.status_message,
+            }
+            for j in jobs
+        ],
+        "server_time": datetime.utcnow().isoformat(),
+    }
 
 
 def get_jobs_changes_handler(
@@ -69,6 +73,7 @@ def get_jobs_changes_handler(
                 "updated_at": j.updated_at,
                 "error_message": j.error_message,
                 "node_id": j.node_id,
+                "status_message": j.status_message,
             }
             for j in jobs
         ],

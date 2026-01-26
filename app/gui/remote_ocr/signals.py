@@ -6,7 +6,7 @@ from PySide6.QtCore import QObject, Signal
 class WorkerSignals(QObject):
     """Сигналы для фоновых задач"""
 
-    jobs_loaded = Signal(list)
+    jobs_loaded = Signal(list, str)  # (jobs, server_time)
     jobs_error = Signal(str)
     job_uploading = Signal(object)  # JobInfo с status="uploading" - показывается сразу
     job_created = Signal(object)
