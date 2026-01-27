@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from PIL import Image
 
@@ -18,16 +18,18 @@ def verify_and_retry_missing_blocks(
     pdf_path: Path,
     work_dir: Path,
     datalab_backend,
+    on_progress: Callable[[int, int], None] = None,
 ) -> bool:
     """
     Верификация блоков после OCR и повторное распознавание пропущенных.
-    
+
     Args:
         result_json_path: путь к result.json
         pdf_path: путь к PDF файлу
         work_dir: рабочая директория
         datalab_backend: OCR backend для повторного распознавания
-        
+        on_progress: callback (current, total) для обновления прогресса
+
     Returns:
         True если были найдены и обработаны пропущенные блоки
     """
@@ -76,6 +78,10 @@ def verify_and_retry_missing_blocks(
     
     with StreamingPDFProcessor(str(pdf_path)) as processor:
         for idx, item in enumerate(missing_blocks):
+            # Вызываем callback прогресса перед обработкой блока
+            if on_progress:
+                on_progress(idx, len(missing_blocks))
+
             blk_data = item["block"]
             block_id = blk_data["id"]
             page_index = item["page_index"]

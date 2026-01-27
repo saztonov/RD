@@ -198,8 +198,14 @@ def update_node_pdf_status(node_id: str):
     try:
         import httpx
 
-        from rd_core.pdf_status import calculate_pdf_status
-        from rd_core.r2_storage import R2Storage
+        # Graceful degradation: rd_core.pdf_status может зависеть от app модуля,
+        # недоступного в Docker окружении сервера
+        try:
+            from rd_core.pdf_status import calculate_pdf_status
+            from rd_core.r2_storage import R2Storage
+        except ImportError as e:
+            logger.warning(f"pdf_status module unavailable (likely missing app module): {e}")
+            return
 
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_KEY")

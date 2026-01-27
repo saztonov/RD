@@ -157,7 +157,17 @@ def run_ocr_task(self, job_id: str) -> dict:
         # Генерация результатов (передаём datalab backend для верификации)
         update_job_status(job.id, "processing", progress=0.92, status_message="📄 Генерация результатов...")
         verification_backend = strip_backend if engine == "datalab" else None
-        r2_prefix = generate_results(job, pdf_path, blocks, work_dir, verification_backend)
+
+        # Callback для верификации блоков (диапазон 0.92 -> 0.94)
+        def on_verification_progress(current: int, total: int):
+            if total > 0:
+                progress = 0.92 + 0.02 * (current / total)
+                status_msg = f"🔍 Верификация блоков ({current + 1}/{total})"
+                update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
+
+        r2_prefix = generate_results(
+            job, pdf_path, blocks, work_dir, verification_backend, on_verification_progress
+        )
 
         # Загрузка результатов в R2
         logger.info(f"Загрузка результатов в R2...")

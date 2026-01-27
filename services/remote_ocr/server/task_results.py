@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Callable
 
 from .logging_config import get_logger
 from .ocr_result_merger import merge_ocr_results
@@ -59,7 +60,12 @@ def generate_blocks_json(
 
 
 def generate_results(
-    job: Job, pdf_path: Path, blocks: list, work_dir: Path, datalab_backend=None
+    job: Job,
+    pdf_path: Path,
+    blocks: list,
+    work_dir: Path,
+    datalab_backend=None,
+    on_verification_progress: Callable[[int, int], None] = None,
 ) -> str:
     """Генерация результатов OCR (annotation.json + HTML)"""
     from rd_core.models import Block, Document, Page, ShapeType
@@ -190,10 +196,16 @@ def generate_results(
     # Верификация и повторное распознавание пропущенных блоков
     if datalab_backend and result_path.exists():
         from .block_verification import verify_and_retry_missing_blocks
-        
+
         try:
             logger.info("Запуск верификации блоков...")
-            verify_and_retry_missing_blocks(result_path, pdf_path, work_dir, datalab_backend)
+            verify_and_retry_missing_blocks(
+                result_path,
+                pdf_path,
+                work_dir,
+                datalab_backend,
+                on_progress=on_verification_progress,
+            )
         except Exception as e:
             logger.warning(f"Ошибка верификации блоков: {e}", exc_info=True)
 
