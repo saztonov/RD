@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .celery_app import celery_app
 from .db_metrics import get_metrics_collector
-from .debounced_updater import cleanup_updater
+from .debounced_updater import cleanup_updater, get_debounced_updater
 from .logging_config import get_logger
 from .memory_utils import force_gc, log_memory, log_memory_delta
 from .rate_limiter import get_datalab_limiter
@@ -163,6 +163,15 @@ def run_ocr_task(self, job_id: str) -> dict:
             if total > 0:
                 progress = 0.92 + 0.02 * (current / total)
                 status_msg = f"🔍 Верификация блоков ({current + 1}/{total})"
+            else:
+                progress = 0.92
+                status_msg = "🔍 Проверка распознанных блоков..."
+
+            # Форсируем обновление для важных этапов (начало, каждый 5-й блок, конец)
+            updater = get_debounced_updater(job.id)
+            if total == 0 or current == 0 or current == total - 1 or current % 5 == 0:
+                updater.force_update("processing", progress=progress, status_message=status_msg)
+            else:
                 update_job_status(job.id, "processing", progress=progress, status_message=status_msg)
 
         r2_prefix = generate_results(

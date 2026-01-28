@@ -19,6 +19,7 @@ def verify_and_retry_missing_blocks(
     work_dir: Path,
     datalab_backend,
     on_progress: Callable[[int, int], None] = None,
+    job_id: str = None,
 ) -> bool:
     """
     Верификация блоков после OCR и повторное распознавание пропущенных.
@@ -81,6 +82,11 @@ def verify_and_retry_missing_blocks(
             # Вызываем callback прогресса перед обработкой блока
             if on_progress:
                 on_progress(idx, len(missing_blocks))
+
+            # Гарантируем отправку обновлений каждые 5 блоков
+            if job_id and idx % 5 == 0:
+                from .debounced_updater import get_debounced_updater
+                get_debounced_updater(job_id).flush()
 
             blk_data = item["block"]
             block_id = blk_data["id"]

@@ -198,6 +198,10 @@ def generate_results(
         from .block_verification import verify_and_retry_missing_blocks
 
         try:
+            # Сигнализируем начало верификации (total=0 означает "начало проверки")
+            if on_verification_progress:
+                on_verification_progress(0, 0)
+
             logger.info("Запуск верификации блоков...")
             verify_and_retry_missing_blocks(
                 result_path,
@@ -205,6 +209,7 @@ def generate_results(
                 work_dir,
                 datalab_backend,
                 on_progress=on_verification_progress,
+                job_id=job.id,
             )
         except Exception as e:
             logger.warning(f"Ошибка верификации блоков: {e}", exc_info=True)

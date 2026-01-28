@@ -121,6 +121,23 @@ class DebouncedJobUpdater:
         self._state.pending_update = None
         self._db_call_count += 1
 
+    def force_update(
+        self,
+        status: str,
+        progress: Optional[float] = None,
+        error_message: Optional[str] = None,
+        r2_prefix: Optional[str] = None,
+        status_message: Optional[str] = None,
+    ) -> bool:
+        """Force immediate update, bypassing debounce logic"""
+        from .storage_jobs import update_job_status as raw_update
+
+        with self._lock:
+            self._do_update(
+                raw_update, status, progress, error_message, r2_prefix, status_message
+            )
+            return True
+
     def flush(self) -> bool:
         """Flush any pending update"""
         from .storage_jobs import update_job_status as raw_update
