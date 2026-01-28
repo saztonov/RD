@@ -54,10 +54,19 @@ Desktop Client (PySide6)
 | Directory | Purpose |
 |-----------|---------|
 | `app/` | Desktop GUI (PySide6). Entry: `app/main.py` |
-| `app/gui/` | GUI modules (~80). Core: `main_window.py`, `page_viewer.py` |
+| `app/gui/` | GUI modules. Core: `main_window.py`, `page_viewer.py` |
+| `app/gui/blocks/` | Block operations (7 mixins) |
+| `app/gui/project_tree/` | Tree widget (4 mixins + helpers) |
+| `app/gui/remote_ocr/` | OCR panel (5 mixins) |
+| `app/gui/reconciliation/` | R2 ↔ Supabase sync verification |
+| `app/ocr_client/` | Remote OCR HTTP client (6 modules) |
+| `app/tree_client/` | Supabase tree API (6 mixins) |
 | `rd_core/` | Core logic: models, PDF utils, R2 storage, OCR engines |
 | `rd_core/ocr/` | OCR backends (OpenRouter, Datalab). Protocol: `base.py` |
 | `services/remote_ocr/server/` | FastAPI server + Celery tasks |
+| `services/remote_ocr/server/node_storage/` | OCR results registration in tree |
+| `services/remote_ocr/server/pdf_twopass/` | Two-pass PDF (pass1_crops, pass2_ocr) |
+| `services/remote_ocr/server/routes/jobs/` | Modular job routes |
 | `database/migrations/` | SQL migration files |
 | `docs/` | Full documentation |
 
@@ -68,6 +77,28 @@ Desktop Client (PySide6)
 **Protocol Pattern (OCR)**: `OCRBackend` protocol in `rd_core/ocr/base.py`. Implementations: `OpenRouterBackend`, `DatalabOCRBackend`. Factory: `create_ocr_engine()`.
 
 **Context Manager (PDF)**: `PDFDocument` in `rd_core/pdf_utils.py` uses `__enter__`/`__exit__` for resource cleanup.
+
+### GUI Mixin Composition
+
+| Widget | Mixins | Lines |
+|--------|--------|-------|
+| `MainWindow` | MenuSetup, PanelsSetup, FileOperations, BlockHandlers | 755 |
+| `PageViewer` | ContextMenu, MouseEvents, BlockRendering, Polygon, ResizeHandles | 237 |
+| `ProjectTreeWidget` | TreeNodeOps, TreeSync, TreeFilter, TreeContextMenu | 652 |
+| `RemoteOCRPanel` | JobOps, Download, PollingController, ResultHandler, TableManager | 313 |
+| `TreeClient` | Core, Nodes, Status, Files, Categories, PathV2 | - |
+| `R2Storage` | Upload, Download, Utils (Singleton) | - |
+
+### Key Dialogs (`app/gui/`)
+
+| Dialog | Purpose |
+|--------|---------|
+| `ocr_preview_widget.py` | OCR result preview + HTML WebEngine |
+| `block_verification_dialog.py` | Verify annotation vs result coords |
+| `reconciliation/dialog.py` | R2 ↔ Supabase file sync |
+| `image_categories_dialog.py` | Image block categorization |
+| `ocr_settings/dialog.py` | OCR engine settings |
+| `r2_viewer/dialog.py` | R2 file browser |
 
 ### Data Models (`rd_core/models/`)
 
@@ -80,6 +111,22 @@ BlockType  # enums.py - TEXT, IMAGE
 ShapeType  # enums.py - RECTANGLE, POLYGON
 ```
 
+```python
+# app/tree_models.py
+TreeNode   # Node in project hierarchy
+NodeFile   # File metadata (r2_key, file_type)
+FileType   # PDF, ANNOTATION, RESULT_JSON, CROPS, BLOCKS_INDEX...
+NodeType   # FOLDER, DOCUMENT (v2)
+```
+
+### Annotation Format
+
+Version: 2 (`rd_core/annotation_io.py`)
+
+**V2 additions:** `coords_norm`, `source`, `shape_type`, `created_at`
+
+Auto-migration v1→v2 on load via `AnnotationIO.load()`.
+
 ### Database Tables (Supabase v2)
 
 - `jobs` - OCR tasks (status: draft/queued/processing/done/error/paused)
@@ -90,24 +137,50 @@ ShapeType  # enums.py - RECTANGLE, POLYGON
 
 node_type v2: `folder` | `document` (legacy types in attributes.legacy_node_type)
 
-### Server Components v2
+### Server Components
 
+#### Core Processing
 | Module | Purpose |
 |--------|---------|
-| `task_ocr_twopass.py` | Two-pass OCR (memory-efficient) |
+| `task_ocr_twopass.py` | Two-pass OCR task |
 | `pdf_streaming_twopass.py` | Streaming PDF for large files |
-| `async_r2_storage.py` | Async R2 operations |
-| `block_verification.py` | Block coordinate verification |
-| `debounced_updater.py` | Debounce status updates to Supabase |
-| `block_id_matcher.py` | Match OCR results to blocks |
+| `pdf_twopass/` | Pass1 crops → Pass2 OCR → Cleanup |
+| `block_verification.py` | Verify + retry missing blocks |
+| `block_id_matcher.py` | ArmorID + fuzzy matching |
 
-### Client Caching & Sync
-
+#### Performance & Reliability
 | Module | Purpose |
 |--------|---------|
-| `annotation_cache.py` | Annotation cache with R2 sync |
-| `sync_queue.py` | Offline sync queue |
+| `debounced_updater.py` | Reduce Supabase calls (-90%) |
+| `rate_limiter.py` | Token bucket for Datalab API |
+| `memory_utils.py` | Memory monitoring (psutil) |
+| `queue_checker.py` | Backpressure mechanism |
+| `db_metrics.py` | Track DB operations per job |
+
+#### Storage & Configuration
+| Module | Purpose |
+|--------|---------|
+| `async_r2_storage.py` | Async R2 (aioboto3) |
+| `node_storage/` | Register OCR results in tree |
+| `settings.py` | Dynamic config (Supabase → env → default) |
+
+### Client Infrastructure
+
+#### Caching (`rd_core/`, `app/gui/`)
+| Module | Purpose |
+|--------|---------|
+| `annotation_cache.py` | Annotation cache + delayed R2 sync |
+| `r2_disk_cache.py` | LRU disk cache (3GB default) |
+| `r2_metadata_cache.py` | R2 metadata caching |
+| `cache_base.py` | ThreadSafeCache base class |
 | `tree_cache_ops.py` | Tree operations caching |
+
+#### Network & Sync
+| Module | Purpose |
+|--------|---------|
+| `connection_manager.py` | Network status + offline mode |
+| `sync_queue.py` | Offline sync queue |
+| `logging_manager.py` | Dynamic log folder switching |
 
 ### OCR Job Lifecycle (Two-Pass)
 
@@ -119,6 +192,20 @@ node_type v2: `folder` | `document` (legacy types in attributes.legacy_node_type
 4. Upload results → status=done
 5. Client polls GET /jobs/{id} → downloads result
 
+### API Routes Structure
+
+```
+routes/
+├── jobs/
+│   ├── router.py          # Main router
+│   ├── create_handler.py  # POST /jobs
+│   ├── read_handlers.py   # GET /jobs, /jobs/{id}, /jobs/changes
+│   ├── update_handlers.py # start/pause/resume/cancel/restart
+│   └── delete_handler.py  # DELETE /jobs/{id}
+├── storage.py             # R2 storage API (upload/download/exists)
+└── tree.py                # Tree nodes API (CRUD + node_files)
+```
+
 ## Extension Points
 
 **Add GUI feature**: Create mixin in `app/gui/`, add to MainWindow inheritance.
@@ -129,6 +216,12 @@ node_type v2: `folder` | `document` (legacy types in attributes.legacy_node_type
 
 **Modify database**: Add migration in `database/migrations/`, document in `docs/DATABASE.md`.
 
+**Add cache layer**: Extend `ThreadSafeCache` in `rd_core/cache_base.py`.
+
+**Add tree client feature**: Create mixin in `app/tree_client/`, add to `TreeClient`.
+
+**Add server optimization**: Follow patterns in `debounced_updater.py`, `rate_limiter.py`.
+
 ## Configuration
 
 Required `.env` variables:
@@ -137,6 +230,13 @@ Required `.env` variables:
 - `OPENROUTER_API_KEY` and/or `DATALAB_API_KEY` - OCR engines
 - `REMOTE_OCR_BASE_URL` - Server URL (default: http://localhost:8000)
 - `REDIS_URL` - For server (default: redis://redis:6379/0)
+
+Server-specific (dynamic loading via `settings.py`):
+- `REMOTE_OCR_DATA_DIR` - Work directory (default: /data)
+- `REMOTE_OCR_API_KEY` - API authentication
+- `MAX_QUEUE_SIZE` - Backpressure limit (0 = unlimited)
+- `DATALAB_MAX_CONCURRENT` - Parallel Datalab requests (default: 5)
+- `DEBOUNCE_INTERVAL` - Status update interval (default: 3.0s)
 
 ## Logging (Server)
 
