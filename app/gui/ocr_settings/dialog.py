@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -55,6 +56,7 @@ class OCRSettingsDialog(QDialog):
         tabs.addTab(self._create_ocr_tab(), "OCR потоки")
         tabs.addTab(self._create_algorithm_tab(), "Алгоритм")
         tabs.addTab(self._create_queue_tab(), "Очередь")
+        tabs.addTab(self._create_block_detection_tab(), "Block Detection")
 
         layout.addWidget(tabs)
 
@@ -293,6 +295,92 @@ class OCRSettingsDialog(QDialog):
 
         return widget
 
+    def _create_block_detection_tab(self) -> QWidget:
+        """Вкладка настроек Block Detection API (LightOnOCR)."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Группа: API подключение
+        group = QGroupBox("Block Detection API")
+        form = QFormLayout(group)
+
+        self.block_detection_enabled_check = QCheckBox("Включить авто-детекцию блоков")
+        self.block_detection_enabled_check.setToolTip(
+            "Показывать кнопку 'Авто-разметка' для автоматического\n"
+            "определения блоков на странице через LightOnOCR"
+        )
+        form.addRow("Статус:", self.block_detection_enabled_check)
+
+        self.block_detection_url_edit = QLineEdit()
+        self.block_detection_url_edit.setPlaceholderText("http://localhost:8000")
+        self.block_detection_url_edit.setToolTip(
+            "URL сервера Block Detection API.\n"
+            "По умолчанию: http://localhost:8000"
+        )
+        form.addRow("URL сервера:", self.block_detection_url_edit)
+
+        self.block_detection_timeout_spin = QSpinBox()
+        self.block_detection_timeout_spin.setRange(10, 300)
+        self.block_detection_timeout_spin.setSuffix(" сек")
+        self.block_detection_timeout_spin.setToolTip("Таймаут запроса детекции")
+        form.addRow("Таймаут:", self.block_detection_timeout_spin)
+
+        # Кнопка проверки подключения
+        check_btn = QPushButton("Проверить подключение")
+        check_btn.clicked.connect(self._check_block_detection_connection)
+        form.addRow("", check_btn)
+
+        layout.addWidget(group)
+
+        # Информация
+        info = QLabel(
+            "Block Detection API использует модель LightOnOCR для\n"
+            "автоматического определения блоков (текст, изображения, таблицы)\n"
+            "на страницах PDF документов.\n\n"
+            "Запуск сервера:\n"
+            "  docker compose up --build (в папке block-detection-api)"
+        )
+        info.setStyleSheet("color: #888; font-size: 11px; padding: 10px;")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        layout.addStretch()
+
+        return widget
+
+    def _check_block_detection_connection(self):
+        """Проверить подключение к Block Detection API."""
+        from app.block_detection_client import BlockDetectionClient
+
+        url = self.block_detection_url_edit.text().strip()
+        if not url:
+            url = "http://localhost:8000"
+
+        try:
+            client = BlockDetectionClient(base_url=url, timeout=10.0)
+            if client.health():
+                QMessageBox.information(
+                    self,
+                    "Успешно",
+                    f"Подключение к {url} установлено.\n"
+                    "Block Detection API готов к работе.",
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Предупреждение",
+                    f"Сервер {url} доступен, но модель не загружена.\n"
+                    "Проверьте логи сервера.",
+                )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Ошибка подключения",
+                f"Не удалось подключиться к {url}.\n\n"
+                f"Ошибка: {e}\n\n"
+                "Убедитесь, что сервер Block Detection запущен.",
+            )
+
     def _load_settings(self):
         """Загрузить настройки из Supabase"""
         try:
@@ -351,6 +439,11 @@ class OCRSettingsDialog(QDialog):
         self.max_queue_size_spin.setValue(s.max_queue_size)
         self.default_priority_spin.setValue(s.default_task_priority)
 
+        # Block Detection
+        self.block_detection_enabled_check.setChecked(s.block_detection_enabled)
+        self.block_detection_url_edit.setText(s.block_detection_url)
+        self.block_detection_timeout_spin.setValue(s.block_detection_timeout)
+
     def _update_settings_from_ui(self):
         """Обновить настройки из UI"""
         self.settings = OCRSettings(
@@ -382,6 +475,10 @@ class OCRSettingsDialog(QDialog):
             poll_max_interval=self.poll_max_interval_spin.value(),
             max_queue_size=self.max_queue_size_spin.value(),
             default_task_priority=self.default_priority_spin.value(),
+            # Block Detection
+            block_detection_enabled=self.block_detection_enabled_check.isChecked(),
+            block_detection_url=self.block_detection_url_edit.text().strip() or "http://localhost:8000",
+            block_detection_timeout=self.block_detection_timeout_spin.value(),
         )
 
     def _save_settings(self):
