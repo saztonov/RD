@@ -111,7 +111,7 @@
     "can_create_db": false,
     "can_login": true,
     "is_replication": true,
-    "bypass_rls": false,
+    "bypass_rls": true,
     "connection_limit": null,
     "valid_until": null,
     "comment": null
