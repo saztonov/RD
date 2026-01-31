@@ -1,6 +1,8 @@
 """Фабрика для создания OCR движков"""
 import logging
+from typing import Union
 
+from rd_core.ocr.async_base import AsyncOCRBackend
 from rd_core.ocr.base import OCRBackend
 
 logger = logging.getLogger(__name__)
@@ -34,3 +36,33 @@ def create_ocr_engine(backend: str = "dummy", **kwargs) -> OCRBackend:
         from rd_core.ocr.dummy import DummyOCRBackend
 
         return DummyOCRBackend()
+
+
+def create_async_ocr_engine(backend: str = "dummy", **kwargs) -> AsyncOCRBackend:
+    """
+    Фабрика для создания асинхронного OCR движка
+
+    Args:
+        backend: тип движка ('openrouter', 'datalab' или 'dummy')
+        **kwargs: дополнительные параметры для движка
+
+    Returns:
+        Экземпляр асинхронного OCR движка
+    """
+    if backend == "openrouter":
+        from rd_core.ocr.openrouter_async import AsyncOpenRouterBackend
+
+        return AsyncOpenRouterBackend(**kwargs)
+    elif backend == "datalab":
+        from rd_core.ocr.datalab_async import AsyncDatalabOCRBackend
+
+        return AsyncDatalabOCRBackend(**kwargs)
+    elif backend == "dummy":
+        from rd_core.ocr.dummy_async import AsyncDummyOCRBackend
+
+        return AsyncDummyOCRBackend()
+    else:
+        logger.warning(f"Неизвестный async backend '{backend}', используется dummy")
+        from rd_core.ocr.dummy_async import AsyncDummyOCRBackend
+
+        return AsyncDummyOCRBackend()

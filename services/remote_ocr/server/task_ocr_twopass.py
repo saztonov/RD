@@ -1,8 +1,10 @@
 """Двухпроходный OCR алгоритм (экономия памяти)"""
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
+from .checkpoint_models import OCRCheckpoint, get_checkpoint_path
 from .debounced_updater import get_debounced_updater
 from .logging_config import get_logger
 from .memory_utils import log_memory_delta
@@ -16,6 +18,13 @@ from .task_helpers import check_paused
 from .task_upload import copy_crops_to_final
 
 logger = get_logger(__name__)
+
+
+# Флаг для включения async режима (можно переключать через settings)
+USE_ASYNC_PASS2 = True
+
+# Флаг для включения checkpoint (можно переключать)
+USE_CHECKPOINT = True
 
 
 def run_two_pass_ocr(
@@ -37,6 +46,20 @@ def run_two_pass_ocr(
     )
     manifest = None
     updater = get_debounced_updater(job.id)
+    checkpoint = None
+
+    # Загрузка checkpoint для resume
+    if USE_CHECKPOINT:
+        checkpoint_path = get_checkpoint_path(work_dir)
+        checkpoint = OCRCheckpoint.load(checkpoint_path)
+        if checkpoint:
+            logger.info(
+                f"Checkpoint загружен: phase={checkpoint.phase}, "
+                f"strips={len(checkpoint.processed_strips)}, "
+                f"images={len(checkpoint.processed_images)}"
+            )
+        else:
+            logger.info("Checkpoint не найден, начинаем с начала")
 
     try:
         # PASS 1: Подготовка кропов на диск
@@ -73,21 +96,63 @@ def run_two_pass_ocr(
             if not is_job_paused(job.id):
                 updater.update("processing", progress=progress, status_message=status_msg)
 
-        pass2_ocr_from_manifest(
-            manifest,
-            blocks,
-            strip_backend,
-            image_backend,
-            stamp_backend,
-            str(pdf_path),
-            on_progress=on_pass2_progress,
-            check_paused=lambda: is_job_paused(job.id),
-        )
+        # Создаём или обновляем checkpoint
+        if USE_CHECKPOINT and checkpoint is None:
+            checkpoint = OCRCheckpoint.create_new(
+                job_id=job.id,
+                total_strips=total_strips,
+                total_images=total_images,
+                manifest_path=str(crops_dir / "manifest.json") if crops_dir else None,
+            )
+        elif USE_CHECKPOINT and checkpoint:
+            checkpoint.total_strips = total_strips
+            checkpoint.total_images = total_images
+
+        # Выбор между async и sync режимом
+        if USE_ASYNC_PASS2:
+            from .pdf_twopass.pass2_ocr_async import pass2_ocr_from_manifest_async
+
+            logger.info("PASS2: используется async режим (asyncio.gather)")
+
+            # Запуск async pass2 через asyncio.run
+            asyncio.run(
+                pass2_ocr_from_manifest_async(
+                    manifest,
+                    blocks,
+                    strip_backend,
+                    image_backend,
+                    stamp_backend,
+                    str(pdf_path),
+                    on_progress=on_pass2_progress,
+                    check_paused=lambda: is_job_paused(job.id),
+                    checkpoint=checkpoint if USE_CHECKPOINT else None,
+                    work_dir=work_dir if USE_CHECKPOINT else None,
+                )
+            )
+        else:
+            logger.info("PASS2: используется sync режим (ThreadPoolExecutor)")
+            pass2_ocr_from_manifest(
+                manifest,
+                blocks,
+                strip_backend,
+                image_backend,
+                stamp_backend,
+                str(pdf_path),
+                on_progress=on_pass2_progress,
+                check_paused=lambda: is_job_paused(job.id),
+            )
 
         log_memory_delta("После PASS2", start_mem)
 
         # Копируем PDF кропы в crops_final
         copy_crops_to_final(work_dir, blocks)
+
+        # Удаляем checkpoint после успешного завершения
+        if USE_CHECKPOINT:
+            checkpoint_path = get_checkpoint_path(work_dir)
+            if checkpoint_path.exists():
+                checkpoint_path.unlink()
+                logger.info("Checkpoint удалён после успешного завершения")
 
     finally:
         # Очистка временных файлов кропов
