@@ -260,7 +260,11 @@ def delete_job(job_id: str) -> bool:
 
 
 def reset_job_for_restart(job_id: str) -> bool:
-    """Сбросить задачу для повторного запуска"""
+    """Сбросить задачу для повторного запуска.
+
+    Также сбрасывает retry_count и started_at для корректного
+    отслеживания лимитов при повторном запуске.
+    """
     now = datetime.utcnow().isoformat()
     client = get_client()
     result = (
@@ -271,6 +275,8 @@ def reset_job_for_restart(job_id: str) -> bool:
                 "progress": 0,
                 "error_message": None,
                 "updated_at": now,
+                "retry_count": 0,
+                "started_at": None,
             }
         )
         .eq("id", job_id)
@@ -366,4 +372,67 @@ def _row_to_job(row: dict) -> Job:
         completed_at=row.get("completed_at"),
         block_stats=row.get("block_stats"),
         phase_data=row.get("phase_data"),
+        retry_count=row.get("retry_count", 0),
     )
+
+
+def increment_retry_count(job_id: str) -> int:
+    """Увеличить счётчик попыток выполнения задачи.
+
+    Возвращает новое значение retry_count.
+    Используется для защиты от бесконечного зацикливания при таймаутах Celery.
+    """
+    now = datetime.utcnow().isoformat()
+    client = get_client()
+
+    # Получаем текущее значение
+    result = client.table("jobs").select("retry_count").eq("id", job_id).execute()
+    if not result.data:
+        return 0
+
+    current_count = result.data[0].get("retry_count", 0) or 0
+    new_count = current_count + 1
+
+    # Обновляем
+    client.table("jobs").update({
+        "retry_count": new_count,
+        "updated_at": now
+    }).eq("id", job_id).execute()
+
+    logger.info(f"Job {job_id}: retry_count увеличен до {new_count}")
+    _invalidate_jobs_cache()
+
+    return new_count
+
+
+def set_job_started_at(job_id: str) -> None:
+    """Установить время начала обработки задачи.
+
+    Вызывается только при первом запуске задачи (когда started_at ещё не установлен).
+    """
+    now = datetime.utcnow().isoformat()
+    client = get_client()
+
+    client.table("jobs").update({
+        "started_at": now,
+        "updated_at": now
+    }).eq("id", job_id).execute()
+
+    logger.info(f"Job {job_id}: started_at установлен в {now}")
+    _invalidate_jobs_cache()
+
+
+def reset_job_retry_count(job_id: str) -> None:
+    """Сбросить счётчик попыток и время начала (при ручном рестарте задачи).
+    """
+    now = datetime.utcnow().isoformat()
+    client = get_client()
+
+    client.table("jobs").update({
+        "retry_count": 0,
+        "started_at": None,
+        "updated_at": now
+    }).eq("id", job_id).execute()
+
+    logger.info(f"Job {job_id}: retry_count и started_at сброшены")
+    _invalidate_jobs_cache()

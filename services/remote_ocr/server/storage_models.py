@@ -42,6 +42,7 @@ class Job:
     status_message: Optional[str] = None  # Детальное сообщение о прогрессе
     started_at: Optional[str] = None  # Время начала обработки
     completed_at: Optional[str] = None  # Время завершения обработки
+    retry_count: int = 0  # Количество попыток выполнения (защита от зацикливания)
     block_stats: Optional[dict] = None  # Статистика блоков
     phase_data: Optional[dict] = None  # Данные о фазах OCR
     # Вложенные данные (опционально загружаются)

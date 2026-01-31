@@ -5,6 +5,7 @@ import json
 import shutil
 import tempfile
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 from .celery_app import celery_app
@@ -15,6 +16,7 @@ from .memory_utils import force_gc, log_memory, log_memory_delta
 from .rate_limiter import get_datalab_limiter
 from .settings import settings
 from .storage import Job, get_job, register_ocr_results_to_node, update_job_status
+from .storage_jobs import increment_retry_count, set_job_started_at
 from .task_helpers import check_paused, create_empty_result, download_job_files
 from .task_ocr_twopass import run_two_pass_ocr
 from .task_results import generate_results
@@ -36,6 +38,51 @@ def run_ocr_task(self, job_id: str) -> dict:
         if not job:
             logger.error(f"Задача {job_id} не найдена")
             return {"status": "error", "message": "Job not found"}
+
+        # ===== ЗАЩИТА ОТ ЗАЦИКЛИВАНИЯ =====
+        # Проверка 1: количество попыток
+        if job.retry_count >= settings.job_max_retries:
+            error_msg = f"Превышен лимит попыток: {job.retry_count}/{settings.job_max_retries}"
+            logger.error(f"Job {job_id}: {error_msg}")
+            update_job_status(
+                job_id, "error",
+                error_message=error_msg,
+                status_message="❌ Превышен лимит попыток"
+            )
+            return {"status": "error", "message": "Max retries exceeded"}
+
+        # Проверка 2: общее время выполнения
+        if job.started_at:
+            try:
+                # Парсим ISO формат с учётом возможного наличия 'Z' или '+00:00'
+                started_str = job.started_at.replace('Z', '+00:00')
+                if '+' not in started_str and started_str.endswith('+00:00') is False:
+                    started = datetime.fromisoformat(started_str)
+                else:
+                    # Убираем timezone info для сравнения с utcnow()
+                    started = datetime.fromisoformat(started_str.split('+')[0])
+                runtime_hours = (datetime.utcnow() - started).total_seconds() / 3600
+
+                if runtime_hours > settings.job_max_runtime_hours:
+                    error_msg = f"Превышено время выполнения: {runtime_hours:.1f}h (лимит: {settings.job_max_runtime_hours}h)"
+                    logger.error(f"Job {job_id}: {error_msg}")
+                    update_job_status(
+                        job_id, "error",
+                        error_message=error_msg,
+                        status_message="❌ Превышено время выполнения"
+                    )
+                    return {"status": "error", "message": "Max runtime exceeded"}
+            except Exception as e:
+                logger.warning(f"Job {job_id}: ошибка парсинга started_at ({job.started_at}): {e}")
+
+        # Инкрементируем retry_count
+        new_retry_count = increment_retry_count(job_id)
+        logger.info(f"Job {job_id}: попытка {new_retry_count}/{settings.job_max_retries}")
+
+        # Устанавливаем started_at только при первом запуске
+        if not job.started_at:
+            set_job_started_at(job_id)
+        # ===== КОНЕЦ ЗАЩИТЫ ОТ ЗАЦИКЛИВАНИЯ =====
 
         if check_paused(job.id):
             return {"status": "paused"}

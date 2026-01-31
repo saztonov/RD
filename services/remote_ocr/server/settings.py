@@ -121,6 +121,22 @@ class Settings:
         )
     )
 
+    # ===== ЗАЩИТА ОТ ЗАЦИКЛИВАНИЯ =====
+    # Максимальное время выполнения одной задачи в часах
+    # После превышения задача будет помечена как error
+    job_max_runtime_hours: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "job_max_runtime_hours", "JOB_MAX_RUNTIME_HOURS", 2, int
+        )
+    )
+    # Максимальное количество попыток выполнения задачи
+    # Защита от бесконечного зацикливания при таймаутах Celery
+    job_max_retries: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "job_max_retries", "JOB_MAX_RETRIES", 3, int
+        )
+    )
+
     # ===== OCR THREADING =====
     max_global_ocr_requests: int = field(
         default_factory=lambda: _get_setting(
