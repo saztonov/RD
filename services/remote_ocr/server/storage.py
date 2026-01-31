@@ -44,7 +44,7 @@ from .storage_jobs import (
 from .storage_models import Job, JobFile, JobSettings
 
 # Re-export node files и tree_nodes
-from .storage_nodes import (
+from .node_storage import (
     add_node_file,
     create_node,
     delete_node,

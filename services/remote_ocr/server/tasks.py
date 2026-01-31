@@ -238,7 +238,7 @@ def run_ocr_task(self, job_id: str) -> dict:
 
             # Обновляем статус PDF документа
             try:
-                from .storage_nodes import update_node_pdf_status
+                from .node_storage import update_node_pdf_status
 
                 update_node_pdf_status(job.node_id)
                 logger.info(f"PDF status updated for node {job.node_id}")
