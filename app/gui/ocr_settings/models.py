@@ -42,11 +42,6 @@ class OCRSettings:
     max_queue_size: int = 100
     default_task_priority: int = 5
 
-    # Block Detection API
-    block_detection_enabled: bool = True
-    block_detection_url: str = "http://localhost:8000"
-    block_detection_timeout: int = 60
-
     def to_dict(self) -> dict:
         return asdict(self)
 

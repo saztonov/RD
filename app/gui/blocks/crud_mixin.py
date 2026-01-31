@@ -6,7 +6,6 @@
 
 from rd_core.models import Page
 
-from app.gui.blocks.auto_detection_mixin import AutoDetectionMixin
 from app.gui.blocks.block_draw_mixin import BlockDrawMixin
 from app.gui.blocks.block_modification_mixin import BlockModificationMixin
 from app.gui.blocks.block_selection_mixin import BlockSelectionMixin
@@ -20,7 +19,6 @@ class BlockCRUDMixin(
     BlockDrawMixin,
     BlockSelectionMixin,
     BlockModificationMixin,
-    AutoDetectionMixin,
 ):
     """
     Миксин для операций CRUD с блоками.
