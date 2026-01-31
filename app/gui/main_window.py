@@ -379,7 +379,7 @@ class MainWindow(
 
     def _show_ocr_settings(self):
         """Показать диалог настроек OCR сервера"""
-        from app.gui.ocr_settings_dialog import OCRSettingsDialog
+        from app.gui.ocr_settings import OCRSettingsDialog
 
         dialog = OCRSettingsDialog(self)
         dialog.exec()

@@ -158,7 +158,7 @@ class RemoteOCRPanel(
             try:
                 import os
 
-                from app.remote_ocr_client import RemoteOCRClient
+                from app.ocr_client import RemoteOCRClient
 
                 base_url = os.getenv("REMOTE_OCR_BASE_URL", "http://localhost:8000")
                 api_key = os.getenv("REMOTE_OCR_API_KEY")

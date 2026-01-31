@@ -46,7 +46,7 @@ class R2ViewerIntegration:
 
     def view_on_r2(self, node: TreeNode) -> None:
         """Показать файлы узла на R2 Storage"""
-        from app.gui.r2_files_dialog import R2FilesDialog
+        from app.gui.r2_viewer import R2FilesDialog
         from rd_core.r2_storage import R2Storage
 
         # Определяем r2_prefix для узла

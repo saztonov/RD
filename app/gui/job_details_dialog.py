@@ -271,7 +271,7 @@ class JobDetailsDialog(QDialog):
 
     def _show_r2_files(self, r2_base_url: str, r2_files: list):
         """Показать диалог со списком файлов на R2"""
-        from app.gui.r2_files_dialog import R2FilesDialog
+        from app.gui.r2_viewer import R2FilesDialog
 
         dialog = R2FilesDialog(r2_base_url, r2_files, self)
         dialog.exec()
