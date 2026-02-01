@@ -682,26 +682,28 @@ class MainWindow(
 
     def _check_deepseek_health(self):
         """Проверить доступность DeepSeek OCR API"""
-        import httpx
-        from concurrent.futures import ThreadPoolExecutor
+        from PySide6.QtCore import QThread, Signal
 
-        def check_health():
-            try:
-                with httpx.Client(timeout=10) as client:
-                    response = client.get("https://youtu.pnode.site/health")
-                    if response.status_code == 200:
-                        data = response.json()
-                        if data.get("status") == "ok":
-                            model_loaded = data.get("model_loaded", False)
-                            return "ok", model_loaded
-                        return "error", False
-                    return "error", False
-            except Exception as e:
-                logger.debug(f"DeepSeek health check failed: {e}")
-                return "unavailable", False
+        class HealthCheckWorker(QThread):
+            finished = Signal(str, bool)  # status, model_loaded
 
-        def update_ui(result):
-            status, model_loaded = result
+            def run(self):
+                import httpx
+                try:
+                    with httpx.Client(timeout=10) as client:
+                        response = client.get("https://youtu.pnode.site/health")
+                        if response.status_code == 200:
+                            data = response.json()
+                            if data.get("status") == "ok":
+                                model_loaded = data.get("model_loaded", False)
+                                self.finished.emit("ok", model_loaded)
+                                return
+                        self.finished.emit("error", False)
+                except Exception as e:
+                    logger.debug(f"DeepSeek health check failed: {e}")
+                    self.finished.emit("unavailable", False)
+
+        def update_ui(status: str, model_loaded: bool):
             if status == "ok":
                 if model_loaded:
                     self._deepseek_status_label.setText("🟢 DeepSeek")
@@ -716,11 +718,10 @@ class MainWindow(
                 self._deepseek_status_label.setStyleSheet("color: #f44336; font-size: 9pt; font-weight: bold;")
                 self._deepseek_status_label.setToolTip("DeepSeek OCR недоступен")
 
-        # Выполняем проверку в отдельном потоке чтобы не блокировать UI
-        executor = ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(check_health)
-        future.add_done_callback(lambda f: QTimer.singleShot(0, lambda: update_ui(f.result())))
-        executor.shutdown(wait=False)
+        # Запускаем проверку в отдельном потоке
+        self._deepseek_health_worker = HealthCheckWorker()
+        self._deepseek_health_worker.finished.connect(update_ui)
+        self._deepseek_health_worker.start()
 
     def _sync_pending_operations(self):
         """Синхронизировать отложенные операции"""
