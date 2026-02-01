@@ -13,6 +13,7 @@ credentials/
 *_secret*
 *_private*
 client_id.txt
+CLAUDE_CODE_INSTRUCTIONS.md
 
 # Экспорты настроек (могут содержать ключи)
 *_export_*.json
