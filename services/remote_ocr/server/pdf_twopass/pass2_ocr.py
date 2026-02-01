@@ -13,6 +13,8 @@ from typing import Callable, Dict, List, Optional
 
 from PIL import Image
 
+from rd_core.ocr import DeepSeekOCRError
+
 from ..logging_config import get_logger
 from ..manifest_models import CropManifestEntry, StripManifestEntry, TwoPassManifest
 from ..memory_utils import force_gc, log_memory, log_memory_delta
@@ -118,6 +120,17 @@ def pass2_ocr_from_manifest(
 
             return strip, index_results, strip_idx
 
+        except DeepSeekOCRError as e:
+            # DeepSeek OCR ошибка - пробрасываем для обработки на верхнем уровне
+            logger.error(
+                f"PASS2: DeepSeek OCR error для strip {strip.strip_id}: {e}",
+                extra={
+                    "event": "pass2_strip_deepseek_error",
+                    "strip_id": strip.strip_id,
+                    "block_ids": [bp["block_id"] for bp in strip.block_parts],
+                },
+            )
+            raise
         except Exception as e:
             logger.error(
                 f"PASS2: strip processing error {strip.strip_id}",
@@ -256,6 +269,16 @@ def pass2_ocr_from_manifest(
 
             return entry.block_id, text, entry.part_idx, entry.total_parts
 
+        except DeepSeekOCRError as e:
+            # DeepSeek OCR ошибка - пробрасываем для обработки на верхнем уровне
+            logger.error(
+                f"PASS2: DeepSeek OCR error для image {entry.block_id}: {e}",
+                extra={
+                    "event": "pass2_image_deepseek_error",
+                    "block_id": entry.block_id,
+                },
+            )
+            raise
         except Exception as e:
             logger.error(
                 f"PASS2: image processing error {entry.block_id}",
@@ -269,7 +292,8 @@ def pass2_ocr_from_manifest(
                 },
                 exc_info=True,
             )
-            return entry.block_id, f"[Ошибка: {e}]", entry.part_idx, entry.total_parts
+            # Возвращаем пустой результат вместо строки ошибки
+            return entry.block_id, "", entry.part_idx, entry.total_parts
 
     logger.info(f"PASS2: обработка {len(manifest.image_blocks)} image blocks")
 
