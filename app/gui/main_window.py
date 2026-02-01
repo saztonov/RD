@@ -691,7 +691,10 @@ class MainWindow(
                 import httpx
                 try:
                     with httpx.Client(timeout=10) as client:
-                        response = client.get("https://youtu.pnode.site/health")
+                        response = client.get(
+                            "https://louvred-madie-gigglier.ngrok-free.dev/health",
+                            headers={"ngrok-skip-browser-warning": "true"}
+                        )
                         if response.status_code == 200:
                             data = response.json()
                             if data.get("status") == "ok":

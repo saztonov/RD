@@ -2,11 +2,11 @@
 
 ## Описание сервиса
 
-OCR API на базе модели DeepSeek-OCR-2 для распознавания текста и таблиц из изображений и PDF документов. Сервис развёрнут локально в Docker с GPU ускорением и доступен через публичный URL.
+OCR API на базе модели DeepSeek-OCR-2 для распознавания текста и таблиц из изображений и PDF документов. Сервис развёрнут локально в Docker с GPU ускорением и доступен через ngrok туннель.
 
 ## Доступ к API
 
-- **Публичный URL:** `https://youtu.pnode.site`
+- **Публичный URL:** `https://louvred-madie-gigglier.ngrok-free.dev`
 - **Локальный URL:** `http://localhost:8001`
 
 ## Endpoints
@@ -15,7 +15,7 @@ OCR API на базе модели DeepSeek-OCR-2 для распознаван�
 Проверка состояния сервиса.
 
 ```bash
-curl https://youtu.pnode.site/health
+curl https://louvred-madie-gigglier.ngrok-free.dev/health
 ```
 
 **Ответ:**
@@ -44,14 +44,14 @@ curl https://youtu.pnode.site/health
 
 ### Распознать изображение
 ```bash
-curl -X POST https://youtu.pnode.site/ocr \
+curl -X POST https://louvred-madie-gigglier.ngrok-free.dev/ocr \
   -F "file=@screenshot.png" \
   -F "mode=markdown"
 ```
 
 ### Распознать первую страницу PDF
 ```bash
-curl -X POST https://youtu.pnode.site/ocr \
+curl -X POST https://louvred-madie-gigglier.ngrok-free.dev/ocr \
   -F "file=@document.pdf" \
   -F "mode=markdown" \
   -F "page=1"
@@ -59,7 +59,7 @@ curl -X POST https://youtu.pnode.site/ocr \
 
 ### Распознать диапазон страниц PDF (2-5)
 ```bash
-curl -X POST https://youtu.pnode.site/ocr \
+curl -X POST https://louvred-madie-gigglier.ngrok-free.dev/ocr \
   -F "file=@document.pdf" \
   -F "mode=markdown" \
   -F "first_page=2" \
@@ -68,7 +68,7 @@ curl -X POST https://youtu.pnode.site/ocr \
 
 ### Распознать весь PDF (все страницы)
 ```bash
-curl -X POST https://youtu.pnode.site/ocr \
+curl -X POST https://louvred-madie-gigglier.ngrok-free.dev/ocr \
   -F "file=@document.pdf" \
   -F "mode=markdown"
 ```
@@ -95,12 +95,12 @@ curl -X POST https://youtu.pnode.site/ocr \
 
 ### Проверка здоровья
 ```powershell
-(Invoke-WebRequest -Uri "https://youtu.pnode.site/health" -UseBasicParsing).Content
+(Invoke-WebRequest -Uri "https://louvred-madie-gigglier.ngrok-free.dev/health" -UseBasicParsing).Content
 ```
 
 ### OCR изображения
 ```powershell
-$response = Invoke-RestMethod -Uri "https://youtu.pnode.site/ocr" -Method Post -Form @{
+$response = Invoke-RestMethod -Uri "https://louvred-madie-gigglier.ngrok-free.dev/ocr" -Method Post -Form @{
     file = Get-Item "image.png"
     mode = "markdown"
 }
@@ -113,13 +113,13 @@ $response.markdown | Out-File "result.md" -Encoding UTF8
 import requests
 
 # Проверка здоровья
-response = requests.get("https://youtu.pnode.site/health")
+response = requests.get("https://louvred-madie-gigglier.ngrok-free.dev/health")
 print(response.json())
 
 # OCR изображения
 with open("image.png", "rb") as f:
     response = requests.post(
-        "https://youtu.pnode.site/ocr",
+        "https://louvred-madie-gigglier.ngrok-free.dev/ocr",
         files={"file": f},
         data={"mode": "markdown"}
     )
@@ -129,7 +129,7 @@ print(result["markdown"])
 # OCR первой страницы PDF
 with open("document.pdf", "rb") as f:
     response = requests.post(
-        "https://youtu.pnode.site/ocr",
+        "https://louvred-madie-gigglier.ngrok-free.dev/ocr",
         files={"file": f},
         data={"mode": "markdown", "page": "1"}
     )
@@ -141,7 +141,7 @@ print(result["markdown"])
 
 1. **Для больших PDF** — используйте параметр `page` или `first_page`/`last_page` для обработки по частям
 2. **Таймауты** — обработка одной страницы занимает ~15-20 секунд, устанавливайте соответствующие таймауты
-3. **Размер файла** — максимальный размер запроса 30 MB (ограничение pnode)
+3. **Размер файла** — рекомендуемый максимальный размер запроса 50 MB
 4. **Качество** — для лучшего распознавания используйте изображения с разрешением не менее 200 DPI
 
 ## Управление сервисом
@@ -162,14 +162,13 @@ docker-compose down
 docker-compose logs -f ocr-api
 ```
 
-### Запуск pnode туннеля
+### Запуск ngrok туннеля
 ```bash
-start-pnode --token yJCjre7S7XOPibogOCtkPCPtfyKGTSBubiMVyJroX3ht0rZJAXPK2jimB6Xe --port 8001
+C:\ngrok\ngrok.exe http 8001
 ```
 
-## Лимиты (бесплатный план pnode)
+## Примечания по ngrok
 
-- 10 000 запросов в день
-- 10 GB трафика в день
-- Максимальный размер запроса: 30 MB
-- Скорость сети: 15 Мбит/с
+- Используется домен: `louvred-madie-gigglier.ngrok-free.dev`
+- При первом обращении через ngrok бесплатный аккаунт показывает интерстициальную страницу
+- Для API запросов добавляйте заголовок `ngrok-skip-browser-warning: true`

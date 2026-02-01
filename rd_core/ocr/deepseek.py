@@ -18,7 +18,7 @@ class DeepSeekOCRError(Exception):
 class DeepSeekOCRBackend:
     """OCR через DeepSeek-OCR-2 API"""
 
-    DEFAULT_URL = "https://youtu.pnode.site"
+    DEFAULT_URL = "https://louvred-madie-gigglier.ngrok-free.dev"
     MAX_FILE_SIZE = 30 * 1024 * 1024  # 30MB
     MAX_RETRIES = 3
     RETRY_DELAYS = [1, 2, 4]  # секунды (exponential backoff)
@@ -34,7 +34,7 @@ class DeepSeekOCRBackend:
         Инициализация DeepSeek OCR backend.
 
         Args:
-            api_url: URL API (по умолчанию https://youtu.pnode.site)
+            api_url: URL API (по умолчанию https://louvred-madie-gigglier.ngrok-free.dev)
             mode: Режим распознавания - 'markdown' или 'text'
             timeout: Таймаут запроса в секундах (по умолчанию 120)
         """
@@ -50,6 +50,10 @@ class DeepSeekOCRBackend:
             from urllib3.util.retry import Retry
 
             self.session = requests.Session()
+            # Заголовок для обхода интерстициальной страницы ngrok
+            self.session.headers.update({
+                "ngrok-skip-browser-warning": "true"
+            })
             retry = Retry(
                 total=3, backoff_factor=1.0, status_forcelist=[502, 503, 504]
             )
@@ -121,7 +125,9 @@ class DeepSeekOCRBackend:
                 raise DeepSeekOCRError(f"Файл слишком большой ({size_mb:.1f}MB > 30MB)")
 
             logger.info(
-                f"DeepSeek: отправка запроса ({file_size / 1024:.1f}KB, mode={self.mode})"
+                f"DeepSeek OCR запрос: url={self.api_url}/ocr, "
+                f"file_size={file_size}B ({file_size / 1024:.1f}KB), "
+                f"mime={mime_type}, mode={self.mode}"
             )
 
             last_error = None
@@ -133,11 +139,17 @@ class DeepSeekOCRBackend:
                     files = {"file": (os.path.basename(file_path), file_content, mime_type)}
                     data = {"mode": self.mode}
 
+                    request_start = time.time()
                     response = self.session.post(
                         f"{self.api_url}/ocr",
                         files=files,
                         data=data,
                         timeout=self.timeout,
+                    )
+                    request_elapsed = time.time() - request_start
+                    logger.info(
+                        f"DeepSeek OCR ответ: status={response.status_code}, "
+                        f"elapsed={request_elapsed:.2f}s"
                     )
 
                     # Retry на 5xx ошибках

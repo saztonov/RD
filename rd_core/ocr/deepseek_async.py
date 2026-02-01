@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class AsyncDeepSeekOCRBackend:
     """Асинхронный OCR через DeepSeek-OCR-2 API"""
 
-    DEFAULT_URL = "https://youtu.pnode.site"
+    DEFAULT_URL = "https://louvred-madie-gigglier.ngrok-free.dev"
     MAX_FILE_SIZE = 30 * 1024 * 1024  # 30MB
     MAX_RETRIES = 3
     RETRY_DELAYS = [1, 2, 4]  # секунды (exponential backoff)
@@ -32,7 +32,7 @@ class AsyncDeepSeekOCRBackend:
         Инициализация асинхронного DeepSeek OCR backend.
 
         Args:
-            api_url: URL API (по умолчанию https://youtu.pnode.site)
+            api_url: URL API (по умолчанию https://louvred-madie-gigglier.ngrok-free.dev)
             mode: Режим распознавания - 'markdown' или 'text'
             timeout: Таймаут запроса в секундах (по умолчанию 120)
         """
@@ -62,6 +62,8 @@ class AsyncDeepSeekOCRBackend:
             self._client = httpx.AsyncClient(
                 transport=transport,
                 timeout=httpx.Timeout(float(self.timeout), connect=30.0),
+                # Заголовок для обхода интерстициальной страницы ngrok
+                headers={"ngrok-skip-browser-warning": "true"},
             )
         return self._client
 
@@ -130,8 +132,9 @@ class AsyncDeepSeekOCRBackend:
                 raise DeepSeekOCRError(f"Файл слишком большой ({size_mb:.1f}MB > 30MB)")
 
             logger.info(
-                f"AsyncDeepSeek: отправка запроса ({file_size / 1024:.1f}KB, "
-                f"mode={self.mode})"
+                f"AsyncDeepSeek OCR запрос: url={self.api_url}/ocr, "
+                f"file_size={file_size}B ({file_size / 1024:.1f}KB), "
+                f"mime={mime_type}, mode={self.mode}"
             )
 
             # Читаем файл в память для httpx
@@ -144,10 +147,17 @@ class AsyncDeepSeekOCRBackend:
                     files = {"file": (os.path.basename(file_path), file_content, mime_type)}
                     data = {"mode": self.mode}
 
+                    import time as sync_time
+                    request_start = sync_time.time()
                     response = await client.post(
                         f"{self.api_url}/ocr",
                         files=files,
                         data=data,
+                    )
+                    request_elapsed = sync_time.time() - request_start
+                    logger.info(
+                        f"AsyncDeepSeek OCR ответ: status={response.status_code}, "
+                        f"elapsed={request_elapsed:.2f}s"
                     )
 
                     # Retry на 5xx ошибках

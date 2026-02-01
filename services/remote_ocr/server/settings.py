@@ -184,7 +184,7 @@ class Settings:
     # ===== DEEPSEEK OCR =====
     deepseek_ocr_url: str = field(
         default_factory=lambda: os.getenv(
-            "DEEPSEEK_OCR_URL", "https://youtu.pnode.site"
+            "DEEPSEEK_OCR_URL", "https://louvred-madie-gigglier.ngrok-free.dev"
         )
     )
     deepseek_ocr_mode: str = field(
