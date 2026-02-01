@@ -522,6 +522,11 @@ class MainWindow(
         self._connection_status_label.setStyleSheet("color: #888; font-size: 9pt;")
         self._connection_status_label.setToolTip("Статус подключения к серверу")
 
+        # Индикатор статуса DeepSeek OCR
+        self._deepseek_status_label = QLabel("⚪ DeepSeek")
+        self._deepseek_status_label.setStyleSheet("color: #888; font-size: 9pt;")
+        self._deepseek_status_label.setToolTip("Проверка DeepSeek OCR...")
+
         # Индикатор очереди синхронизации
         self._sync_queue_label = QLabel("")
         self._sync_queue_label.setStyleSheet("color: #888; font-size: 9pt;")
@@ -529,6 +534,7 @@ class MainWindow(
         self._sync_queue_label.hide()
 
         self._status_bar.addPermanentWidget(self._sync_queue_label)
+        self._status_bar.addPermanentWidget(self._deepseek_status_label)
         self._status_bar.addPermanentWidget(self._connection_status_label)
         self._status_bar.addPermanentWidget(self._status_label)
         self._status_bar.addPermanentWidget(self._status_progress)
@@ -537,6 +543,13 @@ class MainWindow(
         self._sync_queue_timer = QTimer(self)
         self._sync_queue_timer.timeout.connect(self._update_sync_queue_indicator)
         self._sync_queue_timer.start(2000)  # Каждые 2 секунды
+
+        # Таймер для проверки DeepSeek health
+        self._deepseek_health_timer = QTimer(self)
+        self._deepseek_health_timer.timeout.connect(self._check_deepseek_health)
+        self._deepseek_health_timer.start(30000)  # Каждые 30 секунд
+        # Первая проверка сразу при запуске
+        QTimer.singleShot(2000, self._check_deepseek_health)
 
     def show_transfer_progress(self, message: str, current: int = 0, total: int = 0):
         """Показать прогресс загрузки/скачивания"""
@@ -666,7 +679,49 @@ class MainWindow(
             self._sync_queue_label.show()
         else:
             self._sync_queue_label.hide()
-    
+
+    def _check_deepseek_health(self):
+        """Проверить доступность DeepSeek OCR API"""
+        import httpx
+        from concurrent.futures import ThreadPoolExecutor
+
+        def check_health():
+            try:
+                with httpx.Client(timeout=10) as client:
+                    response = client.get("https://youtu.pnode.site/health")
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get("status") == "ok":
+                            model_loaded = data.get("model_loaded", False)
+                            return "ok", model_loaded
+                        return "error", False
+                    return "error", False
+            except Exception as e:
+                logger.debug(f"DeepSeek health check failed: {e}")
+                return "unavailable", False
+
+        def update_ui(result):
+            status, model_loaded = result
+            if status == "ok":
+                if model_loaded:
+                    self._deepseek_status_label.setText("🟢 DeepSeek")
+                    self._deepseek_status_label.setStyleSheet("color: #4caf50; font-size: 9pt; font-weight: bold;")
+                    self._deepseek_status_label.setToolTip("DeepSeek OCR доступен (модель загружена)")
+                else:
+                    self._deepseek_status_label.setText("🟡 DeepSeek")
+                    self._deepseek_status_label.setStyleSheet("color: #ff9800; font-size: 9pt; font-weight: bold;")
+                    self._deepseek_status_label.setToolTip("DeepSeek OCR доступен (модель загружается)")
+            else:
+                self._deepseek_status_label.setText("🔴 DeepSeek")
+                self._deepseek_status_label.setStyleSheet("color: #f44336; font-size: 9pt; font-weight: bold;")
+                self._deepseek_status_label.setToolTip("DeepSeek OCR недоступен")
+
+        # Выполняем проверку в отдельном потоке чтобы не блокировать UI
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(check_health)
+        future.add_done_callback(lambda f: QTimer.singleShot(0, lambda: update_ui(f.result())))
+        executor.shutdown(wait=False)
+
     def _sync_pending_operations(self):
         """Синхронизировать отложенные операции"""
         from app.gui.sync_queue import get_sync_queue
