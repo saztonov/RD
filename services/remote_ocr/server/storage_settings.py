@@ -104,6 +104,7 @@ def save_job_settings(
     table_model: str = "",
     image_model: str = "",
     stamp_model: str = "",
+    is_correction_mode: bool = False,
 ) -> JobSettings:
     """Сохранить/обновить настройки задачи"""
     now = datetime.utcnow().isoformat()
@@ -117,6 +118,7 @@ def save_job_settings(
             "table_model": table_model,
             "image_model": image_model,
             "stamp_model": stamp_model,
+            "is_correction_mode": is_correction_mode,
             "updated_at": now,
         },
         on_conflict="job_id",
@@ -128,6 +130,7 @@ def save_job_settings(
         table_model=table_model,
         image_model=image_model,
         stamp_model=stamp_model,
+        is_correction_mode=is_correction_mode,
     )
 
 
@@ -146,4 +149,5 @@ def get_job_settings(job_id: str) -> Optional[JobSettings]:
         table_model=row.get("table_model", ""),
         image_model=row.get("image_model", ""),
         stamp_model=row.get("stamp_model", ""),
+        is_correction_mode=row.get("is_correction_mode", False),
     )

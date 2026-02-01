@@ -178,6 +178,32 @@ class JobOperationsMixin:
             QMessageBox.warning(self, "Ошибка", "Нет блоков для распознавания")
             return
 
+        # Подсчёт корректировочных блоков
+        correction_blocks = [b for b in selected_blocks if b.is_correction]
+        correction_count = len(correction_blocks)
+
+        # Показываем диалог выбора если есть корректировочные блоки
+        if correction_count > 0:
+            from PySide6.QtWidgets import QDialog
+
+            from app.gui.correction_mode_dialog import CorrectionModeDialog
+
+            mode_dialog = CorrectionModeDialog(
+                self,
+                correction_count=correction_count,
+                total_count=len(selected_blocks),
+            )
+            if mode_dialog.exec() != QDialog.Accepted:
+                return
+
+            if mode_dialog.selected_mode == CorrectionModeDialog.MODE_CORRECTION:
+                selected_blocks = correction_blocks
+                self._is_correction_mode = True
+            else:
+                self._is_correction_mode = False
+        else:
+            self._is_correction_mode = False
+
         client = self._get_client()
         if client is None:
             QMessageBox.warning(self, "Ошибка", "Клиент не инициализирован")
@@ -231,6 +257,7 @@ class JobOperationsMixin:
             getattr(dialog, "stamp_model", None),
             node_id,
             temp_job_id,
+            getattr(self, "_is_correction_mode", False),
         )
 
     def _create_job_bg(
@@ -246,6 +273,7 @@ class JobOperationsMixin:
         stamp_model,
         node_id=None,
         temp_job_id=None,
+        is_correction_mode=False,
     ):
         """Фоновое создание задачи"""
         try:
@@ -271,6 +299,7 @@ class JobOperationsMixin:
                 image_model=image_model,
                 stamp_model=stamp_model,
                 node_id=node_id,
+                is_correction_mode=is_correction_mode,
             )
             logger.info(f"Задача создана: id={job_info.id}, status={job_info.status}")
             job_info._temp_job_id = temp_job_id

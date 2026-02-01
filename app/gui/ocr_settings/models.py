@@ -12,8 +12,8 @@ class OCRSettings:
     max_concurrent_jobs: int = 4
     worker_prefetch: int = 1
     worker_max_tasks: int = 100
-    task_soft_timeout: int = 1800
-    task_hard_timeout: int = 2100
+    task_soft_timeout: int = 3600  # 60 минут (1 час)
+    task_hard_timeout: int = 4200  # 70 минут
     task_max_retries: int = 3
     task_retry_delay: int = 60
 

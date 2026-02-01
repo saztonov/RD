@@ -86,6 +86,9 @@ class ResultHandlerMixin:
                 for block in page.blocks:
                     if block.id in ocr_results:
                         block.ocr_text = ocr_results[block.id]
+                        # Снимаем флаг корректировки после успешного OCR
+                        if block.is_correction:
+                            block.is_correction = False
                         updated_count += 1
 
             self.main_window._render_current_page()

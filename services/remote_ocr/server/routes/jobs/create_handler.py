@@ -37,6 +37,7 @@ async def create_job_handler(
     image_model: str = Form(""),
     stamp_model: str = Form(""),
     node_id: Optional[str] = Form(None),
+    is_correction_mode: str = Form("false"),
     blocks_file: UploadFile = File(..., alias="blocks_file"),
     pdf: UploadFile = File(...),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
@@ -97,7 +98,10 @@ async def create_job_handler(
         node_id=node_id,
     )
 
-    save_job_settings(job.id, text_model, table_model, image_model, stamp_model)
+    is_correction = is_correction_mode.lower() == "true"
+    save_job_settings(
+        job.id, text_model, table_model, image_model, stamp_model, is_correction
+    )
 
     can_accept, queue_size, max_size = check_queue_capacity()
     if not can_accept:

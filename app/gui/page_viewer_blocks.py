@@ -54,6 +54,12 @@ class BlockRenderingMixin:
             pen.setStyle(Qt.DashLine)
             pen.setWidth(3)
 
+        # Корректировочные блоки - оранжевая пунктирная рамка
+        if block.is_correction:
+            pen.setColor(QColor(255, 165, 0))  # Orange
+            pen.setStyle(Qt.DashDotLine)
+            pen.setWidth(3)
+
         if idx in self.selected_block_indices:
             pen.setColor(QColor(0, 120, 255))
             pen.setWidth(4)

@@ -1,6 +1,7 @@
 """Миксин для создания блоков (рисование)"""
 
 import logging
+from pathlib import Path
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMessageBox
@@ -55,6 +56,10 @@ class BlockDrawMixin:
         )
         if category_code:
             block.category_code = category_code
+
+        # Автопометка: если документ уже распознан, пометить для корректировки
+        if self._is_document_recognized():
+            block.is_correction = True
 
         logger.debug(
             f"Block created: {block.id} coords_px={block.coords_px} "
@@ -121,6 +126,10 @@ class BlockDrawMixin:
         if category_code:
             block.category_code = category_code
 
+        # Автопометка: если документ уже распознан, пометить для корректировки
+        if self._is_document_recognized():
+            block.is_correction = True
+
         logger.debug(
             f"Polygon created: {block.id} bbox={block.coords_px} vertices={len(points)}"
         )
@@ -135,3 +144,12 @@ class BlockDrawMixin:
         # Отложенное обновление дерева (не блокирует UI)
         QTimer.singleShot(0, self.blocks_tree_manager.update_blocks_tree)
         self._auto_save_annotation()
+
+    def _is_document_recognized(self) -> bool:
+        """Проверить, был ли документ уже распознан (есть result.json)"""
+        pdf_path = getattr(self, "_current_pdf_path", None)
+        if not pdf_path:
+            return False
+
+        result_path = Path(pdf_path).parent / f"{Path(pdf_path).stem}_result.json"
+        return result_path.exists()

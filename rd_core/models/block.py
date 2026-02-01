@@ -58,6 +58,7 @@ class Block:
     category_id: Optional[str] = None  # ID категории изображения
     category_code: Optional[str] = None  # Код категории изображения (для сериализации)
     created_at: Optional[str] = None  # Дата создания (ISO формат)
+    is_correction: bool = False  # Флаг корректировочного блока (требует повторного OCR)
 
     @staticmethod
     def generate_id() -> str:
@@ -229,6 +230,8 @@ class Block:
             result["category_code"] = self.category_code
         if self.created_at:
             result["created_at"] = self.created_at
+        if self.is_correction:
+            result["is_correction"] = self.is_correction
         return result
 
     @classmethod
@@ -303,5 +306,6 @@ class Block:
             category_id=data.get("category_id"),
             category_code=data.get("category_code"),
             created_at=data.get("created_at") or get_moscow_time_str(),
+            is_correction=data.get("is_correction", False),
         )
         return block, was_migrated

@@ -55,6 +55,10 @@ class ContextMenuMixin(CategoryMixin, BlockOperationsMixin, GroupOperationsMixin
         menu.addSeparator()
         self._add_category_menu(menu, selected_blocks)
 
+        # 6. Корректировочные блоки
+        menu.addSeparator()
+        self._add_correction_action(menu, selected_blocks)
+
         menu.exec(global_pos)
 
     def _add_linked_block_action(self, menu: QMenu, selected_blocks: list):
@@ -183,3 +187,28 @@ class ContextMenuMixin(CategoryMixin, BlockOperationsMixin, GroupOperationsMixin
                                     blocks, cid, ccode
                                 )
                             )
+
+    def _add_correction_action(self, menu: QMenu, selected_blocks: list):
+        """Добавить пункт меню для пометки как корректировочный"""
+        if not selected_blocks:
+            return
+
+        # Проверяем текущий статус блоков
+        all_correction = all(
+            self.current_blocks[b["idx"]].is_correction
+            for b in selected_blocks
+            if 0 <= b["idx"] < len(self.current_blocks)
+        )
+
+        if all_correction:
+            action_text = "✓ Снять пометку корректировки"
+        else:
+            action_text = "🔄 Пометить для корректировки"
+
+        if len(selected_blocks) > 1:
+            action_text += f" ({len(selected_blocks)})"
+
+        action = menu.addAction(action_text)
+        action.triggered.connect(
+            lambda checked, blocks=selected_blocks: self._toggle_correction_flag(blocks)
+        )

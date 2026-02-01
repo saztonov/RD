@@ -259,3 +259,50 @@ class BlockOperationsMixin:
 
             cat_name = category_code or "default"
             show_toast(main_window, f"Категория установлена: {cat_name}")
+
+    def _toggle_correction_flag(self, blocks_data: list):
+        """Переключить флаг корректировки для выбранных блоков"""
+        main_window = self.parent().window()
+        if (
+            not hasattr(main_window, "annotation_document")
+            or not main_window.annotation_document
+        ):
+            return
+
+        current_page = main_window.current_page
+        if current_page >= len(main_window.annotation_document.pages):
+            return
+
+        page = main_window.annotation_document.pages[current_page]
+
+        if hasattr(main_window, "_save_undo_state"):
+            main_window._save_undo_state()
+
+        # Если хоть один не помечен - пометить все
+        any_not_correction = any(
+            not page.blocks[b["idx"]].is_correction
+            for b in blocks_data
+            if 0 <= b["idx"] < len(page.blocks)
+        )
+        new_value = any_not_correction
+
+        count = 0
+        for data in blocks_data:
+            idx = data["idx"]
+            if 0 <= idx < len(page.blocks):
+                page.blocks[idx].is_correction = new_value
+                count += 1
+
+        main_window._render_current_page()
+
+        if hasattr(main_window, "blocks_tree_manager"):
+            main_window.blocks_tree_manager.update_blocks_tree()
+        if hasattr(main_window, "_auto_save_annotation"):
+            main_window._auto_save_annotation()
+
+        from app.gui.toast import show_toast
+
+        if new_value:
+            show_toast(main_window, f"Помечено для корректировки: {count}")
+        else:
+            show_toast(main_window, f"Пометка снята: {count}")

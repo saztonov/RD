@@ -101,6 +101,11 @@ class BlockModificationMixin:
 
         if 0 <= block_idx < len(current_page_data.blocks):
             block = current_page_data.blocks[block_idx]
+
+            # Автопометка: если блок уже был распознан, пометить для корректировки
+            if block.ocr_text and not block.is_correction:
+                block.is_correction = True
+
             block.update_coords_px(
                 (x1, y1, x2, y2), current_page_data.width, current_page_data.height
             )

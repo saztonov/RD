@@ -22,6 +22,7 @@ class JobSettings:
     table_model: str = ""
     image_model: str = ""
     stamp_model: str = ""
+    is_correction_mode: bool = False
 
 
 @dataclass

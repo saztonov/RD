@@ -157,7 +157,7 @@ class RemoteOCRClient:
             JobInfo если есть queued/processing задача, иначе None
         """
         try:
-            jobs = self.list_jobs(document_id=document_id)
+            jobs, _ = self.list_jobs(document_id=document_id)
             for job in jobs:
                 if job.status in ("queued", "processing"):
                     logger.info(
@@ -181,6 +181,7 @@ class RemoteOCRClient:
         stamp_model: Optional[str] = None,
         reuse_existing: bool = True,
         node_id: Optional[str] = None,
+        is_correction_mode: bool = False,
     ) -> JobInfo:
         """
         Создать задачу OCR
@@ -197,6 +198,7 @@ class RemoteOCRClient:
             stamp_model: модель для штампов
             reuse_existing: переиспользовать существующую задачу если есть
             node_id: ID узла дерева для связи результатов
+            is_correction_mode: режим корректировки (обновить только эти блоки)
 
         Returns:
             JobInfo с информацией о созданной/существующей задаче
@@ -236,6 +238,8 @@ class RemoteOCRClient:
                 form_data["stamp_model"] = stamp_model
             if node_id:
                 form_data["node_id"] = node_id
+            if is_correction_mode:
+                form_data["is_correction_mode"] = "true"
 
             resp = client.post(
                 "/jobs",
