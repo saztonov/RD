@@ -149,6 +149,14 @@ def run_ocr_task(self, job_id: str) -> dict:
                 poll_max_attempts=settings.datalab_poll_max_attempts,
                 max_retries=settings.datalab_max_retries,
             )
+        elif engine == "deepseek":
+            strip_backend = create_ocr_engine(
+                "deepseek",
+                api_url=settings.deepseek_ocr_url,
+                mode=settings.deepseek_ocr_mode,
+                timeout=settings.deepseek_ocr_timeout,
+            )
+            logger.info(f"DeepSeek OCR: url={settings.deepseek_ocr_url}")
         elif settings.openrouter_api_key:
             strip_model = text_model or table_model or "qwen/qwen3-vl-30b-a3b-instruct"
             strip_backend = create_ocr_engine(
@@ -202,6 +210,7 @@ def run_ocr_task(self, job_id: str) -> dict:
         force_gc("после OCR обработки")
 
         # Генерация результатов (передаём datalab backend для верификации)
+        # DeepSeek не требует верификации - возвращает markdown напрямую
         update_job_status(job.id, "processing", progress=0.92, status_message="📄 Генерация результатов...")
         verification_backend = strip_backend if engine == "datalab" else None
 

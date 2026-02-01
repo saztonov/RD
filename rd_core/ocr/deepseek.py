@@ -1,0 +1,155 @@
+"""DeepSeek OCR Backend"""
+import logging
+import os
+import tempfile
+from typing import Optional
+
+from PIL import Image
+
+logger = logging.getLogger(__name__)
+
+
+class DeepSeekOCRBackend:
+    """OCR через DeepSeek-OCR-2 API"""
+
+    DEFAULT_URL = "https://youtu.pnode.site"
+    MAX_FILE_SIZE = 30 * 1024 * 1024  # 30MB
+
+    def __init__(
+        self,
+        api_url: Optional[str] = None,
+        mode: str = "markdown",
+        timeout: int = 120,
+    ):
+        """
+        Инициализация DeepSeek OCR backend.
+
+        Args:
+            api_url: URL API (по умолчанию https://youtu.pnode.site)
+            mode: Режим распознавания - 'markdown' или 'text'
+            timeout: Таймаут запроса в секундах (по умолчанию 120)
+        """
+        self.api_url = (
+            api_url or os.getenv("DEEPSEEK_OCR_URL", self.DEFAULT_URL)
+        ).rstrip("/")
+        self.mode = mode
+        self.timeout = timeout
+
+        try:
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+
+            self.session = requests.Session()
+            retry = Retry(
+                total=3, backoff_factor=1.0, status_forcelist=[502, 503, 504]
+            )
+            adapter = HTTPAdapter(
+                pool_connections=5, pool_maxsize=10, max_retries=retry
+            )
+            self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
+        except ImportError:
+            raise ImportError("Требуется установить requests: pip install requests")
+
+        logger.info(
+            f"DeepSeek OCR инициализирован: url={self.api_url}, mode={self.mode}, "
+            f"timeout={self.timeout}s"
+        )
+
+    def supports_pdf_input(self) -> bool:
+        """DeepSeek поддерживает PDF напрямую"""
+        return True
+
+    def recognize(
+        self,
+        image: Optional[Image.Image],
+        prompt: Optional[dict] = None,
+        json_mode: bool = None,
+        pdf_file_path: Optional[str] = None,
+    ) -> str:
+        """
+        Распознать изображение или PDF через DeepSeek OCR API.
+
+        Args:
+            image: PIL изображение для распознавания
+            prompt: Не используется (для совместимости с протоколом)
+            json_mode: Не используется (для совместимости с протоколом)
+            pdf_file_path: Путь к PDF файлу (приоритет над image)
+
+        Returns:
+            Распознанный текст в формате markdown
+        """
+        try:
+            # Приоритет: PDF файл, затем изображение
+            if pdf_file_path and os.path.exists(pdf_file_path):
+                file_path = pdf_file_path
+                mime_type = "application/pdf"
+                is_temp = False
+                logger.debug(f"DeepSeek: используем PDF файл {pdf_file_path}")
+            elif image:
+                # Сохраняем во временный файл
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    image.save(tmp, format="PNG")
+                    file_path = tmp.name
+                mime_type = "image/png"
+                is_temp = True
+                logger.debug(
+                    f"DeepSeek: сохранено изображение {image.width}x{image.height}"
+                )
+            else:
+                logger.error("DeepSeek: нет изображения или PDF для распознавания")
+                return "[Ошибка: нет изображения или PDF]"
+
+            try:
+                # Проверка размера файла
+                file_size = os.path.getsize(file_path)
+                if file_size > self.MAX_FILE_SIZE:
+                    size_mb = file_size / 1024 / 1024
+                    logger.error(f"DeepSeek: файл слишком большой ({size_mb:.1f}MB)")
+                    return f"[Ошибка: файл слишком большой ({size_mb:.1f}MB > 30MB)]"
+
+                logger.info(
+                    f"DeepSeek: отправка запроса ({file_size / 1024:.1f}KB, mode={self.mode})"
+                )
+
+                with open(file_path, "rb") as f:
+                    files = {"file": (os.path.basename(file_path), f, mime_type)}
+                    data = {"mode": self.mode}
+
+                    response = self.session.post(
+                        f"{self.api_url}/ocr",
+                        files=files,
+                        data=data,
+                        timeout=self.timeout,
+                    )
+
+                if response.status_code != 200:
+                    logger.error(
+                        f"DeepSeek API error: {response.status_code} - "
+                        f"{response.text[:500]}"
+                    )
+                    return f"[Ошибка DeepSeek API: {response.status_code}]"
+
+                result = response.json()
+
+                if not result.get("success", False):
+                    error = result.get("error", "Unknown error")
+                    logger.error(f"DeepSeek: ошибка распознавания - {error}")
+                    return f"[Ошибка DeepSeek: {error}]"
+
+                markdown = result.get("markdown", "")
+                pages = result.get("pages", 1)
+                logger.info(
+                    f"DeepSeek OCR: распознано {len(markdown)} символов, {pages} страниц"
+                )
+
+                return markdown
+
+            finally:
+                if is_temp and os.path.exists(file_path):
+                    os.unlink(file_path)
+
+        except Exception as e:
+            logger.error(f"Ошибка DeepSeek OCR: {e}", exc_info=True)
+            return f"[Ошибка DeepSeek OCR: {e}]"

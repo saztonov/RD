@@ -8,6 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QRadioButton,
     QVBoxLayout,
 )
 
@@ -55,23 +57,47 @@ class OCRDialog(QDialog):
         backend_group = QGroupBox("OCR движок для текста и таблиц")
         backend_layout = QVBoxLayout(backend_group)
 
-        datalab_label = QLabel("Datalab Marker API (экономия бюджета)")
-        datalab_label.setStyleSheet("font-weight: bold; color: #4CAF50;")
-        backend_layout.addWidget(datalab_label)
+        # RadioButton для выбора движка
+        self.engine_group = QButtonGroup(self)
 
-        # Datalab info
+        self.datalab_radio = QRadioButton("Datalab Marker API (склейка блоков, экономия)")
+        self.deepseek_radio = QRadioButton("DeepSeek-OCR-2 (быстрый, markdown)")
+
+        self.engine_group.addButton(self.datalab_radio, 0)
+        self.engine_group.addButton(self.deepseek_radio, 1)
+
+        # Проверка наличия ключей
+        datalab_key = os.getenv("DATALAB_API_KEY", "")
+
+        self.datalab_radio.setEnabled(bool(datalab_key))
+        self.deepseek_radio.setEnabled(True)  # DeepSeek не требует ключа
+
+        # По умолчанию Datalab если есть ключ, иначе DeepSeek
+        if datalab_key:
+            self.datalab_radio.setChecked(True)
+        else:
+            self.deepseek_radio.setChecked(True)
+
+        backend_layout.addWidget(self.datalab_radio)
+        backend_layout.addWidget(self.deepseek_radio)
+
+        # Инфо-лейблы
         datalab_info = QLabel(
-            "💡 Datalab: склейка блоков в одно изображение для экономии кредитов.\n"
-            "   10 блоков = 1 кредит вместо 10"
+            "   💡 Склейка блоков: 10 блоков = 1 кредит"
         )
         datalab_info.setStyleSheet("color: #888; font-size: 10px; margin-left: 20px;")
         backend_layout.addWidget(datalab_info)
 
-        # Проверка наличия DATALAB_API_KEY
-        datalab_key = os.getenv("DATALAB_API_KEY", "")
+        deepseek_info = QLabel(
+            "   ⚡ ~15-20 сек/страница, поддержка PDF, без API ключа"
+        )
+        deepseek_info.setStyleSheet("color: #888; font-size: 10px; margin-left: 20px;")
+        backend_layout.addWidget(deepseek_info)
+
+        # Предупреждение если нет DATALAB_API_KEY
         if not datalab_key:
-            error_label = QLabel("⚠️ DATALAB_API_KEY не найден в .env")
-            error_label.setStyleSheet("color: #ff6b6b; font-weight: bold;")
+            error_label = QLabel("⚠️ DATALAB_API_KEY не найден - Datalab недоступен")
+            error_label.setStyleSheet("color: #ff6b6b; font-size: 10px; margin-left: 20px;")
             backend_layout.addWidget(error_label)
 
         layout.addWidget(backend_group)
@@ -150,9 +176,17 @@ class OCRDialog(QDialog):
             )
             return
 
-        # Всегда используем Datalab
-        self.ocr_backend = "datalab"
-        self.use_datalab = True
+        # Определяем выбранный OCR движок
+        if self.datalab_radio.isChecked():
+            self.ocr_backend = "datalab"
+            self.use_datalab = True
+        elif self.deepseek_radio.isChecked():
+            self.ocr_backend = "deepseek"
+            self.use_datalab = False
+        else:
+            self.ocr_backend = "datalab"
+            self.use_datalab = True
+
         self.image_model = self.image_model_combo.currentData()
         self.stamp_model = self.stamp_model_combo.currentData()
 

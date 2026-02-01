@@ -4,6 +4,8 @@ from rd_core.ocr.async_base import AsyncOCRBackend
 from rd_core.ocr.base import OCRBackend
 from rd_core.ocr.datalab import DatalabOCRBackend
 from rd_core.ocr.datalab_async import AsyncDatalabOCRBackend
+from rd_core.ocr.deepseek import DeepSeekOCRBackend
+from rd_core.ocr.deepseek_async import AsyncDeepSeekOCRBackend
 from rd_core.ocr.dummy import DummyOCRBackend
 from rd_core.ocr.dummy_async import AsyncDummyOCRBackend
 from rd_core.ocr.factory import create_async_ocr_engine, create_ocr_engine
@@ -18,11 +20,13 @@ __all__ = [
     "OCRBackend",
     "OpenRouterBackend",
     "DatalabOCRBackend",
+    "DeepSeekOCRBackend",
     "DummyOCRBackend",
     # Async backends
     "AsyncOCRBackend",
     "AsyncOpenRouterBackend",
     "AsyncDatalabOCRBackend",
+    "AsyncDeepSeekOCRBackend",
     "AsyncDummyOCRBackend",
     # Utils
     "image_to_base64",

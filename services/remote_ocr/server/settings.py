@@ -181,6 +181,23 @@ class Settings:
         )
     )
 
+    # ===== DEEPSEEK OCR =====
+    deepseek_ocr_url: str = field(
+        default_factory=lambda: os.getenv(
+            "DEEPSEEK_OCR_URL", "https://youtu.pnode.site"
+        )
+    )
+    deepseek_ocr_mode: str = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "deepseek_ocr_mode", "DEEPSEEK_OCR_MODE", "markdown", str
+        )
+    )
+    deepseek_ocr_timeout: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "deepseek_ocr_timeout", "DEEPSEEK_OCR_TIMEOUT", 120, int
+        )
+    )
+
     # ===== НАСТРОЙКИ OCR =====
     crop_png_compress: int = field(
         default_factory=lambda: _get_setting(
