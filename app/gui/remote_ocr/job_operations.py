@@ -186,8 +186,8 @@ class JobOperationsMixin:
         engine = "openrouter"
         if dialog.ocr_backend == "datalab":
             engine = "datalab"
-        elif dialog.ocr_backend == "openrouter":
-            engine = "openrouter"
+        elif dialog.ocr_backend == "deepseek":
+            engine = "deepseek"
 
         self._pending_output_dir = dialog.output_dir
 
