@@ -22,6 +22,86 @@ REQUIRED_BLOCK_FIELDS = {"id", "page_index", "coords_px", "block_type"}
 V2_BLOCK_FIELDS = {"coords_norm", "source", "shape_type", "created_at"}
 
 
+def is_flat_format(data) -> bool:
+    """
+    Проверить, является ли data плоским массивом блоков (v0 - legacy формат).
+
+    v0 формат: просто список блоков [{id, page_index, coords_px, ...}, ...]
+    без обёртки {pdf_path, pages}.
+    """
+    if not isinstance(data, list):
+        return False
+    if len(data) == 0:
+        return False
+    first = data[0]
+    return isinstance(first, dict) and "page_index" in first
+
+
+def _estimate_page_size(blocks: list) -> Tuple[int, int]:
+    """
+    Оценить размеры страницы по coords_px блоков.
+
+    Returns:
+        (width, height) - оценённые размеры или A4 default
+    """
+    if not blocks:
+        return 1240, 1754  # A4 default @ 150 DPI
+
+    max_x = max_y = 0
+    for block in blocks:
+        coords = block.get("coords_px", [0, 0, 0, 0])
+        if len(coords) >= 4:
+            max_x = max(max_x, coords[2])  # x2
+            max_y = max(max_y, coords[3])  # y2
+
+    # Добавить отступ для рамки страницы
+    return max(max_x + 50, 1240), max(max_y + 50, 1754)
+
+
+def migrate_flat_to_structured(blocks: list, pdf_path: str = "") -> dict:
+    """
+    Мигрировать плоский массив блоков (v0) в структурированный формат (v2).
+
+    Args:
+        blocks: Плоский список блоков с page_index
+        pdf_path: Путь к PDF (опционально)
+
+    Returns:
+        Структурированные данные аннотации
+    """
+    # Группировать блоки по page_index
+    pages_dict: dict = {}
+    for block in blocks:
+        page_idx = block.get("page_index", 0)
+        if page_idx not in pages_dict:
+            pages_dict[page_idx] = []
+        pages_dict[page_idx].append(block)
+
+    # Создать структуру pages
+    max_page = max(pages_dict.keys()) if pages_dict else 0
+    pages = []
+    for i in range(max_page + 1):
+        page_blocks = pages_dict.get(i, [])
+        width, height = _estimate_page_size(page_blocks)
+
+        pages.append({
+            "page_number": i,
+            "width": width,
+            "height": height,
+            "blocks": page_blocks,
+        })
+
+    logger.info(
+        f"Мигрирован плоский формат v0: {len(blocks)} блоков → {len(pages)} страниц"
+    )
+
+    return {
+        "pdf_path": pdf_path,
+        "format_version": ANNOTATION_FORMAT_VERSION,
+        "pages": pages,
+    }
+
+
 @dataclass
 class MigrationResult:
     """Результат миграции аннотации"""
@@ -274,7 +354,21 @@ class AnnotationIO:
                 warnings=[],
             )
 
-        # Миграция данных
+        # Проверка на плоский формат v0 (legacy)
+        v0_migrated = False
+        if is_flat_format(data):
+            # Извлечь pdf_path из имени файла аннотации
+            # annotation_path: "doc_annotation.json" → pdf_path: "doc.pdf"
+            from pathlib import Path
+
+            ann_path = Path(file_path)
+            pdf_name = ann_path.stem.replace("_annotation", "") + ".pdf"
+            pdf_path = str(ann_path.parent / pdf_name)
+
+            data = migrate_flat_to_structured(data, pdf_path)
+            v0_migrated = True
+
+        # Миграция данных v1 → v2
         migrated_data, result = migrate_annotation_data(data)
 
         if not result.success:
@@ -284,13 +378,21 @@ class AnnotationIO:
         try:
             doc, ids_migrated = Document.from_dict(migrated_data, migrate_ids=True)
 
-            # Если ID были мигрированы - это тоже миграция
-            if ids_migrated and not result.migrated:
+            # Объединить флаги миграции
+            any_migration = v0_migrated or result.migrated or ids_migrated
+            warnings = result.warnings.copy()
+
+            if v0_migrated:
+                warnings.insert(0, "Плоский формат v0 мигрирован в структурированный v2")
+            if ids_migrated:
+                warnings.append("ID блоков мигрированы в armor формат")
+
+            if any_migration:
                 result = MigrationResult(
                     success=True,
                     migrated=True,
                     errors=[],
-                    warnings=result.warnings + ["ID блоков мигрированы в armor формат"],
+                    warnings=warnings,
                 )
 
             return doc, result

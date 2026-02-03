@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-01-31T19:38:21.891810
+-- Generated: 2026-02-03T04:48:57.480026
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -482,6 +482,7 @@ CREATE TABLE IF NOT EXISTS public.jobs (
     completed_at timestamp with time zone,
     block_stats jsonb,
     phase_data jsonb,
+    retry_count integer DEFAULT 0,
     CONSTRAINT jobs_node_id_fkey FOREIGN KEY (node_id) REFERENCES public.tree_nodes(id),
     CONSTRAINT jobs_pkey PRIMARY KEY (id)
 );
@@ -506,6 +507,7 @@ COMMENT ON COLUMN public.jobs.started_at IS 'Время начала обраб�
 COMMENT ON COLUMN public.jobs.completed_at IS 'Время завершения обработки задачи';
 COMMENT ON COLUMN public.jobs.block_stats IS 'Статистика обработанных блоков (количество по типам)';
 COMMENT ON COLUMN public.jobs.phase_data IS 'Детальная информация о фазах обработки OCR (PASS1, PASS2 strips/images)';
+COMMENT ON COLUMN public.jobs.retry_count IS 'Количество попыток выполнения задачи (защита от бесконечного зацикливания)';
 
 -- Table: public.node_files
 -- Description: Все файлы привязанные к узлам дерева (PDF, аннотации, markdown, кропы)

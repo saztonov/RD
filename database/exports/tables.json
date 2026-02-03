@@ -2374,6 +2374,13 @@
         "default": "''::text",
         "data_type": "text",
         "is_nullable": true
+      },
+      {
+        "name": "is_correction_mode",
+        "comment": "Режим корректировки: обновить только указанные блоки",
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": true
       }
     ],
     "constraints": [
@@ -2546,6 +2553,13 @@
         "comment": "Детальная информация о фазах обработки OCR (PASS1, PASS2 strips/images)",
         "default": null,
         "data_type": "jsonb",
+        "is_nullable": true
+      },
+      {
+        "name": "retry_count",
+        "comment": "Количество попыток выполнения задачи (защита от бесконечного зацикливания)",
+        "default": "0",
+        "data_type": "integer",
         "is_nullable": true
       }
     ],
