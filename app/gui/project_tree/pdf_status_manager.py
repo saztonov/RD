@@ -1,6 +1,6 @@
 """Управление статусами PDF документов в дереве проектов"""
 import logging
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Tuple
 
 from PySide6.QtCore import Qt
 
@@ -50,6 +50,31 @@ class PDFStatusManager:
     def mark_loaded(self) -> None:
         """Отметить статусы как загруженные"""
         self._pdf_statuses_loaded = True
+
+    def apply_statuses(self, statuses: Dict[str, Tuple[str, str]]) -> None:
+        """
+        Применить загруженные статусы к дереву.
+
+        Вызывается из UI потока после получения данных из InitialLoadWorker.
+
+        Args:
+            statuses: Словарь {node_id: (status, message)}
+        """
+        if not statuses:
+            self._pdf_statuses_loaded = True
+            return
+
+        for node_id, (status, message) in statuses.items():
+            item = self._widget._node_map.get(node_id)
+            if item:
+                node = item.data(0, Qt.UserRole)
+                if isinstance(node, TreeNode):
+                    node.pdf_status = status
+                    node.pdf_status_message = message
+                    self._update_item_display(item, node, status, message)
+
+        self._pdf_statuses_loaded = True
+        logger.info(f"Applied PDF statuses: {len(statuses)} documents")
 
     @staticmethod
     def get_status_icon(status: str) -> str:

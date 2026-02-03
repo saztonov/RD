@@ -1,4 +1,5 @@
 """Модуль дерева проектов"""
+from app.gui.project_tree.initial_load_worker import InitialLoadWorker
 from app.gui.project_tree.widget import ProjectTreeWidget
 
 # Названия типов узлов для UI
@@ -26,4 +27,4 @@ def get_node_type_name(node_type) -> str:
         return NODE_TYPE_NAMES[node_type.value]
     return str(node_type)
 
-__all__ = ["ProjectTreeWidget", "NODE_TYPE_NAMES", "get_node_type_name"]
+__all__ = ["InitialLoadWorker", "ProjectTreeWidget", "NODE_TYPE_NAMES", "get_node_type_name"]

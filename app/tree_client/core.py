@@ -20,7 +20,7 @@ def _get_tree_client() -> httpx.Client:
     if _tree_http_client is None:
         _tree_http_client = httpx.Client(
             limits=Limits(max_connections=10, max_keepalive_connections=5),
-            timeout=30.0,
+            timeout=10.0,  # Уменьшен с 30 до 10 сек для отзывчивости UI
         )
     return _tree_http_client
 
@@ -31,7 +31,7 @@ class TreeClientCore:
 
     supabase_url: str = field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))
     supabase_key: str = field(default_factory=lambda: os.getenv("SUPABASE_KEY", ""))
-    timeout: float = 30.0
+    timeout: float = 10.0  # Уменьшен с 30 до 10 сек для отзывчивости UI
 
     def _headers(self) -> dict:
         return {

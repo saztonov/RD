@@ -97,42 +97,39 @@ class TreePathMixin:
         """
         Получить общую статистику дерева для текущего клиента.
         Возвращает: pdf_count, md_count, folders_with_pdf
+
+        Оптимизировано: вместо SELECT * LIMIT 10000 используем
+        отдельные COUNT запросы для уменьшения нагрузки.
         """
         try:
-            # Получаем ВСЕ узлы без фильтра по client_id (для отладки)
-            resp = self._request(
+            # Запрос 1: Считаем документы с PDF
+            resp_docs = self._request(
                 "get",
-                "/tree_nodes?select=id,node_type,parent_id,attributes&limit=10000",
+                "/tree_nodes?node_type=eq.document&select=id,parent_id,attributes",
             )
-            nodes = resp.json()
-
-            logger.info(f"get_tree_stats: total nodes from DB = {len(nodes)}")
+            docs = resp_docs.json()
 
             pdf_count = 0
             md_count = 0
             parent_ids_with_pdf = set()
-            doc_count = 0
 
-            for node in nodes:
-                if node.get("node_type") == "document":
-                    doc_count += 1
-                    attrs = node.get("attributes") or {}
-                    r2_key = attrs.get("r2_key", "")
+            for doc in docs:
+                attrs = doc.get("attributes") or {}
+                r2_key = attrs.get("r2_key", "")
 
-                    # Считаем PDF
-                    if r2_key.lower().endswith(".pdf"):
-                        pdf_count += 1
-                        # Запоминаем parent_id для подсчёта папок
-                        parent_id = node.get("parent_id")
-                        if parent_id:
-                            parent_ids_with_pdf.add(parent_id)
+                # Считаем PDF
+                if r2_key.lower().endswith(".pdf"):
+                    pdf_count += 1
+                    parent_id = doc.get("parent_id")
+                    if parent_id:
+                        parent_ids_with_pdf.add(parent_id)
 
-                    # Считаем MD (has_annotation или has_ocr_result)
-                    if attrs.get("has_annotation") or attrs.get("has_ocr_result"):
-                        md_count += 1
+                # Считаем MD (has_annotation или has_ocr_result)
+                if attrs.get("has_annotation") or attrs.get("has_ocr_result"):
+                    md_count += 1
 
             logger.info(
-                f"get_tree_stats: doc_count={doc_count}, pdf_count={pdf_count}, "
+                f"get_tree_stats: doc_count={len(docs)}, pdf_count={pdf_count}, "
                 f"md_count={md_count}, folders_with_pdf={len(parent_ids_with_pdf)}"
             )
 

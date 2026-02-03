@@ -29,6 +29,7 @@ from app.gui.tree_sync_mixin import TreeSyncMixin
 from app.tree_client import NodeType, TreeClient, TreeNode
 
 from .annotation_operations import AnnotationOperations
+from .initial_load_worker import InitialLoadWorker
 from .pdf_status_manager import PDFStatusManager
 from .r2_viewer_integration import R2ViewerIntegration
 from .tree_item_builder import TreeItemBuilder
@@ -64,6 +65,7 @@ class ProjectTreeWidget(
         self._sync_statuses: Dict[str, SyncStatus] = {}
         self._sync_worker: SyncCheckWorker = None
         self._expanded_nodes: set = set()
+        self._initial_load_worker: InitialLoadWorker = None
 
         # Вспомогательные компоненты
         self._pdf_status_manager = PDFStatusManager(self)
@@ -230,13 +232,78 @@ class ProjectTreeWidget(
         return btn
 
     def _initial_load(self):
-        """Начальная загрузка"""
+        """Начальная загрузка (асинхронно через QThread)"""
         if not self.client.is_available():
             self.status_label.setText("⚠ Supabase недоступен")
             return
+
         self._load_expanded_state()
-        self.refresh_types()
-        self._refresh_tree()
+        self._loading = True
+        self._pdf_status_manager.reset()
+        self.status_label.setText("⏳ Загрузка дерева...")
+        self.tree.clear()
+        self._node_map.clear()
+        self._sync_statuses.clear()
+
+        # Запускаем воркер для асинхронной загрузки
+        self._initial_load_worker = InitialLoadWorker(self.client, self)
+        self._initial_load_worker.types_loaded.connect(self._on_types_loaded)
+        self._initial_load_worker.roots_loaded.connect(self._on_roots_loaded)
+        self._initial_load_worker.stats_loaded.connect(self._on_stats_loaded)
+        self._initial_load_worker.statuses_loaded.connect(self._on_statuses_loaded)
+        self._initial_load_worker.error.connect(self._on_load_error)
+        self._initial_load_worker.finished_all.connect(self._on_load_finished)
+        self._initial_load_worker.start()
+
+    def _on_types_loaded(self, stage_types: list, section_types: list):
+        """Обработка загруженных типов"""
+        self._stage_types = stage_types
+        self._section_types = section_types
+
+    def _on_roots_loaded(self, roots: list):
+        """Обработка корневых узлов"""
+        self._last_node_count = len(roots)
+        for node in roots:
+            item = self._item_builder.create_item(node)
+            self.tree.addTopLevelItem(item)
+            self._item_builder.add_placeholder(item, node)
+
+        self.status_label.setText(f"Проектов: {len(roots)}")
+
+        # Собираем ID документов для загрузки PDF статусов
+        doc_ids = []
+        for node_id, item in self._node_map.items():
+            node = item.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
+                doc_ids.append(node_id)
+
+        if self._initial_load_worker and doc_ids:
+            self._initial_load_worker.set_doc_ids(doc_ids)
+
+    def _on_stats_loaded(self, stats: dict):
+        """Обработка статистики дерева"""
+        pdf_count = stats.get("pdf_count", 0)
+        md_count = stats.get("md_count", 0)
+        folders_with_pdf = stats.get("folders_with_pdf", 0)
+        self.stats_label.setText(
+            f"📄 PDF: {pdf_count}  |  📝 MD: {md_count}  |  📁 Папок с PDF: {folders_with_pdf}"
+        )
+
+    def _on_statuses_loaded(self, statuses: dict):
+        """Обработка PDF статусов"""
+        self._pdf_status_manager.apply_statuses(statuses)
+
+    def _on_load_error(self, error_msg: str):
+        """Обработка ошибки загрузки"""
+        logger.error(f"Initial load error: {error_msg}")
+        self.status_label.setText(f"⚠ Ошибка: {error_msg[:50]}")
+        self._loading = False
+
+    def _on_load_finished(self):
+        """Загрузка завершена"""
+        self._loading = False
+        QTimer.singleShot(100, self._restore_expanded_state)
+        QTimer.singleShot(500, self._start_sync_check)
 
     def refresh_types(self):
         """Обновить кэшированные типы"""
