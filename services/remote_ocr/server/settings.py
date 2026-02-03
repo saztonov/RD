@@ -75,6 +75,9 @@ class Settings:
     openrouter_api_key: str = field(
         default_factory=lambda: os.getenv("OPENROUTER_API_KEY", "")
     )
+    openrouter_base_url: str = field(
+        default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai")
+    )
     datalab_api_key: str = field(
         default_factory=lambda: os.getenv("DATALAB_API_KEY", "")
     )

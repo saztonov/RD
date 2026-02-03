@@ -17,18 +17,23 @@ class AsyncOpenRouterBackend:
 
     _providers_cache: dict = {}
 
+    DEFAULT_BASE_URL = "https://openrouter.ai"
     DEFAULT_SYSTEM = "You are an expert design engineer and automation specialist. Your task is to analyze technical drawings and extract data into structured JSON or Markdown formats with 100% accuracy. Do not omit details. Do not hallucinate values."
     DEFAULT_USER = "Распознай содержимое изображения."
 
     def __init__(
-        self, api_key: str, model_name: str = "qwen/qwen3-vl-30b-a3b-instruct"
+        self,
+        api_key: str,
+        model_name: str = "qwen/qwen3-vl-30b-a3b-instruct",
+        base_url: Optional[str] = None,
     ):
         self.api_key = api_key
         self.model_name = model_name
+        self.base_url = base_url or os.getenv("OPENROUTER_BASE_URL", self.DEFAULT_BASE_URL)
         self._provider_order: Optional[List[str]] = None
         self._client: Optional[httpx.AsyncClient] = None
 
-        logger.info(f"AsyncOpenRouterBackend инициализирован (модель: {self.model_name})")
+        logger.info(f"AsyncOpenRouterBackend инициализирован (модель: {self.model_name}, base_url: {self.base_url})")
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Получить или создать httpx AsyncClient с connection pooling"""
@@ -61,7 +66,7 @@ class AsyncOpenRouterBackend:
         try:
             client = await self._get_client()
             response = await client.get(
-                "https://openrouter.ai/api/v1/models",
+                f"{self.base_url}/api/v1/models",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 timeout=30.0,
             )
@@ -200,7 +205,7 @@ class AsyncOpenRouterBackend:
                 payload["provider"] = {"order": self._provider_order}
 
             response = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
+                f"{self.base_url}/api/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",

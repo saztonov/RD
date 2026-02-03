@@ -155,6 +155,7 @@ def run_ocr_task(self, job_id: str) -> dict:
                 "openrouter",
                 api_key=settings.openrouter_api_key,
                 model_name=strip_model,
+                base_url=settings.openrouter_base_url,
             )
         else:
             strip_backend = create_ocr_engine("dummy")
@@ -168,7 +169,10 @@ def run_ocr_task(self, job_id: str) -> dict:
             )
             logger.info(f"IMAGE модель: {img_model}")
             image_backend = create_ocr_engine(
-                "openrouter", api_key=settings.openrouter_api_key, model_name=img_model
+                "openrouter",
+                api_key=settings.openrouter_api_key,
+                model_name=img_model,
+                base_url=settings.openrouter_base_url,
             )
 
             stmp_model = (
@@ -180,7 +184,10 @@ def run_ocr_task(self, job_id: str) -> dict:
             )
             logger.info(f"STAMP модель: {stmp_model}")
             stamp_backend = create_ocr_engine(
-                "openrouter", api_key=settings.openrouter_api_key, model_name=stmp_model
+                "openrouter",
+                api_key=settings.openrouter_api_key,
+                model_name=stmp_model,
+                base_url=settings.openrouter_base_url,
             )
         else:
             image_backend = create_ocr_engine("dummy")
