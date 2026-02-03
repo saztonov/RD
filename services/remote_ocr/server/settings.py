@@ -203,6 +203,32 @@ class Settings:
         )
     )
 
+    # ===== ДИНАМИЧЕСКИЙ ТАЙМАУТ =====
+    # Базовое время на инициализацию задачи (секунды)
+    dynamic_timeout_base: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "dynamic_timeout_base", "DYNAMIC_TIMEOUT_BASE", 300, int
+        )
+    )
+    # Время на обработку одного блока (секунды)
+    seconds_per_block: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "seconds_per_block", "SECONDS_PER_BLOCK", 30, int
+        )
+    )
+    # Минимальный таймаут задачи (секунды)
+    min_task_timeout: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "min_task_timeout", "MIN_TASK_TIMEOUT", 600, int
+        )
+    )
+    # Максимальный таймаут задачи (секунды)
+    max_task_timeout: int = field(
+        default_factory=lambda: _get_setting(
+            _db_settings, "max_task_timeout", "MAX_TASK_TIMEOUT", 14400, int
+        )
+    )
+
     # ===== ОЧЕРЕДЬ =====
     poll_interval: float = field(
         default_factory=lambda: _get_setting(

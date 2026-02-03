@@ -22,6 +22,10 @@ from services.remote_ocr.server.storage import (
     update_node_r2_key,
 )
 from services.remote_ocr.server.tasks import run_ocr_task
+from services.remote_ocr.server.timeout_utils import (
+    calculate_dynamic_timeout,
+    count_blocks_from_data,
+)
 
 _logger = get_logger(__name__)
 
@@ -191,7 +195,15 @@ async def create_job_handler(
             status_code=500, detail=f"Failed to upload files to R2: {e}"
         )
 
-    run_ocr_task.delay(job.id)
+    # Рассчитываем динамический таймаут на основе количества блоков
+    block_count = count_blocks_from_data(blocks_data)
+    soft_timeout, hard_timeout = calculate_dynamic_timeout(block_count)
+
+    run_ocr_task.apply_async(
+        args=[job.id],
+        soft_time_limit=soft_timeout,
+        time_limit=hard_timeout,
+    )
 
     return {
         "id": job.id,

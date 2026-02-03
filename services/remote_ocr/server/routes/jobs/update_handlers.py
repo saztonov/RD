@@ -23,8 +23,41 @@ from services.remote_ocr.server.storage import (
     update_job_task_name,
 )
 from services.remote_ocr.server.tasks import run_ocr_task
+from services.remote_ocr.server.timeout_utils import (
+    calculate_dynamic_timeout,
+    count_blocks_from_data,
+    parse_blocks_json,
+)
 
 _logger = get_logger(__name__)
+
+
+def _get_block_count_for_job(job_id: str) -> int:
+    """Получить количество блоков для задачи из R2.
+
+    Args:
+        job_id: ID задачи
+
+    Returns:
+        Количество блоков (100 по умолчанию если не удалось получить)
+    """
+    try:
+        files = get_job_files(job_id)
+        blocks_file = next((f for f in files if f.file_type == "blocks"), None)
+
+        if not blocks_file:
+            _logger.warning(f"No blocks file for job {job_id}, using default timeout")
+            return 100
+
+        s3_client, bucket_name = get_r2_sync_client()
+        response = s3_client.get_object(Bucket=bucket_name, Key=blocks_file.r2_key)
+        content = response["Body"].read()
+        blocks_data = parse_blocks_json(content)
+
+        return count_blocks_from_data(blocks_data)
+    except Exception as e:
+        _logger.warning(f"Failed to get block count for job {job_id}: {e}")
+        return 100
 
 
 def update_job_handler(
@@ -121,7 +154,15 @@ async def restart_job_handler(
             status_code=503, detail=f"Queue full ({queue_size}/{max_size})"
         )
 
-    run_ocr_task.delay(job_id)
+    # Рассчитываем динамический таймаут
+    block_count = _get_block_count_for_job(job_id)
+    soft_timeout, hard_timeout = calculate_dynamic_timeout(block_count)
+
+    run_ocr_task.apply_async(
+        args=[job_id],
+        soft_time_limit=soft_timeout,
+        time_limit=hard_timeout,
+    )
 
     return {"ok": True, "job_id": job_id, "status": "queued"}
 
@@ -156,7 +197,15 @@ def start_job_handler(
             status_code=503, detail=f"Queue full ({queue_size}/{max_size})"
         )
 
-    run_ocr_task.delay(job_id)
+    # Рассчитываем динамический таймаут
+    block_count = _get_block_count_for_job(job_id)
+    soft_timeout, hard_timeout = calculate_dynamic_timeout(block_count)
+
+    run_ocr_task.apply_async(
+        args=[job_id],
+        soft_time_limit=soft_timeout,
+        time_limit=hard_timeout,
+    )
 
     return {"ok": True, "job_id": job_id, "status": "queued"}
 
@@ -208,7 +257,15 @@ def resume_job_handler(
             status_code=503, detail=f"Queue full ({queue_size}/{max_size})"
         )
 
-    run_ocr_task.delay(job_id)
+    # Рассчитываем динамический таймаут
+    block_count = _get_block_count_for_job(job_id)
+    soft_timeout, hard_timeout = calculate_dynamic_timeout(block_count)
+
+    run_ocr_task.apply_async(
+        args=[job_id],
+        soft_time_limit=soft_timeout,
+        time_limit=hard_timeout,
+    )
 
     return {"ok": True, "job_id": job_id, "status": "queued"}
 
