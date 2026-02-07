@@ -9,7 +9,6 @@ R2 Storage клиент для Cloudflare R2 Object Storage
 import logging
 import os
 import threading
-from typing import Optional
 
 import boto3
 from botocore.config import Config

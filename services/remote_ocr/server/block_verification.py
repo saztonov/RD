@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable
 
-from PIL import Image
 
 from .logging_config import get_logger
 

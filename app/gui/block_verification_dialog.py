@@ -4,8 +4,8 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
-from typing import Dict, List, Optional, Set, Tuple
+from pathlib import PurePosixPath
+from typing import List, Optional, Set
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QProgressBar,
     QPushButton,
     QTextEdit,

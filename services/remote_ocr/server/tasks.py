@@ -15,7 +15,7 @@ from .logging_config import get_logger
 from .memory_utils import force_gc, log_memory, log_memory_delta
 from .rate_limiter import get_datalab_limiter
 from .settings import settings
-from .storage import Job, get_job, register_ocr_results_to_node, update_job_status
+from .storage import get_job, register_ocr_results_to_node, update_job_status
 from .storage_jobs import increment_retry_count, set_job_started_at
 from .task_helpers import check_paused, create_empty_result, download_job_files
 from .task_ocr_twopass import run_two_pass_ocr

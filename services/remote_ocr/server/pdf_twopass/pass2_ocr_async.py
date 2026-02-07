@@ -10,7 +10,7 @@ import asyncio
 import gc
 import os
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Any
+from typing import Callable, Dict, List, Optional, Tuple
 
 from PIL import Image
 

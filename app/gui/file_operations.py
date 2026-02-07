@@ -70,10 +70,9 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
             return
 
         try:
-            from PySide6.QtCore import QTimer
 
             from app.tree_client import TreeClient
-            from rd_core.pdf_status import PDFStatus, calculate_pdf_status
+            from rd_core.pdf_status import calculate_pdf_status
             from rd_core.r2_storage import R2Storage
 
             client = TreeClient()
@@ -124,7 +123,6 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
     def _load_annotation_if_exists(self, pdf_path: str, r2_key: str = ""):
         """Загрузить annotation.json если существует (локально или в R2)"""
         from app.gui.toast import show_toast
-        from rd_core.annotation_io import MigrationResult
 
         ann_path = get_annotation_path(pdf_path)
 

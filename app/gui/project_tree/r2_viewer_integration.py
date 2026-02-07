@@ -3,7 +3,7 @@ import logging
 import os
 from collections import defaultdict
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, List
 
 from PySide6.QtWidgets import QMessageBox
 

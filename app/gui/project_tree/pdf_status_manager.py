@@ -83,7 +83,6 @@ class PDFStatusManager:
 
     def load_batch(self) -> None:
         """Загрузить статусы всех PDF документов батчем"""
-        from app.gui.tree_node_operations import NODE_ICONS
 
         try:
             # Собираем ID всех документов

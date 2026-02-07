@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import gc
 import os
-from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from PIL import Image

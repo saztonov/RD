@@ -93,7 +93,6 @@ class TreeFolderOperationsMixin:
             return
 
         from app.gui.folder_settings_dialog import get_projects_dir
-        from app.gui.tree_node_operations import NODE_ICONS
         from rd_core.pdf_stamp_remover import remove_stamps_from_pdf
         from rd_core.r2_storage import R2Storage
 

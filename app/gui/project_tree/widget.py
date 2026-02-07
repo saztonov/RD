@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List
 
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -32,7 +32,10 @@ from .annotation_operations import AnnotationOperations
 from .initial_load_worker import InitialLoadWorker
 from .pdf_status_manager import PDFStatusManager
 from .r2_viewer_integration import R2ViewerIntegration
+from .tree_expand_mixin import TreeExpandMixin
 from .tree_item_builder import TreeItemBuilder
+from .tree_load_mixin import TreeLoadMixin
+from .tree_reorder_mixin import TreeReorderMixin
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +47,9 @@ class ProjectTreeWidget(
     TreeSyncMixin,
     TreeFilterMixin,
     TreeContextMenuMixin,
+    TreeLoadMixin,
+    TreeExpandMixin,
+    TreeReorderMixin,
     QWidget,
 ):
     """Виджет дерева проектов"""
@@ -90,34 +96,6 @@ class ProjectTreeWidget(
         self._pdf_status_refresh_timer = QTimer(self)
         self._pdf_status_refresh_timer.timeout.connect(self._pdf_status_manager.auto_refresh)
         self._pdf_status_refresh_timer.start(30000)
-
-    def _auto_refresh_tree(self):
-        """Автоматическое обновление дерева"""
-        if self._loading:
-            return
-
-        try:
-            roots = self.client.get_root_nodes()
-            current_count = len(roots)
-
-            if current_count != self._last_node_count:
-                self._last_node_count = current_count
-                self._refresh_tree()
-                return
-
-            for root in roots:
-                if root.id in self._node_map:
-                    item = self._node_map[root.id]
-                    old_node = item.data(0, Qt.UserRole)
-                    if isinstance(old_node, TreeNode):
-                        if old_node.updated_at != root.updated_at:
-                            self._refresh_tree()
-                            return
-                else:
-                    self._refresh_tree()
-                    return
-        except Exception as e:
-            logger.debug(f"Auto-refresh check failed: {e}")
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -231,80 +209,6 @@ class ProjectTreeWidget(
         btn.clicked.connect(callback)
         return btn
 
-    def _initial_load(self):
-        """Начальная загрузка (асинхронно через QThread)"""
-        if not self.client.is_available():
-            self.status_label.setText("⚠ Supabase недоступен")
-            return
-
-        self._load_expanded_state()
-        self._loading = True
-        self._pdf_status_manager.reset()
-        self.status_label.setText("⏳ Загрузка дерева...")
-        self.tree.clear()
-        self._node_map.clear()
-        self._sync_statuses.clear()
-
-        # Запускаем воркер для асинхронной загрузки
-        self._initial_load_worker = InitialLoadWorker(self.client, self)
-        self._initial_load_worker.types_loaded.connect(self._on_types_loaded)
-        self._initial_load_worker.roots_loaded.connect(self._on_roots_loaded)
-        self._initial_load_worker.stats_loaded.connect(self._on_stats_loaded)
-        self._initial_load_worker.statuses_loaded.connect(self._on_statuses_loaded)
-        self._initial_load_worker.error.connect(self._on_load_error)
-        self._initial_load_worker.finished_all.connect(self._on_load_finished)
-        self._initial_load_worker.start()
-
-    def _on_types_loaded(self, stage_types: list, section_types: list):
-        """Обработка загруженных типов"""
-        self._stage_types = stage_types
-        self._section_types = section_types
-
-    def _on_roots_loaded(self, roots: list):
-        """Обработка корневых узлов"""
-        self._last_node_count = len(roots)
-        for node in roots:
-            item = self._item_builder.create_item(node)
-            self.tree.addTopLevelItem(item)
-            self._item_builder.add_placeholder(item, node)
-
-        self.status_label.setText(f"Проектов: {len(roots)}")
-
-        # Собираем ID документов для загрузки PDF статусов
-        doc_ids = []
-        for node_id, item in self._node_map.items():
-            node = item.data(0, Qt.UserRole)
-            if isinstance(node, TreeNode) and node.node_type == NodeType.DOCUMENT:
-                doc_ids.append(node_id)
-
-        if self._initial_load_worker and doc_ids:
-            self._initial_load_worker.set_doc_ids(doc_ids)
-
-    def _on_stats_loaded(self, stats: dict):
-        """Обработка статистики дерева"""
-        pdf_count = stats.get("pdf_count", 0)
-        md_count = stats.get("md_count", 0)
-        folders_with_pdf = stats.get("folders_with_pdf", 0)
-        self.stats_label.setText(
-            f"📄 PDF: {pdf_count}  |  📝 MD: {md_count}  |  📁 Папок с PDF: {folders_with_pdf}"
-        )
-
-    def _on_statuses_loaded(self, statuses: dict):
-        """Обработка PDF статусов"""
-        self._pdf_status_manager.apply_statuses(statuses)
-
-    def _on_load_error(self, error_msg: str):
-        """Обработка ошибки загрузки"""
-        logger.error(f"Initial load error: {error_msg}")
-        self.status_label.setText(f"⚠ Ошибка: {error_msg[:50]}")
-        self._loading = False
-
-    def _on_load_finished(self):
-        """Загрузка завершена"""
-        self._loading = False
-        QTimer.singleShot(100, self._restore_expanded_state)
-        QTimer.singleShot(500, self._start_sync_check)
-
     def refresh_types(self):
         """Обновить кэшированные типы"""
         try:
@@ -313,90 +217,10 @@ class ProjectTreeWidget(
         except Exception as e:
             logger.error(f"Failed to load types: {e}")
 
-    def _expand_selected(self):
-        """Развернуть выбранную папку рекурсивно или всё дерево"""
-        item = self.tree.currentItem()
-        if item:
-            node = item.data(0, Qt.UserRole)
-            if isinstance(node, TreeNode) and node.is_folder:
-                self._expand_item_recursively(item)
-                return
-        # Если ничего не выбрано или выбран документ - развернуть всё
-        self.tree.expandAll()
-
-    def _collapse_selected(self):
-        """Свернуть выбранную папку рекурсивно или всё дерево"""
-        item = self.tree.currentItem()
-        if item:
-            node = item.data(0, Qt.UserRole)
-            if isinstance(node, TreeNode) and node.is_folder:
-                self._collapse_item_recursively(item)
-                return
-        # Если ничего не выбрано или выбран документ - свернуть всё
-        self.tree.collapseAll()
-
-    def _expand_item_recursively(self, item: QTreeWidgetItem):
-        """Рекурсивно развернуть элемент и всех его детей"""
-        # Сначала раскрываем этот элемент (загружает детей через lazy loading)
-        item.setExpanded(True)
-
-        # Затем рекурсивно раскрываем всех детей
-        for i in range(item.childCount()):
-            child = item.child(i)
-            child_node = child.data(0, Qt.UserRole)
-            if isinstance(child_node, TreeNode) and child_node.is_folder:
-                self._expand_item_recursively(child)
-
-    def _collapse_item_recursively(self, item: QTreeWidgetItem):
-        """Рекурсивно свернуть элемент и всех его детей"""
-        # Сначала сворачиваем всех детей
-        for i in range(item.childCount()):
-            child = item.child(i)
-            child_node = child.data(0, Qt.UserRole)
-            if isinstance(child_node, TreeNode) and child_node.is_folder:
-                self._collapse_item_recursively(child)
-
-        # Затем сворачиваем сам элемент
-        item.setExpanded(False)
-
     def _sync_and_refresh(self):
         """Синхронизация: обновить дерево и проверить синхронизацию"""
         self._refresh_tree()
         QTimer.singleShot(500, self._start_sync_check)
-
-    def _refresh_tree(self):
-        """Обновить дерево"""
-        if self._loading:
-            return
-
-        self._loading = True
-        self._pdf_status_manager.reset()
-        self.status_label.setText("Загрузка...")
-        self.tree.clear()
-        self._node_map.clear()
-        self._sync_statuses.clear()
-
-        try:
-            roots = self.client.get_root_nodes()
-            self._last_node_count = len(roots)
-            for node in roots:
-                item = self._item_builder.create_item(node)
-                self.tree.addTopLevelItem(item)
-                self._item_builder.add_placeholder(item, node)
-
-            self.status_label.setText(f"Проектов: {len(roots)}")
-
-            QTimer.singleShot(100, self._restore_expanded_state)
-            QTimer.singleShot(300, self._update_stats)
-            QTimer.singleShot(500, self._start_sync_check)
-
-            if not self._pdf_status_manager.is_loaded:
-                QTimer.singleShot(200, self._pdf_status_manager.load_batch)
-        except Exception as e:
-            logger.error(f"Failed to refresh tree: {e}")
-            self.status_label.setText(f"Ошибка: {e}")
-        finally:
-            self._loading = False
 
     def _on_item_expanded(self, item: QTreeWidgetItem):
         """Lazy loading при раскрытии"""
@@ -418,17 +242,6 @@ class ProjectTreeWidget(
         if isinstance(node, TreeNode):
             self._expanded_nodes.discard(node.id)
             self._save_expanded_state()
-
-    def _load_children(self, parent_item: QTreeWidgetItem, parent_node: TreeNode):
-        """Загрузить дочерние узлы"""
-        try:
-            children = self.client.get_children(parent_node.id)
-            for child in children:
-                child_item = self._item_builder.create_item(child)
-                parent_item.addChild(child_item)
-                self._item_builder.add_placeholder(child_item, child)
-        except Exception as e:
-            logger.error(f"Failed to load children: {e}")
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
         """Двойной клик - открыть документ"""
@@ -551,169 +364,7 @@ class ProjectTreeWidget(
         dialog = FileReconciliationDialog(node, self.client, self)
         dialog.exec()
 
-    # Сохранение состояния
-    def _save_expanded_state(self):
-        try:
-            settings = QSettings("RDApp", "ProjectTree")
-            settings.setValue("expanded_nodes", list(self._expanded_nodes))
-        except Exception as e:
-            logger.debug(f"Failed to save expanded state: {e}")
-
-    def _load_expanded_state(self):
-        try:
-            settings = QSettings("RDApp", "ProjectTree")
-            expanded_list = settings.value("expanded_nodes", [])
-            self._expanded_nodes = set(expanded_list) if expanded_list else set()
-        except Exception as e:
-            logger.debug(f"Failed to load expanded state: {e}")
-            self._expanded_nodes = set()
-
-    def _restore_expanded_state(self):
-        if not self._expanded_nodes:
-            return
-
-        def expand_recursive(item: QTreeWidgetItem):
-            node = item.data(0, Qt.UserRole)
-            if isinstance(node, TreeNode) and node.id in self._expanded_nodes:
-                item.setExpanded(True)
-                for i in range(item.childCount()):
-                    expand_recursive(item.child(i))
-
-        for i in range(self.tree.topLevelItemCount()):
-            expand_recursive(self.tree.topLevelItem(i))
-
-    # Перемещение узлов вверх/вниз
-    def _move_node_up(self, node: TreeNode):
-        """Переместить узел вверх (уменьшить sort_order)"""
-        self._move_node(node, direction=-1)
-
-    def _move_node_down(self, node: TreeNode):
-        """Переместить узел вниз (увеличить sort_order)"""
-        self._move_node(node, direction=1)
-
-    def _move_node(self, node: TreeNode, direction: int):
-        """Переместить узел в указанном направлении (-1 = вверх, 1 = вниз)"""
-        try:
-            # Находим элемент в дереве
-            current_item = self._node_map.get(node.id)
-            if not current_item:
-                return
-
-            # Определяем родителя и индекс
-            parent_item = current_item.parent()
-            if parent_item:
-                current_idx = parent_item.indexOfChild(current_item)
-                child_count = parent_item.childCount()
-            else:
-                current_idx = self.tree.indexOfTopLevelItem(current_item)
-                child_count = self.tree.topLevelItemCount()
-
-            # Проверяем границы
-            swap_idx = current_idx + direction
-            if swap_idx < 0 or swap_idx >= child_count:
-                self.status_label.setText("⚠ Узел уже на границе")
-                return
-
-            # Получаем соседние узлы из БД для обновления sort_order
-            if node.parent_id:
-                siblings = self.client.get_children(node.parent_id)
-            else:
-                siblings = self.client.get_root_nodes()
-
-            # Находим узлы в списке siblings
-            current_node = None
-            swap_node = None
-            for sibling in siblings:
-                if sibling.id == node.id:
-                    current_node = sibling
-                elif swap_idx < current_idx and sibling.id == self._get_sibling_id(parent_item, swap_idx):
-                    swap_node = sibling
-                elif swap_idx > current_idx and sibling.id == self._get_sibling_id(parent_item, swap_idx):
-                    swap_node = sibling
-
-            if not current_node or not swap_node:
-                # Fallback: найти по индексам в siblings
-                for i, sibling in enumerate(siblings):
-                    if sibling.id == node.id:
-                        db_current_idx = i
-                        break
-                db_swap_idx = db_current_idx + direction
-                if 0 <= db_swap_idx < len(siblings):
-                    current_node = siblings[db_current_idx]
-                    swap_node = siblings[db_swap_idx]
-
-            if not current_node or not swap_node:
-                self._refresh_tree()
-                return
-
-            # Обновляем sort_order в БД
-            current_sort = current_node.sort_order
-            swap_sort = swap_node.sort_order
-
-            if current_sort == swap_sort:
-                # Нормализуем sort_order для всех siblings
-                for i, sibling in enumerate(siblings):
-                    new_order = i * 10
-                    if sibling.sort_order != new_order:
-                        self.client.update_node(sibling.id, sort_order=new_order)
-                # Пересчитываем индексы после нормализации
-                for i, sibling in enumerate(siblings):
-                    if sibling.id == node.id:
-                        db_current_idx = i
-                        break
-                db_swap_idx = db_current_idx + direction
-                self.client.update_node(current_node.id, sort_order=db_swap_idx * 10)
-                self.client.update_node(swap_node.id, sort_order=db_current_idx * 10)
-            else:
-                self.client.update_node(current_node.id, sort_order=swap_sort)
-                self.client.update_node(swap_node.id, sort_order=current_sort)
-
-            # Локально меняем элементы местами в дереве (без полной перезагрузки)
-            if parent_item:
-                item = parent_item.takeChild(current_idx)
-                parent_item.insertChild(swap_idx, item)
-            else:
-                item = self.tree.takeTopLevelItem(current_idx)
-                self.tree.insertTopLevelItem(swap_idx, item)
-
-            # Выделяем перемещённый элемент
-            self.tree.setCurrentItem(item)
-            self.status_label.setText("✓ Узел перемещён")
-
-        except Exception as e:
-            logger.error(f"Failed to move node: {e}")
-            self.status_label.setText(f"Ошибка перемещения: {e}")
-
-    def _get_sibling_id(self, parent_item, idx: int) -> str:
-        """Получить ID узла по индексу в родителе"""
-        if parent_item:
-            child = parent_item.child(idx)
-        else:
-            child = self.tree.topLevelItem(idx)
-        if child:
-            node = child.data(0, Qt.UserRole)
-            if isinstance(node, TreeNode):
-                return node.id
-        return ""
-
     # Свойство для доступа к скопированной аннотации (для контекстного меню)
     @property
     def _copied_annotation(self) -> Dict:
         return self._annotation_ops._copied_annotation
-
-    def _update_stats(self):
-        """Обновить статистику документов"""
-        try:
-            # Получаем все узлы из БД для подсчёта
-            stats = self.client.get_tree_stats()
-
-            pdf_count = stats.get("pdf_count", 0)
-            md_count = stats.get("md_count", 0)
-            folders_with_pdf = stats.get("folders_with_pdf", 0)
-
-            self.stats_label.setText(
-                f"📄 PDF: {pdf_count}  |  📝 MD: {md_count}  |  📁 Папок с PDF: {folders_with_pdf}"
-            )
-        except Exception as e:
-            logger.debug(f"Failed to update stats: {e}")
-            self.stats_label.setText("")

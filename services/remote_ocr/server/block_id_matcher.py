@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from .string_utils import levenshtein_ratio
+from rd_core.models.armor_id import levenshtein_ratio
 
 # Новый формат: BLOCK: XXXX-XXXX-XXX (armor код)
 # OCR может искажать: пропускать/добавлять символы и дефисы
@@ -87,7 +87,7 @@ def match_armor_code(
     Сопоставить armor код (XXXX-XXXX-XXX) с ожидаемыми UUID.
     Использует ArmorID для восстановления и декодирования.
     """
-    from .armor_id import match_armor_to_uuid
+    from rd_core.models.armor_id import match_armor_to_uuid
 
     matched_uuid, score = match_armor_to_uuid(armor_code, expected_ids)
     return matched_uuid, score

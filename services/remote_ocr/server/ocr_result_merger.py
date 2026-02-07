@@ -9,7 +9,6 @@ from typing import Optional
 
 from rd_core.ocr.generator_common import (
     HTML_FOOTER,
-    INHERITABLE_STAMP_FIELDS,
     collect_inheritable_stamp_data_dict,
     format_stamp_parts,
     get_block_armor_id,

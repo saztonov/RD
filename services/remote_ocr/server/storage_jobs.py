@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 from .logging_config import get_logger
 from .queue_checker import _get_redis_client
 from .storage_client import get_client
-from .storage_models import Job, JobFile, JobSettings
+from .storage_models import Job
 
 logger = get_logger(__name__)
 

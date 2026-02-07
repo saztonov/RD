@@ -1,7 +1,6 @@
 """Миксин для группировки блоков"""
 
 import logging
-import uuid
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMenu, QMessageBox, QTreeWidgetItem

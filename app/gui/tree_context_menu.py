@@ -15,7 +15,6 @@ class TreeContextMenuMixin:
     def _show_context_menu(self, pos):
         """Показать контекстное меню"""
         from app.gui.folder_settings_dialog import get_max_versions
-        from app.gui.tree_node_operations import NODE_ICONS
 
         item = self.tree.itemAt(pos)
         menu = QMenu(self)

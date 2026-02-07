@@ -156,7 +156,7 @@ def parse_batch_response_by_block_id(
     Также поддерживает legacy формат [[[BLOCK_ID: uuid]]].
     Returns: Dict[block_id -> text]
     """
-    from .armor_id import match_armor_to_uuid
+    from rd_core.models.armor_id import match_armor_to_uuid
 
     results: Dict[str, str] = {}
 
@@ -282,7 +282,7 @@ def parse_batch_response_by_index(
 
         # Если есть block_ids - сопоставляем по armor кодам
         if block_ids:
-            from .armor_id import match_armor_to_uuid
+            from rd_core.models.armor_id import match_armor_to_uuid
 
             # Создаём маппинг block_id -> index
             id_to_index = {bid: i for i, bid in enumerate(block_ids)}

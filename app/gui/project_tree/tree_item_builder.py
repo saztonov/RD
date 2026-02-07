@@ -1,6 +1,6 @@
 """Построение элементов дерева проектов"""
 import logging
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QTreeWidgetItem

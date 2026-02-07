@@ -1,13 +1,12 @@
 """Mixin для обработки событий мыши в PageViewer"""
 from __future__ import annotations
 
-from typing import Optional
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPen, QWheelEvent
-from PySide6.QtWidgets import QGraphicsRectItem, QMenu
+from PySide6.QtWidgets import QGraphicsRectItem
 
-from rd_core.models import BlockType, ShapeType
+from rd_core.models import ShapeType
 
 
 class MouseEventsMixin:

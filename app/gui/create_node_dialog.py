@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
 )
 
-from app.gui.project_tree import NODE_TYPE_NAMES, get_node_type_name
+from app.gui.project_tree import get_node_type_name
 from app.tree_client import NodeType, SectionType, StageType
 
 

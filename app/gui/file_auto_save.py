@@ -4,7 +4,6 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer
 
-from rd_core.annotation_io import AnnotationIO
 
 logger = logging.getLogger(__name__)
 

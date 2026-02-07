@@ -242,7 +242,6 @@ def _generate_correction_results(
     from rd_core.ocr.ocr_html_parser import build_segments_from_html
 
     from .ocr_result_merger import regenerate_html_from_result, regenerate_md_from_result
-    from .pdf_streaming_core import get_page_dimensions_streaming
     from .task_helpers import get_r2_storage
 
     r2_storage = get_r2_storage()

@@ -4,7 +4,7 @@ import logging
 import re
 from collections import Counter
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from rd_core.models.armor_id import is_armor_id, uuid_to_armor_id
 

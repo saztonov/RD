@@ -272,7 +272,7 @@ def create_block_separator(
     """
     from PIL import ImageFont
 
-    from .armor_id import encode_block_id
+    from rd_core.models.armor_id import encode_block_id
 
     separator = Image.new("RGB", (width, height), (0, 0, 0))
     draw = ImageDraw.Draw(separator)

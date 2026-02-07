@@ -1,7 +1,7 @@
 """Mixin для рендеринга блоков в PageViewer"""
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Union
+from typing import List, Optional
 
 from PySide6.QtCore import QPointF, QRectF, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QPen, QPolygonF

@@ -6,7 +6,7 @@ from typing import Optional
 import httpx
 from PIL import Image
 
-from rd_core.ocr.chandra import CHANDRA_DEFAULT_PROMPT
+from rd_core.ocr.chandra import CHANDRA_DEFAULT_PROMPT, CHANDRA_DEFAULT_SYSTEM
 from rd_core.ocr.utils import image_to_base64
 
 logger = logging.getLogger(__name__)
@@ -91,31 +91,38 @@ class AsyncChandraBackend:
             model_id = await self._discover_model()
             img_b64 = image_to_base64(image)
 
-            # Используем переданный prompt или дефолтный Chandra промпт
+            # Chandra всегда использует свой специализированный HTML промпт
+            # System prompt берём из переданного dict (контекст задачи)
             if prompt and isinstance(prompt, dict):
-                user_prompt = prompt.get("user", "") or CHANDRA_DEFAULT_PROMPT
+                system_prompt = prompt.get("system", "") or CHANDRA_DEFAULT_SYSTEM
             else:
-                user_prompt = CHANDRA_DEFAULT_PROMPT
+                system_prompt = CHANDRA_DEFAULT_SYSTEM
+            user_prompt = CHANDRA_DEFAULT_PROMPT
+
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{img_b64}"
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": user_prompt,
+                        },
+                    ],
+                }
+            )
 
             payload = {
                 "model": model_id,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{img_b64}"
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": user_prompt,
-                            },
-                        ],
-                    }
-                ],
+                "messages": messages,
                 "max_tokens": 12384,
                 "temperature": 0,
                 "top_p": 0.1,

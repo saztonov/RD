@@ -1,6 +1,5 @@
 """Фабрика для создания OCR движков"""
 import logging
-from typing import Union
 
 from rd_core.ocr.async_base import AsyncOCRBackend
 from rd_core.ocr.base import OCRBackend

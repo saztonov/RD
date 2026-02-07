@@ -8,7 +8,6 @@ import webbrowser
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,

@@ -27,6 +27,14 @@ Guidelines:
 * Use the simplest possible HTML structure that accurately represents the content of the block.
 * Make sure the text is accurate and easy for a human to read and interpret. Reading order should be correct and natural."""
 
+CHANDRA_DEFAULT_SYSTEM = (
+    "You are a specialist OCR system for Russian construction documentation "
+    "(GOST, SNiP, SP, TU). You process technical specifications, working drawings, "
+    "and Stage P documents. Preserve all dimensions, units of measurement, "
+    "reference numbers, and table structures with absolute accuracy. "
+    "Output clean HTML."
+)
+
 
 class ChandraBackend:
     """OCR через Chandra модель (LM Studio, OpenAI-compatible API)"""
@@ -97,31 +105,38 @@ class ChandraBackend:
             model_id = self._discover_model()
             img_b64 = image_to_base64(image)
 
-            # Используем переданный prompt или дефолтный Chandra промпт
+            # Chandra всегда использует свой специализированный HTML промпт
+            # System prompt берём из переданного dict (контекст задачи)
             if prompt and isinstance(prompt, dict):
-                user_prompt = prompt.get("user", "") or CHANDRA_DEFAULT_PROMPT
+                system_prompt = prompt.get("system", "") or CHANDRA_DEFAULT_SYSTEM
             else:
-                user_prompt = CHANDRA_DEFAULT_PROMPT
+                system_prompt = CHANDRA_DEFAULT_SYSTEM
+            user_prompt = CHANDRA_DEFAULT_PROMPT
+
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{img_b64}"
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": user_prompt,
+                        },
+                    ],
+                }
+            )
 
             payload = {
                 "model": model_id,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{img_b64}"
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": user_prompt,
-                            },
-                        ],
-                    }
-                ],
+                "messages": messages,
                 "max_tokens": 12384,
                 "temperature": 0,
                 "top_p": 0.1,

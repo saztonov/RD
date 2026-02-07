@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 import sys
-from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional

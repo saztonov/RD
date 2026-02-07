@@ -2,9 +2,8 @@
 import json as json_module
 import logging
 import os
-import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .generator_common import (
     HTML_FOOTER,

@@ -2,15 +2,12 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
-    QLabel,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -20,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.tree_client import SectionType, StageType, TreeClient, _get_tree_client
+from app.tree_client import TreeClient, _get_tree_client
 
 logger = logging.getLogger(__name__)
 
