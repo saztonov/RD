@@ -35,6 +35,16 @@ CHANDRA_DEFAULT_SYSTEM = (
     "Output clean HTML."
 )
 
+# LM Studio native API: конфигурация загрузки модели
+# Manual load через API не имеет TTL (модель остаётся в памяти)
+CHANDRA_MODEL_KEY = os.getenv("CHANDRA_MODEL_KEY", "chandra-OCR-GGUF")
+CHANDRA_LOAD_CONFIG = {
+    "context_length": 32864,
+    "flash_attention": True,
+    "eval_batch_size": 512,
+    "offload_kv_cache_to_gpu": True,
+}
+
 
 class ChandraBackend:
     """OCR через Chandra модель (LM Studio, OpenAI-compatible API)"""
@@ -64,9 +74,11 @@ class ChandraBackend:
         logger.info(f"ChandraBackend инициализирован (base_url: {self.base_url})")
 
     def _discover_model(self) -> str:
-        """Авто-определение модели через /v1/models"""
+        """Авто-определение модели через /v1/models + preload через native API"""
         if self._model_id:
             return self._model_id
+
+        self._ensure_model_loaded()
 
         try:
             resp = self.session.get(
@@ -85,6 +97,77 @@ class ChandraBackend:
         self._model_id = "chandra-ocr"
         logger.info(f"Chandra модель не найдена, используется fallback: {self._model_id}")
         return self._model_id
+
+    def _ensure_model_loaded(self) -> None:
+        """
+        Проверяет загружена ли модель через LM Studio native API.
+        Если нет — загружает с параметрами (manual load, без TTL).
+        При недоступности native API — тихо пропускает (fallback на JIT).
+        """
+        try:
+            resp = self.session.get(
+                f"{self.base_url}/api/v1/models",
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                logger.debug("LM Studio native API недоступен, пропускаем preload")
+                return
+
+            models = resp.json().get("models", [])
+
+            for m in models:
+                if "chandra" in m.get("key", "").lower():
+                    if m.get("loaded_instances"):
+                        logger.debug(f"Модель {m['key']} уже загружена")
+                        return
+                    break
+
+            logger.info(f"Модель не загружена, выполняем manual load: {CHANDRA_MODEL_KEY}")
+            load_resp = self.session.post(
+                f"{self.base_url}/api/v1/models/load",
+                json={"model": CHANDRA_MODEL_KEY, "echo_load_config": True, **CHANDRA_LOAD_CONFIG},
+                timeout=120,
+            )
+
+            if load_resp.status_code == 200:
+                load_data = load_resp.json()
+                logger.info(
+                    f"Модель загружена за {load_data.get('load_time_seconds', '?')}с "
+                    f"(manual load, без TTL)"
+                )
+            else:
+                logger.warning(
+                    f"Ошибка загрузки: {load_resp.status_code} - {load_resp.text[:300]}"
+                )
+
+        except Exception as e:
+            logger.debug(f"Native API preload недоступен: {e}")
+
+    def unload_model(self) -> None:
+        """Выгрузить модель из LM Studio (освобождает VRAM)."""
+        if not self._model_id:
+            return
+        try:
+            resp = self.session.get(
+                f"{self.base_url}/api/v1/models",
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return
+
+            models = resp.json().get("models", [])
+            for m in models:
+                if "chandra" in m.get("key", "").lower():
+                    for inst in m.get("loaded_instances", []):
+                        self.session.post(
+                            f"{self.base_url}/api/v1/models/unload",
+                            json={"instance_id": inst["id"]},
+                            timeout=30,
+                        )
+                        logger.info(f"Модель выгружена: {inst['id']}")
+                    break
+        except Exception as e:
+            logger.debug(f"Ошибка выгрузки модели: {e}")
 
     def supports_pdf_input(self) -> bool:
         """Chandra не поддерживает прямой ввод PDF"""

@@ -291,6 +291,10 @@ def run_ocr_task(self, job_id: str) -> dict:
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка очистки временной директории: {e}")
 
+        # Выгрузить модель Chandra из LM Studio (освобождаем VRAM)
+        if engine == "chandra" and hasattr(strip_backend, "unload_model"):
+            strip_backend.unload_model()
+
         # Очищаем кэш размеров страниц
         clear_page_size_cache()
 
