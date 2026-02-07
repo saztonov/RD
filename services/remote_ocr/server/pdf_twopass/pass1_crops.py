@@ -35,6 +35,7 @@ def pass1_prepare_crops(
     padding: int = 5,
     save_image_crops_as_pdf: bool = True,
     on_progress: Optional[Callable[[int, int], None]] = None,
+    engine: str = "",
 ) -> TwoPassManifest:
     """
     PASS 1: Вырезать все кропы и сохранить на диск.
@@ -157,7 +158,7 @@ def pass1_prepare_crops(
 
     # Группируем TEXT/TABLE в strips и сохраняем merged images
     strips = _group_and_merge_strips(
-        blocks, block_crop_paths, strips_dir, compress_level
+        blocks, block_crop_paths, strips_dir, compress_level, engine=engine
     )
 
     # Удаляем промежуточные кропы TEXT/TABLE
@@ -198,6 +199,7 @@ def _group_and_merge_strips(
     block_crop_paths: Dict[str, List[Tuple[str, int, int]]],
     strips_dir: str,
     compress_level: int,
+    engine: str = "",
 ) -> List[StripManifestEntry]:
     """Группировка TEXT/TABLE блоков в strips и сохранение merged images"""
     from rd_core.models import BlockType
@@ -301,6 +303,10 @@ def _group_and_merge_strips(
 
             current_strip_blocks.append((block.id, crop_path, part_idx, total_parts))
             current_strip_height += new_height
+
+        # Chandra: каждый блок отдельно (не объединять в общие strips)
+        if engine == "chandra" and current_strip_blocks:
+            _save_current_strip()
 
     _save_current_strip()
 
