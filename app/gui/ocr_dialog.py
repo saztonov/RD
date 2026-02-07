@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
+    QRadioButton,
     QVBoxLayout,
 )
 
@@ -36,7 +36,7 @@ class OCRDialog(QDialog):
         self.base_dir = None
         self.task_name = task_name
         self.pdf_path = pdf_path  # Путь к PDF для сохранения результатов рядом
-        self.ocr_backend = "datalab"  # Всегда используем datalab
+        self.ocr_backend = "datalab"
 
         # Модели для разных типов блоков
         self.image_model = "google/gemini-3-flash-preview"
@@ -55,13 +55,13 @@ class OCRDialog(QDialog):
         backend_group = QGroupBox("OCR движок для текста и таблиц")
         backend_layout = QVBoxLayout(backend_group)
 
-        datalab_label = QLabel("Datalab Marker API (экономия бюджета)")
-        datalab_label.setStyleSheet("font-weight: bold; color: #4CAF50;")
-        backend_layout.addWidget(datalab_label)
+        # RadioButton: Datalab
+        self.radio_datalab = QRadioButton("Datalab Marker API (экономия бюджета)")
+        self.radio_datalab.setChecked(True)
+        backend_layout.addWidget(self.radio_datalab)
 
-        # Datalab info
         datalab_info = QLabel(
-            "💡 Datalab: склейка блоков в одно изображение для экономии кредитов.\n"
+            "   Склейка блоков в одно изображение для экономии кредитов.\n"
             "   10 блоков = 1 кредит вместо 10"
         )
         datalab_info.setStyleSheet("color: #888; font-size: 10px; margin-left: 20px;")
@@ -70,9 +70,26 @@ class OCRDialog(QDialog):
         # Проверка наличия DATALAB_API_KEY
         datalab_key = os.getenv("DATALAB_API_KEY", "")
         if not datalab_key:
-            error_label = QLabel("⚠️ DATALAB_API_KEY не найден в .env")
-            error_label.setStyleSheet("color: #ff6b6b; font-weight: bold;")
+            error_label = QLabel("   DATALAB_API_KEY не найден в .env")
+            error_label.setStyleSheet("color: #ff6b6b; font-weight: bold; margin-left: 20px;")
             backend_layout.addWidget(error_label)
+
+        # RadioButton: Chandra
+        self.radio_chandra = QRadioButton("Chandra (локальная модель, LM Studio)")
+        backend_layout.addWidget(self.radio_chandra)
+
+        chandra_info = QLabel(
+            "   OCR модель на локальной машине через LM Studio + ngrok"
+        )
+        chandra_info.setStyleSheet("color: #888; font-size: 10px; margin-left: 20px;")
+        backend_layout.addWidget(chandra_info)
+
+        # Проверка наличия CHANDRA_BASE_URL
+        chandra_url = os.getenv("CHANDRA_BASE_URL", "")
+        if not chandra_url:
+            chandra_error = QLabel("   CHANDRA_BASE_URL не найден в .env")
+            chandra_error.setStyleSheet("color: #ff6b6b; font-weight: bold; margin-left: 20px;")
+            backend_layout.addWidget(chandra_error)
 
         layout.addWidget(backend_group)
 
@@ -81,7 +98,7 @@ class OCRDialog(QDialog):
         models_layout = QVBoxLayout(models_group)
 
         models_info = QLabel(
-            "Картинки требуют VLM для описания, Datalab их не обрабатывает"
+            "Картинки требуют VLM для описания, Datalab/Chandra их не обрабатывает"
         )
         models_info.setStyleSheet("color: #888; font-size: 10px;")
         models_layout.addWidget(models_info)
@@ -150,9 +167,14 @@ class OCRDialog(QDialog):
             )
             return
 
-        # Всегда используем Datalab
-        self.ocr_backend = "datalab"
-        self.use_datalab = True
+        # Выбор OCR движка
+        if self.radio_chandra.isChecked():
+            self.ocr_backend = "chandra"
+            self.use_datalab = False
+        else:
+            self.ocr_backend = "datalab"
+            self.use_datalab = True
+
         self.image_model = self.image_model_combo.currentData()
         self.stamp_model = self.stamp_model_combo.currentData()
 

@@ -81,6 +81,9 @@ class Settings:
     datalab_api_key: str = field(
         default_factory=lambda: os.getenv("DATALAB_API_KEY", "")
     )
+    chandra_base_url: str = field(
+        default_factory=lambda: os.getenv("CHANDRA_BASE_URL", "")
+    )
     redis_url: str = field(
         default_factory=lambda: os.getenv("REDIS_URL", "redis://redis:6379/0")
     )

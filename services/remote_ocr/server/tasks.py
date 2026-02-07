@@ -140,7 +140,12 @@ def run_ocr_task(self, job_id: str) -> dict:
         engine = job.engine or "openrouter"
         datalab_limiter = get_datalab_limiter() if engine == "datalab" else None
 
-        if engine == "datalab" and settings.datalab_api_key:
+        if engine == "chandra" and settings.chandra_base_url:
+            strip_backend = create_ocr_engine(
+                "chandra",
+                base_url=settings.chandra_base_url,
+            )
+        elif engine == "datalab" and settings.datalab_api_key:
             strip_backend = create_ocr_engine(
                 "datalab",
                 api_key=settings.datalab_api_key,

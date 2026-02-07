@@ -2,6 +2,8 @@
 
 from rd_core.ocr.async_base import AsyncOCRBackend
 from rd_core.ocr.base import OCRBackend
+from rd_core.ocr.chandra import ChandraBackend
+from rd_core.ocr.chandra_async import AsyncChandraBackend
 from rd_core.ocr.datalab import DatalabOCRBackend
 from rd_core.ocr.datalab_async import AsyncDatalabOCRBackend
 from rd_core.ocr.dummy import DummyOCRBackend
@@ -18,11 +20,13 @@ __all__ = [
     "OCRBackend",
     "OpenRouterBackend",
     "DatalabOCRBackend",
+    "ChandraBackend",
     "DummyOCRBackend",
     # Async backends
     "AsyncOCRBackend",
     "AsyncOpenRouterBackend",
     "AsyncDatalabOCRBackend",
+    "AsyncChandraBackend",
     "AsyncDummyOCRBackend",
     # Utils
     "image_to_base64",
