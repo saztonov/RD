@@ -37,7 +37,7 @@ class AsyncChandraBackend:
             )
             self._client = httpx.AsyncClient(
                 transport=transport,
-                timeout=httpx.Timeout(120.0, connect=30.0),
+                timeout=httpx.Timeout(300.0, connect=30.0),
             )
         return self._client
 

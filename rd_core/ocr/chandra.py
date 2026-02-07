@@ -131,7 +131,7 @@ class ChandraBackend:
                 f"{self.base_url}/v1/chat/completions",
                 headers={"Content-Type": "application/json"},
                 json=payload,
-                timeout=120,
+                timeout=300,
             )
 
             if response.status_code != 200:

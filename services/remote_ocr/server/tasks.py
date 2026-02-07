@@ -209,6 +209,7 @@ def run_ocr_task(self, job_id: str) -> dict:
             image_backend,
             stamp_backend,
             start_mem,
+            engine=engine,
         )
 
         force_gc("после OCR обработки")

@@ -37,6 +37,7 @@ def run_two_pass_ocr(
     image_backend,
     stamp_backend,
     start_mem: float,
+    engine: str = "openrouter",
 ):
     """Двухпроходный алгоритм OCR (экономия памяти)"""
     from .settings import settings
@@ -114,6 +115,9 @@ def run_two_pass_ocr(
 
             logger.info("PASS2: используется async режим (asyncio.gather)")
 
+            # Для Chandra: последовательная обработка (LM Studio однопоточная)
+            max_concurrent = 1 if engine == "chandra" else None
+
             # Запуск async pass2 через asyncio.run
             asyncio.run(
                 pass2_ocr_from_manifest_async(
@@ -125,6 +129,7 @@ def run_two_pass_ocr(
                     str(pdf_path),
                     on_progress=on_pass2_progress,
                     check_paused=lambda: is_job_paused(job.id),
+                    max_concurrent=max_concurrent,
                     checkpoint=checkpoint if USE_CHECKPOINT else None,
                     work_dir=work_dir if USE_CHECKPOINT else None,
                 )
