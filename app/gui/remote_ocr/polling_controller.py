@@ -59,6 +59,9 @@ class PollingControllerMixin:
             changed_jobs, server_time = client.get_jobs_changes(self._last_server_time)
             logger.debug(f"Fetched {len(changed_jobs)} changed jobs")
 
+            if changed_jobs:
+                logger.info(f"Получено {len(changed_jobs)} изменений с сервера")
+
             # Обновляем кеш изменёнными задачами
             for job in changed_jobs:
                 self._jobs_cache[job.id] = job
@@ -83,6 +86,15 @@ class PollingControllerMixin:
         """Слот: список задач получен"""
         self._is_fetching = False
         self._force_full_refresh = False
+
+        # Логируем изменения статусов задач
+        for job in jobs:
+            cached = self._jobs_cache.get(job.id)
+            if cached and cached.status != job.status:
+                logger.info(
+                    f"Статус задачи {job.id[:8]}... изменился: "
+                    f"{cached.status} -> {job.status} (progress={job.progress:.0%})"
+                )
 
         # При первой полной загрузке инициализируем кеш и server_time
         if self._is_manual_refresh or not self._last_server_time:

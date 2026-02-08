@@ -32,6 +32,20 @@ class TableManagerMixin:
                     and getattr(job, "node_id", None) == current_node_id
                 ):
                     if job.id not in self._downloaded_jobs:
+                        # Уведомление если панель скрыта
+                        if not self.isVisible():
+                            from app.gui.toast import show_toast
+
+                            doc_name = job.task_name or job.document_name or ""
+                            show_toast(
+                                self.main_window,
+                                f"OCR завершён: {doc_name}",
+                                duration=5000,
+                            )
+                            logger.info(
+                                f"Задача {job.id[:8]}... завершена "
+                                f"(панель скрыта), показано уведомление"
+                            )
                         self._auto_download_result(job.id)
                     break  # Только последняя done задача для текущего документа
 

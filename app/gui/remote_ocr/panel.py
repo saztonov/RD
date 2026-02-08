@@ -43,7 +43,7 @@ class RemoteOCRPanel(
 ):
     """Dock-панель для Remote OCR задач"""
 
-    POLL_INTERVAL_PROCESSING = 15000   # 15 сек - активные задачи
+    POLL_INTERVAL_PROCESSING = 5000    # 5 сек - активные задачи
     POLL_INTERVAL_IDLE = 60000         # 60 сек - нет активных задач
     POLL_INTERVAL_ERROR = 120000       # 120 сек - при ошибках
 
@@ -300,12 +300,16 @@ class RemoteOCRPanel(
         """При показе панели обновляем список"""
         super().showEvent(event)
         self._refresh_jobs(manual=True)
-        self.refresh_timer.start(self.POLL_INTERVAL_IDLE)
+        # Восстанавливаем интервал на основе активных задач
+        interval = self.POLL_INTERVAL_PROCESSING if self._has_active_jobs else self.POLL_INTERVAL_IDLE
+        self.refresh_timer.setInterval(interval)
+        if not self.refresh_timer.isActive():
+            self.refresh_timer.start()
 
     def hideEvent(self, event):
-        """При скрытии останавливаем таймер"""
+        """При скрытии переключаем на медленный интервал (не останавливаем)"""
         super().hideEvent(event)
-        self.refresh_timer.stop()
+        self.refresh_timer.setInterval(self.POLL_INTERVAL_IDLE)
 
     def closeEvent(self, event):
         """Освобождаем ресурсы"""
