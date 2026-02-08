@@ -64,7 +64,7 @@ def generate_results(
     pdf_path: Path,
     blocks: list,
     work_dir: Path,
-    datalab_backend=None,
+    ocr_backend=None,
     on_verification_progress: Callable[[int, int], None] = None,
 ) -> str:
     """Генерация результатов OCR (annotation.json + HTML)"""
@@ -78,7 +78,7 @@ def generate_results(
     if is_correction_mode and job.node_id:
         logger.info(f"[{job.id}] Correction mode detected, using merge strategy")
         return _generate_correction_results(
-            job, pdf_path, blocks, work_dir, datalab_backend, on_verification_progress
+            job, pdf_path, blocks, work_dir, ocr_backend, on_verification_progress
         )
 
     # Логирование состояния блоков
@@ -202,7 +202,7 @@ def generate_results(
         logger.warning(f"Ошибка генерации _blocks.json: {e}")
 
     # Верификация и повторное распознавание пропущенных блоков
-    if datalab_backend and result_path.exists():
+    if ocr_backend and result_path.exists():
         from .block_verification import verify_and_retry_missing_blocks
 
         try:
@@ -215,7 +215,7 @@ def generate_results(
                 result_path,
                 pdf_path,
                 work_dir,
-                datalab_backend,
+                ocr_backend,
                 on_progress=on_verification_progress,
                 job_id=job.id,
             )
@@ -230,7 +230,7 @@ def _generate_correction_results(
     pdf_path: Path,
     blocks: list,
     work_dir: Path,
-    datalab_backend=None,
+    ocr_backend=None,
     on_verification_progress: Callable[[int, int], None] = None,
 ) -> str:
     """
@@ -274,7 +274,7 @@ def _generate_correction_results(
         if job.settings:
             job.settings.is_correction_mode = False
         return generate_results(
-            job, pdf_path, blocks, work_dir, datalab_backend, on_verification_progress
+            job, pdf_path, blocks, work_dir, ocr_backend, on_verification_progress
         )
 
     with open(old_result_path, "r", encoding="utf-8") as f:

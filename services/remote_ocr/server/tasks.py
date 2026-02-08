@@ -214,9 +214,9 @@ def run_ocr_task(self, job_id: str) -> dict:
 
         force_gc("после OCR обработки")
 
-        # Генерация результатов (передаём datalab backend для верификации)
+        # Генерация результатов (передаём OCR backend для верификации)
         update_job_status(job.id, "processing", progress=0.92, status_message="📄 Генерация результатов...")
-        verification_backend = strip_backend if engine == "datalab" else None
+        verification_backend = strip_backend
 
         # Callback для верификации блоков (диапазон 0.92 -> 0.94)
         def on_verification_progress(current: int, total: int):

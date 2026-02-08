@@ -66,7 +66,10 @@ def merge_ocr_results(
             ann = json.load(f)
 
         expected_ids = [
-            b["id"] for p in ann.get("pages", []) for b in p.get("blocks", [])
+            b["id"]
+            for p in ann.get("pages", [])
+            for b in p.get("blocks", [])
+            if b.get("category_code") != "stamp"
         ]
 
         if not expected_ids:
@@ -122,6 +125,9 @@ def merge_ocr_results(
                             crop_name = Path(blk["image_file"]).name
                             blk["crop_url"] = f"{r2_public_url}/crops/{crop_name}"
 
+                # Stamp-блоки хранят данные в ocr_json, не в ocr_html
+                if blk.get("category_code") == "stamp":
+                    continue
                 if blk["ocr_html"]:
                     matched += 1
                 else:
