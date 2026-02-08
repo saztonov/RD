@@ -55,6 +55,11 @@ class ChandraBackend:
         self.base_url = base_url or os.getenv("CHANDRA_BASE_URL", self.DEFAULT_BASE_URL)
         self._model_id: Optional[str] = None
 
+        # HTTP Basic Auth для ngrok-туннеля
+        auth_user = os.getenv("NGROK_AUTH_USER")
+        auth_pass = os.getenv("NGROK_AUTH_PASS")
+        self._auth = (auth_user, auth_pass) if auth_user and auth_pass else None
+
         try:
             import requests
             from requests.adapters import HTTPAdapter
@@ -67,6 +72,8 @@ class ChandraBackend:
             )
             self.session.mount("https://", adapter)
             self.session.mount("http://", adapter)
+            if self._auth:
+                self.session.auth = self._auth
             self.requests = requests
         except ImportError:
             raise ImportError("Требуется установить requests: pip install requests")

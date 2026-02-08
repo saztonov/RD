@@ -27,6 +27,11 @@ class AsyncChandraBackend:
         self._model_id: Optional[str] = None
         self._client: Optional[httpx.AsyncClient] = None
 
+        # HTTP Basic Auth для ngrok-туннеля
+        auth_user = os.getenv("NGROK_AUTH_USER")
+        auth_pass = os.getenv("NGROK_AUTH_PASS")
+        self._auth = (auth_user, auth_pass) if auth_user and auth_pass else None
+
         logger.info(f"AsyncChandraBackend инициализирован (base_url: {self.base_url})")
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -43,6 +48,7 @@ class AsyncChandraBackend:
             self._client = httpx.AsyncClient(
                 transport=transport,
                 timeout=httpx.Timeout(300.0, connect=30.0),
+                auth=self._auth,
             )
         return self._client
 
@@ -167,6 +173,7 @@ class AsyncChandraBackend:
             resp = _httpx.get(
                 f"{self.base_url}/api/v1/models",
                 timeout=10.0,
+                auth=self._auth,
             )
             if resp.status_code != 200:
                 return
@@ -179,6 +186,7 @@ class AsyncChandraBackend:
                             f"{self.base_url}/api/v1/models/unload",
                             json={"instance_id": inst["id"]},
                             timeout=30.0,
+                            auth=self._auth,
                         )
                         logger.info(f"Модель выгружена: {inst['id']}")
                     break
