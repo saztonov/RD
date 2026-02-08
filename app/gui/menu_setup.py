@@ -83,12 +83,6 @@ class MenuSetupMixin:
 
         settings_menu.addSeparator()
 
-        ocr_settings_action = QAction("⚙️ Настройки OCR сервера", self)
-        ocr_settings_action.triggered.connect(self._show_ocr_settings)
-        settings_menu.addAction(ocr_settings_action)
-
-        settings_menu.addSeparator()
-
         hotkeys_action = QAction("⌨️ Горячие клавиши", self)
         hotkeys_action.triggered.connect(self._show_hotkeys_dialog)
         settings_menu.addAction(hotkeys_action)

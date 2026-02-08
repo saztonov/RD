@@ -8,15 +8,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QRadioButton,
     QVBoxLayout,
 )
+
+from app.gui.ocr_config import get_ocr_defaults
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +36,15 @@ class OCRDialog(QDialog):
         self.base_dir = None
         self.task_name = task_name
         self.pdf_path = pdf_path  # Путь к PDF для сохранения результатов рядом
-        self.ocr_backend = "datalab"
 
-        # Модели для разных типов блоков
-        self.image_model = "google/gemini-3-flash-preview"
-        self.stamp_model = "xiaomi/mimo-v2-flash:free"
+        # Дефолтные модели и движок из config.yaml
+        defaults = get_ocr_defaults()
+        self.ocr_backend = defaults["engine"]
+        self.image_model = defaults["image_model"]
+        self.stamp_model = defaults["stamp_model"]
 
         # Datalab настройки
-        self.use_datalab = True
+        self.use_datalab = self.ocr_backend == "datalab"
 
         self._setup_ui()
 
@@ -57,7 +58,7 @@ class OCRDialog(QDialog):
 
         # RadioButton: Datalab
         self.radio_datalab = QRadioButton("Datalab Marker API (экономия бюджета)")
-        self.radio_datalab.setChecked(True)
+        self.radio_datalab.setChecked(self.ocr_backend == "datalab")
         backend_layout.addWidget(self.radio_datalab)
 
         datalab_info = QLabel(
@@ -76,6 +77,7 @@ class OCRDialog(QDialog):
 
         # RadioButton: Chandra
         self.radio_chandra = QRadioButton("Chandra (локальная модель, LM Studio)")
+        self.radio_chandra.setChecked(self.ocr_backend == "chandra")
         backend_layout.addWidget(self.radio_chandra)
 
         chandra_info = QLabel(
@@ -93,38 +95,6 @@ class OCRDialog(QDialog):
 
         layout.addWidget(backend_group)
 
-        # Модели для IMAGE блоков
-        models_group = QGroupBox("Модель OpenRouter для IMAGE блоков")
-        models_layout = QVBoxLayout(models_group)
-
-        models_info = QLabel(
-            "Картинки требуют VLM для описания, Datalab/Chandra их не обрабатывает"
-        )
-        models_info.setStyleSheet("color: #888; font-size: 10px;")
-        models_layout.addWidget(models_info)
-
-        # Модель для изображений
-        image_layout = QHBoxLayout()
-        image_layout.addWidget(QLabel("Модель для изображений:"))
-        self.image_model_combo = QComboBox()
-        self._populate_model_combo(self.image_model_combo)
-        image_layout.addWidget(self.image_model_combo)
-        models_layout.addLayout(image_layout)
-
-        # Модель для штампов
-        stamp_layout = QHBoxLayout()
-        stamp_layout.addWidget(QLabel("Модель для штампов:"))
-        self.stamp_model_combo = QComboBox()
-        self._populate_model_combo(self.stamp_model_combo)
-        # Установка xiaomi/mimo-v2-flash:free по умолчанию для штампов
-        index = self.stamp_model_combo.findData("xiaomi/mimo-v2-flash:free")
-        if index >= 0:
-            self.stamp_model_combo.setCurrentIndex(index)
-        stamp_layout.addWidget(self.stamp_model_combo)
-        models_layout.addLayout(stamp_layout)
-
-        layout.addWidget(models_group)
-
         # Кнопки
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._accept)
@@ -135,16 +105,6 @@ class OCRDialog(QDialog):
         from app.gui.folder_settings_dialog import get_projects_dir
 
         self.base_dir = get_projects_dir()
-
-    def _populate_model_combo(self, combo: QComboBox):
-        """Заполнить комбобокс моделями"""
-        combo.addItem("gemini-3-flash (HD-зрение)", "google/gemini-3-flash-preview")
-        combo.addItem("qwen3-vl-30b (быстрая)", "qwen/qwen3-vl-30b-a3b-instruct")
-        combo.addItem("qwen3-vl-235b (мощная)", "qwen/qwen3-vl-235b-a22b-instruct")
-        combo.addItem("xiaomi mimo-v2-flash (бесплатная)", "xiaomi/mimo-v2-flash:free")
-        combo.addItem("minimax m2.1", "minimax/minimax-m2.1")
-        combo.addItem("grok-4.1-fast", "x-ai/grok-4.1-fast")
-        combo.setCurrentIndex(0)
 
     def _accept(self):
         """Проверка и принятие"""
@@ -174,8 +134,5 @@ class OCRDialog(QDialog):
         else:
             self.ocr_backend = "datalab"
             self.use_datalab = True
-
-        self.image_model = self.image_model_combo.currentData()
-        self.stamp_model = self.stamp_model_combo.currentData()
 
         self.accept()

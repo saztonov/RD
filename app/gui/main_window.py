@@ -298,13 +298,6 @@ class MainWindow(
         dialog = VersionSettingsDialog(self)
         dialog.exec()
 
-    def _show_ocr_settings(self):
-        """Показать диалог настроек OCR сервера"""
-        from app.gui.ocr_settings import OCRSettingsDialog
-
-        dialog = OCRSettingsDialog(self)
-        dialog.exec()
-
     def _show_image_categories(self):
         """Показать диалог настройки категорий изображений"""
         from app.gui.image_categories_dialog import ImageCategoriesDialog

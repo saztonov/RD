@@ -3,71 +3,70 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
+
+import yaml
 
 # NOTE: settings.py загружается раньше logging_config, поэтому используем стандартный logging
 logger = logging.getLogger(__name__)
 
+# Путь к конфиг-файлу: рядом с settings.py
+_CONFIG_PATH = Path(__file__).parent / "config.yaml"
+# Переопределение через ENV (для Docker: монтируем конфиг в другое место)
+_config_override = os.getenv("OCR_CONFIG_PATH")
+if _config_override:
+    _CONFIG_PATH = Path(_config_override)
 
-def _load_settings_from_supabase() -> Optional[dict]:
-    """Загрузить настройки из Supabase"""
-    supabase_url = os.getenv("SUPABASE_URL", "")
-    supabase_key = os.getenv("SUPABASE_KEY", "")
 
-    if not supabase_url or not supabase_key:
-        return None
-
+def _load_yaml_config() -> dict:
+    """Загрузить YAML конфигурацию"""
+    if not _CONFIG_PATH.exists():
+        logger.error(f"Config file not found: {_CONFIG_PATH}")
+        raise FileNotFoundError(
+            f"OCR server config not found: {_CONFIG_PATH}. "
+            f"Create config.yaml or set OCR_CONFIG_PATH env variable."
+        )
     try:
-        import httpx
-
-        url = f"{supabase_url}/rest/v1/app_settings?key=eq.ocr_server_settings"
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-        }
-
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.get(url, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data and len(data) > 0:
-                    logger.info("OCR settings loaded from Supabase")
-                    return data[0].get("value", {})
-    except Exception as e:
-        logger.warning(f"Failed to load settings from Supabase: {e}")
-
-    return None
+        with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        logger.info(f"Config loaded from {_CONFIG_PATH} ({len(data)} keys)")
+        return data
+    except yaml.YAMLError as e:
+        logger.error(f"Invalid YAML in {_CONFIG_PATH}: {e}")
+        raise
 
 
-def _get_setting(
-    db_settings: Optional[dict], key: str, env_key: str, default, cast_fn=None
-):
-    """Получить настройку: сначала из БД, потом из env, потом default"""
-    # Приоритет: БД > env > default
-    if db_settings and key in db_settings:
-        value = db_settings[key]
-    elif os.getenv(env_key):
-        value = os.getenv(env_key)
+def _get(config: dict, key: str, env_key: str, cast_fn=None):
+    """Получить настройку: ENV > YAML. Без hardcoded defaults."""
+    env_val = os.getenv(env_key)
+    if env_val is not None:
+        value = env_val
+    elif key in config:
+        value = config[key]
     else:
-        return default
+        raise KeyError(
+            f"Setting '{key}' not found in config.yaml and env '{env_key}' not set"
+        )
 
     if cast_fn:
         try:
             return cast_fn(value)
-        except:
-            return default
+        except (ValueError, TypeError):
+            raise ValueError(
+                f"Cannot cast setting '{key}'={value!r} with {cast_fn.__name__}"
+            )
     return value
 
 
-# Загружаем настройки из БД один раз при импорте модуля
-_db_settings = _load_settings_from_supabase()
+# Загружаем конфигурацию один раз при импорте модуля
+_yaml_config = _load_yaml_config()
 
 
 @dataclass
 class Settings:
-    """Настройки remote OCR сервера (загружаются из Supabase или env)"""
+    """Настройки remote OCR сервера (из config.yaml + .env)"""
 
-    # ===== СИСТЕМНЫЕ (только env) =====
+    # ===== СЕКРЕТЫ (только .env) =====
     data_dir: str = field(
         default_factory=lambda: os.getenv("REMOTE_OCR_DATA_DIR", "/data")
     )
@@ -90,170 +89,179 @@ class Settings:
     supabase_url: str = field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))
     supabase_key: str = field(default_factory=lambda: os.getenv("SUPABASE_KEY", ""))
 
-    # ===== CELERY WORKER =====
+    # ===== CELERY WORKER (config.yaml + env override) =====
     max_concurrent_jobs: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "max_concurrent_jobs", "MAX_CONCURRENT_JOBS", 4, int
+        default_factory=lambda: _get(
+            _yaml_config, "max_concurrent_jobs", "MAX_CONCURRENT_JOBS", int
         )
     )
     worker_prefetch: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "worker_prefetch", "WORKER_PREFETCH", 1, int
+        default_factory=lambda: _get(
+            _yaml_config, "worker_prefetch", "WORKER_PREFETCH", int
         )
     )
     worker_max_tasks: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "worker_max_tasks", "WORKER_MAX_TASKS", 100, int
+        default_factory=lambda: _get(
+            _yaml_config, "worker_max_tasks", "WORKER_MAX_TASKS", int
         )
     )
     task_soft_timeout: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "task_soft_timeout", "TASK_SOFT_TIMEOUT", 3000, int
+        default_factory=lambda: _get(
+            _yaml_config, "task_soft_timeout", "TASK_SOFT_TIMEOUT", int
         )
     )
     task_hard_timeout: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "task_hard_timeout", "TASK_HARD_TIMEOUT", 3600, int
+        default_factory=lambda: _get(
+            _yaml_config, "task_hard_timeout", "TASK_HARD_TIMEOUT", int
         )
     )
     task_max_retries: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "task_max_retries", "TASK_MAX_RETRIES", 3, int
+        default_factory=lambda: _get(
+            _yaml_config, "task_max_retries", "TASK_MAX_RETRIES", int
         )
     )
     task_retry_delay: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "task_retry_delay", "TASK_RETRY_DELAY", 60, int
+        default_factory=lambda: _get(
+            _yaml_config, "task_retry_delay", "TASK_RETRY_DELAY", int
         )
     )
 
     # ===== ЗАЩИТА ОТ ЗАЦИКЛИВАНИЯ =====
-    # Максимальное время выполнения одной задачи в часах
-    # После превышения задача будет помечена как error
     job_max_runtime_hours: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "job_max_runtime_hours", "JOB_MAX_RUNTIME_HOURS", 2, int
+        default_factory=lambda: _get(
+            _yaml_config, "job_max_runtime_hours", "JOB_MAX_RUNTIME_HOURS", int
         )
     )
-    # Максимальное количество попыток выполнения задачи
-    # Защита от бесконечного зацикливания при таймаутах Celery
     job_max_retries: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "job_max_retries", "JOB_MAX_RETRIES", 3, int
+        default_factory=lambda: _get(
+            _yaml_config, "job_max_retries", "JOB_MAX_RETRIES", int
         )
     )
 
     # ===== OCR THREADING =====
     max_global_ocr_requests: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "max_global_ocr_requests", "MAX_GLOBAL_OCR_REQUESTS", 8, int
+        default_factory=lambda: _get(
+            _yaml_config, "max_global_ocr_requests", "MAX_GLOBAL_OCR_REQUESTS", int
         )
     )
     ocr_threads_per_job: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "ocr_threads_per_job", "OCR_THREADS_PER_JOB", 2, int
+        default_factory=lambda: _get(
+            _yaml_config, "ocr_threads_per_job", "OCR_THREADS_PER_JOB", int
         )
     )
     ocr_request_timeout: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "ocr_request_timeout", "OCR_REQUEST_TIMEOUT", 120, int
+        default_factory=lambda: _get(
+            _yaml_config, "ocr_request_timeout", "OCR_REQUEST_TIMEOUT", int
         )
     )
 
     # ===== DATALAB API =====
     datalab_max_rpm: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "datalab_max_rpm", "DATALAB_MAX_RPM", 180, int
+        default_factory=lambda: _get(
+            _yaml_config, "datalab_max_rpm", "DATALAB_MAX_RPM", int
         )
     )
     datalab_max_concurrent: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "datalab_max_concurrent", "DATALAB_MAX_CONCURRENT", 5, int
+        default_factory=lambda: _get(
+            _yaml_config, "datalab_max_concurrent", "DATALAB_MAX_CONCURRENT", int
         )
     )
     datalab_poll_interval: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "datalab_poll_interval", "DATALAB_POLL_INTERVAL", 3, int
+        default_factory=lambda: _get(
+            _yaml_config, "datalab_poll_interval", "DATALAB_POLL_INTERVAL", int
         )
     )
     datalab_poll_max_attempts: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "datalab_poll_max_attempts", "DATALAB_POLL_MAX_ATTEMPTS", 90, int
+        default_factory=lambda: _get(
+            _yaml_config, "datalab_poll_max_attempts", "DATALAB_POLL_MAX_ATTEMPTS", int
         )
     )
     datalab_max_retries: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "datalab_max_retries", "DATALAB_MAX_RETRIES", 3, int
+        default_factory=lambda: _get(
+            _yaml_config, "datalab_max_retries", "DATALAB_MAX_RETRIES", int
         )
     )
 
     # ===== НАСТРОЙКИ OCR =====
     crop_png_compress: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "crop_png_compress", "CROP_PNG_COMPRESS", 6, int
+        default_factory=lambda: _get(
+            _yaml_config, "crop_png_compress", "CROP_PNG_COMPRESS", int
         )
     )
     max_ocr_batch_size: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "max_ocr_batch_size", "MAX_OCR_BATCH_SIZE", 5, int
+        default_factory=lambda: _get(
+            _yaml_config, "max_ocr_batch_size", "MAX_OCR_BATCH_SIZE", int
         )
     )
     pdf_render_dpi: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "pdf_render_dpi", "PDF_RENDER_DPI", 300, int
+        default_factory=lambda: _get(
+            _yaml_config, "pdf_render_dpi", "PDF_RENDER_DPI", int
         )
     )
     max_strip_height: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "max_strip_height", "MAX_STRIP_HEIGHT", 9000, int
+        default_factory=lambda: _get(
+            _yaml_config, "max_strip_height", "MAX_STRIP_HEIGHT", int
         )
     )
 
     # ===== ДИНАМИЧЕСКИЙ ТАЙМАУТ =====
-    # Базовое время на инициализацию задачи (секунды)
     dynamic_timeout_base: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "dynamic_timeout_base", "DYNAMIC_TIMEOUT_BASE", 300, int
+        default_factory=lambda: _get(
+            _yaml_config, "dynamic_timeout_base", "DYNAMIC_TIMEOUT_BASE", int
         )
     )
-    # Время на обработку одного блока (секунды)
     seconds_per_block: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "seconds_per_block", "SECONDS_PER_BLOCK", 30, int
+        default_factory=lambda: _get(
+            _yaml_config, "seconds_per_block", "SECONDS_PER_BLOCK", int
         )
     )
-    # Минимальный таймаут задачи (секунды)
     min_task_timeout: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "min_task_timeout", "MIN_TASK_TIMEOUT", 600, int
+        default_factory=lambda: _get(
+            _yaml_config, "min_task_timeout", "MIN_TASK_TIMEOUT", int
         )
     )
-    # Максимальный таймаут задачи (секунды)
     max_task_timeout: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "max_task_timeout", "MAX_TASK_TIMEOUT", 14400, int
+        default_factory=lambda: _get(
+            _yaml_config, "max_task_timeout", "MAX_TASK_TIMEOUT", int
         )
     )
 
     # ===== ОЧЕРЕДЬ =====
     poll_interval: float = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "poll_interval", "POLL_INTERVAL", 10.0, float
+        default_factory=lambda: _get(
+            _yaml_config, "poll_interval", "POLL_INTERVAL", float
         )
     )
     poll_max_interval: float = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "poll_max_interval", "POLL_MAX_INTERVAL", 60.0, float
+        default_factory=lambda: _get(
+            _yaml_config, "poll_max_interval", "POLL_MAX_INTERVAL", float
         )
     )
     max_queue_size: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "max_queue_size", "MAX_QUEUE_SIZE", 100, int
+        default_factory=lambda: _get(
+            _yaml_config, "max_queue_size", "MAX_QUEUE_SIZE", int
         )
     )
     default_task_priority: int = field(
-        default_factory=lambda: _get_setting(
-            _db_settings, "default_task_priority", "DEFAULT_TASK_PRIORITY", 5, int
+        default_factory=lambda: _get(
+            _yaml_config, "default_task_priority", "DEFAULT_TASK_PRIORITY", int
+        )
+    )
+
+    # ===== МОДЕЛИ ПО УМОЛЧАНИЮ (config.yaml + env override) =====
+    default_engine: str = field(
+        default_factory=lambda: _get(
+            _yaml_config, "default_engine", "DEFAULT_ENGINE"
+        )
+    )
+    default_image_model: str = field(
+        default_factory=lambda: _get(
+            _yaml_config, "default_image_model", "DEFAULT_IMAGE_MODEL"
+        )
+    )
+    default_stamp_model: str = field(
+        default_factory=lambda: _get(
+            _yaml_config, "default_stamp_model", "DEFAULT_STAMP_MODEL"
         )
     )
 

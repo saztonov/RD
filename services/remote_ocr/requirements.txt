@@ -24,5 +24,8 @@ supabase>=2.10.0
 celery>=5.4.0
 redis>=5.2.0
 
+# YAML конфиг
+PyYAML>=6.0
+
 # Monitoring
 psutil>=6.0.0

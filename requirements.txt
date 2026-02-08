@@ -18,5 +18,8 @@ python-dotenv>=1.2.1
 # S3/R2 Storage
 boto3>=1.42.14
 
+# YAML конфиг
+PyYAML>=6.0
+
 # Build
 pyinstaller>=6.17.0
