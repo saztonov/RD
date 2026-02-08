@@ -78,11 +78,26 @@ class AsyncChandraBackend:
         logger.info(f"Chandra модель не найдена, используется fallback: {self._model_id}")
         return self._model_id
 
+    @staticmethod
+    def _needs_reload(loaded_instances: list, required_context: int) -> tuple:
+        """Проверяет нужна ли перезагрузка модели из-за несовпадения context_length."""
+        if not loaded_instances:
+            return True, "модель не загружена"
+        for inst in loaded_instances:
+            inst_id = inst.get("id", "unknown")
+            ctx = inst.get("context_length")
+            if ctx is None:
+                return True, f"instance {inst_id}: context_length недоступен в API"
+            if ctx != required_context:
+                return True, f"instance {inst_id}: context_length={ctx}, требуется {required_context}"
+        return False, f"context_length={required_context} OK"
+
     async def _ensure_model_loaded(self) -> None:
         """
         Проверяет загружена ли модель через LM Studio native API.
-        Если нет — загружает с параметрами (manual load, без TTL).
+        Если нет или context_length не совпадает — выгружает и загружает с правильным конфигом.
         """
+        required_ctx = CHANDRA_LOAD_CONFIG["context_length"]
         try:
             client = await self._get_client()
             resp = await client.get(
@@ -97,12 +112,30 @@ class AsyncChandraBackend:
 
             for m in models:
                 if "chandra" in m.get("key", "").lower():
-                    if m.get("loaded_instances"):
-                        logger.debug(f"Модель {m['key']} уже загружена")
+                    loaded = m.get("loaded_instances", [])
+                    needs_reload, reason = self._needs_reload(loaded, required_ctx)
+
+                    if not needs_reload:
+                        logger.debug(f"Модель {m['key']}: {reason}")
                         return
+
+                    logger.info(f"Модель {m['key']}: {reason}, выполняем reload")
+                    for inst in loaded:
+                        try:
+                            await client.post(
+                                f"{self.base_url}/api/v1/models/unload",
+                                json={"instance_id": inst["id"]},
+                                timeout=30.0,
+                            )
+                            logger.debug(f"Выгружен инстанс: {inst['id']}")
+                        except Exception as e:
+                            logger.warning(f"Ошибка выгрузки {inst.get('id')}: {e}")
                     break
 
-            logger.info(f"Модель не загружена, выполняем manual load: {CHANDRA_MODEL_KEY}")
+            logger.info(
+                f"Загружаем модель {CHANDRA_MODEL_KEY} "
+                f"(context_length={required_ctx})"
+            )
             load_resp = await client.post(
                 f"{self.base_url}/api/v1/models/load",
                 json={"model": CHANDRA_MODEL_KEY, "echo_load_config": True, **CHANDRA_LOAD_CONFIG},
@@ -111,9 +144,10 @@ class AsyncChandraBackend:
 
             if load_resp.status_code == 200:
                 load_data = load_resp.json()
+                actual_ctx = load_data.get("load_config", {}).get("context_length", "?")
                 logger.info(
-                    f"Модель загружена за {load_data.get('load_time_seconds', '?')}с "
-                    f"(manual load, без TTL)"
+                    f"Модель загружена: context_length={actual_ctx}, "
+                    f"время={load_data.get('load_time_seconds', '?')}с"
                 )
             else:
                 logger.warning(
