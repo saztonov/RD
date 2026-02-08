@@ -1,5 +1,5 @@
 -- Database Schema SQL Export
--- Generated: 2026-02-03T04:48:57.480026
+-- Generated: 2026-02-08T14:51:10.969982
 -- Database: postgres
 -- Host: aws-1-eu-north-1.pooler.supabase.com
 
@@ -20,13 +20,13 @@ CREATE TABLE IF NOT EXISTS auth.audit_log_entries (
 COMMENT ON TABLE auth.audit_log_entries IS 'Auth: Audit trail for user actions.';
 
 -- Table: auth.flow_state
--- Description: stores metadata for pkce logins
+-- Description: Stores metadata for all OAuth/SSO login flows
 CREATE TABLE IF NOT EXISTS auth.flow_state (
     id uuid NOT NULL,
     user_id uuid,
-    auth_code text NOT NULL,
-    code_challenge_method auth.code_challenge_method NOT NULL,
-    code_challenge text NOT NULL,
+    auth_code text,
+    code_challenge_method auth.code_challenge_method,
+    code_challenge text,
     provider_type text NOT NULL,
     provider_access_token text,
     provider_refresh_token text,
@@ -34,9 +34,14 @@ CREATE TABLE IF NOT EXISTS auth.flow_state (
     updated_at timestamp with time zone,
     authentication_method text NOT NULL,
     auth_code_issued_at timestamp with time zone,
+    invite_token text,
+    referrer text,
+    oauth_client_state_id uuid,
+    linking_target_id uuid,
+    email_optional boolean NOT NULL DEFAULT false,
     CONSTRAINT flow_state_pkey PRIMARY KEY (id)
 );
-COMMENT ON TABLE auth.flow_state IS 'stores metadata for pkce logins';
+COMMENT ON TABLE auth.flow_state IS 'Stores metadata for all OAuth/SSO login flows';
 
 -- Table: auth.identities
 -- Description: Auth: Stores identities associated to a user.
@@ -174,6 +179,7 @@ CREATE TABLE IF NOT EXISTS auth.oauth_clients (
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     deleted_at timestamp with time zone,
     client_type auth.oauth_client_type NOT NULL DEFAULT 'confidential'::auth.oauth_client_type,
+    token_endpoint_auth_method text NOT NULL,
     CONSTRAINT oauth_clients_pkey PRIMARY KEY (id)
 );
 
@@ -362,23 +368,6 @@ CREATE TABLE IF NOT EXISTS auth.users (
 );
 COMMENT ON TABLE auth.users IS 'Auth: Stores user login data within a secure schema.';
 COMMENT ON COLUMN auth.users.is_sso_user IS 'Auth: Set this column to true when the account comes from SSO. These accounts can have duplicate emails.';
-
--- Table: public.app_settings
--- Description: Глобальные настройки приложения (key-value JSON)
-CREATE TABLE IF NOT EXISTS public.app_settings (
-    key text NOT NULL,
-    value jsonb NOT NULL DEFAULT '{}'::jsonb,
-    description text,
-    created_at timestamp with time zone NOT NULL DEFAULT now(),
-    updated_at timestamp with time zone NOT NULL DEFAULT now(),
-    CONSTRAINT app_settings_pkey PRIMARY KEY (key)
-);
-COMMENT ON TABLE public.app_settings IS 'Глобальные настройки приложения (key-value JSON)';
-COMMENT ON COLUMN public.app_settings.key IS 'Уникальный ключ настройки (например: ocr_server_settings)';
-COMMENT ON COLUMN public.app_settings.value IS 'Значение настройки в формате JSON';
-COMMENT ON COLUMN public.app_settings.description IS 'Описание настройки для администратора';
-COMMENT ON COLUMN public.app_settings.created_at IS 'Дата и время создания настройки';
-COMMENT ON COLUMN public.app_settings.updated_at IS 'Дата и время последнего обновления';
 
 -- Table: public.image_categories
 -- Description: Категории изображений с промптами для OCR
@@ -733,6 +722,7 @@ CREATE TABLE IF NOT EXISTS realtime.subscription (
     claims jsonb NOT NULL,
     claims_role regrole NOT NULL DEFAULT realtime.to_regrole((claims ->> 'role'::text)),
     created_at timestamp without time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+    action_filter text DEFAULT '*'::text,
     CONSTRAINT pk_subscription PRIMARY KEY (id)
 );
 
@@ -1050,7 +1040,7 @@ $function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea)
+CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1058,7 +1048,7 @@ AS '$libdir/pgcrypto', $function$pg_armor$function$
 
 
 -- Function: extensions.armor
-CREATE OR REPLACE FUNCTION extensions.armor(bytea, text[], text[])
+CREATE OR REPLACE FUNCTION extensions.armor(bytea)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1305,7 +1295,7 @@ $function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1313,7 +1303,7 @@ AS '$libdir/pgcrypto', $function$pg_hmac$function$
 
 
 -- Function: extensions.hmac
-CREATE OR REPLACE FUNCTION extensions.hmac(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION extensions.hmac(text, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1361,6 +1351,14 @@ AS '$libdir/pgcrypto', $function$pgp_key_id_w$function$
 
 
 -- Function: extensions.pgp_pub_decrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
+ RETURNS text
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
+
+
+-- Function: extensions.pgp_pub_decrypt
 CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea)
  RETURNS text
  LANGUAGE c
@@ -1376,16 +1374,8 @@ CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text, text)
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
 
 
--- Function: extensions.pgp_pub_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt(bytea, bytea, text)
- RETURNS text
- LANGUAGE c
- IMMUTABLE PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$
-
-
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1401,7 +1391,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_pub_decrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea)
+CREATE OR REPLACE FUNCTION extensions.pgp_pub_decrypt_bytea(bytea, bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1441,7 +1431,7 @@ AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1449,7 +1439,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$
 
 
 -- Function: extensions.pgp_sym_decrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_decrypt(bytea, text)
  RETURNS text
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1473,14 +1463,6 @@ AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)
- RETURNS bytea
- LANGUAGE c
- PARALLEL SAFE STRICT
-AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
-
-
--- Function: extensions.pgp_sym_encrypt
 CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
  RETURNS bytea
  LANGUAGE c
@@ -1488,8 +1470,16 @@ CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text)
 AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
 
 
+-- Function: extensions.pgp_sym_encrypt
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt(text, text, text)
+ RETURNS bytea
+ LANGUAGE c
+ PARALLEL SAFE STRICT
+AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$
+
+
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1497,7 +1487,7 @@ AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$
 
 
 -- Function: extensions.pgp_sym_encrypt_bytea
-CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text)
+CREATE OR REPLACE FUNCTION extensions.pgp_sym_encrypt_bytea(bytea, text, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -2085,18 +2075,6 @@ END;
 $function$
 
 
--- Function: public.update_app_settings_timestamp
-CREATE OR REPLACE FUNCTION public.update_app_settings_timestamp()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-BEGIN
-    NEW.updated_at = now();
-    RETURN NEW;
-END;
-$function$
-
-
 -- Function: public.update_image_categories_updated_at
 CREATE OR REPLACE FUNCTION public.update_image_categories_updated_at()
  RETURNS trigger
@@ -2279,7 +2257,10 @@ subscriptions realtime.subscription[] = array_agg(subs)
     from
         realtime.subscription subs
     where
-        subs.entity = entity_;
+        subs.entity = entity_
+        -- Filter by action early - only get subscriptions interested in this action
+        -- action_filter column can be: '*' (all), 'INSERT', 'UPDATE', or 'DELETE'
+        and (subs.action_filter = '*' or subs.action_filter = action::text);
 
 -- Subscription vars
 roles regrole[] = array_agg(distinct us.claims_role::text)
@@ -3914,9 +3895,6 @@ $function$
 -- TRIGGERS
 -- ============================================
 
--- Trigger: app_settings_updated_at on public.app_settings
-CREATE TRIGGER app_settings_updated_at BEFORE UPDATE ON public.app_settings FOR EACH ROW EXECUTE FUNCTION update_app_settings_timestamp()
-
 -- Trigger: trigger_image_categories_updated_at on public.image_categories
 CREATE TRIGGER trigger_image_categories_updated_at BEFORE UPDATE ON public.image_categories FOR EACH ROW EXECUTE FUNCTION update_image_categories_updated_at()
 
@@ -4271,7 +4249,7 @@ CREATE INDEX ix_realtime_subscription_entity ON realtime.subscription USING btre
 CREATE UNIQUE INDEX pk_subscription ON realtime.subscription USING btree (id);
 
 -- Index on realtime.subscription
-CREATE UNIQUE INDEX subscription_subscription_id_entity_filters_key ON realtime.subscription USING btree (subscription_id, entity, filters);
+CREATE UNIQUE INDEX subscription_subscription_id_entity_filters_action_filter_key ON realtime.subscription USING btree (subscription_id, entity, filters, action_filter);
 
 -- Index on storage.buckets
 CREATE UNIQUE INDEX bname ON storage.buckets USING btree (name);

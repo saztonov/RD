@@ -783,13 +783,13 @@
     "is_primary": false,
     "sql": "CREATE UNIQUE INDEX pk_subscription ON realtime.subscription USING btree (id)"
   },
-  "realtime.subscription.subscription_subscription_id_entity_filters_key": {
+  "realtime.subscription.subscription_subscription_id_entity_filters_action_filter_key": {
     "schema": "realtime",
-    "name": "subscription_subscription_id_entity_filters_key",
+    "name": "subscription_subscription_id_entity_filters_action_filter_key",
     "table_name": "subscription",
     "is_unique": true,
     "is_primary": false,
-    "sql": "CREATE UNIQUE INDEX subscription_subscription_id_entity_filters_key ON realtime.subscription USING btree (subscription_id, entity, filters)"
+    "sql": "CREATE UNIQUE INDEX subscription_subscription_id_entity_filters_action_filter_key ON realtime.subscription USING btree (subscription_id, entity, filters, action_filter)"
   },
   "storage.buckets.bname": {
     "schema": "storage",

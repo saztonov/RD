@@ -54,7 +54,7 @@
   "auth.flow_state": {
     "schema": "auth",
     "name": "flow_state",
-    "comment": "stores metadata for pkce logins",
+    "comment": "Stores metadata for all OAuth/SSO login flows",
     "columns": [
       {
         "name": "id",
@@ -75,21 +75,21 @@
         "comment": null,
         "default": null,
         "data_type": "text",
-        "is_nullable": false
+        "is_nullable": true
       },
       {
         "name": "code_challenge_method",
         "comment": null,
         "default": null,
         "data_type": "auth.code_challenge_method",
-        "is_nullable": false
+        "is_nullable": true
       },
       {
         "name": "code_challenge",
         "comment": null,
         "default": null,
         "data_type": "text",
-        "is_nullable": false
+        "is_nullable": true
       },
       {
         "name": "provider_type",
@@ -139,6 +139,41 @@
         "default": null,
         "data_type": "timestamp with time zone",
         "is_nullable": true
+      },
+      {
+        "name": "invite_token",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "referrer",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": true
+      },
+      {
+        "name": "oauth_client_state_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "linking_target_id",
+        "comment": null,
+        "default": null,
+        "data_type": "uuid",
+        "is_nullable": true
+      },
+      {
+        "name": "email_optional",
+        "comment": null,
+        "default": "false",
+        "data_type": "boolean",
+        "is_nullable": false
       }
     ],
     "constraints": [
@@ -955,6 +990,13 @@
         "default": "'confidential'::auth.oauth_client_type",
         "data_type": "auth.oauth_client_type",
         "is_nullable": false
+      },
+      {
+        "name": "token_endpoint_auth_method",
+        "comment": null,
+        "default": null,
+        "data_type": "text",
+        "is_nullable": false
       }
     ],
     "constraints": [
@@ -986,6 +1028,14 @@
         "name": "oauth_clients_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "oauth_clients_token_endpoint_auth_method_check",
+        "type": "CHECK",
+        "column": "token_endpoint_auth_method",
         "foreign_table": null,
         "foreign_column": null,
         "foreign_table_schema": null
@@ -2080,58 +2130,6 @@
         "name": "users_pkey",
         "type": "PRIMARY KEY",
         "column": "id",
-        "foreign_table": null,
-        "foreign_column": null,
-        "foreign_table_schema": null
-      }
-    ]
-  },
-  "public.app_settings": {
-    "schema": "public",
-    "name": "app_settings",
-    "comment": "Глобальные настройки приложения (key-value JSON)",
-    "columns": [
-      {
-        "name": "key",
-        "comment": "Уникальный ключ настройки (например: ocr_server_settings)",
-        "default": null,
-        "data_type": "text",
-        "is_nullable": false
-      },
-      {
-        "name": "value",
-        "comment": "Значение настройки в формате JSON",
-        "default": "'{}'::jsonb",
-        "data_type": "jsonb",
-        "is_nullable": false
-      },
-      {
-        "name": "description",
-        "comment": "Описание настройки для администратора",
-        "default": null,
-        "data_type": "text",
-        "is_nullable": true
-      },
-      {
-        "name": "created_at",
-        "comment": "Дата и время создания настройки",
-        "default": "now()",
-        "data_type": "timestamp with time zone",
-        "is_nullable": false
-      },
-      {
-        "name": "updated_at",
-        "comment": "Дата и время последнего обновления",
-        "default": "now()",
-        "data_type": "timestamp with time zone",
-        "is_nullable": false
-      }
-    ],
-    "constraints": [
-      {
-        "name": "app_settings_pkey",
-        "type": "PRIMARY KEY",
-        "column": "key",
         "foreign_table": null,
         "foreign_column": null,
         "foreign_table_schema": null
@@ -3623,6 +3621,13 @@
         "default": "timezone('utc'::text, now())",
         "data_type": "timestamp without time zone",
         "is_nullable": false
+      },
+      {
+        "name": "action_filter",
+        "comment": null,
+        "default": "'*'::text",
+        "data_type": "text",
+        "is_nullable": true
       }
     ],
     "constraints": [
@@ -3630,6 +3635,14 @@
         "name": "pk_subscription",
         "type": "PRIMARY KEY",
         "column": "id",
+        "foreign_table": null,
+        "foreign_column": null,
+        "foreign_table_schema": null
+      },
+      {
+        "name": "subscription_action_filter_check",
+        "type": "CHECK",
+        "column": "action_filter",
         "foreign_table": null,
         "foreign_column": null,
         "foreign_table_schema": null
