@@ -5,6 +5,8 @@ import logging
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QTreeWidgetItem
 
+from app.tree_client import NodeType, TreeNode
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,9 +45,10 @@ class TreeLoadMixin:
 
     def _on_roots_loaded(self, roots: list):
         """Обработка корневых узлов"""
-        from app.tree_client import NodeType, TreeNode
-
         self._last_node_count = len(roots)
+        # Кэшируем корневые узлы
+        self._node_cache.put_root_nodes(roots)
+
         for node in roots:
             item = self._item_builder.create_item(node)
             self.tree.addTopLevelItem(item)
@@ -87,80 +90,210 @@ class TreeLoadMixin:
         QTimer.singleShot(100, self._restore_expanded_state)
         QTimer.singleShot(500, self._start_sync_check)
 
+    # === Обновление дерева ===
+
     def _refresh_tree(self):
-        """Обновить дерево"""
+        """Полное обновление дерева (через фоновый воркер)."""
         if self._loading:
             return
-
         self._loading = True
         self._pdf_status_manager.reset()
         self.status_label.setText("Загрузка...")
-        self.tree.clear()
-        self._node_map.clear()
-        self._sync_statuses.clear()
+        self._node_cache.invalidate_roots()
+        self._refresh_worker.request_refresh_roots()
 
-        try:
-            roots = self.client.get_root_nodes()
-            self._last_node_count = len(roots)
-            for node in roots:
+    def _on_roots_refreshed(self, roots: list):
+        """Слот: корневые узлы загружены воркером — инкрементальное обновление."""
+        self._last_node_count = len(roots)
+        self._incremental_refresh_roots(roots)
+        self.status_label.setText(f"Проектов: {len(roots)}")
+
+        QTimer.singleShot(100, self._restore_expanded_state)
+        QTimer.singleShot(300, self._update_stats)
+        QTimer.singleShot(500, self._start_sync_check)
+
+        if not self._pdf_status_manager.is_loaded:
+            QTimer.singleShot(200, self._pdf_status_manager.load_batch)
+
+        self._loading = False
+
+    def _incremental_refresh_roots(self, fresh_roots: list):
+        """Инкрементальное обновление корневых узлов без tree.clear()."""
+        fresh_map = {r.id: r for r in fresh_roots}
+        fresh_ids = set(fresh_map.keys())
+
+        # Текущие корневые ID
+        current_ids = set()
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            node = item.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode):
+                current_ids.add(node.id)
+
+        # Удалить пропавшие
+        for i in range(self.tree.topLevelItemCount() - 1, -1, -1):
+            item = self.tree.topLevelItem(i)
+            node = item.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode) and node.id not in fresh_ids:
+                self.tree.takeTopLevelItem(i)
+                self._node_map.pop(node.id, None)
+                self._sync_statuses.pop(node.id, None)
+
+        # Обновить существующие
+        for node in fresh_roots:
+            if node.id in self._node_map:
+                item = self._node_map[node.id]
+                self._item_builder.update_item_display(item, node)
+            else:
+                # Добавить новые
                 item = self._item_builder.create_item(node)
                 self.tree.addTopLevelItem(item)
                 self._item_builder.add_placeholder(item, node)
 
-            self.status_label.setText(f"Проектов: {len(roots)}")
-
-            QTimer.singleShot(100, self._restore_expanded_state)
-            QTimer.singleShot(300, self._update_stats)
-            QTimer.singleShot(500, self._start_sync_check)
-
-            if not self._pdf_status_manager.is_loaded:
-                QTimer.singleShot(200, self._pdf_status_manager.load_batch)
-        except Exception as e:
-            logger.error(f"Failed to refresh tree: {e}")
-            self.status_label.setText(f"Ошибка: {e}")
-        finally:
-            self._loading = False
+    # === Автообновление (фоновое) ===
 
     def _auto_refresh_tree(self):
-        """Автоматическое обновление дерева"""
-        from app.tree_client import TreeNode
-
+        """Автоматическое обновление дерева (через фоновый воркер)."""
         if self._loading:
             return
 
-        try:
-            roots = self.client.get_root_nodes()
-            current_count = len(roots)
+        known_roots = {}
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            node = item.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode):
+                known_roots[node.id] = node.updated_at
 
-            if current_count != self._last_node_count:
-                self._last_node_count = current_count
-                self._refresh_tree()
-                return
+        self._refresh_worker.request_auto_check(known_roots)
 
-            for root in roots:
-                if root.id in self._node_map:
-                    item = self._node_map[root.id]
-                    old_node = item.data(0, Qt.UserRole)
-                    if isinstance(old_node, TreeNode):
-                        if old_node.updated_at != root.updated_at:
-                            self._refresh_tree()
-                            return
-                else:
-                    self._refresh_tree()
-                    return
-        except Exception as e:
-            logger.debug(f"Auto-refresh check failed: {e}")
+    def _on_auto_check_result(self, changes: dict):
+        """Слот: результат фоновой проверки автообновления."""
+        if changes.get("no_changes"):
+            return
+
+        added = changes.get("added", [])
+        removed = changes.get("removed", [])
+        updated = changes.get("updated", [])
+
+        # Удалить пропавшие корневые узлы
+        for node_id in removed:
+            item = self._node_map.pop(node_id, None)
+            if item:
+                idx = self.tree.indexOfTopLevelItem(item)
+                if idx >= 0:
+                    self.tree.takeTopLevelItem(idx)
+            self._sync_statuses.pop(node_id, None)
+
+        # Обновить изменённые
+        for node in updated:
+            item = self._node_map.get(node.id)
+            if item:
+                self._item_builder.update_item_display(item, node)
+
+        # Добавить новые
+        for node in added:
+            item = self._item_builder.create_item(node)
+            self.tree.addTopLevelItem(item)
+            self._item_builder.add_placeholder(item, node)
+
+        self._last_node_count = self.tree.topLevelItemCount()
+
+    # === Точечное обновление одного элемента ===
+
+    def _update_single_item(self, node_id: str, **fields):
+        """Обновить один элемент дерева без перезагрузки."""
+        item = self._node_map.get(node_id)
+        if not item:
+            return
+
+        node = item.data(0, Qt.UserRole)
+        if not isinstance(node, TreeNode):
+            return
+
+        for key, value in fields.items():
+            if hasattr(node, key):
+                setattr(node, key, value)
+
+        # Обновляем кэш
+        self._node_cache.update_node_fields(node_id, **fields)
+
+        self._item_builder.update_item_display(item, node)
+
+    def _refresh_visible_items(self):
+        """Обновить отображение всех видимых элементов (иконки, текст)."""
+
+        def _update_recursive(item: QTreeWidgetItem):
+            node = item.data(0, Qt.UserRole)
+            if isinstance(node, TreeNode):
+                self._item_builder.update_item_display(item, node)
+            for i in range(item.childCount()):
+                _update_recursive(item.child(i))
+
+        for i in range(self.tree.topLevelItemCount()):
+            _update_recursive(self.tree.topLevelItem(i))
+
+    def _refresh_siblings(self, parent_id: str):
+        """Перезагрузить дочерние узлы одного родителя."""
+        parent_item = self._node_map.get(parent_id)
+        if not parent_item:
+            return
+
+        # Удаляем текущих детей из node_map
+        for i in range(parent_item.childCount()):
+            child_item = parent_item.child(i)
+            child_node = child_item.data(0, Qt.UserRole)
+            if isinstance(child_node, TreeNode):
+                self._node_map.pop(child_node.id, None)
+
+        # Очищаем визуальных детей
+        parent_item.takeChildren()
+
+        # Инвалидируем кэш
+        self._node_cache.invalidate_children(parent_id)
+
+        # Загружаем заново через воркер
+        self._refresh_worker.request_load_children(parent_id)
+
+    # === Lazy loading ===
 
     def _load_children(self, parent_item: QTreeWidgetItem, parent_node):
-        """Загрузить дочерние узлы"""
+        """Загрузить дочерние узлы (cache-first, fallback на sync)."""
+        # Пробуем кэш
+        cached = self._node_cache.get_children(parent_node.id)
+        if cached is not None:
+            self._populate_children(parent_item, cached)
+            return
+
+        # Кэш пуст — загружаем синхронно (быстрее чем async для UX раскрытия)
         try:
             children = self.client.get_children(parent_node.id)
-            for child in children:
+            self._node_cache.put_children(parent_node.id, children)
+            self._populate_children(parent_item, children)
+        except Exception as e:
+            logger.error(f"Failed to load children: {e}")
+
+    def _on_children_loaded(self, parent_id: str, children: list):
+        """Слот: дети загружены фоновым воркером."""
+        parent_item = self._node_map.get(parent_id)
+        if not parent_item:
+            return
+
+        # Удалить loading placeholder
+        for i in range(parent_item.childCount() - 1, -1, -1):
+            child = parent_item.child(i)
+            data = child.data(0, Qt.UserRole)
+            if data in ("placeholder", "loading"):
+                parent_item.removeChild(child)
+
+        self._populate_children(parent_item, children)
+
+    def _populate_children(self, parent_item: QTreeWidgetItem, children: list):
+        """Заполнить дочерние элементы из списка TreeNode."""
+        for child in children:
+            if child.id not in self._node_map:
                 child_item = self._item_builder.create_item(child)
                 parent_item.addChild(child_item)
                 self._item_builder.add_placeholder(child_item, child)
-        except Exception as e:
-            logger.error(f"Failed to load children: {e}")
 
     def _update_stats(self):
         """Обновить статистику документов"""

@@ -64,7 +64,13 @@ class TreeReorderMixin:
                     swap_node = siblings[db_swap_idx]
 
             if not current_node or not swap_node:
-                self._refresh_tree()
+                parent_id = node.parent_id
+                if parent_id:
+                    self._node_cache.invalidate_children(parent_id)
+                    self._refresh_siblings(parent_id)
+                else:
+                    self._node_cache.invalidate_roots()
+                    self._refresh_worker.request_refresh_roots()
                 return
 
             current_sort = current_node.sort_order
@@ -85,6 +91,12 @@ class TreeReorderMixin:
             else:
                 self.client.update_node(current_node.id, sort_order=swap_sort)
                 self.client.update_node(swap_node.id, sort_order=current_sort)
+
+            # Инвалидируем кэш после swap sort_order
+            if node.parent_id:
+                self._node_cache.invalidate_children(node.parent_id)
+            else:
+                self._node_cache.invalidate_roots()
 
             if parent_item:
                 item = parent_item.takeChild(current_idx)

@@ -68,9 +68,9 @@ class ReconciliationMixin:
         self._status_label.setText("Сверка завершена")
         if hasattr(self, "hide_reconcile_action"):
             self.hide_reconcile_action.setEnabled(True)
-        # Обновляем дерево для отображения результатов
+        # Обновляем иконки в дереве без полной перезагрузки
         if hasattr(self, "project_tree") and self.project_tree:
-            self.project_tree._refresh_tree()
+            self.project_tree._refresh_visible_items()
 
     def _on_reconciliation_status_changed(self, node_id: str, status: str):
         """Обработать изменение статуса документа"""
@@ -87,9 +87,9 @@ class ReconciliationMixin:
             recon_manager.clear_statuses()
             if hasattr(self, "hide_reconcile_action"):
                 self.hide_reconcile_action.setEnabled(False)
-            # Обновляем дерево
+            # Обновляем иконки без полной перезагрузки
             if hasattr(self, "project_tree") and self.project_tree:
-                self.project_tree._refresh_tree()
+                self.project_tree._refresh_visible_items()
             self._status_label.setText("Результаты сверки скрыты")
         except (ValueError, Exception):
             pass

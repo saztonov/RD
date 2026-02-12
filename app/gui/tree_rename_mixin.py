@@ -196,10 +196,8 @@ class TreeRenameMixin:
                 else:
                     self.client.update_node(node.id, name=new_name_clean)
 
-                # Обновляем UI
+                # Обновляем UI без полной перезагрузки дерева
                 node.name = new_name_clean
-                from PySide6.QtCore import QTimer
-
-                QTimer.singleShot(100, self._refresh_tree)
+                self._update_single_item(node.id, name=new_name_clean)
             except Exception as e:
                 QMessageBox.critical(self, "Ошибка", str(e))

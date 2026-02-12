@@ -35,6 +35,8 @@ from .r2_viewer_integration import R2ViewerIntegration
 from .tree_expand_mixin import TreeExpandMixin
 from .tree_item_builder import TreeItemBuilder
 from .tree_load_mixin import TreeLoadMixin
+from .tree_node_cache import TreeNodeCache
+from .tree_refresh_worker import TreeRefreshWorker
 from .tree_reorder_mixin import TreeReorderMixin
 
 logger = logging.getLogger(__name__)
@@ -73,6 +75,19 @@ class ProjectTreeWidget(
         self._expanded_nodes: set = set()
         self._initial_load_worker: InitialLoadWorker = None
 
+        # Поиск: состояние
+        self._search_active = False
+        self._pre_search_expanded = set()
+        self._pending_batch_parent_ids = []
+
+        # Кэш и фоновый воркер
+        self._node_cache = TreeNodeCache(ttl_seconds=120)
+        self._refresh_worker = TreeRefreshWorker(self.client, self._node_cache, self)
+        self._refresh_worker.roots_loaded.connect(self._on_roots_refreshed)
+        self._refresh_worker.children_loaded.connect(self._on_children_loaded)
+        self._refresh_worker.auto_check_result.connect(self._on_auto_check_result)
+        self._refresh_worker.children_batch_loaded.connect(self._on_batch_children_loaded)
+
         # Вспомогательные компоненты
         self._pdf_status_manager = PDFStatusManager(self)
         self._annotation_ops = AnnotationOperations(self)
@@ -106,7 +121,7 @@ class ProjectTreeWidget(
         header = self._create_header()
         layout.addWidget(header)
 
-        # Search
+        # Search с debounce
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Поиск...")
         self.search_input.setClearButtonEnabled(True)
@@ -117,7 +132,14 @@ class ProjectTreeWidget(
             }
             QLineEdit:focus { border: 1px solid #0e639c; }
         """)
-        self.search_input.textChanged.connect(self._filter_tree)
+
+        # Debounce: 300мс задержка перед фильтрацией
+        self._pending_search_text = ""
+        self._search_debounce_timer = QTimer(self)
+        self._search_debounce_timer.setSingleShot(True)
+        self._search_debounce_timer.setInterval(300)
+        self._search_debounce_timer.timeout.connect(self._do_filter_tree)
+        self.search_input.textChanged.connect(self._on_search_text_changed)
         layout.addWidget(self.search_input)
 
         # Tree
@@ -153,6 +175,32 @@ class ProjectTreeWidget(
             "border-top: 1px solid #3e3e42;"
         )
         layout.addWidget(self.stats_label)
+
+    def _on_search_text_changed(self, text: str):
+        """Debounced обработчик поиска."""
+        self._pending_search_text = text
+        self._search_debounce_timer.start()
+
+    def _do_filter_tree(self):
+        """Выполнить фильтрацию (после debounce)."""
+        self._filter_tree(self._pending_search_text)
+
+    def _on_batch_children_loaded(self, results: dict):
+        """Слот: batch-загрузка детей завершена (для поиска)."""
+        for parent_id, children in results.items():
+            parent_item = self._node_map.get(parent_id)
+            if parent_item:
+                # Удалить placeholder
+                for i in range(parent_item.childCount() - 1, -1, -1):
+                    child = parent_item.child(i)
+                    data = child.data(0, Qt.UserRole)
+                    if data in ("placeholder", "loading"):
+                        parent_item.removeChild(child)
+                self._populate_children(parent_item, children)
+
+        # Перезапускаем фильтр если был активен поиск
+        if self._search_active and self._pending_search_text:
+            self._filter_tree(self._pending_search_text)
 
     def _create_header(self) -> QWidget:
         """Создать заголовок с кнопками"""
@@ -219,6 +267,7 @@ class ProjectTreeWidget(
 
     def _sync_and_refresh(self):
         """Синхронизация: обновить дерево и проверить синхронизацию"""
+        self._node_cache.clear()
         self._refresh_tree()
         QTimer.singleShot(500, self._start_sync_check)
 
@@ -305,7 +354,7 @@ class ProjectTreeWidget(
                 node.is_locked = True
                 self.status_label.setText("🔒 Документ заблокирован")
                 self._update_main_window_lock_state(node.id, True)
-                QTimer.singleShot(100, self._refresh_tree)
+                self._update_single_item(node.id, is_locked=True)
             else:
                 QMessageBox.warning(self, "Ошибка", "Не удалось заблокировать документ")
         except Exception as e:
@@ -318,7 +367,7 @@ class ProjectTreeWidget(
                 node.is_locked = False
                 self.status_label.setText("🔓 Документ разблокирован")
                 self._update_main_window_lock_state(node.id, False)
-                QTimer.singleShot(100, self._refresh_tree)
+                self._update_single_item(node.id, is_locked=False)
             else:
                 QMessageBox.warning(self, "Ошибка", "Не удалось разблокировать документ")
         except Exception as e:

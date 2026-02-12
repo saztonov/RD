@@ -87,6 +87,7 @@ class TreeNodeOperationsMixin(
             try:
                 # Создаём корневую папку (FOLDER вместо PROJECT)
                 node = self.client.create_node(NodeType.FOLDER, name.strip())
+                self._node_cache.invalidate_roots()
                 item = self._item_builder.create_item(node)
                 self.tree.addTopLevelItem(item)
                 self._item_builder.add_placeholder(item, node)
@@ -121,6 +122,7 @@ class TreeNodeOperationsMixin(
                     node = self.client.create_node(
                         child_type, name, parent_node.id, code
                     )
+                    self._node_cache.invalidate_children(parent_node.id)
                     logger.debug(f"Node created: {node.id}")
                     parent_item = self._node_map.get(parent_node.id)
                     if parent_item:
@@ -229,6 +231,13 @@ class TreeNodeOperationsMixin(
                 self._delete_branch_files(node)
 
                 if self.client.delete_node(node.id):
+                    # Инвалидируем кэш
+                    self._node_cache.invalidate_subtree(node.id)
+                    if node.parent_id:
+                        self._node_cache.invalidate_children(node.parent_id)
+                    else:
+                        self._node_cache.invalidate_roots()
+
                     item = self._node_map.get(node.id)
                     if item:
                         parent = item.parent()

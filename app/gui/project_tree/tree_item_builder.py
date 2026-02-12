@@ -102,6 +102,28 @@ class TreeItemBuilder:
             display_name = f"{icon} {node.name}"
         return display_name, None
 
+    def update_item_display(self, item: QTreeWidgetItem, node: TreeNode) -> None:
+        """Обновить отображение существующего элемента без пересоздания."""
+        icon = NODE_ICONS.get(node.node_type, "📄")
+
+        if node.node_type == NodeType.DOCUMENT:
+            display_name, version_display = self._format_document(node, icon)
+        elif node.node_type == NodeType.TASK_FOLDER:
+            display_name, version_display = self._format_task_folder(node, icon)
+        else:
+            display_name, version_display = self._format_default(node, icon)
+
+        item.setText(0, display_name)
+        item.setData(0, Qt.UserRole, node)
+        if version_display is not None:
+            item.setData(0, Qt.UserRole + 1, version_display)
+        item.setForeground(0, QColor(STATUS_COLORS.get(node.status, "#e0e0e0")))
+
+        if node.node_type == NodeType.DOCUMENT and node.pdf_status_message:
+            item.setToolTip(0, node.pdf_status_message)
+        else:
+            item.setToolTip(0, "")
+
 
 def update_document_item(
     item: QTreeWidgetItem,
