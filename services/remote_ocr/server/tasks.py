@@ -145,6 +145,7 @@ def run_ocr_task(self, job_id: str) -> dict:
                 "chandra",
                 base_url=settings.chandra_base_url,
             )
+            strip_backend.preload()
         elif engine == "datalab" and settings.datalab_api_key:
             strip_backend = create_ocr_engine(
                 "datalab",

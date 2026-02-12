@@ -17,6 +17,7 @@ from app.gui.tree_cache_ops import TreeCacheOperationsMixin
 from app.gui.tree_file_upload_mixin import TreeFileUploadMixin
 from app.gui.tree_folder_ops import TreeFolderOperationsMixin
 from app.gui.tree_rename_mixin import TreeRenameMixin
+from app.gui.tree_split_mixin import TreeSplitMixin
 from app.tree_client import NodeStatus, NodeType, TreeNode
 
 if TYPE_CHECKING:
@@ -65,6 +66,7 @@ class TreeNodeOperationsMixin(
     TreeFolderOperationsMixin,
     TreeFileUploadMixin,
     TreeRenameMixin,
+    TreeSplitMixin,
 ):
     """Миксин для CRUD операций с узлами дерева"""
 

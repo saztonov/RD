@@ -15,7 +15,9 @@ logger = get_logger(__name__)
 _ERROR_PREFIX = "[Ошибка"
 
 # Пауза между retry для бэкендов с ограничением concurrency (Chandra/LM Studio)
-_RETRY_DELAY_CHANDRA = 5
+def _get_chandra_retry_delay() -> int:
+    from .settings import settings
+    return settings.chandra_retry_delay
 
 
 def _is_chandra_backend(backend) -> bool:
@@ -136,7 +138,7 @@ def verify_and_retry_missing_blocks(
 
             # Пауза перед retry для Chandra (LM Studio может быть перегружен)
             if is_chandra and idx > 0:
-                time.sleep(_RETRY_DELAY_CHANDRA)
+                time.sleep(_get_chandra_retry_delay())
 
             try:
                 # Создаём Block объект для crop

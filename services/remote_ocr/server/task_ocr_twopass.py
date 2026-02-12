@@ -116,8 +116,8 @@ def run_two_pass_ocr(
 
             logger.info("PASS2: используется async режим (asyncio.gather)")
 
-            # Для Chandra: последовательная обработка (LM Studio однопоточная)
-            max_concurrent = 1 if engine == "chandra" else None
+            # Для Chandra: ограничение параллельности (LM Studio Max Concurrent Predictions)
+            max_concurrent = settings.chandra_max_concurrent if engine == "chandra" else None
 
             # Запуск async pass2 через asyncio.run
             asyncio.run(

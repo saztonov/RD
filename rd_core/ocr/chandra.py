@@ -1,6 +1,7 @@
 """Chandra OCR Backend (LM Studio / OpenAI-compatible API)"""
 import logging
 import os
+import threading
 from typing import Optional
 
 from PIL import Image
@@ -54,6 +55,7 @@ class ChandraBackend:
     def __init__(self, base_url: Optional[str] = None):
         self.base_url = base_url or os.getenv("CHANDRA_BASE_URL", self.DEFAULT_BASE_URL)
         self._model_id: Optional[str] = None
+        self._model_lock = threading.Lock()
 
         # HTTP Basic Auth для ngrok-туннеля
         auth_user = os.getenv("NGROK_AUTH_USER")
@@ -85,25 +87,34 @@ class ChandraBackend:
         if self._model_id:
             return self._model_id
 
-        self._ensure_model_loaded()
+        with self._model_lock:
+            if self._model_id:
+                return self._model_id
 
-        try:
-            resp = self.session.get(
-                f"{self.base_url}/v1/models",
-                timeout=30,
-            )
-            if resp.status_code == 200:
-                for m in resp.json().get("data", []):
-                    if "chandra" in m.get("id", "").lower():
-                        self._model_id = m["id"]
-                        logger.info(f"Chandra модель найдена: {self._model_id}")
-                        return self._model_id
-        except Exception as e:
-            logger.warning(f"Ошибка определения модели Chandra: {e}")
+            self._ensure_model_loaded()
 
-        self._model_id = "chandra-ocr"
-        logger.info(f"Chandra модель не найдена, используется fallback: {self._model_id}")
-        return self._model_id
+            try:
+                resp = self.session.get(
+                    f"{self.base_url}/v1/models",
+                    timeout=30,
+                )
+                if resp.status_code == 200:
+                    for m in resp.json().get("data", []):
+                        if "chandra" in m.get("id", "").lower():
+                            self._model_id = m["id"]
+                            logger.info(f"Chandra модель найдена: {self._model_id}")
+                            return self._model_id
+            except Exception as e:
+                logger.warning(f"Ошибка определения модели Chandra: {e}")
+
+            self._model_id = "chandra-ocr"
+            logger.info(f"Chandra модель не найдена, используется fallback: {self._model_id}")
+            return self._model_id
+
+    def preload(self) -> None:
+        """Предзагрузка модели (вызвать ДО параллельных запросов)."""
+        self._discover_model()
+        logger.info(f"Chandra модель предзагружена: {self._model_id}")
 
     @staticmethod
     def _needs_reload(loaded_instances: list, required_context: int) -> tuple:

@@ -182,6 +182,18 @@ class Settings:
         )
     )
 
+    # ===== CHANDRA (LM Studio) =====
+    chandra_max_concurrent: int = field(
+        default_factory=lambda: _get(
+            _yaml_config, "chandra_max_concurrent", "CHANDRA_MAX_CONCURRENT", int
+        )
+    )
+    chandra_retry_delay: int = field(
+        default_factory=lambda: _get(
+            _yaml_config, "chandra_retry_delay", "CHANDRA_RETRY_DELAY", int
+        )
+    )
+
     # ===== НАСТРОЙКИ OCR =====
     crop_png_compress: int = field(
         default_factory=lambda: _get(

@@ -47,6 +47,12 @@ datalab_poll_max_attempts: 90
 # Количество повторов при ошибке Datalab API
 datalab_max_retries: 3
 
+# ===== CHANDRA (LM Studio) =====
+# Параллельных запросов к Chandra (LM Studio Max Concurrent Predictions >= этого значения)
+chandra_max_concurrent: 2
+# Пауза между retry при верификации блоков, секунды
+chandra_retry_delay: 2
+
 # ===== НАСТРОЙКИ OCR =====
 # Сжатие PNG (0=без сжатия, 9=максимальное)
 crop_png_compress: 6

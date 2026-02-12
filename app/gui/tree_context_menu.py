@@ -67,6 +67,9 @@ class TreeContextMenuMixin:
                         action = menu.addAction("🗑️ Удалить рамки/QR")
                         action.setData(("remove_stamps", node))
 
+                        action = menu.addAction("✂️ Разделить документ")
+                        action.setData(("split_document", node))
+
                     # Копировать/вставить аннотацию
                     has_annotation = node.attributes.get("has_annotation", False)
                     if has_annotation and r2_key:
@@ -190,6 +193,9 @@ class TreeContextMenuMixin:
         elif action == "move_down":
             node = data[1]
             self._move_node_down(node)
+        elif action == "split_document":
+            node = data[1]
+            self._split_document(node)
         elif action == "reconcile_files":
             node = data[1]
             self._reconcile_files(node)
