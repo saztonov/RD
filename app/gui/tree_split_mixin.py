@@ -156,7 +156,7 @@ class TreeSplitMixin:
         # 7. Загрузка в R2 + создание узлов
         try:
             created_nodes = self._upload_split_parts(
-                parts, ann_results, node, parent_node, parent_item, r2
+                parts, ann_results, node, parent_node, r2
             )
         except Exception as e:
             logger.exception(f"Ошибка загрузки частей: {e}")
@@ -231,12 +231,9 @@ class TreeSplitMixin:
         return split_annotation(source_doc, page_ranges, part_pdf_paths)
 
     def _upload_split_parts(
-        self, parts, ann_results, node, parent_node, parent_item, r2
+        self, parts, ann_results, node, parent_node, r2
     ):
         """Загрузить части в R2 и создать узлы в дереве."""
-        from app.gui.file_auto_save import get_annotation_r2_key
-        from rd_core.annotation_io import AnnotationIO
-
         created_nodes = []
         num_parts = len(parts)
 
@@ -267,7 +264,7 @@ class TreeSplitMixin:
                     f"Не удалось загрузить часть {i + 1} в R2"
                 )
 
-            # Создание узла в дереве
+            # Создание узла в дереве (Supabase)
             doc_node = self.client.add_document(
                 parent_id=parent_node.id,
                 name=final_name,
@@ -287,8 +284,13 @@ class TreeSplitMixin:
                     )
 
             # Добавление в дерево UI
-            child_item = self._item_builder.create_item(doc_node)
-            parent_item.addChild(child_item)
+            # Re-fetch parent_item каждую итерацию, т.к. processEvents()
+            # может вызвать перестроение дерева и удаление старых QTreeWidgetItem
+            current_parent_item = self._node_map.get(parent_node.id)
+            if current_parent_item:
+                child_item = self._item_builder.create_item(doc_node)
+                current_parent_item.addChild(child_item)
+                current_parent_item.setExpanded(True)
 
             created_nodes.append(doc_node)
             logger.info(
@@ -296,7 +298,6 @@ class TreeSplitMixin:
                 f"{doc_node.id}, r2_key={new_r2_key}"
             )
 
-        parent_item.setExpanded(True)
         return created_nodes
 
     def _upload_split_annotation(self, ann_result, doc_node, pdf_r2_key, r2):
