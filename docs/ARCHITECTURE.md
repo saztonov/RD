@@ -198,7 +198,6 @@ app/gui/
 │   ├── download_mixin.py   # Скачивание результатов
 │   ├── polling_controller.py # Polling статуса задач
 │   ├── result_handler.py   # Обработка результатов
-│   ├── table_manager.py    # Управление таблицей задач
 │   └── signals.py          # Qt сигналы
 │
 ├── project_tree/           # Дерево проектов (Supabase)
@@ -268,7 +267,6 @@ class RemoteOCRPanel(QDockWidget):
     # - JobOperationsMixin (job_operations.py)
     # - DownloadMixin (download_mixin.py)
     # - PollingController (polling_controller.py)
-    # - TableManager (table_manager.py)
     # - ResultHandler (result_handler.py)
 
     def _create_job(self):

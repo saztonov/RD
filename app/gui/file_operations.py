@@ -15,7 +15,6 @@ from rd_core.annotation_canonicalizer import (
     canonicalize_annotation_document,
     get_pdf_preview_page_sizes,
 )
-from app.annotation_db import AnnotationDBIO
 from rd_core.annotation_io import AnnotationIO
 from rd_core.models import Document, Page
 from rd_core.pdf_utils import PDFDocument

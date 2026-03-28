@@ -142,7 +142,7 @@ class TreeSplitMixin:
 
         # 7. Загрузка в R2 + создание узлов
         try:
-            created_nodes = self._upload_split_parts(
+            self._upload_split_parts(
                 parts, ann_results, node, parent_node, r2
             )
         except Exception as e:

@@ -6,10 +6,8 @@
 import json
 import time
 
-import pytest
 
 from app.gui.remote_ocr.jobs_cache import JobsCache
-from app.gui.remote_ocr.job_persistence import save_snapshot, load_snapshot
 from rd_core.dto.jobs import JobDetailDTO, JobInfoDTO, JobListResponse
 
 

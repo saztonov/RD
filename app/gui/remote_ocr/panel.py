@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 
 from app.gui.remote_ocr.cancel_delegate import CancelButtonDelegate
 from app.gui.remote_ocr.jobs_controller import JobsController
-from app.gui.remote_ocr.jobs_model import JOB_ID_ROLE, JobsTableModel
+from app.gui.remote_ocr.jobs_model import JobsTableModel
 
 if TYPE_CHECKING:
     from app.gui.main_window import MainWindow
@@ -284,7 +284,7 @@ class RemoteOCRPanel(QDockWidget):
             self.move_down_btn.setEnabled(False)
             return
 
-        job = self.controller._jobs_cache.get(job_id)
+        job = self.controller.get_cached_job(job_id)
         can_reorder = job and job.status == "queued"
         self.move_up_btn.setEnabled(can_reorder)
         self.move_down_btn.setEnabled(can_reorder)

@@ -18,7 +18,6 @@ def create_ocr_engine(backend: str = "dummy", **kwargs) -> OCRBackend:
         Экземпляр OCR движка
     """
     model_name = kwargs.get("model_name", "")
-    mode = kwargs.get("mode", "")
 
     if backend == "openrouter":
         from rd_core.ocr.openrouter import OpenRouterBackend

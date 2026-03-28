@@ -6,7 +6,6 @@ Prevents invalid state combinations and simplifies event handling.
 from __future__ import annotations
 
 from enum import Enum, auto
-from typing import Optional
 
 
 class InteractionState(Enum):

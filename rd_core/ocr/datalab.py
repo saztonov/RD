@@ -2,12 +2,11 @@
 import logging
 import os
 import threading
-import time
 from typing import Optional
 
-import requests
 from PIL import Image
 
+from rd_core.ocr._backend_timing import BackendTimingMixin
 from rd_core.ocr._datalab_common import (
     API_URL,
     build_request_data,
@@ -23,7 +22,7 @@ from rd_core.ocr_result import make_error
 logger = logging.getLogger(__name__)
 
 
-class DatalabOCRBackend:
+class DatalabOCRBackend(BackendTimingMixin):
     """OCR через Datalab Convert API"""
 
     def __init__(
@@ -53,27 +52,6 @@ class DatalabOCRBackend:
             f"poll_max_attempts={self.poll_max_attempts}, max_retries={self.max_retries}, "
             f"extras={self.extras}, quality_threshold={self.quality_threshold})"
         )
-
-    def set_deadline(self, deadline: float) -> None:
-        """Установить крайний срок (unix timestamp) для прекращения retry/polling."""
-        self._deadline = deadline
-
-    def set_cancel_event(self, event: threading.Event) -> None:
-        """Установить event для кооперативной отмены."""
-        self._cancel_event = event
-
-    def _interruptible_sleep(self, seconds: float) -> bool:
-        """Sleep с проверкой отмены. Возвращает True если отменено."""
-        if self._cancel_event:
-            return self._cancel_event.wait(timeout=seconds)
-        time.sleep(seconds)
-        return False
-
-    def _is_budget_exhausted(self, planned_delay: float = 0, reserve: float = 120) -> bool:
-        """Проверить, хватает ли времени на delay + reserve."""
-        if self._deadline is None:
-            return False
-        return time.time() + planned_delay > self._deadline - reserve
 
     def supports_pdf_input(self) -> bool:
         return True

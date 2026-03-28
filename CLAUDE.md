@@ -97,7 +97,7 @@ Server uses `backend_factory.py` to create a trio: `strip_backend` (TEXT), `imag
 | `MainWindow` | MenuSetup, PanelsSetup, FileOperations, BlockHandlers |
 | `PageViewer` | ContextMenu, MouseEvents, BlockRendering, Polygon, ResizeHandles |
 | `ProjectTreeWidget` | TreeNodeOps, TreeSync, TreeFilter, TreeContextMenu |
-| `RemoteOCRPanel` | JobOps, Download, PollingController, ResultHandler, TableManager |
+| `RemoteOCRPanel` | JobOps, Download, PollingController, ResultHandler |
 | `TreeClient` | Core, Nodes, Status, Files, Categories, PathV2 |
 | `R2Storage` | Upload, Download, Utils (Singleton) |
 
@@ -190,8 +190,6 @@ node_type v2: `folder` | `document` (legacy types in attributes.legacy_node_type
 | `annotation_cache.py` | Annotation cache + delayed R2 sync |
 | `document_session.py` | Temp session for tree documents |
 | `r2_metadata_cache.py` | R2 metadata caching |
-| `cache_base.py` | ThreadSafeCache base class |
-
 #### Utilities
 | Module | Purpose |
 |--------|---------|
@@ -230,8 +228,6 @@ routes/
 **Add API endpoint**: Create route in `services/remote_ocr/server/routes/`, include in `main.py`.
 
 **Modify database**: Add migration in `database/migrations/`, document in `docs/DATABASE.md`.
-
-**Add cache layer**: Extend `ThreadSafeCache` in `rd_core/cache_base.py`.
 
 **Add tree client feature**: Create mixin in `app/tree_client/`, add to `TreeClient`.
 

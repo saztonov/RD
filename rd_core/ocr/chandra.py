@@ -1,12 +1,12 @@
 """Chandra OCR Backend (LM Studio / OpenAI-compatible API) — sync"""
 import logging
 import threading
-import time
 from typing import Optional
 
 import requests
 from PIL import Image
 
+from rd_core.ocr._backend_timing import BackendTimingMixin
 from rd_core.ocr._chandra_common import (
     CHANDRA_LOAD_CONFIG,
     CHANDRA_MAX_IMAGE_SIZE,
@@ -26,7 +26,7 @@ from rd_core.ocr_result import is_error, make_error
 logger = logging.getLogger(__name__)
 
 
-class ChandraBackend:
+class ChandraBackend(BackendTimingMixin):
     """OCR через Chandra модель (LM Studio, OpenAI-compatible API)"""
 
     _MAX_APP_RETRIES = 3
@@ -43,27 +43,6 @@ class ChandraBackend:
         self._cancel_event: Optional[threading.Event] = None
         self._http_timeout = http_timeout
         logger.info(f"ChandraBackend инициализирован (base_url: {self.base_url})")
-
-    def set_deadline(self, deadline: float) -> None:
-        """Установить крайний срок (unix timestamp) для прекращения retry."""
-        self._deadline = deadline
-
-    def set_cancel_event(self, event: threading.Event) -> None:
-        """Установить event для кооперативной отмены."""
-        self._cancel_event = event
-
-    def _interruptible_sleep(self, seconds: float) -> bool:
-        """Sleep с проверкой отмены. Возвращает True если отменено."""
-        if self._cancel_event:
-            return self._cancel_event.wait(timeout=seconds)
-        time.sleep(seconds)
-        return False
-
-    def _is_budget_exhausted(self, planned_delay: float = 0, reserve: float = 120) -> bool:
-        """Проверить, хватает ли времени на delay + reserve."""
-        if self._deadline is None:
-            return False
-        return time.time() + planned_delay > self._deadline - reserve
 
     def _discover_model(self) -> str:
         if self._model_id:

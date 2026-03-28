@@ -2,7 +2,6 @@
 import threading
 import time
 
-import pytest
 
 from app.gui.remote_ocr.jobs_cache import JobsCache
 from rd_core.dto.jobs import JobInfoDTO

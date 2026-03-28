@@ -1,6 +1,5 @@
 """Операции с файлами дерева проектов (без локального кэша)"""
 import logging
-import shutil
 from pathlib import Path
 
 from app.tree_client import NodeType, TreeNode

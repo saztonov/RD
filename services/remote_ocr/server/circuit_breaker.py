@@ -22,7 +22,6 @@ import logging
 import threading
 import time
 from enum import Enum, auto
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
