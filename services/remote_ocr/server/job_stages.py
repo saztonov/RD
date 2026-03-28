@@ -404,8 +404,15 @@ def handle_error(job_id: str, exc: Exception, ctx: Optional[JobContext], start_t
 
 def cleanup(job_id: str, ctx: Optional[JobContext], engine: str, lmstudio_acquired: bool,
             celery_task_id: str = "") -> None:
-    """Освобождение ресурсов: execution lock, debounced updater, temp dir, LM Studio, GC."""
+    """Освобождение ресурсов: execution lock, debounced updater, temp dir, LM Studio, backends, GC."""
     start_mem = ctx.start_mem if ctx else 0.0
+
+    # Явная выгрузка бэкендов (предотвращает накопление моделей в памяти)
+    if ctx and ctx.backends:
+        try:
+            ctx.backends.unload_all()
+        except Exception as e:
+            logger.warning(f"Ошибка выгрузки бэкендов: {e}")
 
     # Execution lock
     release_execution_lock(job_id, celery_task_id)

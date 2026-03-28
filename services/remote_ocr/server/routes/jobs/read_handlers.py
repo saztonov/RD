@@ -7,6 +7,8 @@ from typing import Optional
 
 from fastapi import Header, HTTPException, Query
 
+from rd_core.dto.jobs import JobInfoDTO
+
 from services.remote_ocr.server.logging_config import get_logger
 from services.remote_ocr.server.routes.common import (
     check_api_key,
@@ -25,21 +27,21 @@ _logger = get_logger(__name__)
 
 
 def _job_to_list_item(j) -> dict:
-    """Сериализация Job в dict для списка задач."""
-    return {
-        "id": j.id,
-        "status": j.status,
-        "progress": j.progress,
-        "document_name": j.document_name,
-        "task_name": j.task_name,
-        "document_id": j.document_id,
-        "created_at": j.created_at,
-        "updated_at": j.updated_at,
-        "error_message": j.error_message,
-        "node_id": j.node_id,
-        "status_message": j.status_message,
-        "priority": j.priority,
-    }
+    """Сериализация Job в JobInfoDTO dict для списка задач."""
+    return JobInfoDTO(
+        id=j.id,
+        status=j.status,
+        progress=j.progress,
+        document_id=j.document_id,
+        document_name=j.document_name,
+        task_name=j.task_name,
+        created_at=j.created_at,
+        updated_at=j.updated_at,
+        error_message=j.error_message,
+        node_id=j.node_id,
+        status_message=j.status_message,
+        priority=j.priority,
+    ).to_dict()
 
 
 def list_jobs_handler(

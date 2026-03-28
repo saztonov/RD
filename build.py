@@ -1,38 +1,15 @@
 """
 Core Structure - Сборка в исполняемый файл
 
-Скрипт для сборки приложения Core Structure в .exe файл
-с внедрением переменных окружения из .env файла.
+Скрипт для сборки приложения Core Structure в .exe файл.
+Переменные окружения НЕ вшиваются в бинарник — приложение загружает .env
+из рабочей директории при старте через python-dotenv (app/main.py).
 """
 import os
-import sys
 from pathlib import Path
 
-# Читаем .env (ВСЕ переменные)
-env_vars = {}
-env_file = Path(".env")
-if env_file.exists():
-    with open(env_file, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, value = line.split("=", 1)
-                key = key.strip()
-                env_vars[key] = value.strip().strip('"').strip("'")
-
-# Генерируем код внедрения переменных
-env_code = "import os\n"
-env_code += "# All .env variables embedded in exe\n\n"
-for key, value in env_vars.items():
-    env_code += f'os.environ["{key}"] = """{value}"""\n'
-
-# Создаем runtime hook
-hook_file = Path("_pyi_env_hook.py")
-with open(hook_file, "w", encoding="utf-8") as f:
-    f.write(env_code)
-
-# Обновляем spec файл
-spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+# Генерируем spec файл (без runtime hooks с секретами)
+spec_content = """# -*- mode: python ; coding: utf-8 -*-
 
 a = Analysis(
     ['app\\\\main.py'],
@@ -41,8 +18,8 @@ a = Analysis(
     datas=[],
     hiddenimports=['PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets'],
     hookspath=[],
-    hooksconfig={{}},
-    runtime_hooks=['{hook_file}'],
+    hooksconfig={},
+    runtime_hooks=[],
     excludes=[
         'matplotlib', 'numpy', 'pandas', 'scipy', 'pytest', 'unittest',
         'test', 'tests', '_pytest', 'py.test', 'tkinter', 'IPython', 'jupyter',
@@ -82,13 +59,11 @@ spec_file = Path("CoreStructure.spec")
 with open(spec_file, "w", encoding="utf-8") as f:
     f.write(spec_content)
 
-print(f"[OK] Spec updated with {len(env_vars)} env vars embedded")
-print(f"[OK] Runtime hook: {hook_file}")
+print("[OK] Spec updated (no embedded secrets)")
+print("[INFO] Place .env next to CoreStructure.exe for runtime config")
 print("\nRunning PyInstaller...")
 
 os.system("pyinstaller CoreStructure.spec")
 
-# Очистка
-if hook_file.exists():
-    hook_file.unlink()
 print("\n[OK] Build complete: dist\\CoreStructure.exe")
+print("[IMPORTANT] Copy .env to dist/ before running the application")

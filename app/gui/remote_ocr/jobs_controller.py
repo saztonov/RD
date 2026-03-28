@@ -13,11 +13,18 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from PySide6.QtCore import QObject, QSettings, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
+
+from app.gui.remote_ocr.jobs_cache import JobsCache
+from app.gui.remote_ocr.job_persistence import load_snapshot, save_snapshot
+from app.gui.remote_ocr.polling_controller import PollingController
+from app.gui.remote_ocr.download_mixin import DownloadOrchestrator
 
 if TYPE_CHECKING:
     from app.gui.main_window import MainWindow
-    from app.ocr_client import JobInfo, RemoteOCRClient
+    from app.ocr_client import RemoteOCRClient
+
+from rd_core.dto.jobs import JobInfoDTO as JobInfo
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +50,7 @@ class JobsController(QObject):
     download_finished = Signal(str, str)       # job_id, extract_dir
     download_error = Signal(str, str)          # job_id, error
 
-    # ── Polling-интервалы ─────────────────────────────────────────────
-
-    POLL_VISIBLE_ACTIVE = 5000       # видимая + активные задачи
-    POLL_VISIBLE_IDLE = 30000        # видимая + нет активных
-    POLL_HIDDEN_ACTIVE = 15000       # скрытая + активные (авто-скачивание)
-    POLL_ERROR_BASE = 120000         # базовый backoff при ошибке
-    POLL_ERROR_MAX = 300000          # максимальный backoff
+    # Polling intervals moved to polling_controller.py
 
     # ── Внутренний объект сигналов для thread-safe emit ────────────────
 
@@ -73,19 +74,20 @@ class JobsController(QObject):
         super().__init__(parent)
         self.main_window = main_window
 
-        # Состояние
+        # ── Компоненты ───────────────────────────────────────────────
+        self._cache = JobsCache()
+        self._poller = PollingController(self._cache, self)
+        self._downloader = DownloadOrchestrator(self._cache, self)
+
+        # ── Backward-compatible aliases (для постепенной миграции) ──
+        self._jobs_cache = self._cache._jobs  # direct ref for legacy code
+        self._cache_lock = self._cache._lock
+        self._optimistic_jobs = self._cache._optimistic
+        self._downloaded_jobs = self._cache._downloaded
+        self._downloading_jobs = self._cache._downloading
+
+        # Client
         self._client: Optional[RemoteOCRClient] = None
-        self._jobs_cache: dict[str, JobInfo] = {}
-        self._optimistic_jobs: dict[str, tuple[JobInfo, float]] = {}
-        self._downloaded_jobs: set[str] = set()
-        self._downloading_jobs: set[str] = set()  # guard: загрузки в процессе
-        self._is_fetching: bool = False
-        self._is_manual_refresh: bool = False
-        self._consecutive_errors: int = 0
-        self._last_server_time: Optional[str] = None
-        self._force_full_refresh: bool = False
-        self._has_active_jobs: bool = False
-        self._panel_visible: bool = False
 
         # Контекст последнего создания
         self._last_output_dir: Optional[str] = None
@@ -98,13 +100,17 @@ class JobsController(QObject):
         self._worker = self._WorkerSignals()
         self._connect_worker_signals()
 
-        # Polling timer
-        self._poll_timer = QTimer(self)
-        self._poll_timer.timeout.connect(self._on_poll_tick)
-        # Не запускаем — панель пока не видима
+        # Polling — делегируем PollingController
+        self._poller.fetch_requested.connect(lambda force: self.refresh(force_full=force))
+
+        # Download signals — пробрасываем наружу
+        self._downloader.download_started.connect(self.download_started)
+        self._downloader.download_progress.connect(self.download_progress)
+        self._downloader.download_finished.connect(self._on_download_finished)
+        self._downloader.download_error.connect(self._on_download_error)
 
         # Загружаем snapshot для мгновенного показа
-        self._load_snapshot()
+        load_snapshot(self._cache)
 
     # ── Подключение worker-сигналов ───────────────────────────────────
 
@@ -126,36 +132,29 @@ class JobsController(QObject):
 
     def set_panel_visible(self, visible: bool) -> None:
         """Уведомить контроллер о видимости панели — управляет polling."""
-        self._panel_visible = visible
+        self._poller.set_panel_visible(visible)
         if visible:
-            has_snapshot = bool(self._jobs_cache and self._last_server_time)
+            has_snapshot = bool(self._cache)
             logger.info(
                 f"Panel visible: has_snapshot={has_snapshot}, "
-                f"cache_size={len(self._jobs_cache)}, "
-                f"server_time={self._last_server_time}"
+                f"cache_size={len(self._cache)}, "
+                f"server_time={self._cache.last_server_time}"
             )
             self.refresh(force_full=not has_snapshot, show_loading=not has_snapshot)
-        self._adjust_poll_interval()
 
     def refresh(self, *, force_full: bool = False, show_loading: bool = False) -> None:
-        """Обновить список задач.
-
-        Args:
-            force_full: Принудительно полная перезагрузка (кнопка refresh).
-            show_loading: Показать статус "loading" в UI.
-        """
-        if self._is_fetching:
+        """Обновить список задач."""
+        if not self._poller.request_refresh(force_full=force_full, show_loading=show_loading):
             return
 
-        # При множественных ошибках сначала проверяем health
-        if not force_full and not show_loading and not self._try_health_check_before_poll():
-            return
+        # Health check при множественных ошибках
+        if self._poller.consecutive_errors >= 3:
+            client = self._get_client()
+            if client and client.health():
+                self._poller.on_health_check_success()
+            else:
+                return
 
-        self._is_fetching = True
-        self._is_manual_refresh = force_full
-
-        if force_full:
-            self._force_full_refresh = True
         if show_loading:
             self.connection_status.emit("loading")
 
@@ -316,10 +315,11 @@ class JobsController(QObject):
         if client is None:
             return
         # Оптимистичное обновление статуса в кэше
-        cached = self._jobs_cache.get(job_id)
-        if cached:
-            cached.status = "cancelled"
-            self._emit_jobs_list()
+        with self._cache_lock:
+            cached = self._jobs_cache.get(job_id)
+            if cached:
+                cached.status = "cancelled"
+        self._emit_jobs_list()
         self._executor.submit(self._lifecycle_op_bg, "cancel", client.cancel_job, job_id)
 
     def resume_job(self, job_id: str) -> None:
@@ -327,10 +327,11 @@ class JobsController(QObject):
         client = self._get_client()
         if client is None:
             return
-        cached = self._jobs_cache.get(job_id)
-        if cached:
-            cached.status = "queued"
-            self._emit_jobs_list()
+        with self._cache_lock:
+            cached = self._jobs_cache.get(job_id)
+            if cached:
+                cached.status = "queued"
+        self._emit_jobs_list()
         self._executor.submit(self._lifecycle_op_bg, "resume", client.resume_job, job_id)
 
     def delete_job(self, job_id: str) -> None:
@@ -339,7 +340,8 @@ class JobsController(QObject):
         if client is None:
             return
         # Оптимистичное удаление из кэша
-        self._jobs_cache.pop(job_id, None)
+        with self._cache_lock:
+            self._jobs_cache.pop(job_id, None)
         self._emit_jobs_list()
         self._executor.submit(self._lifecycle_op_bg, "delete", client.delete_job, job_id)
 
@@ -351,7 +353,8 @@ class JobsController(QObject):
         if client is None:
             return
 
-        cached_jobs = list(self._jobs_cache.values()) if self._jobs_cache else []
+        with self._cache_lock:
+            cached_jobs = list(self._jobs_cache.values()) if self._jobs_cache else []
         active_jobs = [
             j for j in cached_jobs if j.status in ("queued", "processing", "paused")
         ]
@@ -402,16 +405,18 @@ class JobsController(QObject):
         if reply != QMessageBox.Yes:
             return
 
-        job_ids = [j.id for j in self._jobs_cache.values()]
-        # Оптимистичная очистка
-        self._jobs_cache.clear()
+        with self._cache_lock:
+            job_ids = [j.id for j in self._jobs_cache.values()]
+            # Оптимистичная очистка
+            self._jobs_cache.clear()
         self._emit_jobs_list()
 
         self._executor.submit(self._clear_all_bg, client, job_ids)
 
     def reorder_job(self, job_id: str, direction: str) -> None:
         """Переместить задачу вверх/вниз в очереди обработки (в background)."""
-        cached_job = self._jobs_cache.get(job_id)
+        with self._cache_lock:
+            cached_job = self._jobs_cache.get(job_id)
         if not cached_job or cached_job.status != "queued":
             return
 
@@ -473,7 +478,8 @@ class JobsController(QObject):
 
     def _emit_jobs_list(self) -> None:
         """Эмитить текущий кэш задач для обновления UI."""
-        all_jobs = list(self._jobs_cache.values())
+        with self._cache_lock:
+            all_jobs = list(self._jobs_cache.values())
         all_jobs.sort(key=lambda j: (j.priority, j.created_at))
         self.jobs_updated.emit(all_jobs)
 
@@ -564,13 +570,13 @@ class JobsController(QObject):
         except Exception as e:
             logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")
             self._downloading_jobs.discard(job_id)
-            logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")
 
     def mark_node_downloads_complete(self, node_id: str) -> None:
         """Пометить done-джобы для node как скачанные (вызывается из file_download)."""
-        for job_id, job in self._jobs_cache.items():
-            if job.status in ("done", "partial") and getattr(job, "node_id", None) == node_id:
-                self._downloaded_jobs.add(job_id)
+        with self._cache_lock:
+            for job_id, job in self._jobs_cache.items():
+                if job.status in ("done", "partial") and getattr(job, "node_id", None) == node_id:
+                    self._downloaded_jobs.add(job_id)
 
     def update_ocr_stats(self) -> None:
         """Пересчитать и обновить статистику OCR для текущего документа.
@@ -589,91 +595,21 @@ class JobsController(QObject):
 
     def get_cached_job(self, job_id: str) -> Optional[JobInfo]:
         """Получить задачу из кеша по ID."""
-        return self._jobs_cache.get(job_id)
+        with self._cache_lock:
+            return self._jobs_cache.get(job_id)
 
     def shutdown(self) -> None:
         """Освободить ресурсы."""
-        self._poll_timer.stop()
+        self._poller.stop()
         self._executor.shutdown(wait=False)
 
-    # ══════════════════════════════════════════════════════════════════
-    # INTERNAL: Snapshot persistence
-    # ══════════════════════════════════════════════════════════════════
-
-    _SNAPSHOT_KEY = "remote_ocr/jobs_snapshot"
-
-    def _save_snapshot(self) -> None:
-        """Сохранить текущий кэш задач в QSettings для мгновенного старта."""
-        try:
-            from dataclasses import asdict
-
-            jobs_data = [asdict(j) for j in self._jobs_cache.values()]
-            payload = json.dumps({
-                "jobs": jobs_data,
-                "server_time": self._last_server_time or "",
-                "saved_at": time.time(),
-            }, ensure_ascii=False)
-
-            settings = QSettings("PDFAnnotationTool", "RemoteOCR")
-            settings.setValue(self._SNAPSHOT_KEY, payload)
-            logger.info(f"Snapshot сохранён: {len(jobs_data)} задач")
-        except Exception as e:
-            logger.debug(f"Не удалось сохранить snapshot: {e}")
-
-    def _load_snapshot(self) -> None:
-        """Загрузить snapshot из QSettings в кэш."""
-        try:
-            settings = QSettings("PDFAnnotationTool", "RemoteOCR")
-            raw = settings.value(self._SNAPSHOT_KEY)
-            if not raw:
-                return
-
-            data = json.loads(raw)
-            saved_at = data.get("saved_at", 0)
-
-            # Snapshot старше 24 часов — игнорируем
-            if time.time() - saved_at > 86400:
-                logger.debug("Snapshot слишком старый, пропускаем")
-                return
-
-            from app.ocr_client.models import JobInfo
-
-            jobs = []
-            for j in data.get("jobs", []):
-                jobs.append(JobInfo(
-                    id=j["id"],
-                    status=j["status"],
-                    progress=j["progress"],
-                    document_id=j["document_id"],
-                    document_name=j["document_name"],
-                    task_name=j.get("task_name", ""),
-                    created_at=j.get("created_at", ""),
-                    updated_at=j.get("updated_at", ""),
-                    error_message=j.get("error_message"),
-                    node_id=j.get("node_id"),
-                    status_message=j.get("status_message"),
-                    priority=j.get("priority", 0),
-                ))
-
-            if jobs:
-                self._jobs_cache = {j.id: j for j in jobs}
-                self._last_server_time = data.get("server_time") or None
-                logger.info(
-                    f"Snapshot загружен: {len(jobs)} задач, "
-                    f"server_time={self._last_server_time}"
-                )
-        except Exception as e:
-            logger.debug(f"Не удалось загрузить snapshot: {e}")
+    # ── Snapshot (делегируем job_persistence) ───────────────────────
 
     def has_snapshot(self) -> bool:
-        """Есть ли данные из snapshot для мгновенного показа."""
-        return bool(self._jobs_cache)
+        return bool(self._cache)
 
     def get_snapshot_jobs(self) -> list:
-        """Получить задачи из snapshot для начального показа."""
-        jobs = list(self._jobs_cache.values())
-        jobs.sort(key=lambda j: (j.priority, j.created_at))
-        return jobs
+        return self._cache.get_all_sorted()
 
     # ══════════════════════════════════════════════════════════════════
     # INTERNAL: Client
@@ -731,51 +667,7 @@ class JobsController(QObject):
         """Промпты берутся из категорий в Supabase на стороне сервера."""
         pass
 
-    # ══════════════════════════════════════════════════════════════════
-    # INTERNAL: Polling
-    # ══════════════════════════════════════════════════════════════════
-
-    def _on_poll_tick(self) -> None:
-        """Слот таймера — инициирует refresh."""
-        self.refresh()
-
-    def _adjust_poll_interval(self) -> None:
-        """Адаптировать интервал polling на основе видимости и активности."""
-        if self._panel_visible:
-            interval = self.POLL_VISIBLE_ACTIVE if self._has_active_jobs else self.POLL_VISIBLE_IDLE
-        else:
-            if self._has_active_jobs:
-                interval = self.POLL_HIDDEN_ACTIVE
-            else:
-                self._poll_timer.stop()
-                return
-
-        if self._poll_timer.interval() != interval:
-            self._poll_timer.setInterval(interval)
-        if not self._poll_timer.isActive():
-            self._poll_timer.start()
-
-    def _try_health_check_before_poll(self) -> bool:
-        """При множественных ошибках проверяем health перед полным poll.
-
-        Returns:
-            True если сервер доступен и можно делать poll.
-        """
-        if self._consecutive_errors < 3:
-            return True
-
-        client = self._get_client()
-        if client is None:
-            return False
-
-        if client.health():
-            logger.info("Health check OK, сброс backoff")
-            self._consecutive_errors = 0
-            self._force_full_refresh = True
-            self._adjust_poll_interval()
-            return True
-
-        return False
+    # Polling делегирован PollingController (подключен в __init__)
 
     # ══════════════════════════════════════════════════════════════════
     # INTERNAL: Fetch (background)
@@ -788,38 +680,24 @@ class JobsController(QObject):
             self._worker.jobs_error.emit("Ошибка клиента")
             return
 
-        force_full = self._force_full_refresh
-        use_delta = (
-            self._last_server_time
-            and self._jobs_cache
-            and not force_full
-        )
-
+        use_delta = self._poller.should_use_delta
         mode = "delta" if use_delta else "full"
         logger.info(f"Fetch started: mode={mode}, base_url={client.base_url}")
         t0 = time.time()
 
         try:
             if use_delta:
-                jobs, server_time = client.list_jobs(since=self._last_server_time)
+                jobs, server_time = client.list_jobs(since=self._cache.last_server_time)
                 elapsed = time.time() - t0
                 logger.info(
                     f"Fetch completed: mode=delta, changes={len(jobs)}, "
                     f"elapsed={elapsed:.2f}s"
                 )
 
-                # Обновляем кеш изменёнными задачами
-                for job in jobs:
-                    self._jobs_cache[job.id] = job
-
-                if server_time:
-                    self._last_server_time = server_time
-
-                # Отправляем полный список из кеша
-                all_jobs = list(self._jobs_cache.values())
+                all_jobs = self._cache.update_delta(jobs, server_time)
                 all_jobs.sort(key=lambda j: (j.priority, j.created_at))
                 self._worker.jobs_loaded.emit(
-                    all_jobs, server_time or self._last_server_time or ""
+                    all_jobs, server_time or self._cache.last_server_time or ""
                 )
             else:
                 jobs, server_time = client.list_jobs(document_id=None)
@@ -836,8 +714,6 @@ class JobsController(QObject):
                 f"Fetch failed: mode={mode}, elapsed={elapsed:.2f}s, error={e}",
                 exc_info=True,
             )
-            if use_delta:
-                self._force_full_refresh = True
             self._worker.jobs_error.emit(str(e))
 
     # ══════════════════════════════════════════════════════════════════
@@ -847,84 +723,40 @@ class JobsController(QObject):
     def _on_jobs_loaded(self, jobs: list, server_time: str = "") -> None:
         """Слот: список задач получен."""
         t0 = time.time()
-        self._is_fetching = False
-        self._force_full_refresh = False
 
-        # Логируем изменения статусов задач
-        for job in jobs:
-            cached = self._jobs_cache.get(job.id)
-            if cached and cached.status != job.status:
-                logger.info(
-                    f"Статус задачи {job.id[:8]}... изменился: "
-                    f"{cached.status} -> {job.status} (progress={job.progress:.0%})"
-                )
+        # Логируем изменения
+        self._cache.log_status_changes(jobs)
 
-        # При первой полной загрузке инициализируем кеш и server_time
-        if self._is_manual_refresh or not self._last_server_time:
-            self._jobs_cache = {j.id: j for j in jobs}
-            if server_time:
-                self._last_server_time = server_time
+        # Инициализация или обновление кеша
+        if self._poller.is_manual_refresh or not self._cache.last_server_time:
+            self._cache.replace_all(jobs, server_time)
             logger.debug(
-                f"Jobs cache initialized with {len(self._jobs_cache)} jobs, "
-                f"server_time={self._last_server_time}"
+                f"Jobs cache initialized with {len(self._cache)} jobs, "
+                f"server_time={self._cache.last_server_time}"
             )
 
         # Merge optimistic
-        jobs_ids = {j.id for j in jobs}
-        merged_jobs = list(jobs)
-        current_time = time.time()
-
-        for job_id, (job_info, timestamp) in list(self._optimistic_jobs.items()):
-            if job_id in jobs_ids:
-                logger.info(
-                    f"Задача {job_id[:8]}... найдена в ответе сервера, "
-                    "удаляем из оптимистичного списка"
-                )
-                self._optimistic_jobs.pop(job_id, None)
-            elif current_time - timestamp > 60:
-                logger.warning(
-                    f"Задача {job_id[:8]}... в оптимистичном списке более минуты, "
-                    "удаляем (таймаут)"
-                )
-                self._optimistic_jobs.pop(job_id, None)
-            else:
-                logger.debug(
-                    f"Задача {job_id[:8]}... ещё не на сервере, добавляем оптимистично"
-                )
-                merged_jobs.insert(0, job_info)
+        merged_jobs = self._cache.merge_optimistic(jobs)
 
         # Emit для UI
         self.jobs_updated.emit(merged_jobs)
         self.connection_status.emit("connected")
-        self._consecutive_errors = 0
 
-        # Сохраняем snapshot для мгновенного старта
-        self._save_snapshot()
+        # Сохраняем snapshot
+        save_snapshot(self._cache)
         logger.info(f"_on_jobs_loaded processed {len(merged_jobs)} jobs in {time.time() - t0:.2f}s")
 
         # Auto-download
         self._check_auto_download(merged_jobs)
 
-        # Adjust timer
-        self._has_active_jobs = any(
-            j.status in ("queued", "processing") for j in merged_jobs
-        )
-        self._adjust_poll_interval()
+        # Обновляем poller
+        has_active = any(j.status in ("queued", "processing") for j in merged_jobs)
+        self._poller.on_fetch_success(has_active)
 
     def _on_jobs_error(self, error_msg: str) -> None:
         """Слот: ошибка загрузки списка."""
-        self._is_fetching = False
         self.connection_status.emit("disconnected")
-        self._consecutive_errors += 1
-
-        backoff_interval = min(
-            self.POLL_ERROR_BASE * (2 ** min(self._consecutive_errors - 1, 3)),
-            self.POLL_ERROR_MAX,
-        )
-        if self._poll_timer.interval() != backoff_interval:
-            self._poll_timer.setInterval(backoff_interval)
-        if not self._poll_timer.isActive():
-            self._poll_timer.start()
+        self._poller.on_fetch_error(was_delta=self._poller.should_use_delta)
 
     # ══════════════════════════════════════════════════════════════════
     # INTERNAL: Auto-download
@@ -1029,13 +861,12 @@ class JobsController(QObject):
                 get_or_create_client_id,
             )
 
-            # 1. Проверка наличия PDF в R2 (перенесено из GUI-потока)
+            # 1. Проверка наличия PDF в R2
             if node_id and r2_key:
                 try:
-                    from rd_core.r2_storage import R2Storage
-
-                    r2 = R2Storage()
-                    if not r2.exists(r2_key):
+                    from app.services.document_service import get_document_service
+                    svc = get_document_service()
+                    if not svc.check_r2_exists(r2_key):
                         self._worker.job_create_error.emit(
                             "r2",
                             "PDF не загружен в облако.\n"
@@ -1462,12 +1293,13 @@ class JobsController(QObject):
             )
 
             # Сбрасываем только джобы текущего node
-            jobs_to_remove = set()
-            for jid in self._downloaded_jobs:
-                cached = self._jobs_cache.get(jid)
-                if cached and getattr(cached, "node_id", None) == node_id:
-                    jobs_to_remove.add(jid)
-            self._downloaded_jobs -= jobs_to_remove
+            with self._cache_lock:
+                jobs_to_remove = set()
+                for jid in self._downloaded_jobs:
+                    cached = self._jobs_cache.get(jid)
+                    if cached and getattr(cached, "node_id", None) == node_id:
+                        jobs_to_remove.add(jid)
+                self._downloaded_jobs -= jobs_to_remove
 
         except Exception as e:
             logger.warning(f"Failed to clean old OCR results: {e}")

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QGraphicsView,
 )
 
+from app.gui.interaction_state import InteractionState
 from app.gui.page_viewer_blocks import BlockRenderingMixin
 from app.gui.page_viewer_menus.context_menu import ContextMenuMixin
 from app.gui.page_viewer_mouse import MouseEventsMixin
@@ -65,21 +66,22 @@ class PageViewer(
         self.current_page: int = 0
 
         self.read_only = False  # Режим "только чтение" для заблокированных документов
-        self.drawing = False
-        self.drawing_polygon = False
+
+        # ── State machine ────────────────────────────────────────────
+        self._state = InteractionState.IDLE
+
+        # Backward-compatible properties (read-only, derived from _state)
+        # These will be removed in Phase 3 when all mixins use _state directly
         self.polygon_points: List[QPointF] = []
         self.polygon_preview_items: List[QGraphicsEllipseItem] = []
         self.polygon_line_items: List[QGraphicsLineItem] = []
         self.polygon_temp_line: Optional[QGraphicsLineItem] = None
-        self.selecting = False
         self.right_button_pressed = False
         self.start_point: Optional[QPointF] = None
         self.rubber_band_item: Optional[QGraphicsRectItem] = None
         self.selected_block_idx: Optional[int] = None
         self.selected_block_indices: List[int] = []
 
-        self.moving_block = False
-        self.resizing_block = False
         self.resize_handle = None
         self.move_start_pos: Optional[QPointF] = None
         self.original_block_rect: Optional[QRectF] = None
@@ -88,7 +90,6 @@ class PageViewer(
         self.dragging_polygon_edge: Optional[int] = None
         self.original_polygon_points: Optional[List[tuple]] = None
 
-        self.panning = False
         self.pan_start_pos: Optional[QPointF] = None
 
         self.zoom_factor = 1.0
@@ -101,6 +102,76 @@ class PageViewer(
         self._mouse_move_throttle_ms = 8  # ~120 FPS максимум
         
         self._setup_ui()
+
+    # ── State properties (derived from _state) ────────────────────
+    # Backward-compatible boolean accessors: read maps to _state,
+    # write transitions _state. Mixins still use these until fully migrated.
+
+    @property
+    def drawing(self) -> bool:
+        return self._state == InteractionState.DRAWING_RECT
+
+    @drawing.setter
+    def drawing(self, value: bool) -> None:
+        if value:
+            self._state = InteractionState.DRAWING_RECT
+        elif self._state == InteractionState.DRAWING_RECT:
+            self._state = InteractionState.IDLE
+
+    @property
+    def drawing_polygon(self) -> bool:
+        return self._state == InteractionState.DRAWING_POLYGON
+
+    @drawing_polygon.setter
+    def drawing_polygon(self, value: bool) -> None:
+        if value:
+            self._state = InteractionState.DRAWING_POLYGON
+        elif self._state == InteractionState.DRAWING_POLYGON:
+            self._state = InteractionState.IDLE
+
+    @property
+    def selecting(self) -> bool:
+        return self._state == InteractionState.SELECTING
+
+    @selecting.setter
+    def selecting(self, value: bool) -> None:
+        if value:
+            self._state = InteractionState.SELECTING
+        elif self._state == InteractionState.SELECTING:
+            self._state = InteractionState.IDLE
+
+    @property
+    def moving_block(self) -> bool:
+        return self._state == InteractionState.MOVING_BLOCK
+
+    @moving_block.setter
+    def moving_block(self, value: bool) -> None:
+        if value:
+            self._state = InteractionState.MOVING_BLOCK
+        elif self._state == InteractionState.MOVING_BLOCK:
+            self._state = InteractionState.IDLE
+
+    @property
+    def resizing_block(self) -> bool:
+        return self._state == InteractionState.RESIZING_BLOCK
+
+    @resizing_block.setter
+    def resizing_block(self, value: bool) -> None:
+        if value:
+            self._state = InteractionState.RESIZING_BLOCK
+        elif self._state == InteractionState.RESIZING_BLOCK:
+            self._state = InteractionState.IDLE
+
+    @property
+    def panning(self) -> bool:
+        return self._state == InteractionState.PANNING
+
+    @panning.setter
+    def panning(self, value: bool) -> None:
+        if value:
+            self._state = InteractionState.PANNING
+        elif self._state == InteractionState.PANNING:
+            self._state = InteractionState.IDLE
 
     def _setup_ui(self):
         """Настройка интерфейса"""

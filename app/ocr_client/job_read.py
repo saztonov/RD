@@ -5,27 +5,17 @@ import logging
 import time
 from typing import List, Optional
 
-from app.ocr_client.models import JobInfo
+from rd_core.dto.jobs import JobInfoDTO
+
+# Re-export as JobInfo for backward compatibility
+JobInfo = JobInfoDTO
 
 logger = logging.getLogger(__name__)
 
 
 def _parse_job(j: dict) -> JobInfo:
-    """Парсинг JSON задачи в JobInfo."""
-    return JobInfo(
-        id=j["id"],
-        status=j["status"],
-        progress=j["progress"],
-        document_id=j["document_id"],
-        document_name=j["document_name"],
-        task_name=j.get("task_name", ""),
-        created_at=j.get("created_at", ""),
-        updated_at=j.get("updated_at", ""),
-        error_message=j.get("error_message"),
-        node_id=j.get("node_id"),
-        status_message=j.get("status_message"),
-        priority=j.get("priority", 0),
-    )
+    """Парсинг JSON задачи в JobInfo через shared DTO."""
+    return JobInfo.from_dict(j)
 
 
 class JobReadMixin:

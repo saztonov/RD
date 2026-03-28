@@ -1,21 +1,11 @@
-"""Модели данных Remote OCR клиента"""
-from dataclasses import dataclass
-from typing import Optional
+"""Модели данных Remote OCR клиента.
 
+JobInfo is now an alias for the shared DTO (rd_core.dto.jobs.JobInfoDTO).
+This ensures client and server use the same data contract.
+"""
+from rd_core.dto.jobs import JobInfoDTO
 
-@dataclass
-class JobInfo:
-    """Информация о задаче"""
+# Backward-compatible alias
+JobInfo = JobInfoDTO
 
-    id: str
-    status: str
-    progress: float
-    document_id: str
-    document_name: str
-    task_name: str = ""
-    created_at: str = ""
-    updated_at: str = ""
-    error_message: Optional[str] = None
-    node_id: Optional[str] = None
-    status_message: Optional[str] = None
-    priority: int = 0
+__all__ = ["JobInfo"]

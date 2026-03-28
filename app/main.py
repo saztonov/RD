@@ -14,7 +14,16 @@ if str(project_root) not in sys.path:
 
 from dotenv import load_dotenv
 
-load_dotenv()  # Загрузка .env до импорта остальных модулей
+# В frozen mode (PyInstaller) ищем .env рядом с .exe, затем в cwd
+if getattr(sys, "frozen", False):
+    _exe_dir = Path(sys.executable).parent
+    _env_path = _exe_dir / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+    else:
+        load_dotenv()  # fallback: cwd
+else:
+    load_dotenv()  # dev mode: .env в корне проекта
 
 from PySide6.QtWidgets import QApplication
 

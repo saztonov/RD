@@ -24,6 +24,7 @@ from app.gui.tree_context_menu import TreeContextMenuMixin
 from app.gui.tree_delegates import VersionHighlightDelegate
 from app.gui.tree_filter_mixin import TreeFilterMixin
 from app.gui.tree_node_operations import STATUS_COLORS, TreeNodeOperationsMixin
+from app.services.tree_service import get_tree_service
 from app.tree_client import NodeType, TreeClient, TreeNode
 
 from .annotation_operations import AnnotationOperations
@@ -327,7 +328,8 @@ class ProjectTreeWidget(
     # Управление блокировкой документов
     def _lock_document(self, node: TreeNode):
         try:
-            if self.client.lock_document(node.id):
+            svc = get_tree_service()
+            if svc.lock_document(node.id):
                 node.is_locked = True
                 self.status_label.setText("🔒 Документ заблокирован")
                 self._update_main_window_lock_state(node.id, True)
@@ -340,7 +342,8 @@ class ProjectTreeWidget(
 
     def _unlock_document(self, node: TreeNode):
         try:
-            if self.client.unlock_document(node.id):
+            svc = get_tree_service()
+            if svc.unlock_document(node.id):
                 node.is_locked = False
                 self.status_label.setText("🔓 Документ разблокирован")
                 self._update_main_window_lock_state(node.id, False)
@@ -402,7 +405,8 @@ class ProjectTreeWidget(
 
         # Получаем цепочку предков (от корня к родителю)
         try:
-            ancestors = self.client.get_ancestors(node_id)
+            svc = get_tree_service()
+            ancestors = svc.get_ancestors(node_id)
         except Exception as e:
             logger.error(f"Failed to get ancestors for {node_id}: {e}")
             return False

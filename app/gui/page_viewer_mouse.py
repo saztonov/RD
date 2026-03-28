@@ -6,6 +6,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPen, QWheelEvent
 from PySide6.QtWidgets import QGraphicsRectItem
 
+from app.gui.interaction_state import InteractionState, is_throttled_state
 from rd_core.models import ShapeType
 
 
@@ -91,6 +92,7 @@ class MouseEventsMixin:
                             )
                             if vertex_idx is not None:
                                 self.parent().window()._save_undo_state()
+                                self._state = InteractionState.DRAGGING_POLYGON_VERTEX
                                 self.dragging_polygon_vertex = vertex_idx
                                 self.move_start_pos = self._clamp_to_page(scene_pos)
                                 self.original_polygon_points = list(
@@ -103,6 +105,7 @@ class MouseEventsMixin:
                             )
                             if edge_idx is not None:
                                 self.parent().window()._save_undo_state()
+                                self._state = InteractionState.DRAGGING_POLYGON_EDGE
                                 self.dragging_polygon_edge = edge_idx
                                 self.move_start_pos = self._clamp_to_page(scene_pos)
                                 self.original_polygon_points = list(
@@ -135,6 +138,7 @@ class MouseEventsMixin:
                         )
                         if vertex_idx is not None:
                             self.parent().window()._save_undo_state()
+                            self._state = InteractionState.DRAGGING_POLYGON_VERTEX
                             self.dragging_polygon_vertex = vertex_idx
                             self.move_start_pos = self._clamp_to_page(scene_pos)
                             self.original_polygon_points = list(block.polygon_points)
@@ -145,6 +149,7 @@ class MouseEventsMixin:
                         )
                         if edge_idx is not None:
                             self.parent().window()._save_undo_state()
+                            self._state = InteractionState.DRAGGING_POLYGON_EDGE
                             self.dragging_polygon_edge = edge_idx
                             self.move_start_pos = self._clamp_to_page(scene_pos)
                             self.original_polygon_points = list(block.polygon_points)
@@ -238,7 +243,7 @@ class MouseEventsMixin:
             return
 
         # Throttling для рисования (оптимизация производительности)
-        if self.drawing or self.selecting:
+        if is_throttled_state(self._state):
             import time
             current_time = time.time() * 1000  # миллисекунды
             if current_time - self._last_mouse_move_time < self._mouse_move_throttle_ms:
@@ -383,8 +388,7 @@ class MouseEventsMixin:
                     x1, y1, x2, y2 = block.coords_px
                     self.blockMoved.emit(self.selected_block_idx, x1, y1, x2, y2)
 
-                self.moving_block = False
-                self.resizing_block = False
+                self._state = InteractionState.IDLE
                 self.resize_handle = None
                 self.move_start_pos = None
                 self.original_block_rect = None

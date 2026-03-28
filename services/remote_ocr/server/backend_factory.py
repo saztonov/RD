@@ -65,6 +65,13 @@ def create_job_backends(job) -> JobBackends:
 
     # --- Strip backend ---
     if engine == "chandra" and settings.chandra_base_url:
+        # Circuit breaker: проверяем доступность LM Studio перед созданием backend
+        from .circuit_breaker import get_circuit_breaker, CircuitOpenError
+        chandra_breaker = get_circuit_breaker("lmstudio", failure_threshold=3, recovery_timeout=60.0)
+        if not chandra_breaker.allow_request():
+            logger.warning("Circuit breaker OPEN for LM Studio, falling back to dummy")
+            raise CircuitOpenError("lmstudio")
+
         strip_backend = create_ocr_engine(
             "chandra",
             base_url=settings.chandra_base_url,
@@ -72,7 +79,9 @@ def create_job_backends(job) -> JobBackends:
         )
         try:
             strip_backend.preload()
+            chandra_breaker.record_success()
         except Exception as e:
+            chandra_breaker.record_failure()
             logger.warning(f"Preload chandra strip failed (non-fatal): {e}")
         needs_lmstudio = True
     elif engine == "datalab" and settings.datalab_api_key:

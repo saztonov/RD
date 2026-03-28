@@ -1,0 +1,38 @@
+# =============================================================================
+# GitHub Actions - Tests & Quality
+# Запуск pytest + проверка синтаксиса при каждом push/PR
+# =============================================================================
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[test]"
+          pip install mypy
+
+      - name: Run tests
+        run: pytest -q --tb=short
+
+      - name: Type check (new components)
+        run: |
+          python -m mypy rd_core/dto/ app/gui/interaction_state.py services/remote_ocr/server/circuit_breaker.py --strict --ignore-missing-imports

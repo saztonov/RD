@@ -1,7 +1,6 @@
 """Двухпроходный OCR алгоритм (экономия памяти)"""
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 from .checkpoint_models import OCRCheckpoint, get_checkpoint_path
@@ -150,8 +149,10 @@ def run_two_pass_ocr(
             },
         )
 
-        # Запуск async pass2 через asyncio.run
-        asyncio.run(
+        # Запуск async pass2 через persistent event loop (не asyncio.run)
+        from .worker_loop import run_async
+
+        run_async(
             pass2_ocr_from_manifest_async(
                 manifest,
                 blocks,

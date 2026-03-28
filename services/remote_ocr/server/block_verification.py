@@ -364,8 +364,10 @@ def verify_and_retry_missing_blocks(
                 crop.save(crop_path, "PNG")
 
                 # Отправляем на распознавание
-                ocr_text = retry_backend.recognize(crop)
-                crop.close()
+                try:
+                    ocr_text = retry_backend.recognize(crop)
+                finally:
+                    crop.close()
 
                 if ocr_text and not is_error(ocr_text):
                     # Обновляем блок в result.json
@@ -388,8 +390,10 @@ def verify_and_retry_missing_blocks(
                         )
                         crop = processor.crop_block_image(block_obj, padding=5)
                         if crop:
-                            ocr_text = ocr_backend.recognize(crop)
-                            crop.close()
+                            try:
+                                ocr_text = ocr_backend.recognize(crop)
+                            finally:
+                                crop.close()
                             if ocr_text and not is_error(ocr_text):
                                 from rd_core.ocr.generator_common import sanitize_html
                                 blk_data["ocr_html"] = sanitize_html(ocr_text)

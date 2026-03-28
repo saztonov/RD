@@ -53,9 +53,13 @@ def acquire_execution_lock(job_id: str, celery_task_id: str) -> bool:
             )
             return False
     except Exception as exc:
-        # При ошибке Redis — разрешаем выполнение (fail open)
-        logger.warning(f"Execution lock acquire failed (allowing): {exc}")
-        return True
+        # При ошибке Redis — БЛОКИРУЕМ выполнение (fail closed).
+        # Лучше отложить задачу, чем допустить duplicate execution.
+        logger.error(
+            f"Execution lock acquire FAILED (blocking): {exc}",
+            extra={"event": "execution_lock_redis_error", "job_id": job_id},
+        )
+        return False
 
 
 def release_execution_lock(job_id: str, celery_task_id: str) -> None:

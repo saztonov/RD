@@ -46,12 +46,13 @@ jobs:
         with:
           python-version: '3.11'
           
-      - name: Install dependencies
+      - name: Install project and audit tools
         run: |
+          pip install -e .
           pip install safety pip-audit
-          
+
       - name: Run Safety check
-        run: safety check --file requirements.txt --output json || true
-        
+        run: safety scan --output json
+
       - name: Run pip-audit
-        run: pip-audit -r requirements.txt || true
+        run: pip-audit

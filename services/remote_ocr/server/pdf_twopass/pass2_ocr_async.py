@@ -548,46 +548,47 @@ async def pass2_ocr_from_manifest_async(
                 return
 
             try:
-                result = await _process_strip_async(strip, idx)
-            except Exception as exc:
-                logger.error(f"PASS2 ASYNC: strip exception: {exc}", exc_info=True)
-                await _update_progress("Strip (error)")
-                strip_queue.task_done()
-                continue
+                try:
+                    result = await _process_strip_async(strip, idx)
+                except Exception as exc:
+                    logger.error(f"PASS2 ASYNC: strip exception: {exc}", exc_info=True)
+                    await _update_progress("Strip (error)")
+                    continue
 
-            if result:
-                strip_obj, index_results, strip_idx = result
+                if result:
+                    strip_obj, index_results, strip_idx = result
 
-                block_results = {}
-                for i, bp in enumerate(strip_obj.block_parts):
-                    block_id = bp["block_id"]
-                    part_idx = bp["part_idx"]
-                    total_parts = bp["total_parts"]
-                    text = index_results.get(i, "")
+                    block_results = {}
+                    for i, bp in enumerate(strip_obj.block_parts):
+                        block_id = bp["block_id"]
+                        part_idx = bp["part_idx"]
+                        total_parts = bp["total_parts"]
+                        text = index_results.get(i, "")
 
-                    if block_id not in text_block_parts:
-                        text_block_parts[block_id] = {}
-                        text_block_total_parts[block_id] = total_parts
+                        if block_id not in text_block_parts:
+                            text_block_parts[block_id] = {}
+                            text_block_total_parts[block_id] = total_parts
 
-                    text_block_parts[block_id][part_idx] = text
-                    block_results[block_id] = text
+                        text_block_parts[block_id][part_idx] = text
+                        block_results[block_id] = text
 
-                checkpoint.mark_strip_processed(strip_obj.strip_id, block_results)
-                await _save_checkpoint()
+                    checkpoint.mark_strip_processed(strip_obj.strip_id, block_results)
+                    await _save_checkpoint()
 
-                num_blocks = len(strip_obj.block_parts)
-                if num_blocks == 1:
-                    suffix = ""
-                elif num_blocks < 5:
-                    suffix = "а"
+                    num_blocks = len(strip_obj.block_parts)
+                    if num_blocks == 1:
+                        suffix = ""
+                    elif num_blocks < 5:
+                        suffix = "а"
+                    else:
+                        suffix = "ов"
+                    await _update_progress(f"Strip ({num_blocks} блок{suffix})")
                 else:
-                    suffix = "ов"
-                await _update_progress(f"Strip ({num_blocks} блок{suffix})")
-            else:
-                await _update_progress("Strip")
+                    await _update_progress("Strip")
 
-            gc.collect()
-            strip_queue.task_done()
+                gc.collect()
+            finally:
+                strip_queue.task_done()
 
     strip_workers = [asyncio.create_task(_strip_worker()) for _ in range(max_workers)]
     await asyncio.gather(*strip_workers)
@@ -608,6 +609,10 @@ async def pass2_ocr_from_manifest_async(
             f"PASS2 ASYNC TEXT блок {block_id}: ocr_text длина = "
             f"{len(block.ocr_text) if block.ocr_text else 0}"
         )
+
+    # Освобождаем память от промежуточных структур
+    text_block_parts.clear()
+    text_block_total_parts.clear()
 
     log_memory_delta("PASS2 ASYNC после strips", start_mem)
 
@@ -684,6 +689,10 @@ async def pass2_ocr_from_manifest_async(
             f"PASS2 ASYNC IMAGE блок {block_id}: ocr_text длина = "
             f"{len(block.ocr_text) if block.ocr_text else 0}"
         )
+
+    # Освобождаем память от промежуточных структур
+    image_block_parts.clear()
+    image_block_total_parts.clear()
 
     # Финальное сохранение checkpoint
     checkpoint.phase = "completed"
