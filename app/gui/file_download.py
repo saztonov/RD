@@ -1,4 +1,4 @@
-"""Скачивание документов из R2"""
+"""Скачивание документов из R2 во временные сессии"""
 import logging
 from pathlib import Path
 
@@ -41,10 +41,12 @@ class FileDownloadMixin:
         self._on_tree_document_selected(node_id, r2_key)
 
     def _on_tree_document_selected(self, node_id: str, r2_key: str):
-        """Открыть документ из дерева (асинхронное скачивание из R2)"""
-        from app.gui.folder_settings_dialog import get_projects_dir
-
+        """Открыть документ из дерева (асинхронное скачивание из R2 во temp-сессию)"""
         if not r2_key:
+            return
+
+        # Если этот файл уже открыт — не перескачивать
+        if hasattr(self, "_current_r2_key") and self._current_r2_key == r2_key:
             return
 
         # Инициализация set для отслеживания активных загрузок
@@ -56,26 +58,14 @@ class FileDownloadMixin:
             logger.debug(f"Download already in progress: {r2_key}")
             return
 
-        projects_dir = get_projects_dir()
-        if not projects_dir:
-            QMessageBox.warning(self, "Ошибка", "Папка проектов не задана в настройках")
-            return
+        # Создаём temp-сессию для документа
+        session = self._session_manager.create_session(node_id, r2_key)
+        local_path = str(session.pdf_path)
 
-        # Формируем локальный путь
-        if r2_key.startswith("tree_docs/"):
-            rel_path = r2_key[len("tree_docs/") :]
-        else:
-            rel_path = r2_key
+        # Собираем список файлов для скачивания
+        tasks = self._build_download_tasks(node_id, r2_key, local_path, session)
 
-        local_path = Path(projects_dir) / "cache" / rel_path
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Всегда собираем список файлов для скачивания (включая OCR результаты)
-        tasks = self._build_download_tasks(
-            node_id, r2_key, str(local_path), projects_dir
-        )
-
-        # Если нет файлов для скачивания - открываем PDF сразу
+        # Если нет файлов для скачивания — открываем PDF сразу
         if not tasks:
             self._current_r2_key = r2_key
             self._current_node_id = node_id
@@ -86,7 +76,7 @@ class FileDownloadMixin:
                 self.move_block_up_btn.setEnabled(not self._current_node_locked)
             if hasattr(self, "move_block_down_btn"):
                 self.move_block_down_btn.setEnabled(not self._current_node_locked)
-            self._open_pdf_file(str(local_path), r2_key=r2_key)
+            self._open_pdf_file(local_path, r2_key=r2_key)
             if node_id and hasattr(self, "project_tree_widget"):
                 self.project_tree_widget.highlight_document(node_id)
             return
@@ -97,7 +87,8 @@ class FileDownloadMixin:
         # Сохраняем данные для открытия после завершения загрузки
         self._pending_download_node_id = node_id
         self._pending_download_r2_key = r2_key
-        self._pending_download_local_path = str(local_path)
+        self._pending_download_local_path = local_path
+        self._pending_session = session
         self._download_errors = []
 
         # Показываем модальное окно загрузки
@@ -133,13 +124,12 @@ class FileDownloadMixin:
         self._download_worker.start()
 
     def _build_download_tasks(
-        self, node_id: str, r2_key: str, local_path: str, projects_dir: str
+        self, node_id: str, r2_key: str, local_path: str, session
     ) -> list:
-        """Собрать список задач для скачивания (PDF + аннотации + OCR результаты).
+        """Собрать список задач для скачивания (PDF + OCR результаты).
 
         Скачиваемые файлы:
         - PDF документ
-        - Аннотации (_annotation.json)
         - OCR результаты (_ocr.html, _result.json, _document.md)
 
         Кропы НЕ скачиваются для экономии места.
@@ -148,19 +138,17 @@ class FileDownloadMixin:
 
         tasks = []
 
-        # Основной PDF - только если не существует локально
-        if not Path(local_path).exists():
-            tasks.append(
-                TransferTask(
-                    transfer_type=TransferType.DOWNLOAD,
-                    local_path=local_path,
-                    r2_key=r2_key,
-                    node_id=node_id,
-                )
+        # Основной PDF — всегда скачиваем (temp-сессия новая)
+        tasks.append(
+            TransferTask(
+                transfer_type=TransferType.DOWNLOAD,
+                local_path=local_path,
+                r2_key=r2_key,
+                node_id=node_id,
             )
+        )
 
         # Типы файлов для скачивания (без кропов и аннотаций)
-        # Аннотация хранится в Supabase (таблица annotations), не в node_files
         download_file_types = {
             FileType.OCR_HTML,
             FileType.RESULT_JSON,
@@ -194,13 +182,13 @@ class FileDownloadMixin:
                 except Exception as e:
                     logger.warning(f"R2 exists check failed for {nf.r2_key}: {e}")
 
-                # Формируем локальный путь для файла
+                # Формируем локальный путь внутри temp-сессии
                 if nf.r2_key.startswith("tree_docs/"):
-                    rel = nf.r2_key[len("tree_docs/") :]
+                    rel = nf.r2_key[len("tree_docs/"):]
                 else:
                     rel = nf.r2_key
 
-                file_local_path = Path(projects_dir) / "cache" / rel
+                file_local_path = session.temp_dir / rel
                 file_local_path.parent.mkdir(parents=True, exist_ok=True)
 
                 tasks.append(
@@ -260,6 +248,15 @@ class FileDownloadMixin:
         # Убираем из активных загрузок
         if self._active_downloads and hasattr(self, "_pending_download_r2_key"):
             self._active_downloads.discard(self._pending_download_r2_key)
+
+        # Защита от гонок: проверяем что сессия ещё актуальна
+        pending_session = getattr(self, "_pending_session", None)
+        current_session = self._session_manager.current
+        if pending_session and current_session:
+            if pending_session.session_id != current_session.session_id:
+                logger.info("Session changed during download, ignoring result")
+                self._download_worker = None
+                return
 
         # При отмене — не открываем PDF
         if was_canceled:

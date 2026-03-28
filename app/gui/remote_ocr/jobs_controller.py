@@ -1013,7 +1013,7 @@ class JobsController(QObject):
                 local_path = extract_path / local_name
                 try:
                     if r2.exists(remote_key, use_cache=False):
-                        r2.download_file(remote_key, str(local_path), use_cache=False)
+                        r2.download_file(remote_key, str(local_path))
                         logger.info(f"Скачан: {local_path}")
                     else:
                         logger.warning(f"Файл не найден: {remote_key}")
@@ -1207,8 +1207,6 @@ class JobsController(QObject):
         import shutil
         from pathlib import PurePosixPath
 
-        from app.gui.folder_settings_dialog import get_projects_dir
-
         is_smart_mode = blocks_to_reprocess is not None
 
         try:
@@ -1217,7 +1215,6 @@ class JobsController(QObject):
             r2 = R2Storage()
             pdf_stem = Path(r2_key).stem
             r2_prefix = str(PurePosixPath(r2_key).parent)
-            projects_dir = get_projects_dir()
 
             if not is_smart_mode:
                 # 1. Удаляем кропы из R2 и локального кэша
@@ -1231,34 +1228,6 @@ class JobsController(QObject):
                         logger.warning(
                             f"Failed to delete {len(errors)} crops from R2"
                         )
-
-                    if projects_dir:
-                        for crop_key in deleted_keys:
-                            rel = (
-                                crop_key[len("tree_docs/"):]
-                                if crop_key.startswith("tree_docs/")
-                                else crop_key
-                            )
-                            crop_local = Path(projects_dir) / "cache" / rel
-                            if crop_local.exists():
-                                crop_local.unlink()
-
-                # Удаляем папку crops из кэша
-                if projects_dir:
-                    rel_prefix = (
-                        r2_prefix[len("tree_docs/"):]
-                        if r2_prefix.startswith("tree_docs/")
-                        else r2_prefix
-                    )
-                    crops_folder = (
-                        Path(projects_dir)
-                        / "cache"
-                        / rel_prefix
-                        / "crops"
-                        / pdf_stem
-                    )
-                    if crops_folder.exists():
-                        shutil.rmtree(crops_folder, ignore_errors=True)
 
                 # 2. Удаляем записи из node_files (CROP)
                 from app.tree_client import FileType, TreeClient

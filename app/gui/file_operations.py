@@ -200,9 +200,11 @@ class FileOperationsMixin(FileAutoSaveMixin, FileDownloadMixin):
         self._current_pdf_path = pdf_path
         self._current_r2_key = r2_key
 
-        # Переключить логи в папку PDF
+        # Переключить логи в папку PDF (но не в temp-папку для tree-документов)
         from app.logging_manager import get_logging_manager
-        get_logging_manager().switch_to_pdf_folder(pdf_path)
+        session = self._session_manager.current
+        if not (session and session.is_tree_temp):
+            get_logging_manager().switch_to_pdf_folder(pdf_path)
 
         # Пробуем загрузить существующую разметку
         if not self._load_annotation_if_exists(pdf_path, r2_key):

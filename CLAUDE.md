@@ -184,14 +184,13 @@ node_type v2: `folder` | `document` (legacy types in attributes.legacy_node_type
 
 ### Client Infrastructure
 
-#### Caching (`rd_core/`, `app/gui/`)
+#### Caching & Sessions (`rd_core/`, `app/gui/`)
 | Module | Purpose |
 |--------|---------|
 | `annotation_cache.py` | Annotation cache + delayed R2 sync |
-| `r2_disk_cache.py` | LRU disk cache (3GB default) |
+| `document_session.py` | Temp session for tree documents |
 | `r2_metadata_cache.py` | R2 metadata caching |
 | `cache_base.py` | ThreadSafeCache base class |
-| `tree_cache_ops.py` | Tree operations caching |
 
 #### Utilities
 | Module | Purpose |

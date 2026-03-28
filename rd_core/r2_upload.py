@@ -3,7 +3,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from rd_core.r2_disk_cache import get_disk_cache
 from rd_core.r2_metadata_cache import get_metadata_cache
 from rd_core.r2_errors import handle_r2_upload_error
 
@@ -61,9 +60,8 @@ class R2UploadMixin:
                 Config=self.transfer_config,
             )
 
-            # Инвалидируем кэши после успешной загрузки
+            # Инвалидируем кэш метаданных после успешной загрузки
             get_metadata_cache().invalidate_key(remote_key)
-            get_disk_cache().invalidate(remote_key)
 
             logger.info(f"✅ Файл загружен в R2: {remote_key} ({file_size} байт)")
             return True
@@ -159,9 +157,8 @@ class R2UploadMixin:
                 ContentType=content_type,
             )
 
-            # Инвалидируем кэши после успешной загрузки
+            # Инвалидируем кэш метаданных после успешной загрузки
             get_metadata_cache().invalidate_key(remote_key)
-            get_disk_cache().invalidate(remote_key)
 
             logger.info(f"✅ Текст загружен в R2: {remote_key}")
             return True

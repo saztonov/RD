@@ -5,7 +5,6 @@ from typing import Optional
 
 from botocore.exceptions import ClientError
 
-from rd_core.r2_disk_cache import get_disk_cache
 from rd_core.r2_metadata_cache import get_metadata_cache
 
 logger = logging.getLogger(__name__)
@@ -44,9 +43,8 @@ class R2UtilsMixin:
         """
         try:
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=remote_key)
-            # Инвалидируем кэши
+            # Инвалидируем кэш метаданных
             get_metadata_cache().invalidate_key(remote_key)
-            get_disk_cache().invalidate(remote_key)
             logger.info(f"✅ Объект удален из R2: {remote_key}")
             return True
 
@@ -81,10 +79,6 @@ class R2UtilsMixin:
             metadata_cache = get_metadata_cache()
             metadata_cache.invalidate_key(old_key)
             metadata_cache.invalidate_key(new_key)
-
-            disk_cache = get_disk_cache()
-            disk_cache.invalidate(old_key)
-            disk_cache.invalidate(new_key)
 
             return True
 
@@ -325,9 +319,7 @@ class R2UtilsMixin:
         # Инвалидируем кэши для удалённых ключей
         if deleted:
             metadata_cache = get_metadata_cache()
-            disk_cache = get_disk_cache()
             for key in deleted:
                 metadata_cache.invalidate_key(key)
-                disk_cache.invalidate(key)
 
         return deleted, errors

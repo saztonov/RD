@@ -166,7 +166,7 @@ class DownloadOrchestrator(QObject):
                 local_path = extract_path / local_name
                 try:
                     if r2.exists(remote_key, use_cache=False):
-                        r2.download_file(remote_key, str(local_path), use_cache=False)
+                        r2.download_file(remote_key, str(local_path))
                         logger.info(f"Скачан: {local_path}")
                     else:
                         logger.warning(f"Файл не найден: {remote_key}")

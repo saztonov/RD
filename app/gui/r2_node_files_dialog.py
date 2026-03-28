@@ -58,7 +58,7 @@ class _DownloadWorker(QObject):
                 local_path = posixpath.join(self.dest_dir, filename)
             local_path = local_path.replace("/", "\\")
 
-            success = r2.download_file(key, local_path, use_cache=False)
+            success = r2.download_file(key, local_path)
             if success:
                 ok += 1
             else:

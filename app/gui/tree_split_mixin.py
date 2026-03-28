@@ -1,7 +1,7 @@
 """Миксин для разделения PDF документов в дереве проектов."""
-import json
 import logging
 import shutil
+import tempfile
 from pathlib import Path
 
 import fitz
@@ -9,7 +9,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from app.tree_client import TreeNode
-from app.tree_models import FileType
 
 logger = logging.getLogger(__name__)
 
@@ -55,24 +54,8 @@ class TreeSplitMixin:
             )
             return
 
-        # 2. Скачивание PDF из R2
-        from app.gui.folder_settings_dialog import get_projects_dir
+        # 2. Скачивание PDF из R2 во временную папку
         from rd_core.r2_storage import R2Storage
-
-        projects_dir = get_projects_dir()
-        if not projects_dir:
-            QMessageBox.warning(
-                self, "Ошибка", "Папка проектов не задана в настройках"
-            )
-            return
-
-        if r2_key.startswith("tree_docs/"):
-            rel_path = r2_key[len("tree_docs/"):]
-        else:
-            rel_path = r2_key
-
-        local_path = Path(projects_dir) / "cache" / rel_path
-        local_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             r2 = R2Storage()
@@ -82,15 +65,19 @@ class TreeSplitMixin:
             )
             return
 
-        if not local_path.exists():
-            self.status_label.setText("Скачивание PDF из R2...")
-            QApplication.processEvents()
-            if not r2.download_file(r2_key, str(local_path)):
-                QMessageBox.critical(
-                    self, "Ошибка",
-                    f"Не удалось скачать файл из R2:\n{r2_key}",
-                )
-                return
+        temp_dir = tempfile.mkdtemp(prefix="rd_split_")
+        local_path = Path(temp_dir) / Path(r2_key).name
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self.status_label.setText("Скачивание PDF из R2...")
+        QApplication.processEvents()
+        if not r2.download_file(r2_key, str(local_path)):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            QMessageBox.critical(
+                self, "Ошибка",
+                f"Не удалось скачать файл из R2:\n{r2_key}",
+            )
+            return
 
         # 3. Определение количества страниц
         try:
@@ -168,6 +155,7 @@ class TreeSplitMixin:
         finally:
             # Очистка временных файлов
             shutil.rmtree(str(output_dir), ignore_errors=True)
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
         # 8. Результат
         if all_broken_links or all_broken_groups:

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QLabel, QMainWindow, QProgressBar, QStatusBar
 
 from app.gui.block_handlers import BlockHandlersMixin
 from app.gui.blocks_tree import BlocksTreeManager
+from app.gui.document_session import DocumentSessionManager
 from app.gui.file_operations import FileOperationsMixin
 from app.gui.menu_setup import MenuSetupMixin
 from app.gui.navigation_manager import NavigationManager
@@ -55,6 +56,9 @@ class MainWindow(
         self._current_pdf_path: Optional[str] = None
         self._current_node_id: Optional[str] = None
         self._current_node_locked: bool = False
+
+        # Менеджер temp-сессий документов
+        self._session_manager = DocumentSessionManager()
 
         # Undo/Redo стек
         self.undo_stack: list = []  # [(page_num, blocks_copy), ...]
@@ -171,6 +175,9 @@ class MainWindow(
         self.annotation_document = None
         self._current_pdf_path = None
 
+        # Очистить temp-сессию (после закрытия pdf_document)
+        self._session_manager.close_current()
+
         # Вернуть логи в папку проектов или дефолтную
         from app.logging_manager import get_logging_manager
 
@@ -224,6 +231,13 @@ class MainWindow(
 
         self._flush_pending_save()
         self._save_settings()
+
+        # Очистить temp-сессию документа
+        if self.pdf_document:
+            self.pdf_document.close()
+            self.pdf_document = None
+        self._session_manager.close_current()
+
         event.accept()
 
     def _setup_panels_menu(self):
