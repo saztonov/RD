@@ -282,4 +282,10 @@ def check_non_retriable_error(status_code: int, response_text: str) -> Optional[
     if status_code == 400 and "context size" in response_text.lower():
         logger.error(f"Chandra API error: {status_code} - {response_text[:500]}")
         return make_non_retriable("контекст превышен — блок слишком большой для модели")
+    if status_code in (401, 403):
+        logger.error(f"Chandra API auth error: {status_code} - {response_text[:300]}")
+        return make_non_retriable(
+            f"Chandra: ошибка авторизации ngrok/LM Studio ({status_code}) — "
+            f"проверьте NGROK_AUTH_USER/NGROK_AUTH_PASS и CHANDRA_BASE_URL"
+        )
     return None

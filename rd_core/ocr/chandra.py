@@ -1,6 +1,7 @@
 """Chandra OCR Backend (LM Studio / OpenAI-compatible API) — sync"""
 import logging
 import threading
+import time
 from typing import Optional
 
 import requests
