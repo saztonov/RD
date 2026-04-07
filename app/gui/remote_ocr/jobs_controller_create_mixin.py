@@ -1,7 +1,8 @@
-"""Миксин создания OCR задач для JobsController."""
+"""Миксин создания OCR-задач для JobsController."""
 from __future__ import annotations
 
 import logging
+import tempfile
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -111,7 +112,8 @@ class JobsControllerCreateMixin:
             return
 
         engine = dialog.ocr_backend if dialog.ocr_backend in (
-            "datalab", "chandra"
+            "datalab",
+            "chandra",
         ) else "datalab"
 
         self._pending_output_dir = dialog.output_dir
@@ -121,9 +123,13 @@ class JobsControllerCreateMixin:
         show_toast(mw, "Отправка задачи...", duration=1500)
 
         logger.info(
-            f"Отправка задачи на сервер: engine={engine}, blocks={len(selected_blocks)}, "
-            f"image_model={getattr(dialog, 'image_model', None)}, "
-            f"stamp_model={getattr(dialog, 'stamp_model', None)}, node_id={node_id}"
+            "Отправка задачи на сервер: engine=%s, blocks=%s, image_model=%s, "
+            "stamp_model=%s, node_id=%s",
+            engine,
+            len(selected_blocks),
+            getattr(dialog, "image_model", None),
+            getattr(dialog, "stamp_model", None),
+            node_id,
         )
 
         temp_job_id = f"uploading-{uuid.uuid4().hex[:12]}"
@@ -162,13 +168,81 @@ class JobsControllerCreateMixin:
             annotation_doc,
         )
 
-    # ── Block helpers ─────────────────────────────────────────────────
+    def create_jobs_for_tree_selection(self, nodes: list) -> None:
+        """Показать единый OCR-диалог и поставить выбранные документы в очередь."""
+        from PySide6.QtWidgets import QDialog, QMessageBox
+
+        from app.gui.ocr_dialog import OCRDialog
+        from app.gui.toast import show_toast
+
+        mw = self.main_window
+
+        if not nodes:
+            QMessageBox.warning(
+                mw, "Ошибка", "В дереве проектов не выбраны документы для OCR"
+            )
+            return
+
+        dialog = OCRDialog(
+            mw,
+            task_name=f"batch-{len(nodes)}-documents",
+            batch_count=len(nodes),
+        )
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        client = self._get_client()
+        if client is None:
+            QMessageBox.warning(mw, "Ошибка", "Клиент не инициализирован")
+            return
+
+        engine = dialog.ocr_backend if dialog.ocr_backend in (
+            "datalab",
+            "chandra",
+        ) else "datalab"
+
+        document_specs = [
+            {
+                "node_id": node.id,
+                "name": node.name,
+                "r2_key": node.attributes.get("r2_key", ""),
+                "is_locked": bool(node.is_locked),
+            }
+            for node in nodes
+        ]
+
+        self._last_output_dir = dialog.output_dir
+        self._last_engine = dialog.ocr_backend
+        self._pending_output_dir = dialog.output_dir
+
+        show_toast(
+            mw,
+            f"Отправка {len(document_specs)} документов в очередь OCR...",
+            duration=2000,
+        )
+
+        self._executor.submit(
+            self._create_jobs_for_tree_selection_bg,
+            client,
+            document_specs,
+            engine,
+            getattr(dialog, "text_model", None),
+            getattr(dialog, "table_model", None),
+            getattr(dialog, "image_model", None),
+            getattr(dialog, "stamp_model", None),
+        )
+
+    # Block helpers ---------------------------------------------------------
 
     def _get_selected_blocks(self) -> list:
         """Получить все блоки для OCR."""
+        return self._get_document_blocks(self.main_window.annotation_document)
+
+    def _get_document_blocks(self, document: object | None) -> list:
+        """Получить все блоки OCR из переданного документа."""
         blocks = []
-        if self.main_window.annotation_document:
-            for page in self.main_window.annotation_document.pages:
+        if document:
+            for page in getattr(document, "pages", []) or []:
                 if page.blocks:
                     blocks.extend(page.blocks)
         self._attach_prompts_to_blocks(blocks)
@@ -191,7 +265,7 @@ class JobsControllerCreateMixin:
         """Промпты берутся из категорий в Supabase на стороне сервера."""
         pass
 
-    # ── Background creation ───────────────────────────────────────────
+    # Background creation ---------------------------------------------------
 
     def _create_job_bg(
         self,
@@ -211,62 +285,26 @@ class JobsControllerCreateMixin:
         cleanup_blocks: list | None = None,
         annotation_document: object | None = None,
     ) -> None:
-        """Фоновое создание задачи."""
+        """Фоновое создание одиночной OCR-задачи."""
         try:
-            from app.ocr_client import (
-                AuthenticationError,
-                PayloadTooLargeError,
-                ServerError,
-                get_or_create_client_id,
-            )
+            from app.ocr_client import AuthenticationError, PayloadTooLargeError, ServerError
 
-            # 1. Проверка наличия PDF в R2
-            if node_id and r2_key:
-                try:
-                    from app.services.document_service import get_document_service
-                    svc = get_document_service()
-                    if not svc.check_r2_exists(r2_key):
-                        self._worker.job_create_error.emit(
-                            "r2",
-                            "PDF не загружен в облако.\n"
-                            "Синхронизируйте документ или перезагрузите его "
-                            "в дерево проектов.",
-                        )
-                        return
-                except Exception as e:
-                    logger.warning(f"Не удалось проверить R2: {e}")
-
-            # 2. Отправка задачи на сервер
-            client_id = get_or_create_client_id()
-            logger.info(
-                f"Начало создания задачи: engine={engine}, blocks={len(blocks)}"
-            )
-            job_info = client.create_job(
+            job_info = self._create_job_sync(
+                client,
                 pdf_path,
                 blocks,
-                client_id=client_id,
-                task_name=task_name,
-                engine=engine,
-                text_model=text_model,
-                table_model=table_model,
-                image_model=image_model,
-                stamp_model=stamp_model,
+                task_name,
+                engine,
+                text_model,
+                table_model,
+                image_model,
+                stamp_model,
                 node_id=node_id,
                 is_correction_mode=is_correction_mode,
+                r2_key=r2_key,
+                cleanup_blocks=cleanup_blocks,
+                annotation_document=annotation_document,
             )
-            logger.info(f"Задача создана: id={job_info.id}, status={job_info.status}")
-
-            # 3. Cleanup старых результатов
-            if node_id and r2_key:
-                try:
-                    self._clean_old_ocr_results_bg(
-                        node_id,
-                        r2_key,
-                        blocks_to_reprocess=cleanup_blocks,
-                        annotation_document=annotation_document,
-                    )
-                except Exception as e:
-                    logger.warning(f"Post-create cleanup failed (non-fatal): {e}")
 
             job_info._temp_job_id = temp_job_id
             self._worker.job_created.emit(job_info)
@@ -279,16 +317,225 @@ class JobsControllerCreateMixin:
                 "size", "PDF файл превышает лимит сервера."
             )
         except ServerError as e:
-            logger.error(f"Ошибка сервера: {e}")
-            self._worker.job_create_error.emit("server", f"Сервер недоступен.\n{e}")
+            logger.error("Ошибка сервера: %s", e)
+            self._worker.job_create_error.emit(
+                "server", f"Сервер недоступен.\n{e}"
+            )
         except Exception as e:
-            logger.error(f"Ошибка создания задачи: {e}", exc_info=True)
+            logger.error("Ошибка создания задачи: %s", e, exc_info=True)
             self._worker.job_create_error.emit("generic", str(e))
+
+    def _create_jobs_for_tree_selection_bg(
+        self,
+        client: RemoteOCRClient,
+        document_specs: list[dict],
+        engine: str,
+        text_model: str | None,
+        table_model: str | None,
+        image_model: str | None,
+        stamp_model: str | None,
+    ) -> None:
+        """Фоновая пакетная постановка выбранных документов в OCR-очередь."""
+        from app.annotation_db import AnnotationDBIO
+        from app.ocr_client import AuthenticationError, PayloadTooLargeError, ServerError
+        from rd_core.r2_storage import R2Storage
+
+        summary: dict[str, list[str]] = {"queued": [], "skipped": [], "failed": []}
+
+        try:
+            r2 = R2Storage()
+        except Exception as e:
+            for spec in document_specs:
+                summary["failed"].append(
+                    f"{spec['name']}: не удалось инициализировать R2 ({e})"
+                )
+            self._worker.batch_finished.emit(summary)
+            return
+
+        for index, spec in enumerate(document_specs):
+            node_id = spec["node_id"]
+            document_name = spec["name"]
+            r2_key = (spec.get("r2_key") or "").strip()
+
+            if spec.get("is_locked"):
+                summary["skipped"].append(f"{document_name}: документ заблокирован")
+                continue
+
+            if not r2_key or not r2_key.lower().endswith(".pdf"):
+                summary["skipped"].append(
+                    f"{document_name}: отсутствует или некорректен PDF r2_key"
+                )
+                continue
+
+            try:
+                annotation_document = AnnotationDBIO.load_from_db(node_id)
+            except Exception as e:
+                logger.error(
+                    "Ошибка загрузки разметки для batch OCR: node_id=%s, error=%s",
+                    node_id,
+                    e,
+                    exc_info=True,
+                )
+                summary["failed"].append(
+                    f"{document_name}: не удалось загрузить разметку ({e})"
+                )
+                continue
+
+            if not annotation_document:
+                summary["skipped"].append(
+                    f"{document_name}: нет сохраненной разметки блоков"
+                )
+                continue
+
+            blocks = self._get_document_blocks(annotation_document)
+            if not blocks:
+                summary["skipped"].append(
+                    f"{document_name}: нет блоков для распознавания"
+                )
+                continue
+
+            self._clear_ocr_text_in_document(annotation_document)
+            task_name = Path(document_name).stem
+
+            try:
+                with tempfile.TemporaryDirectory(prefix="rd_batch_ocr_") as temp_dir:
+                    local_pdf_path = Path(temp_dir) / Path(r2_key).name
+                    if not r2.download_file(r2_key, str(local_pdf_path)):
+                        summary["failed"].append(
+                            f"{document_name}: не удалось скачать PDF из R2"
+                        )
+                        continue
+
+                    job_info = self._create_job_sync(
+                        client,
+                        str(local_pdf_path),
+                        blocks,
+                        task_name,
+                        engine,
+                        text_model,
+                        table_model,
+                        image_model,
+                        stamp_model,
+                        node_id=node_id,
+                        is_correction_mode=False,
+                        r2_key=r2_key,
+                        cleanup_blocks=None,
+                        annotation_document=annotation_document,
+                        reuse_existing=False,
+                    )
+            except AuthenticationError:
+                summary["failed"].append(
+                    f"{document_name}: неверный API ключ Remote OCR"
+                )
+                for rest in document_specs[index + 1 :]:
+                    summary["failed"].append(
+                        f"{rest['name']}: пакет остановлен после ошибки авторизации"
+                    )
+                logger.error("Ошибка авторизации в пакетном OCR для %s", document_name)
+                break
+            except PayloadTooLargeError:
+                summary["failed"].append(
+                    f"{document_name}: PDF превышает лимит сервера"
+                )
+                continue
+            except ServerError as e:
+                summary["failed"].append(
+                    f"{document_name}: сервер Remote OCR недоступен ({e})"
+                )
+                continue
+            except Exception as e:
+                logger.error(
+                    "Ошибка пакетного OCR для node_id=%s (%s): %s",
+                    node_id,
+                    document_name,
+                    e,
+                    exc_info=True,
+                )
+                summary["failed"].append(f"{document_name}: {e}")
+                continue
+
+            self._worker.job_created.emit(job_info)
+            summary["queued"].append(document_name)
+
+        self._worker.batch_finished.emit(summary)
+
+    def _create_job_sync(
+        self,
+        client: RemoteOCRClient,
+        pdf_path: str,
+        blocks: list,
+        task_name: str,
+        engine: str,
+        text_model: str | None,
+        table_model: str | None,
+        image_model: str | None,
+        stamp_model: str | None,
+        node_id: str | None = None,
+        is_correction_mode: bool = False,
+        r2_key: str | None = None,
+        cleanup_blocks: list | None = None,
+        annotation_document: object | None = None,
+        reuse_existing: bool = True,
+    ):
+        """Синхронно создать OCR-задачу и очистить старые результаты."""
+        from app.ocr_client import get_or_create_client_id
+
+        if node_id and r2_key:
+            try:
+                from app.services.document_service import get_document_service
+
+                svc = get_document_service()
+                if not svc.check_r2_exists(r2_key):
+                    raise RuntimeError(
+                        "PDF не загружен в облако. Синхронизируйте документ или перезагрузите его в дерево проектов."
+                    )
+            except RuntimeError:
+                raise
+            except Exception as e:
+                logger.warning("Не удалось проверить R2: %s", e)
+
+        client_id = get_or_create_client_id()
+        logger.info(
+            "Начало создания OCR-задачи: engine=%s, blocks=%s, node_id=%s",
+            engine,
+            len(blocks),
+            node_id,
+        )
+        job_info = client.create_job(
+            pdf_path,
+            blocks,
+            client_id=client_id,
+            task_name=task_name,
+            engine=engine,
+            text_model=text_model,
+            table_model=table_model,
+            image_model=image_model,
+            stamp_model=stamp_model,
+            reuse_existing=reuse_existing,
+            node_id=node_id,
+            is_correction_mode=is_correction_mode,
+        )
+        logger.info("Задача создана: id=%s, status=%s", job_info.id, job_info.status)
+
+        if node_id and r2_key:
+            try:
+                self._clean_old_ocr_results_bg(
+                    node_id,
+                    r2_key,
+                    blocks_to_reprocess=cleanup_blocks,
+                    annotation_document=annotation_document,
+                )
+            except Exception as e:
+                logger.warning("Post-create cleanup failed (non-fatal): %s", e)
+
+        return job_info
 
     def _on_job_created(self, job_info: JobInfo) -> None:
         """Слот: задача создана на сервере."""
         logger.info(
-            f"Обработка job_created: job_id={job_info.id}, status={job_info.status}"
+            "Обработка job_created: job_id=%s, status=%s",
+            job_info.id,
+            job_info.status,
         )
 
         temp_job_id = getattr(job_info, "_temp_job_id", None)
@@ -296,12 +543,14 @@ class JobsControllerCreateMixin:
         if temp_job_id:
             self._cache.remove_optimistic(temp_job_id)
             logger.info(
-                f"Удалена временная задача из оптимистичного списка: {temp_job_id}"
+                "Удалена временная задача из оптимистичного списка: %s",
+                temp_job_id,
             )
 
         self._cache.add_optimistic(job_info.id, job_info)
         logger.info(
-            f"Реальная задача добавлена в оптимистичный список: {job_info.id}"
+            "Реальная задача добавлена в оптимистичный список: %s",
+            job_info.id,
         )
 
         QTimer.singleShot(5000, self.refresh)
@@ -312,20 +561,77 @@ class JobsControllerCreateMixin:
         self._cache.remove_uploading_optimistic()
         self.job_create_error.emit(error_type, message)
 
-    # ── In-memory cleanup ─────────────────────────────────────────────
+    def _on_batch_finished(self, summary: dict) -> None:
+        """Показать итоговый отчёт по пакетной постановке OCR-задач."""
+        from PySide6.QtWidgets import QMessageBox
+
+        self.refresh(force_full=True)
+
+        message = self._format_batch_summary(summary)
+        should_warn = summary.get("failed") or (
+            not summary.get("queued") and summary.get("skipped")
+        )
+        if should_warn:
+            QMessageBox.warning(self.main_window, "Пакетный OCR", message)
+        else:
+            QMessageBox.information(self.main_window, "Пакетный OCR", message)
+
+    def _format_batch_summary(self, summary: dict) -> str:
+        """Сформировать текст итогового отчёта для batch OCR."""
+        queued = summary.get("queued", [])
+        skipped = summary.get("skipped", [])
+        failed = summary.get("failed", [])
+
+        lines = [
+            f"Поставлено в очередь: {len(queued)}",
+            f"Пропущено: {len(skipped)}",
+            f"Ошибок: {len(failed)}",
+        ]
+
+        if queued:
+            lines.append("")
+            lines.append("В очереди:")
+            lines.extend(f"• {name}" for name in queued)
+
+        if skipped:
+            lines.append("")
+            lines.append("Пропущено:")
+            lines.extend(f"• {item}" for item in skipped)
+
+        if failed:
+            lines.append("")
+            lines.append("Ошибки:")
+            lines.extend(f"• {item}" for item in failed)
+
+        return "\n".join(lines)
+
+    # In-memory cleanup -----------------------------------------------------
 
     def _clear_ocr_text_in_memory(
         self,
         blocks_to_reprocess: list | None = None,
     ) -> int:
         """Быстрая очистка ocr_text в памяти (GUI-поток)."""
+        return self._clear_ocr_text_in_document(
+            self.main_window.annotation_document,
+            blocks_to_reprocess=blocks_to_reprocess,
+        )
+
+    def _clear_ocr_text_in_document(
+        self,
+        document: object | None,
+        blocks_to_reprocess: list | None = None,
+    ) -> int:
+        """Очистить OCR-текст у блоков в переданном документе."""
         reprocess_set = set(blocks_to_reprocess) if blocks_to_reprocess else None
         cleared = 0
-        if self.main_window.annotation_document:
-            for page in self.main_window.annotation_document.pages:
+
+        if document:
+            for page in getattr(document, "pages", []) or []:
                 for block in page.blocks:
                     if hasattr(block, "ocr_text") and block.ocr_text:
                         if reprocess_set is None or block.id in reprocess_set:
                             block.ocr_text = None
                             cleared += 1
+
         return cleared

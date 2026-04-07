@@ -132,7 +132,7 @@ class ProjectTreeWidget(
         self.tree.setFrameShape(QFrame.NoFrame)
         self.tree.setAnimated(True)
         self.tree.setIndentation(20)
-        self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.tree.itemExpanded.connect(self._on_item_expanded)
@@ -297,6 +297,40 @@ class ProjectTreeWidget(
             except RuntimeError:
                 self._node_map.pop(node_id, None)
                 self._current_document_id = ""
+
+    def get_selected_document_nodes(self) -> list[TreeNode]:
+        """Вернуть выбранные документы в порядке дерева."""
+        selected_items = self.tree.selectedItems()
+        if not selected_items:
+            return []
+
+        selected_nodes: list[TreeNode] = []
+        seen_ids: set[str] = set()
+
+        for item in sorted(selected_items, key=self._tree_item_order_key):
+            node = item.data(0, Qt.UserRole)
+            if not isinstance(node, TreeNode) or not node.is_document:
+                continue
+            if node.id in seen_ids:
+                continue
+            selected_nodes.append(node)
+            seen_ids.add(node.id)
+
+        return selected_nodes
+
+    def _tree_item_order_key(self, item: QTreeWidgetItem) -> tuple[int, ...]:
+        """Сформировать ключ сортировки по визуальному порядку дерева."""
+        indices: list[int] = []
+        current = item
+        while current is not None:
+            parent = current.parent()
+            if parent is None:
+                index = self.tree.indexOfTopLevelItem(current)
+            else:
+                index = parent.indexOfChild(current)
+            indices.append(index)
+            current = parent
+        return tuple(reversed(indices))
 
     def eventFilter(self, obj, event):
         if obj == self.tree and event.type() == QEvent.KeyPress:

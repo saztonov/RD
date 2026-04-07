@@ -69,6 +69,7 @@ class JobsController(
         download_finished = Signal(str, str)
         download_error = Signal(str, str)
         job_details_loaded = Signal(dict)
+        batch_finished = Signal(dict)
 
     # ── __init__ ──────────────────────────────────────────────────────
 
@@ -120,6 +121,7 @@ class JobsController(
         self._worker.download_error.connect(self._on_download_error)
         self._worker.lifecycle_result.connect(self._on_lifecycle_result)
         self._worker.job_details_loaded.connect(self._on_job_details_loaded)
+        self._worker.batch_finished.connect(self._on_batch_finished)
 
     # ══════════════════════════════════════════════════════════════════
     # PUBLIC API

@@ -27,7 +27,13 @@ load_dotenv()
 class OCRDialog(QDialog):
     """Диалог выбора режима OCR и папки для результатов"""
 
-    def __init__(self, parent=None, task_name: str = "", pdf_path: str = ""):
+    def __init__(
+        self,
+        parent=None,
+        task_name: str = "",
+        pdf_path: str = "",
+        batch_count: int = 0,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Настройка OCR")
         self.setMinimumWidth(550)
@@ -36,6 +42,7 @@ class OCRDialog(QDialog):
         self.base_dir = None
         self.task_name = task_name
         self.pdf_path = pdf_path  # Путь к PDF для сохранения результатов рядом
+        self.batch_count = batch_count
 
         # Дефолтные модели и движок из config.yaml
         defaults = get_ocr_defaults()
@@ -51,6 +58,15 @@ class OCRDialog(QDialog):
     def _setup_ui(self):
         """Настройка интерфейса"""
         layout = QVBoxLayout(self)
+
+        if self.batch_count > 1:
+            batch_label = QLabel(
+                f"Выбран пакетный запуск OCR для {self.batch_count} документов.\n"
+                "Настройки ниже будут применены ко всем документам в очереди."
+            )
+            batch_label.setStyleSheet("color: #bdbdbd; font-size: 11px;")
+            batch_label.setWordWrap(True)
+            layout.addWidget(batch_label)
 
         # OCR движок для текста и таблиц
         backend_group = QGroupBox("OCR движок для текста и таблиц")

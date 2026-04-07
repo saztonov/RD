@@ -310,7 +310,16 @@ class MainWindow(
         """Отправить выделенные блоки на Remote OCR"""
         if self.remote_ocr_panel:
             self.remote_ocr_panel.show()
-            self.remote_ocr_panel.controller.create_job()
+            selected_nodes = []
+            if hasattr(self, "project_tree_widget") and self.project_tree_widget:
+                selected_nodes = self.project_tree_widget.get_selected_document_nodes()
+
+            if selected_nodes:
+                self.remote_ocr_panel.controller.create_jobs_for_tree_selection(
+                    selected_nodes
+                )
+            else:
+                self.remote_ocr_panel.controller.create_job()
 
     # === Status Bar ===
     def _setup_status_bar(self):
