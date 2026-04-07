@@ -5,7 +5,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QThread
+from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
 
 from app.gui.r2_node_files_dialog import _DownloadWorker
@@ -61,30 +61,43 @@ def download_ocr_results(parent, node: "TreeNode", client: "TreeClient") -> None
         f"Скачивание {len(keys)} файл(ов)...", "Отмена", 0, len(keys), parent
     )
     progress.setWindowTitle("Скачивание результатов OCR")
+    progress.setWindowModality(Qt.NonModal)
+    progress.setAutoClose(False)
+    progress.setAutoReset(False)
     progress.setMinimumDuration(0)
     progress.setValue(0)
 
-    thread = QThread(parent)
+    thread = QThread()
     worker = _DownloadWorker(keys, subdir)
     worker.moveToThread(thread)
 
-    def _on_progress(current: int, total: int):
-        progress.setValue(current)
+    state = {"ok": 0, "fail": 0}
 
-    def _on_finished(ok: int, fail: int):
-        progress.close()
+    def _on_progress(current: int, total: int):
+        if not progress.isHidden():
+            progress.setValue(current)
+
+    def _on_worker_finished(ok: int, fail: int):
+        state["ok"] = ok
+        state["fail"] = fail
         thread.quit()
-        thread.wait(3000)
-        msg = f"Скачано: {ok}"
-        if fail:
-            msg += f"\nОшибок: {fail}"
+
+    def _on_thread_finished():
+        progress.close()
+        msg = f"Скачано: {state['ok']}"
+        if state["fail"]:
+            msg += f"\nОшибок: {state['fail']}"
         msg += f"\n\nПапка: {subdir}"
-        QMessageBox.information(parent, "Скачивание завершено", msg)
+        QTimer.singleShot(0, lambda: QMessageBox.information(parent, "Скачивание завершено", msg))
+        # Очистка ссылок
+        refs = getattr(parent, "_ocr_download_refs", [])
+        refs[:] = [r for r in refs if r[0] is not thread]
 
     thread.started.connect(worker.run)
     worker.progress.connect(_on_progress)
-    worker.finished.connect(_on_finished)
+    worker.finished.connect(_on_worker_finished)
     worker.finished.connect(worker.deleteLater)
+    thread.finished.connect(_on_thread_finished)
     thread.finished.connect(thread.deleteLater)
     progress.canceled.connect(worker.cancel)
 
