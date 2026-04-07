@@ -130,12 +130,64 @@ class StreamingPDFProcessor:
         zoom = self._get_effective_zoom(page)
         return (int(rect.width * zoom), int(rect.height * zoom))
 
-    def crop_block_image(self, block, padding: int = 5) -> Optional[Image.Image]:
-        """Вырезать кроп блока из текущей страницы"""
-        page_image = self.get_page_image(block.page_index)
-        if not page_image:
+    def _render_clip(
+        self, page_idx: int, nx1: float, ny1: float, nx2: float, ny2: float, padding_px: int
+    ) -> Optional[Image.Image]:
+        """Отрендерить только указанную область страницы (без full-page raster).
+
+        Возвращает PIL.Image нужного фрагмента в том же DPI/zoom, что и full-page,
+        либо None если рендер не удался (caller должен fallback'нуть на старый путь).
+        """
+        if not self._doc or page_idx < 0 or page_idx >= len(self._doc):
+            return None
+        try:
+            page = self._doc[page_idx]
+            effective_zoom = self._get_effective_zoom(page)
+            rect = page.rect
+            if rect.width <= 0 or rect.height <= 0:
+                return None
+
+            # Padding в пикселях → в pdf-points через тот же zoom.
+            pad_pt = padding_px / effective_zoom if effective_zoom > 0 else 0.0
+
+            x1_pt = max(rect.x0, rect.x0 + nx1 * rect.width - pad_pt)
+            y1_pt = max(rect.y0, rect.y0 + ny1 * rect.height - pad_pt)
+            x2_pt = min(rect.x1, rect.x0 + nx2 * rect.width + pad_pt)
+            y2_pt = min(rect.y1, rect.y0 + ny2 * rect.height + pad_pt)
+
+            if x2_pt <= x1_pt or y2_pt <= y1_pt:
+                return None
+
+            clip = fitz.Rect(x1_pt, y1_pt, x2_pt, y2_pt)
+            mat = fitz.Matrix(effective_zoom, effective_zoom)
+            pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
+            if pix.width <= 0 or pix.height <= 0:
+                return None
+
+            mode = "RGBA" if pix.alpha else "RGB"
+            img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+            if mode != "RGB":
+                img = img.convert("RGB")
+            pix = None
+            return img
+        except Exception as e:
+            logger.warning(
+                "Clipped crop render failed for page %s: %s (fallback to full-page)",
+                page_idx, e,
+            )
             return None
 
+    def crop_block_image(self, block, padding: int = 5) -> Optional[Image.Image]:
+        """Вырезать кроп блока без полного рендера страницы.
+
+        Стратегия:
+        1) Пробуем отрендерить только нужный clip через fitz get_pixmap(clip=...).
+           Это в разы быстрее full-page raster для типичных PDF, где блоки занимают
+           малую часть страницы. DPI/padding/геометрия идентичны старому пути.
+        2) Для polygon — рендерим bbox-clip и поверх кладём ту же polygon-маску.
+        3) При любой ошибке clipped рендера — откатываемся на старый full-page путь
+           через get_page_image(), сохраняя 100% совместимости.
+        """
         from rd_core.models import ShapeType
 
         normalized_coords = normalize_coords_norm(block.coords_norm)
@@ -149,11 +201,50 @@ class StreamingPDFProcessor:
             return None
 
         nx1, ny1, nx2, ny2 = normalized_coords
-        img_w, img_h = page_image.width, page_image.height
 
+        # 1) Быстрый clipped path
+        clipped = self._render_clip(block.page_index, nx1, ny1, nx2, ny2, padding)
+        if clipped is not None:
+            if block.shape_type == ShapeType.RECTANGLE or not block.polygon_points:
+                return clipped
+
+            # Polygon: накладываем маску поверх clipped изображения.
+            crop_w, crop_h = clipped.width, clipped.height
+            orig_x1, orig_y1, orig_x2, orig_y2 = block.coords_px
+            bbox_w, bbox_h = orig_x2 - orig_x1, orig_y2 - orig_y1
+
+            if crop_w > 0 and crop_h > 0 and bbox_w > 0 and bbox_h > 0:
+                try:
+                    adjusted_points = []
+                    for px, py in block.polygon_points:
+                        norm_px = (px - orig_x1) / bbox_w if bbox_w else 0
+                        norm_py = (py - orig_y1) / bbox_h if bbox_h else 0
+                        adjusted_points.append((norm_px * crop_w, norm_py * crop_h))
+
+                    mask = Image.new("L", (crop_w, crop_h), 0)
+                    ImageDraw.Draw(mask).polygon(adjusted_points, fill=255)
+                    result = Image.new("RGB", clipped.size, (255, 255, 255))
+                    result.paste(clipped, mask=mask)
+                    mask.close()
+                    clipped.close()
+                    return result
+                except Exception as e:
+                    logger.warning(
+                        "Polygon mask on clipped crop failed for block %s: %s "
+                        "(fallback to full-page)", block.id, e,
+                    )
+                    clipped.close()
+            else:
+                return clipped
+
+        # 2) Fallback: старый full-page путь
+        page_image = self.get_page_image(block.page_index)
+        if not page_image:
+            return None
+
+        img_w, img_h = page_image.width, page_image.height
         x1, y1 = int(nx1 * img_w), int(ny1 * img_h)
         x2, y2 = int(nx2 * img_w), int(ny2 * img_h)
-
         x1, y1 = max(0, x1 - padding), max(0, y1 - padding)
         x2, y2 = min(img_w, x2 + padding), min(img_h, y2 + padding)
 
@@ -169,7 +260,6 @@ class StreamingPDFProcessor:
         if block.shape_type == ShapeType.RECTANGLE or not block.polygon_points:
             return page_image.crop((x1, y1, x2, y2)).copy()
 
-        # Полигон с маской
         crop_w, crop_h = x2 - x1, y2 - y1
         orig_x1, orig_y1, orig_x2, orig_y2 = block.coords_px
         bbox_w, bbox_h = orig_x2 - orig_x1, orig_y2 - orig_y1

@@ -11,7 +11,7 @@ from PIL import Image
 
 from ..logging_config import get_logger
 from ..manifest_models import StripManifestEntry
-from ..ocr_constants import make_error
+from ..ocr_constants import is_error, is_non_retriable, make_error
 from .pass2_common import (
     CANCELLED_SENTINEL,
     DEADLINE_RESERVE,
@@ -24,6 +24,28 @@ from .pass2_common import (
 )
 
 logger = get_logger(__name__)
+
+
+# Маркеры сетевых/инфраструктурных ошибок Chandra/LM Studio,
+# при которых имеет смысл сразу уйти в early failover на text_fallback,
+# а не повторять primary backend.
+_FAILOVER_TRIGGERS = (
+    "timeout",
+    "connectionerror",
+    "connection error",
+    "budget exhausted",
+    "после ",  # "ConnectionError: ... после N попыток" / "Chandra API: 5xx после N попыток"
+)
+
+
+def _should_failover(text: Optional[str]) -> bool:
+    """Решить, нужно ли уходить в text_fallback после ошибки primary backend."""
+    if not text or not is_error(text):
+        return False
+    if is_non_retriable(text):
+        return False
+    lowered = text.lower()
+    return any(trigger in lowered for trigger in _FAILOVER_TRIGGERS)
 
 
 async def process_strip(
@@ -41,6 +63,8 @@ async def process_strip(
     retry_delays: List[int],
     build_strip_prompt: Callable,
     parse_batch_response_by_index: Callable,
+    text_fallback_backend=None,
+    failover_enabled: bool = False,
 ) -> Optional[Tuple[StripManifestEntry, Dict[int, str], int]]:
     """Обработка одного strip."""
     if is_paused_fn():
@@ -127,6 +151,84 @@ async def process_strip(
                 if not should_retry_ocr(response_text, f"strip {strip.strip_id}", strip_attempt, max_retries):
                     break
 
+            # ─── EARLY FAILOVER: chandra → text_fallback ───
+            # Если primary backend вернул сетевую/инфраструктурную ошибку и
+            # включён chandra_failover_to_fallback — немедленно прогоняем
+            # ту же полосу через fallback backend (Datalab → OpenRouter),
+            # не дожидаясь поздней верификации.
+            failover_used = False
+            if (
+                failover_enabled
+                and text_fallback_backend is not None
+                and _should_failover(response_text)
+            ):
+                fb_start = time.monotonic()
+                logger.warning(
+                    f"PASS2 ASYNC: strip {strip.strip_id} early failover на "
+                    f"{type(text_fallback_backend).__name__} "
+                    f"(primary error: {(response_text or '')[:120]})",
+                    extra={
+                        "event": "chandra_failover",
+                        "strip_id": strip.strip_id,
+                        "block_count": len(strip.block_parts),
+                        "fallback_reason": "chandra_error",
+                        "primary_error": (response_text or "")[:200],
+                    },
+                )
+                try:
+                    fb_image = await asyncio.to_thread(Image.open, strip.strip_path)
+                    try:
+                        if not await rate_limiter.acquire_async():
+                            logger.warning(
+                                f"Strip {strip.strip_id}: rate limiter timeout (failover)"
+                            )
+                        else:
+                            try:
+                                fb_response = await cancellable_recognize(
+                                    text_fallback_backend, fb_image, prompt_data,
+                                    is_paused_fn=is_paused_fn,
+                                )
+                            finally:
+                                await rate_limiter.release_async()
+                            if fb_response is CANCELLED_SENTINEL:
+                                return None
+                            if fb_response and not is_error(fb_response):
+                                response_text = fb_response
+                                failover_used = True
+                                logger.info(
+                                    f"PASS2 ASYNC: strip {strip.strip_id} failover успех "
+                                    f"({len(fb_response)} символов, "
+                                    f"{(time.monotonic() - fb_start) * 1000:.0f}ms)",
+                                    extra={
+                                        "event": "chandra_failover_success",
+                                        "strip_id": strip.strip_id,
+                                        "duration_ms": int(
+                                            (time.monotonic() - fb_start) * 1000
+                                        ),
+                                        "response_length": len(fb_response),
+                                    },
+                                )
+                            else:
+                                logger.warning(
+                                    f"PASS2 ASYNC: strip {strip.strip_id} failover тоже "
+                                    f"вернул ошибку: {(fb_response or '')[:120]}",
+                                    extra={
+                                        "event": "chandra_failover_failed",
+                                        "strip_id": strip.strip_id,
+                                    },
+                                )
+                    finally:
+                        fb_image.close()
+                except Exception as fb_exc:
+                    logger.error(
+                        f"PASS2 ASYNC: strip {strip.strip_id} failover exception: {fb_exc}",
+                        extra={
+                            "event": "chandra_failover_exception",
+                            "strip_id": strip.strip_id,
+                        },
+                        exc_info=True,
+                    )
+
             response_len = len(response_text) if response_text else 0
             if response_len == 0:
                 logger.warning(
@@ -191,6 +293,8 @@ async def run_strip_phase(
     checkpoint_path,
     build_strip_prompt: Callable,
     parse_batch_response_by_index: Callable,
+    text_fallback_backend=None,
+    failover_enabled: bool = False,
 ) -> Tuple[Dict[str, Dict[int, str]], Dict[str, int]]:
     """Обработать все strips и вернуть (text_block_parts, text_block_total_parts)."""
     semaphore = asyncio.Semaphore(max_workers)
@@ -226,6 +330,8 @@ async def run_strip_phase(
                         retry_delays=retry_delays,
                         build_strip_prompt=build_strip_prompt,
                         parse_batch_response_by_index=parse_batch_response_by_index,
+                        text_fallback_backend=text_fallback_backend,
+                        failover_enabled=failover_enabled,
                     )
                 except Exception as exc:
                     logger.error(f"PASS2 ASYNC: strip exception: {exc}", exc_info=True)

@@ -128,6 +128,13 @@ class Settings:
     chandra_max_concurrent: int = _cfg("chandra_max_concurrent", "CHANDRA_MAX_CONCURRENT", int)
     chandra_retry_delay: int = _cfg("chandra_retry_delay", "CHANDRA_RETRY_DELAY", int)
     chandra_http_timeout: int = _cfg("chandra_http_timeout", "CHANDRA_HTTP_TIMEOUT", int)
+    chandra_request_retries: int = _cfg("chandra_request_retries", "CHANDRA_REQUEST_RETRIES", int)
+    chandra_request_retry_delay: int = _cfg("chandra_request_retry_delay", "CHANDRA_REQUEST_RETRY_DELAY", int)
+    chandra_failover_to_fallback: bool = _cfg(
+        "chandra_failover_to_fallback",
+        "CHANDRA_FAILOVER_TO_FALLBACK",
+        lambda v: str(v).lower() in ("1", "true", "yes", "on"),
+    )
 
     # ===== ВЕРИФИКАЦИЯ БЛОКОВ =====
     max_retry_blocks: int = _cfg("max_retry_blocks", "MAX_RETRY_BLOCKS", int)

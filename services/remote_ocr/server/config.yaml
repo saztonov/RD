@@ -64,6 +64,12 @@ chandra_retry_delay: 2
 # HTTP таймаут для Chandra запросов, секунды (LM Studio через ngrok)
 # Снижен с 90 до 60: LM Studio отвечает за <60s, 90s × 3 retry = 270s каскадного зависания
 chandra_http_timeout: 60
+# Сколько раз ChandraBackend ретраит сетевые ошибки перед возвратом ошибки (1 = одна повторная попытка)
+chandra_request_retries: 1
+# Пауза перед единственным retry, секунды (deadline-aware)
+chandra_request_retry_delay: 5
+# Включить ранний fallback PASS2 при timeout/connection error от Chandra (chandra → Datalab/OpenRouter)
+chandra_failover_to_fallback: true
 
 # ===== ВЕРИФИКАЦИЯ БЛОКОВ =====
 # Максимум блоков для retry верификации (0 = без лимита)

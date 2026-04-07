@@ -34,6 +34,7 @@ def run_two_pass_ocr(
     start_mem: float,
     engine: str = "openrouter",
     soft_timeout_at: float = None,
+    text_fallback_backend=None,
 ):
     """Двухпроходный алгоритм OCR (экономия памяти)"""
     from .settings import settings
@@ -166,6 +167,7 @@ def run_two_pass_ocr(
                 checkpoint=checkpoint if USE_CHECKPOINT else None,
                 work_dir=work_dir if USE_CHECKPOINT else None,
                 deadline=soft_timeout_at,
+                text_fallback_backend=text_fallback_backend,
             )
         )
 

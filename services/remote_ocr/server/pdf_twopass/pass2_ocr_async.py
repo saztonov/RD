@@ -37,6 +37,7 @@ async def pass2_ocr_from_manifest_async(
     checkpoint: Optional[OCRCheckpoint] = None,
     work_dir: Optional[Path] = None,
     deadline: Optional[float] = None,
+    text_fallback_backend=None,
 ) -> None:
     """
     PASS 2 ASYNC: Асинхронный OCR с загрузкой кропов с диска.
@@ -96,6 +97,18 @@ async def pass2_ocr_from_manifest_async(
         f"({max_workers} workers, bounded queue)"
     )
 
+    failover_enabled = bool(
+        text_fallback_backend is not None
+        and getattr(settings, "chandra_failover_to_fallback", False)
+        and type(strip_backend).__name__ == "ChandraBackend"
+    )
+    if failover_enabled:
+        logger.info(
+            f"PASS2 ASYNC: early failover включён "
+            f"(primary={type(strip_backend).__name__}, "
+            f"fallback={type(text_fallback_backend).__name__})"
+        )
+
     text_block_parts, text_block_total_parts = await run_strip_phase(
         manifest.strips,
         blocks_by_id=blocks_by_id,
@@ -113,6 +126,8 @@ async def pass2_ocr_from_manifest_async(
         checkpoint_path=checkpoint_path,
         build_strip_prompt=build_strip_prompt,
         parse_batch_response_by_index=parse_batch_response_by_index,
+        text_fallback_backend=text_fallback_backend,
+        failover_enabled=failover_enabled,
     )
 
     # Собираем TEXT/TABLE блоки

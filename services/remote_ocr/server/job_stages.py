@@ -238,6 +238,7 @@ def run_ocr(ctx: JobContext) -> None:
         ctx.start_mem,
         engine=ctx.engine,
         soft_timeout_at=soft_timeout_at,
+        text_fallback_backend=ctx.backends.text_fallback,
     )
     force_gc("после OCR обработки")
 

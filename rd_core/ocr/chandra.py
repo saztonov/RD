@@ -30,8 +30,11 @@ logger = logging.getLogger(__name__)
 class ChandraBackend(BackendTimingMixin):
     """OCR через Chandra модель (LM Studio, OpenAI-compatible API)"""
 
-    _MAX_APP_RETRIES = 3
-    _APP_RETRY_DELAYS = [30, 60, 120]
+    # Один контролируемый retry с короткой паузой.
+    # Длинные backoff (30/60/120) убраны: сетевая ошибка → быстрый отказ →
+    # ранний fallback в pass2_strips на text_fallback backend.
+    _MAX_APP_RETRIES = 1
+    _APP_RETRY_DELAYS = [5]
 
     def __init__(self, base_url: Optional[str] = None, http_timeout: int = 90, **kwargs):
         self.base_url = init_base_url(base_url)

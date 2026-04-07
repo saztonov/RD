@@ -27,16 +27,22 @@ def create_retry_session(
         backoff_factor = 1.0
         status_forcelist = (502, 503, 504)
     elif ngrok_mode:
-        total_retries = 2
-        backoff_factor = 1.0
-        status_forcelist = (404, 429, 500, 502, 503, 504)
+        # Намеренно НЕ ретраим POST/timeout на этом уровне.
+        # Read-timeouts и connection errors всплывают сразу в backend,
+        # который сам решает, делать ли один контролируемый retry или
+        # сразу уходить в early failover на text_fallback backend.
+        total_retries = 0
+        backoff_factor = 0.0
+        status_forcelist = ()
 
     session = requests.Session()
     retry = Retry(
         total=total_retries,
         backoff_factor=backoff_factor,
         status_forcelist=status_forcelist,
-        allowed_methods=["GET", "POST"],
+        allowed_methods=frozenset(["GET", "POST"]),
+        connect=1 if ngrok_mode else total_retries,
+        read=0 if ngrok_mode else total_retries,
     )
     adapter = HTTPAdapter(pool_connections=5, pool_maxsize=10, max_retries=retry)
     session.mount("https://", adapter)
