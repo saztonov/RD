@@ -23,6 +23,15 @@ def _button_rect(cell_rect: QRect) -> QRect:
     return QRect(x, y, _BTN_W, _BTN_H)
 
 
+def _event_pos(event):
+    """Вернуть позицию клика совместимо с Qt5/Qt6 API."""
+    if hasattr(event, "position"):
+        return event.position().toPoint()
+    if hasattr(event, "pos"):
+        return event.pos()
+    return None
+
+
 class CancelButtonDelegate(QStyledItemDelegate):
     """Рисует кнопку «✕» для отмены активных задач."""
 
@@ -66,7 +75,8 @@ class CancelButtonDelegate(QStyledItemDelegate):
             return False
 
         rect = _button_rect(option.rect)
-        if not rect.contains(event.pos().toPoint()):
+        click_pos = _event_pos(event)
+        if click_pos is None or not rect.contains(click_pos):
             return False
 
         job_id = index.data(JOB_ID_ROLE)
