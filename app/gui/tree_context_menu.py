@@ -97,6 +97,9 @@ class TreeContextMenuMixin:
                         action.setData(("auto_markup_file", node))
 
                 if node.is_document and node.attributes.get("r2_key"):
+                    action = menu.addAction("📥 Скачать результаты OCR")
+                    action.setData(("download_ocr_results", node))
+
                     action = menu.addAction("☁️ Показать на R2")
                     action.setData(("show_on_r2", node))
 
@@ -176,6 +179,9 @@ class TreeContextMenuMixin:
         elif action == "show_on_r2":
             node = data[1]
             self._show_on_r2(node)
+        elif action == "download_ocr_results":
+            node = data[1]
+            self._download_ocr_results(node)
         elif action == "view_in_supabase":
             node = data[1]
             self._view_in_supabase(node)
