@@ -425,6 +425,10 @@ class ProjectTreeWidget(
         from app.gui.ocr_results_download import download_ocr_results
         download_ocr_results(self, node, self.client)
 
+    def _download_ocr_results_batch(self, nodes: list[TreeNode]):
+        from app.gui.ocr_results_download import download_ocr_results_batch
+        download_ocr_results_batch(self, nodes, self.client)
+
     def _view_in_supabase(self, node: TreeNode):
         from app.gui.node_files_dialog import NodeFilesDialog
         dialog = NodeFilesDialog(node, self.client, self)

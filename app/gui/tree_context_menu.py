@@ -19,6 +19,22 @@ class TreeContextMenuMixin:
         item = self.tree.itemAt(pos)
         menu = QMenu(self)
 
+        # Пакетное меню для мульти-выделения документов
+        selected_docs = self.get_selected_document_nodes() if hasattr(self, "get_selected_document_nodes") else []
+        if len(selected_docs) >= 2 and item is not None:
+            cur_node = item.data(0, Qt.UserRole)
+            if isinstance(cur_node, TreeNode) and cur_node.is_document and any(n.id == cur_node.id for n in selected_docs):
+                pdf_docs = [n for n in selected_docs if str(n.attributes.get("r2_key", "")).lower().endswith(".pdf")]
+                if pdf_docs:
+                    batch_action = menu.addAction(f"📥 Скачать результаты OCR ({len(pdf_docs)} файлов)")
+                    batch_action.setData(("download_ocr_results_batch", pdf_docs))
+                    action = menu.exec_(self.tree.mapToGlobal(pos))
+                    if action:
+                        data = action.data()
+                        if data:
+                            self._handle_menu_action(data)
+                    return
+
         if item:
             node = item.data(0, Qt.UserRole)
             if isinstance(node, TreeNode):
@@ -182,6 +198,9 @@ class TreeContextMenuMixin:
         elif action == "download_ocr_results":
             node = data[1]
             self._download_ocr_results(node)
+        elif action == "download_ocr_results_batch":
+            nodes = data[1]
+            self._download_ocr_results_batch(nodes)
         elif action == "view_in_supabase":
             node = data[1]
             self._view_in_supabase(node)
