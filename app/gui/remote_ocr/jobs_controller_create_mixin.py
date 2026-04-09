@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import tempfile
 import uuid
 from pathlib import Path
@@ -395,34 +396,43 @@ class JobsControllerCreateMixin:
                 continue
 
             self._clear_ocr_text_in_document(annotation_document)
-            task_name = Path(document_name).stem
+            pdf_file_name = Path(r2_key).name
+            task_name = Path(pdf_file_name).stem
 
+            temp_dir = Path(tempfile.mkdtemp(prefix="rd_batch_ocr_"))
             try:
-                with tempfile.TemporaryDirectory(prefix="rd_batch_ocr_") as temp_dir:
-                    local_pdf_path = Path(temp_dir) / Path(r2_key).name
-                    if not r2.download_file(r2_key, str(local_pdf_path)):
-                        summary["failed"].append(
-                            f"{document_name}: не удалось скачать PDF из R2"
-                        )
-                        continue
+                rel = (
+                    r2_key[len("tree_docs/"):]
+                    if r2_key.startswith("tree_docs/")
+                    else pdf_file_name
+                )
+                local_pdf_path = temp_dir / rel
+                local_pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
-                    job_info = self._create_job_sync(
-                        client,
-                        str(local_pdf_path),
-                        blocks,
-                        task_name,
-                        engine,
-                        text_model,
-                        table_model,
-                        image_model,
-                        stamp_model,
-                        node_id=node_id,
-                        is_correction_mode=False,
-                        r2_key=r2_key,
-                        cleanup_blocks=None,
-                        annotation_document=annotation_document,
-                        reuse_existing=False,
+                if not r2.download_file(r2_key, str(local_pdf_path)):
+                    summary["failed"].append(
+                        f"{document_name}: не удалось скачать PDF из R2"
                     )
+                    continue
+
+                job_info = self._create_job_sync(
+                    client,
+                    str(local_pdf_path),
+                    blocks,
+                    task_name,
+                    engine,
+                    text_model,
+                    table_model,
+                    image_model,
+                    stamp_model,
+                    node_id=node_id,
+                    is_correction_mode=False,
+                    r2_key=r2_key,
+                    cleanup_blocks=None,
+                    annotation_document=None,
+                    reuse_existing=False,
+                    document_name=pdf_file_name,
+                )
             except AuthenticationError:
                 summary["failed"].append(
                     f"{document_name}: неверный API ключ Remote OCR"
@@ -453,6 +463,8 @@ class JobsControllerCreateMixin:
                 )
                 summary["failed"].append(f"{document_name}: {e}")
                 continue
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
             self._worker.job_created.emit(job_info)
             summary["queued"].append(document_name)
@@ -476,6 +488,7 @@ class JobsControllerCreateMixin:
         cleanup_blocks: list | None = None,
         annotation_document: object | None = None,
         reuse_existing: bool = True,
+        document_name: str | None = None,
     ):
         """Синхронно создать OCR-задачу и очистить старые результаты."""
         from app.ocr_client import get_or_create_client_id
@@ -514,6 +527,7 @@ class JobsControllerCreateMixin:
             reuse_existing=reuse_existing,
             node_id=node_id,
             is_correction_mode=is_correction_mode,
+            document_name=document_name,
         )
         logger.info("Задача создана: id=%s, status=%s", job_info.id, job_info.status)
 

@@ -30,6 +30,7 @@ class JobCreateMixin:
         reuse_existing: bool = True,
         node_id: Optional[str] = None,
         is_correction_mode: bool = False,
+        document_name: Optional[str] = None,
     ) -> JobInfo:
         """
         Создать задачу OCR
@@ -52,7 +53,8 @@ class JobCreateMixin:
             JobInfo с информацией о созданной/существующей задаче
         """
         document_id = self.hash_pdf(pdf_path)
-        document_name = Path(pdf_path).name
+        if not document_name:
+            document_name = Path(pdf_path).name
 
         # Проверяем существующую активную задачу
         if reuse_existing:
