@@ -2,20 +2,25 @@
 Core Structure - Сборка в исполняемый файл
 
 Скрипт для сборки приложения Core Structure в .exe файл.
-Переменные окружения НЕ вшиваются в бинарник — приложение загружает .env
-из рабочей директории при старте через python-dotenv (app/main.py).
+Файл .env вшивается в бинарник через datas — приложение загружает его
+из sys._MEIPASS при старте (app/main.py).
 """
 import os
+import sys
 from pathlib import Path
 
-# Генерируем spec файл (без runtime hooks с секретами)
-spec_content = """# -*- mode: python ; coding: utf-8 -*-
+env_path = Path(".env")
+if not env_path.exists():
+    print("[ERROR] .env file not found in project root")
+    sys.exit(1)
+
+spec_content = r"""# -*- mode: python ; coding: utf-8 -*-
 
 a = Analysis(
-    ['app\\\\main.py'],
+    ['app\\main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('.env', '.')],
     hiddenimports=['PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets'],
     hookspath=[],
     hooksconfig={},
@@ -59,11 +64,10 @@ spec_file = Path("CoreStructure.spec")
 with open(spec_file, "w", encoding="utf-8") as f:
     f.write(spec_content)
 
-print("[OK] Spec updated (no embedded secrets)")
-print("[INFO] Place .env next to CoreStructure.exe for runtime config")
+print("[OK] Spec updated (.env embedded via datas)")
 print("\nRunning PyInstaller...")
 
 os.system("pyinstaller CoreStructure.spec")
 
 print("\n[OK] Build complete: dist\\CoreStructure.exe")
-print("[IMPORTANT] Copy .env to dist/ before running the application")
+print("[INFO] .env is embedded — no external .env needed")

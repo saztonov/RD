@@ -14,16 +14,19 @@ if str(project_root) not in sys.path:
 
 from dotenv import load_dotenv
 
-# В frozen mode (PyInstaller) ищем .env рядом с .exe, затем в cwd
+# Frozen mode: встроенный .env из бандла → рядом с .exe → cwd
 if getattr(sys, "frozen", False):
-    _exe_dir = Path(sys.executable).parent
-    _env_path = _exe_dir / ".env"
-    if _env_path.exists():
-        load_dotenv(_env_path)
+    _meipass = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    _bundled_env = _meipass / ".env"
+    _exe_env = Path(sys.executable).parent / ".env"
+    if _bundled_env.exists():
+        load_dotenv(_bundled_env)
+    elif _exe_env.exists():
+        load_dotenv(_exe_env)
     else:
-        load_dotenv()  # fallback: cwd
+        load_dotenv()
 else:
-    load_dotenv()  # dev mode: .env в корне проекта
+    load_dotenv()
 
 from PySide6.QtWidgets import QApplication
 
