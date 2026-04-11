@@ -43,10 +43,11 @@ def get_retry_params(backend_name: str) -> tuple:
     """
     is_lmstudio = backend_name in ("ChandraBackend",)
     if is_lmstudio:
-        # Chandra: strip-level retry отключён.
-        # Backend сам делает один внутренний retry; при повторной сетевой ошибке
-        # pass2_strips сразу уходит в early failover на text_fallback backend.
-        return 0, [], True
+        # Chandra: 2 дополнительных попытки на уровне strip перед тем как отдать ошибку.
+        # Нужно при флапсах ngrok / "Model unloaded" / транзиентных 5xx.
+        # Backend делает свой внутренний retry (chandra_request_retries), strip-level
+        # ещё 2 — этого достаточно, чтобы пережить короткие сетевые сбои.
+        return 2, [5, 15], True
     return 1, [5], False
 
 

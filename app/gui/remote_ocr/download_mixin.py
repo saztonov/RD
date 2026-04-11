@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import QObject, Signal
 
+from app.ocr_client.exceptions import JobNotFoundError
+
 if TYPE_CHECKING:
     from app.gui.remote_ocr.jobs_cache import JobsCache
     from app.ocr_client import RemoteOCRClient
@@ -65,6 +67,12 @@ class DownloadOrchestrator(QObject):
                 return
 
             self._download_files(job_id, job_details, r2_prefix, extract_dir, pdf_stem)
+        except JobNotFoundError:
+            logger.warning(
+                f"Задача {job_id} удалена с сервера (404), помечаем orphan"
+            )
+            self._cache.mark_orphan(job_id)
+            self.download_error.emit(job_id, "⚠ Удалена на сервере")
         except Exception as e:
             logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")
             self._cache.unmark_downloading(job_id)
@@ -81,6 +89,12 @@ class DownloadOrchestrator(QObject):
         try:
             job_details = client.get_job_details(job_id) if client else {}
             self._download_files(job_id, job_details, r2_prefix, extract_dir, pdf_stem)
+        except JobNotFoundError:
+            logger.warning(
+                f"Задача {job_id} удалена с сервера (404), помечаем orphan"
+            )
+            self._cache.mark_orphan(job_id)
+            self.download_error.emit(job_id, "⚠ Удалена на сервере")
         except Exception as e:
             logger.error(f"Ошибка скачивания {job_id}: {e}")
             self.download_error.emit(job_id, str(e))
@@ -110,6 +124,7 @@ class DownloadOrchestrator(QObject):
                 and getattr(job, "node_id", None) == current_node_id
                 and not self._cache.is_downloaded(job.id)
                 and not self._cache.is_downloading(job.id)
+                and not self._cache.is_orphan(job.id)
             ):
                 latest_done = job
                 break

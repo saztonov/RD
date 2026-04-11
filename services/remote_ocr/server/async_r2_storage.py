@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -17,6 +18,10 @@ from .logging_config import get_logger
 # Константы для multipart upload
 MULTIPART_THRESHOLD = 8 * 1024 * 1024  # 8 MB - порог для multipart
 MULTIPART_CHUNKSIZE = 8 * 1024 * 1024  # 8 MB - размер чанка
+
+# Batch upload параметры
+_BATCH_MAX_CONCURRENCY = int(os.getenv("R2_BATCH_MAX_CONCURRENCY", "8"))
+_BATCH_PROGRESS_INTERVAL = 10.0  # сек между heartbeat-логами
 
 logger = get_logger(__name__)
 
@@ -107,15 +112,20 @@ class AsyncR2Storage:
             )
             return False
 
-    async def upload_file(
-        self, local_path: str, remote_key: str, content_type: Optional[str] = None
+    async def _upload_file_with_client(
+        self,
+        client,
+        local_path: str,
+        remote_key: str,
+        content_type: Optional[str] = None,
     ) -> bool:
-        """Асинхронно загрузить файл в R2 (streaming/multipart для больших файлов)"""
+        """Загрузить один файл через уже открытый client (для batch)."""
+        file_size = None
         try:
             local_file = Path(local_path)
             if not local_file.exists():
                 logger.error(
-                    f"R2 upload failed: file not found",
+                    "R2 upload failed: file not found",
                     extra={
                         "event": "r2_upload_file_not_found",
                         "local_path": local_path,
@@ -128,30 +138,19 @@ class AsyncR2Storage:
             if content_type is None:
                 content_type = self._guess_content_type(local_file)
 
-            session = self._get_session()
-            async with session.client(
-                "s3",
-                endpoint_url=self.endpoint_url,
-                aws_access_key_id=self.access_key_id,
-                aws_secret_access_key=self.secret_access_key,
-                region_name="auto",
-                config=self._config,
-            ) as client:
-                if file_size < MULTIPART_THRESHOLD:
-                    # Маленькие файлы - простой upload
-                    async with aiofiles.open(local_file, "rb") as f:
-                        data = await f.read()
-                        await client.put_object(
-                            Bucket=self.bucket_name,
-                            Key=remote_key,
-                            Body=data,
-                            ContentType=content_type,
-                        )
-                else:
-                    # Большие файлы - multipart upload
-                    await self._multipart_upload(
-                        client, local_file, remote_key, content_type
+            if file_size < MULTIPART_THRESHOLD:
+                async with aiofiles.open(local_file, "rb") as f:
+                    data = await f.read()
+                    await client.put_object(
+                        Bucket=self.bucket_name,
+                        Key=remote_key,
+                        Body=data,
+                        ContentType=content_type,
                     )
+            else:
+                await self._multipart_upload(
+                    client, local_file, remote_key, content_type
+                )
 
             logger.debug(f"✅ Async upload: {remote_key} ({file_size} bytes)")
             return True
@@ -163,12 +162,29 @@ class AsyncR2Storage:
                     "event": "r2_upload_error",
                     "remote_key": remote_key,
                     "local_path": local_path,
-                    "file_size": file_size if "file_size" in dir() else None,
+                    "file_size": file_size,
                     "exception_type": type(e).__name__,
                 },
                 exc_info=True,
             )
             return False
+
+    async def upload_file(
+        self, local_path: str, remote_key: str, content_type: Optional[str] = None
+    ) -> bool:
+        """Асинхронно загрузить файл в R2 (streaming/multipart для больших файлов)"""
+        session = self._get_session()
+        async with session.client(
+            "s3",
+            endpoint_url=self.endpoint_url,
+            aws_access_key_id=self.access_key_id,
+            aws_secret_access_key=self.secret_access_key,
+            region_name="auto",
+            config=self._config,
+        ) as client:
+            return await self._upload_file_with_client(
+                client, local_path, remote_key, content_type
+            )
 
     async def _multipart_upload(
         self, client, local_file: Path, remote_key: str, content_type: str
@@ -395,32 +411,90 @@ class AsyncR2Storage:
         ]
 
     async def upload_files_batch(
-        self, uploads: List[tuple[str, str, Optional[str]]]
+        self,
+        uploads: List[tuple[str, str, Optional[str]]],
+        max_concurrency: int = _BATCH_MAX_CONCURRENCY,
     ) -> List[bool]:
         """
-        Параллельная загрузка нескольких файлов.
+        Параллельная загрузка нескольких файлов через общий client.
+
+        Использует:
+        - один общий s3 client на весь batch (без пересоздания на каждый файл),
+        - семафор для ограничения конкурентности,
+        - heartbeat-лог прогресса каждые ~10 с.
 
         Args:
             uploads: Список кортежей (local_path, remote_key, content_type)
-                     content_type может быть None
+            max_concurrency: Макс. количество параллельных upload'ов.
 
         Returns:
             Список результатов (True/False) для каждого файла
         """
-        if not uploads:
+        total = len(uploads)
+        if total == 0:
             return []
 
-        tasks = [
-            self.upload_file(local_path, remote_key, content_type)
-            for local_path, remote_key, content_type in uploads
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        sem = asyncio.Semaphore(max(1, max_concurrency))
+        results: List[bool] = [False] * total
+        done_count = 0
+        last_heartbeat = time.monotonic()
+        start = time.monotonic()
 
-        # Обрабатываем исключения как False
-        return [
-            result if isinstance(result, bool) else False
-            for result in results
-        ]
+        logger.info(
+            f"R2 batch upload: старт {total} файлов (concurrency={max_concurrency})",
+            extra={"event": "r2_batch_upload_start", "total": total},
+        )
+
+        session = self._get_session()
+        async with session.client(
+            "s3",
+            endpoint_url=self.endpoint_url,
+            aws_access_key_id=self.access_key_id,
+            aws_secret_access_key=self.secret_access_key,
+            region_name="auto",
+            config=self._config,
+        ) as client:
+            async def _single(idx: int, local: str, remote: str, ct: Optional[str]):
+                async with sem:
+                    ok = await self._upload_file_with_client(client, local, remote, ct)
+                    return idx, ok
+
+            tasks = [
+                asyncio.create_task(_single(i, *u)) for i, u in enumerate(uploads)
+            ]
+
+            for coro in asyncio.as_completed(tasks):
+                idx, ok = await coro
+                results[idx] = ok
+                done_count += 1
+                now = time.monotonic()
+                if now - last_heartbeat >= _BATCH_PROGRESS_INTERVAL or done_count == total:
+                    failed = sum(1 for r in results[:done_count] if not r)
+                    logger.info(
+                        f"R2 batch upload progress: {done_count}/{total} "
+                        f"({done_count * 100 / total:.1f}%, failed={failed})",
+                        extra={
+                            "event": "r2_batch_upload_progress",
+                            "done": done_count,
+                            "total": total,
+                            "failed": failed,
+                            "elapsed_s": int(now - start),
+                        },
+                    )
+                    last_heartbeat = now
+
+        elapsed = time.monotonic() - start
+        success = sum(1 for r in results if r)
+        logger.info(
+            f"R2 batch upload: завершено {success}/{total} за {elapsed:.1f}с",
+            extra={
+                "event": "r2_batch_upload_done",
+                "total": total,
+                "success": success,
+                "elapsed_s": int(elapsed),
+            },
+        )
+        return results
 
     def _guess_content_type(self, file_path: Path) -> str:
         ext = file_path.suffix.lower()

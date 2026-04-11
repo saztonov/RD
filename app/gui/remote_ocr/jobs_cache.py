@@ -27,6 +27,7 @@ class JobsCache:
         self._optimistic: dict[str, tuple[JobInfo, float]] = {}
         self._downloaded: set[str] = set()
         self._downloading: set[str] = set()
+        self._orphan: set[str] = set()  # задачи, исчезнувшие с сервера (404)
         self._last_server_time: Optional[str] = None
 
     # ── Read operations ──────────────────────────────────────────────
@@ -191,3 +192,24 @@ class JobsCache:
                 if j.status in ("queued", "processing", "paused")
                 and getattr(j, "node_id", None) == node_id
             ]
+
+    # ── Orphan tracking (server 404) ─────────────────────────────────
+
+    def is_orphan(self, job_id: str) -> bool:
+        return job_id in self._orphan
+
+    def mark_orphan(self, job_id: str) -> None:
+        """Пометить задачу как удалённую с сервера (404).
+
+        Удаляет из основного кеша и трекинга скачивания —
+        auto-download больше не будет её брать.
+        """
+        with self._lock:
+            self._orphan.add(job_id)
+            self._jobs.pop(job_id, None)
+        self._downloaded.discard(job_id)
+        self._downloading.discard(job_id)
+        logger.info(f"Задача {job_id[:8]}... помечена как orphan (404)")
+
+    def clear_orphans(self) -> None:
+        self._orphan.clear()

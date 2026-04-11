@@ -147,38 +147,52 @@ def _detect_and_cleanup_zombies() -> int:
         except (ValueError, TypeError, AttributeError):
             continue
 
+        # Вычисляем threshold заранее — используется и в fast-path, и в логе
+        threshold = _get_zombie_threshold(job)
+        status_message = getattr(job, "status_message", "") or ""
+        upload_stuck = (
+            "Загрузка в облако" in status_message
+            and age_seconds > 900  # 15 минут без прогресса на стадии upload
+        )
+        decision = "unknown"
+
         # Проверка наличия в Celery (если доступно)
         if active_task_ids is not None:
-            if job.celery_task_id in active_task_ids:
+            if job.celery_task_id in active_task_ids and not upload_stuck:
                 _clear_suspect(job.id)
                 continue  # Задача ещё активна в Celery — не зомби
             # Fast-path: задачи нет в Celery active/reserved →
             # достаточно короткого threshold (10 мин)
-            if age_seconds < _FAST_PATH_THRESHOLD:
+            if not upload_stuck and age_seconds < _FAST_PATH_THRESHOLD:
                 continue
+            decision = "upload_stuck" if upload_stuck else "celery_missing"
         else:
             # Celery inspect недоступен — используем длинный threshold
-            threshold = _get_zombie_threshold(job)
-            if age_seconds < threshold:
+            if not upload_stuck and age_seconds < threshold:
                 continue
             # Требуем double-confirm
-            if not _is_confirmed_suspect(job.id):
+            if not upload_stuck and not _is_confirmed_suspect(job.id):
                 logger.info(
                     f"Zombie detector: {job.id[:8]} — suspect (первое обнаружение, "
                     f"ждём подтверждения в следующем цикле)",
                     extra={"event": "zombie_suspect", "job_id": job.id},
                 )
                 continue
+            decision = "upload_stuck" if upload_stuck else "timeout_exceeded"
 
         # Это зомби — очищаем
         logger.warning(
             f"Zombie detector: задача {job.id[:8]} — зомби "
             f"(updated {int(age_seconds)}s ago, threshold={int(threshold)}s, "
-            f"celery_task={job.celery_task_id})",
+            f"celery_task={job.celery_task_id}, decision={decision})",
             extra={
                 "event": "zombie_detected",
                 "job_id": job.id,
                 "age_seconds": int(age_seconds),
+                "threshold_seconds": int(threshold),
+                "stage": "upload" if upload_stuck else "processing",
+                "decision": decision,
+                "last_status_message": status_message,
             },
         )
 

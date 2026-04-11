@@ -62,14 +62,17 @@ chandra_max_concurrent: 2
 # Пауза между retry при верификации блоков, секунды
 chandra_retry_delay: 2
 # HTTP таймаут для Chandra запросов, секунды (LM Studio через ngrok)
-# Снижен с 90 до 60: LM Studio отвечает за <60s, 90s × 3 retry = 270s каскадного зависания
-chandra_http_timeout: 60
-# Сколько раз ChandraBackend ретраит сетевые ошибки перед возвратом ошибки (1 = одна повторная попытка)
-chandra_request_retries: 1
-# Пауза перед единственным retry, секунды (deadline-aware)
+# Увеличен до 120: большие strip'ы (5 блоков × тяжёлые картинки) не помещаются в 60с при флапсе ngrok
+chandra_http_timeout: 120
+# Сколько раз ChandraBackend ретраит сетевые ошибки перед возвратом ошибки
+# Увеличено до 2: одиночный флапс ngrok не должен уводить весь strip на Datalab
+chandra_request_retries: 2
+# Пауза перед retry, секунды (deadline-aware). Первая 5с, вторая 15с
 chandra_request_retry_delay: 5
 # Включить ранний fallback PASS2 при timeout/connection error от Chandra (chandra → Datalab/OpenRouter)
-chandra_failover_to_fallback: true
+# По умолчанию ВЫКЛ: пользователь выбирает LM Studio явно, тихая подмена на Datalab — неожиданное поведение.
+# Включить через per-job настройку job.settings.allow_text_fallback=true или глобально в этом файле.
+chandra_failover_to_fallback: false
 
 # ===== ВЕРИФИКАЦИЯ БЛОКОВ =====
 # Максимум блоков для retry верификации (0 = без лимита)

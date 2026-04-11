@@ -64,15 +64,21 @@ class ChandraBackend(BackendTimingMixin):
                     model_key_lower = CHANDRA_MODEL_KEY.lower()
                     for m in resp.json().get("data", []):
                         mid = m.get("id", "").lower()
-                        if model_key_lower in mid or mid in model_key_lower:
+                        if mid == model_key_lower:
                             self._model_id = m["id"]
-                            logger.info(f"Chandra модель найдена: {self._model_id}")
+                            logger.info(
+                                f"Chandra модель найдена: requested={CHANDRA_MODEL_KEY}, "
+                                f"used={self._model_id}"
+                            )
                             return self._model_id
             except Exception as e:
                 logger.warning(f"Ошибка определения модели Chandra: {e}")
 
-            self._model_id = "chandra-ocr"
-            logger.info(f"Chandra модель не найдена, используется fallback: {self._model_id}")
+            self._model_id = CHANDRA_MODEL_KEY
+            logger.info(
+                f"Chandra модель не найдена в /v1/models, используется fallback: "
+                f"{self._model_id}"
+            )
             return self._model_id
 
     def preload(self) -> None:
@@ -112,7 +118,7 @@ class ChandraBackend(BackendTimingMixin):
             model_key_lower = CHANDRA_MODEL_KEY.lower()
             for m in resp.json().get("data", []):
                 mid = m.get("id", "").lower()
-                if model_key_lower in mid or mid in model_key_lower:
+                if mid == model_key_lower:
                     discovered_id = m["id"]
                     logger.info(f"Preload: найдена модель через discovery: {discovered_id}")
                     retry_config = {**load_config}
@@ -173,7 +179,7 @@ class ChandraBackend(BackendTimingMixin):
 
             model_key_lower = CHANDRA_MODEL_KEY.lower()
             for m in models:
-                if model_key_lower in m.get("key", "").lower():
+                if m.get("key", "").lower() == model_key_lower:
                     loaded = m.get("loaded_instances", [])
                     need_reload, reason = needs_model_reload(loaded, required_ctx)
 
@@ -227,7 +233,7 @@ class ChandraBackend(BackendTimingMixin):
 
             model_key_lower = CHANDRA_MODEL_KEY.lower()
             for m in resp.json().get("models", []):
-                if model_key_lower in m.get("key", "").lower():
+                if m.get("key", "").lower() == model_key_lower:
                     for inst in m.get("loaded_instances", []):
                         self.session.post(
                             f"{self.base_url}/api/v1/models/unload",
@@ -312,6 +318,27 @@ class ChandraBackend(BackendTimingMixin):
                 non_retriable = check_non_retriable_error(response.status_code, response.text)
                 if non_retriable:
                     return non_retriable
+
+                # "Model unloaded" (HTTP 400) — lifecycle race condition,
+                # модель была выгружена другим воркером во время нашего запроса.
+                # Принудительно перезагружаем модель и ретраим.
+                if (
+                    response.status_code == 400
+                    and "model unloaded" in (response.text or "").lower()
+                ):
+                    last_error = "Model unloaded (lifecycle race)"
+                    logger.warning(
+                        f"Chandra: model unloaded mid-request (attempt {attempt}), "
+                        f"сбрасываем _model_id и ретраим"
+                    )
+                    self._model_id = None  # принудительная перезагрузка при следующем _discover_model
+                    if attempt < self._MAX_APP_RETRIES:
+                        try:
+                            self._discover_model()  # перезагрузить модель
+                        except Exception as reload_exc:
+                            logger.warning(f"Chandra reload после unload не удался: {reload_exc}")
+                        continue
+                    return make_error(f"Chandra API: model unloaded после {self._MAX_APP_RETRIES} попыток")
 
                 if response.status_code in TRANSIENT_CODES:
                     last_error = f"HTTP {response.status_code}"

@@ -12,6 +12,7 @@
 from app.ocr_client.client import RemoteOCRClient, RemoteOcrClient
 from app.ocr_client.exceptions import (
     AuthenticationError,
+    JobNotFoundError,
     PayloadTooLargeError,
     RemoteOCRError,
     ServerError,
@@ -25,6 +26,7 @@ __all__ = [
     "JobInfo",
     "RemoteOCRError",
     "AuthenticationError",
+    "JobNotFoundError",
     "PayloadTooLargeError",
     "ServerError",
     "get_or_create_client_id",

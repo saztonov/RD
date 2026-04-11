@@ -42,6 +42,8 @@ class JobsControllerResultsMixin:
         self, client: RemoteOCRClient, job_id: str, extract_dir: str
     ) -> None:
         """Фоновая подготовка и запуск скачивания."""
+        from app.ocr_client.exceptions import JobNotFoundError
+
         try:
             job_details = client.get_job_details(job_id)
             r2_prefix = job_details.get("r2_prefix")
@@ -52,6 +54,11 @@ class JobsControllerResultsMixin:
                 return
 
             self._download_result_bg(job_id, r2_prefix, extract_dir)
+        except JobNotFoundError:
+            logger.warning(
+                f"Задача {job_id} удалена с сервера (404), помечаем orphan"
+            )
+            self._cache.mark_orphan(job_id)
         except Exception as e:
             logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")
             self._cache.unmark_downloading(job_id)

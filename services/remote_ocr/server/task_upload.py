@@ -158,20 +158,59 @@ def upload_results_to_r2(job: Job, work_dir: Path, r2_prefix: str = None) -> str
     # Batch upload всех файлов
     if files_to_upload:
         uploads = [(local, r2_key, ct) for local, r2_key, ct, *_ in files_to_upload]
-        logger.info(f"Batch uploading {len(uploads)} files for job {job.id}")
+        total_files = len(uploads)
+        # Watchdog: 15 мин базовое + 2 сек на файл → для 1315 файлов ~58 мин
+        batch_timeout = 15 * 60 + 2 * total_files
+        logger.info(
+            f"Batch uploading {total_files} files for job {job.id} "
+            f"(watchdog={batch_timeout}s)"
+        )
 
-        results = r2.upload_files_batch(uploads)
+        import concurrent.futures
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(r2.upload_files_batch, uploads)
+                results = future.result(timeout=batch_timeout)
+        except concurrent.futures.TimeoutError:
+            logger.error(
+                f"Batch upload watchdog timeout для job {job.id}: "
+                f"{total_files} файлов не загружены за {batch_timeout}s",
+                extra={
+                    "event": "r2_batch_upload_timeout",
+                    "job_id": job.id,
+                    "total": total_files,
+                    "timeout_s": batch_timeout,
+                },
+            )
+            raise RuntimeError(
+                f"R2 batch upload timeout: {total_files} файлов за {batch_timeout}с"
+            )
 
         # Регистрируем успешно загруженные файлы в БД
         success_count = 0
+        failed_keys: list[str] = []
         for i, (local_path, r2_key, ct, file_type, filename, size, metadata) in enumerate(files_to_upload):
             if results[i]:
                 add_job_file(job.id, file_type, r2_key, filename, size, metadata)
                 success_count += 1
             else:
+                failed_keys.append(r2_key)
                 logger.error(f"Не удалось загрузить файл в R2: {r2_key}")
 
-        logger.info(f"Batch upload завершён: {success_count}/{len(files_to_upload)} файлов загружено")
+        logger.info(
+            f"Batch upload завершён: {success_count}/{total_files} файлов загружено"
+        )
+
+        # Если не загружены все файлы — raise, чтобы задача помечалась error,
+        # а не висела в processing
+        if success_count < total_files:
+            failed_count = total_files - success_count
+            sample = ", ".join(failed_keys[:5])
+            raise RuntimeError(
+                f"R2 batch upload частичный сбой: {failed_count}/{total_files} файлов "
+                f"не загружены (первые: {sample})"
+            )
 
     return r2_prefix
 

@@ -179,7 +179,15 @@ def _create_text_fallback(engine: str, create_ocr_engine) -> Optional[OCRBackend
 
     Порядок: Datalab → OpenRouter → None.
     Не создаёт fallback того же типа, что и primary strip backend.
+
+    Если глобально выключен chandra_failover_to_fallback для Chandra — не создаём
+    Datalab-бэкенд впустую: pass2_ocr_async всё равно не активирует failover.
     """
+    if engine == "chandra" and not getattr(settings, "chandra_failover_to_fallback", False):
+        logger.info(
+            "Text fallback: отключён (chandra_failover_to_fallback=false, strict mode)"
+        )
+        return None
     if engine == "chandra":
         if settings.datalab_api_key:
             datalab_limiter = get_datalab_limiter()

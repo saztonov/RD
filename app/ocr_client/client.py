@@ -11,6 +11,7 @@ import httpx
 
 from app.ocr_client.exceptions import (
     AuthenticationError,
+    JobNotFoundError,
     PayloadTooLargeError,
     RemoteOCRError,
     ServerError,

@@ -5,6 +5,9 @@ import logging
 import time
 from typing import List, Optional
 
+import httpx
+
+from app.ocr_client.exceptions import JobNotFoundError
 from rd_core.dto.jobs import JobInfoDTO
 
 # Re-export as JobInfo for backward compatibility
@@ -59,11 +62,21 @@ class JobReadMixin:
         return jobs, data.get("server_time", "")
 
     def get_job(self, job_id: str) -> JobInfo:
-        """Получить информацию о задаче."""
-        resp = self._request_with_retry("get", f"/jobs/{job_id}")
+        """Получить информацию о задаче. Raises JobNotFoundError при 404."""
+        try:
+            resp = self._request_with_retry("get", f"/jobs/{job_id}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise JobNotFoundError(job_id) from e
+            raise
         return _parse_job(resp.json())
 
     def get_job_details(self, job_id: str) -> dict:
-        """Получить детальную информацию о задаче."""
-        resp = self._request_with_retry("get", f"/jobs/{job_id}/details")
+        """Получить детальную информацию о задаче. Raises JobNotFoundError при 404."""
+        try:
+            resp = self._request_with_retry("get", f"/jobs/{job_id}/details")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise JobNotFoundError(job_id) from e
+            raise
         return resp.json()
