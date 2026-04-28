@@ -6,12 +6,35 @@ import uuid
 from datetime import datetime
 from typing import Any, List, Optional
 
+import httpx
+
 from .logging_config import get_logger
 from .queue_checker import _get_redis_client
 from .storage_client import get_client
 from .storage_models import Job
 
 logger = get_logger(__name__)
+
+
+def _execute_with_retry(query, *, op: str = "supabase_query"):
+    """Выполнить Supabase-запрос с одиночным retry на HTTP/2 disconnect.
+
+    Под нагрузкой `httpx` иногда обрывает HTTP/2 стрим к Supabase
+    (`RemoteProtocolError: Server disconnected` / `ReadError`). В большинстве
+    случаев повторный запрос проходит успешно — без retry эта transient-ошибка
+    долетает до middleware как 500, клиент получает её на горячем пути
+    `GET /jobs` и срывается на full refresh + paniс.
+    """
+    for attempt in range(2):
+        try:
+            return query.execute()
+        except (httpx.RemoteProtocolError, httpx.ReadError) as e:
+            if attempt == 0:
+                logger.warning(
+                    f"Supabase HTTP/2 disconnect ({op}), retrying: {e}"
+                )
+                continue
+            raise
 
 # Redis кеш для list_jobs() - TTL 5 секунд
 JOBS_CACHE_TTL = 5
@@ -182,7 +205,10 @@ def list_jobs(document_id: Optional[str] = None) -> List[Job]:
     if document_id:
         query = query.eq("document_id", document_id)
 
-    result = query.order("priority", desc=False).order("created_at", desc=True).execute()
+    result = _execute_with_retry(
+        query.order("priority", desc=False).order("created_at", desc=True),
+        op="list_jobs",
+    )
 
     # Сохраняем в кеш
     try:
@@ -197,13 +223,13 @@ def list_jobs(document_id: Optional[str] = None) -> List[Job]:
 def list_jobs_changed_since(since: str) -> List[Job]:
     """Получить задачи, изменённые после указанного времени (ISO timestamp)"""
     client = get_client()
-    result = (
+    query = (
         client.table("jobs")
         .select("*")
         .gt("updated_at", since)
         .order("updated_at", desc=True)
-        .execute()
     )
+    result = _execute_with_retry(query, op="list_jobs_changed_since")
     return [_row_to_job(row) for row in result.data]
 
 

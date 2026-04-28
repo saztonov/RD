@@ -167,7 +167,15 @@ def bootstrap_job(job, start_mem: float) -> JobContext:
 
     update_job_status(job_id, "processing", progress=0.1, status_message=f"⚙️ Подготовка: {total_blocks} блоков")
 
-    # Создание бэкендов
+    # Acquire LM Studio ДО создания бэкендов: отменяет pending unload в Redis,
+    # чтобы фоновый check_and_unload_models не выгрузил модель во время preload.
+    job_engine = job.engine or "datalab"
+    lmstudio_acquired = False
+    if job_engine == "chandra" and settings.chandra_base_url:
+        acquire_chandra(job_id)
+        lmstudio_acquired = True
+
+    # Создание бэкендов (preload теперь безопасен, модель не выгрузится)
     from .backend_factory import create_job_backends
 
     backends = create_job_backends(job)
@@ -195,11 +203,16 @@ def bootstrap_job(job, start_mem: float) -> JobContext:
         },
     )
 
-    # Acquire LM Studio
-    lmstudio_acquired = False
-    if backends.needs_lmstudio:
-        if engine == "chandra":
-            acquire_chandra(job_id)
+    # Sanity-check: если фактический engine не chandra, но мы уже acquire'нулись —
+    # отпускаем lock (например, datalab fallback при отсутствии chandra_base_url).
+    if lmstudio_acquired and engine != "chandra":
+        release_chandra(job_id)
+        lmstudio_acquired = False
+
+    # Если engine оказался chandra, но мы не acquire'нулись заранее (job.engine
+    # отличался от итогового), делаем это теперь.
+    if not lmstudio_acquired and backends.needs_lmstudio and engine == "chandra":
+        acquire_chandra(job_id)
         lmstudio_acquired = True
 
     return JobContext(
@@ -407,10 +420,12 @@ def cleanup(job_id: str, ctx: Optional[JobContext], engine: str, lmstudio_acquir
     """Освобождение ресурсов: execution lock, debounced updater, temp dir, LM Studio, backends, GC."""
     start_mem = ctx.start_mem if ctx else 0.0
 
-    # Явная выгрузка бэкендов (предотвращает накопление моделей в памяти)
+    # Явная выгрузка НЕ-LM-Studio бэкендов. LM Studio (chandra) управляется
+    # через release_chandra + schedule_pending_unload ниже — немедленный
+    # unload_model сломал бы grace period.
     if ctx and ctx.backends:
         try:
-            ctx.backends.unload_all()
+            ctx.backends.unload_non_lmstudio()
         except Exception as e:
             logger.warning(f"Ошибка выгрузки бэкендов: {e}")
 

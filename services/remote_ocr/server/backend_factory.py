@@ -44,6 +44,31 @@ class JobBackends:
                     except Exception as e:
                         logger.warning(f"Ошибка выгрузки модели {type(backend).__name__}: {e}")
 
+    def unload_non_lmstudio(self) -> None:
+        """Выгрузить модели НЕ-LM-Studio бэкендов.
+
+        Chandra и другие LM Studio бэкенды управляются через lifecycle
+        (release_lmstudio + schedule_pending_unload). Немедленная выгрузка
+        здесь сломала бы grace period и привела к гонке "model unloaded
+        mid-request" с параллельными задачами.
+        """
+        from rd_core.ocr.chandra import ChandraBackend
+
+        seen: set[int] = set()
+        for backend in (self.strip, self.image, self.stamp, self.text_fallback):
+            if backend is None or not hasattr(backend, "unload_model"):
+                continue
+            if isinstance(backend, ChandraBackend):
+                continue
+            backend_id = id(backend)
+            if backend_id in seen:
+                continue
+            seen.add(backend_id)
+            try:
+                backend.unload_model()
+            except Exception as e:
+                logger.warning(f"Ошибка выгрузки модели {type(backend).__name__}: {e}")
+
 
 def create_job_backends(job) -> JobBackends:
     """

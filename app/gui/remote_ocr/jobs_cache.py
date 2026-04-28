@@ -213,3 +213,14 @@ class JobsCache:
 
     def clear_orphans(self) -> None:
         self._orphan.clear()
+
+    def get_orphans(self) -> set[str]:
+        """Вернуть копию orphan-set для сериализации в snapshot."""
+        with self._lock:
+            return set(self._orphan)
+
+    def load_orphans(self, orphan_ids) -> None:
+        """Восстановить orphan-set из snapshot. Должно вызываться ДО replace_all,
+        чтобы фильтрация работала корректно."""
+        with self._lock:
+            self._orphan.update(orphan_ids)

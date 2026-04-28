@@ -58,6 +58,10 @@ class JobsControllerResultsMixin:
             logger.warning(
                 f"Задача {job_id} удалена с сервера (404), помечаем orphan"
             )
+            # Сначала снимаем downloading-флаг, потом помечаем orphan.
+            # mark_orphan сам делает discard, но симметричный вызов спасает
+            # от ошибок при будущих изменениях реализации mark_orphan.
+            self._cache.unmark_downloading(job_id)
             self._cache.mark_orphan(job_id)
         except Exception as e:
             logger.error(f"Ошибка подготовки скачивания {job_id}: {e}")

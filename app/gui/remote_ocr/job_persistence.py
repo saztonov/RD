@@ -24,19 +24,27 @@ _SNAPSHOT_MAX_AGE = 86400  # 24 hours
 
 
 def save_snapshot(cache: JobsCache) -> None:
-    """Сохранить текущий кеш задач в QSettings."""
+    """Сохранить текущий кеш задач в QSettings.
+
+    Orphan-задачи (удалённые с сервера, но кеш ещё не очищен) исключаются из
+    основного списка `jobs`, но их id сохраняются отдельно в `orphans`. Без
+    этого после рестарта приложения «мёртвые» задачи возвращались бы из
+    snapshot'а и снова инициировали auto-download → 404 → loop.
+    """
     try:
-        jobs = cache.get_all()
+        orphans = cache.get_orphans()
+        jobs = [j for j in cache.get_all() if j.id not in orphans]
         jobs_data = [asdict(j) for j in jobs]
         payload = json.dumps({
             "jobs": jobs_data,
+            "orphans": list(orphans),
             "server_time": cache.last_server_time or "",
             "saved_at": time.time(),
         }, ensure_ascii=False)
 
         settings = QSettings("PDFAnnotationTool", "RemoteOCR")
         settings.setValue(_SNAPSHOT_KEY, payload)
-        logger.info(f"Snapshot сохранён: {len(jobs_data)} задач")
+        logger.info(f"Snapshot сохранён: {len(jobs_data)} задач, orphans={len(orphans)}")
     except Exception as e:
         logger.debug(f"Не удалось сохранить snapshot: {e}")
 
@@ -56,13 +64,25 @@ def load_snapshot(cache: JobsCache) -> None:
             logger.debug("Snapshot слишком старый, пропускаем")
             return
 
-        jobs = [JobInfoDTO.from_dict(j) for j in data.get("jobs", [])]
+        # Восстанавливаем orphan-set ДО replace_all, чтобы UI/auto-download
+        # не пытались обращаться к удалённым задачам.
+        orphan_ids = data.get("orphans", []) or []
+        if orphan_ids:
+            cache.load_orphans(orphan_ids)
+
+        jobs = [
+            JobInfoDTO.from_dict(j)
+            for j in data.get("jobs", [])
+            if j.get("id") not in orphan_ids
+        ]
 
         if jobs:
             cache.replace_all(jobs, data.get("server_time") or None)
             logger.info(
-                f"Snapshot загружен: {len(jobs)} задач, "
+                f"Snapshot загружен: {len(jobs)} задач, orphans={len(orphan_ids)}, "
                 f"server_time={cache.last_server_time}"
             )
+        elif orphan_ids:
+            logger.info(f"Snapshot загружен: 0 задач, orphans={len(orphan_ids)}")
     except Exception as e:
         logger.debug(f"Не удалось загрузить snapshot: {e}")

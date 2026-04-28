@@ -80,6 +80,16 @@ def run_two_pass_ocr(
         total_strips = len(manifest.strips) if manifest else 0
         total_images = len(manifest.image_blocks) if manifest else 0
 
+        # Если PASS1 был прерван из-за pause/cancel — выходим без ошибки.
+        # Иначе пустой manifest от прерывания будет ошибочно классифицирован
+        # как "нет блоков для обработки" и задача упадёт в error.
+        if check_paused(job.id):
+            logger.info(
+                f"PASS1 завершён в paused-состоянии (strips={total_strips}, "
+                f"images={total_images}), выходим без ошибки"
+            )
+            return
+
         if total_strips == 0 and total_images == 0:
             raise RuntimeError(
                 "PASS1: пустой manifest — нет блоков для обработки"

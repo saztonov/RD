@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 
 from .logging_config import get_logger
@@ -63,13 +63,28 @@ def _check_backend_available(backend, timeout: int = 10) -> bool:
     return True
 
 
-def _wait_for_backend(backend, max_wait: int = 300, check_interval: int = 15) -> bool:
+# Резерв времени до Celery soft_time_limit, в течение которого мы должны
+# успеть upload результатов и cleanup. Никакой sleep не должен заходить за
+# (deadline - _DEADLINE_RESERVE_SEC).
+_DEADLINE_RESERVE_SEC = 5
+
+
+def _wait_for_backend(
+    backend,
+    max_wait: int = 300,
+    check_interval: int = 15,
+    deadline: Optional[float] = None,
+) -> bool:
     """Ожидать восстановления бэкенда (ngrok tunnel).
 
     Args:
         backend: OCR backend
         max_wait: максимальное ожидание в секундах
         check_interval: интервал проверки в секундах
+        deadline: абсолютное время (time.time()) до которого нужно завершить
+            ожидание. Если задан — ни один sleep не выйдет за deadline,
+            функция вернёт False вместо того чтобы напороться на
+            SoftTimeLimitExceeded в `time.sleep()`.
 
     Returns:
         True если бэкенд доступен
@@ -81,7 +96,19 @@ def _wait_for_backend(backend, max_wait: int = 300, check_interval: int = 15) ->
     logger.warning(f"{engine} бэкенд недоступен, ожидание до {max_wait}с...")
     start = time.monotonic()
     while time.monotonic() - start < max_wait:
-        time.sleep(check_interval)
+        sleep_for = min(check_interval, max_wait - (time.monotonic() - start))
+        if deadline is not None:
+            time_to_deadline = deadline - time.time()
+            if time_to_deadline <= _DEADLINE_RESERVE_SEC:
+                logger.warning(
+                    f"{engine}: до deadline задачи {time_to_deadline:.0f}с, "
+                    f"прерываем ожидание бэкенда"
+                )
+                return False
+            sleep_for = min(sleep_for, time_to_deadline - _DEADLINE_RESERVE_SEC)
+        if sleep_for <= 0:
+            break
+        time.sleep(sleep_for)
         if _check_backend_available(backend):
             elapsed = time.monotonic() - start
             logger.info(f"{engine} бэкенд восстановлен через {elapsed:.0f}с")
@@ -89,6 +116,22 @@ def _wait_for_backend(backend, max_wait: int = 300, check_interval: int = 15) ->
 
     logger.warning(f"{engine} бэкенд не восстановлен за {max_wait}с")
     return False
+
+
+def _safe_sleep(seconds: float, deadline: Optional[float]) -> bool:
+    """Sleep с проверкой deadline. Возвращает True если sleep выполнен полностью,
+    False если deadline истёк (вызывающий код должен прервать цикл)."""
+    if seconds <= 0:
+        return True
+    if deadline is not None:
+        time_to_deadline = deadline - time.time()
+        if time_to_deadline <= _DEADLINE_RESERVE_SEC:
+            return False
+        seconds = min(seconds, time_to_deadline - _DEADLINE_RESERVE_SEC)
+        if seconds <= 0:
+            return False
+    time.sleep(seconds)
+    return True
 
 
 def verify_and_retry_missing_blocks(
@@ -220,6 +263,7 @@ def verify_and_retry_missing_blocks(
         )
 
     # Обновляем deadline для backend (Chandra) — иначе _is_budget_exhausted сразу True
+    verification_deadline: Optional[float] = None
     if deadline is not None:
         verification_deadline = deadline - _VERIFICATION_RESERVE
         if hasattr(ocr_backend, "set_deadline"):
@@ -255,7 +299,14 @@ def verify_and_retry_missing_blocks(
 
     # Для LM Studio: ждём доступности бэкенда перед началом retry
     if is_lmstudio:
-        if not _wait_for_backend(ocr_backend, max_wait=300, check_interval=15):
+        if not _wait_for_backend(
+            ocr_backend, max_wait=300, check_interval=15, deadline=verification_deadline
+        ):
+            # Если deadline уже близко — выходим вместо холостого цикла, который
+            # всё равно упрётся в SoftTimeLimitExceeded.
+            if verification_deadline is not None and time.time() >= verification_deadline - _DEADLINE_RESERVE_SEC:
+                logger.warning("Верификация пропущена: deadline истёк во время ожидания бэкенда")
+                return False
             logger.warning("Бэкенд недоступен, начинаем верификацию с надеждой на восстановление")
 
     with StreamingPDFProcessor(str(pdf_path)) as processor:
@@ -274,7 +325,10 @@ def verify_and_retry_missing_blocks(
                     logger.warning(
                         f"{consecutive_failures} ошибок подряд, проверяем доступность бэкенда..."
                     )
-                    if _wait_for_backend(ocr_backend, max_wait=180, check_interval=15):
+                    if _wait_for_backend(
+                        ocr_backend, max_wait=180, check_interval=15,
+                        deadline=verification_deadline,
+                    ):
                         consecutive_failures = 0
                         logger.info("Бэкенд восстановлен, продолжаем верификацию")
                     else:
@@ -319,32 +373,33 @@ def verify_and_retry_missing_blocks(
             )
 
             # Пауза перед retry с exponential backoff при ошибках
-            # (только для LM Studio primary backend)
+            # (только для LM Studio primary backend). _safe_sleep сам выйдет,
+            # если до deadline осталось < _DEADLINE_RESERVE_SEC, без вызова time.sleep.
             if _is_lmstudio_backend(retry_backend) and idx > 0:
                 if consecutive_failures > 0:
                     backoff_delay = min(base_delay * (2 ** consecutive_failures), 120)
-                    # Проверяем deadline ПЕРЕД sleep — избегаем SoftTimeLimitExceeded
-                    if deadline is not None and time.time() + backoff_delay > deadline - _VERIFICATION_RESERVE:
-                        stopped_reason = f"deadline задачи (до sleep {backoff_delay}с)"
-                        logger.warning(f"Верификация прервана: {stopped_reason}")
-                        break
                     logger.info(
                         f"Backoff delay: {backoff_delay}с "
                         f"(consecutive_failures={consecutive_failures})"
                     )
-                    time.sleep(backoff_delay)
-                else:
-                    if deadline is not None and time.time() + base_delay > deadline - _VERIFICATION_RESERVE:
-                        stopped_reason = "deadline задачи (до sleep base_delay)"
+                    if not _safe_sleep(backoff_delay, verification_deadline):
+                        stopped_reason = f"deadline задачи (до backoff {backoff_delay}с)"
                         logger.warning(f"Верификация прервана: {stopped_reason}")
                         break
-                    time.sleep(base_delay)
+                else:
+                    if not _safe_sleep(base_delay, verification_deadline):
+                        stopped_reason = "deadline задачи (до base_delay sleep)"
+                        logger.warning(f"Верификация прервана: {stopped_reason}")
+                        break
 
             # Промежуточная проверка доступности при множественных ошибках
             if _is_lmstudio_backend(retry_backend) and consecutive_failures > 0 and consecutive_failures % 3 == 0:
                 if not _check_backend_available(retry_backend):
                     logger.info("Бэкенд недоступен, ожидание 60с...")
-                    time.sleep(60)
+                    if not _safe_sleep(60, verification_deadline):
+                        stopped_reason = "deadline задачи (до wait-60 sleep)"
+                        logger.warning(f"Верификация прервана: {stopped_reason}")
+                        break
 
             try:
                 # Создаём Block объект для crop

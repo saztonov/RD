@@ -56,14 +56,25 @@ TRANSIENT_CODES = {404, 429, 500, 502, 503, 504}
 
 
 def needs_model_reload(loaded_instances: list, required_context: int) -> Tuple[bool, str]:
-    """Проверяет нужна ли перезагрузка модели из-за несовпадения context_length."""
+    """Проверяет нужна ли перезагрузка модели из-за несовпадения context_length.
+
+    ВАЖНО: если LM Studio не возвращает context_length в /api/v1/models
+    (зависит от версии), считаем модель загруженной OK. Принудительный reload
+    в этом случае был бы false positive — модель уже была загружена с правильным
+    контекстом, а перезагрузка под нагрузкой вызывает гонку с параллельными
+    задачами ("model unloaded mid-request").
+    """
     if not loaded_instances:
         return True, "модель не загружена"
     for inst in loaded_instances:
         inst_id = inst.get("id", "unknown")
         ctx = inst.get("context_length")
         if ctx is None:
-            return True, f"instance {inst_id}: context_length недоступен в API"
+            logger.debug(
+                f"instance {inst_id}: context_length не экспортируется LM Studio API, "
+                f"считаем модель загруженной OK"
+            )
+            continue
         if ctx != required_context:
             return True, f"instance {inst_id}: context_length={ctx}, требуется {required_context}"
     return False, f"context_length={required_context} OK"

@@ -339,9 +339,16 @@ class StreamingPDFProcessor:
             nx1, ny1, nx2, ny2 = normalized_coords
 
             # Пересчёт coords_norm из пространства page.rect в пространство cropbox
-            # Нужен когда cropbox != rect (CAD-чертежи с нестандартным origin)
-            if (abs(rect.x0 - cropbox.x0) > 0.5 or abs(rect.y0 - cropbox.y0) > 0.5
-                    or abs(rect.width - cropbox.width) > 0.5 or abs(rect.height - cropbox.height) > 0.5):
+            # Нужен когда cropbox != rect (CAD-чертежи с нестандартным origin).
+            # ВАЖНО: при rotation∈(90,270) page.rect — это повёрнутый view cropbox-а
+            # (W/H поменяны), и ширина/высота визуально не совпадает с cropbox даже
+            # если CAD-смещения нет. Делать rebase в таком случае нельзя — он
+            # порождает невалидные нормированные координаты, и после
+            # `clip_rect * derotation_matrix` получается non-finite/empty clip.
+            if rotation == 0 and (
+                abs(rect.x0 - cropbox.x0) > 0.5 or abs(rect.y0 - cropbox.y0) > 0.5
+                or abs(rect.width - cropbox.width) > 0.5 or abs(rect.height - cropbox.height) > 0.5
+            ):
                 if rect.width > 0 and rect.height > 0 and cropbox.width > 0 and cropbox.height > 0:
                     abs_x1 = rect.x0 + nx1 * rect.width
                     abs_y1 = rect.y0 + ny1 * rect.height
@@ -447,7 +454,9 @@ class StreamingPDFProcessor:
             return output_path
 
         except Exception as e:
-            logger.error(f"PDF crop error {block.id}: {e}")
+            # Не fatal: вызывающий код в pass1_crops оставляет PNG-кроп для блока,
+            # OCR пройдёт по нему. Логируем как warning + stack trace для разбора.
+            logger.warning(f"PDF crop error {block.id}: {e}", exc_info=True)
             return None
 
 

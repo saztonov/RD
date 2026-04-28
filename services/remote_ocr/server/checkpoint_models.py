@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +52,11 @@ class OCRCheckpoint:
     total_strips: int = 0
     total_images: int = 0
 
+    # Блокировка для thread-safe save / mark_*. Не участвует в repr/equality.
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
+
     def is_strip_processed(self, strip_id: str) -> bool:
         """Проверить, обработан ли strip"""
         return strip_id in self.processed_strips
@@ -61,35 +67,37 @@ class OCRCheckpoint:
 
     def mark_strip_processed(self, strip_id: str, block_results: Dict[str, str] = None):
         """Отметить strip как обработанный"""
-        self.processed_strips.add(strip_id)
-        if block_results:
-            for block_id, text in block_results.items():
-                self.partial_results[block_id] = text
-        self.updated_at = datetime.utcnow().isoformat()
+        with self._lock:
+            self.processed_strips.add(strip_id)
+            if block_results:
+                for block_id, text in block_results.items():
+                    self.partial_results[block_id] = text
+            self.updated_at = datetime.utcnow().isoformat()
 
     def mark_image_processed(
         self, block_id: str, text: str, part_idx: int = 0, total_parts: int = 1
     ):
         """Отметить image блок как обработанный"""
-        if total_parts == 1:
-            self.partial_results[block_id] = text
-            self.processed_images.add(block_id)
-        else:
-            # Для split блоков сохраняем части
-            if block_id not in self.partial_parts:
-                self.partial_parts[block_id] = {}
-            self.partial_parts[block_id][part_idx] = text
-
-            # Проверяем, все ли части собраны
-            if len(self.partial_parts[block_id]) >= total_parts:
-                combined = [
-                    self.partial_parts[block_id].get(i, "")
-                    for i in range(total_parts)
-                ]
-                self.partial_results[block_id] = "\n\n".join(combined)
+        with self._lock:
+            if total_parts == 1:
+                self.partial_results[block_id] = text
                 self.processed_images.add(block_id)
+            else:
+                # Для split блоков сохраняем части
+                if block_id not in self.partial_parts:
+                    self.partial_parts[block_id] = {}
+                self.partial_parts[block_id][part_idx] = text
 
-        self.updated_at = datetime.utcnow().isoformat()
+                # Проверяем, все ли части собраны
+                if len(self.partial_parts[block_id]) >= total_parts:
+                    combined = [
+                        self.partial_parts[block_id].get(i, "")
+                        for i in range(total_parts)
+                    ]
+                    self.partial_results[block_id] = "\n\n".join(combined)
+                    self.processed_images.add(block_id)
+
+            self.updated_at = datetime.utcnow().isoformat()
 
     def get_pending_strips(self, all_strip_ids: List[str]) -> List[str]:
         """Получить список необработанных strips"""
@@ -119,29 +127,36 @@ class OCRCheckpoint:
         Сохранить checkpoint в файл.
 
         Использует атомарную запись (write to tmp, then rename).
+
+        Снимает snapshot изменяемых структур под `_lock`, чтобы json.dump не
+        упал с RuntimeError("dictionary changed size during iteration") при
+        параллельной мутации из mark_strip_processed / mark_image_processed.
         """
         try:
-            data = {
-                "job_id": self.job_id,
-                "phase": self.phase,
-                "processed_strips": list(self.processed_strips),
-                "processed_images": list(self.processed_images),
-                "partial_results": self.partial_results,
-                "partial_parts": {
-                    k: {str(pi): pv for pi, pv in v.items()}
-                    for k, v in self.partial_parts.items()
-                },
-                "manifest_path": self.manifest_path,
-                "created_at": self.created_at,
-                "updated_at": self.updated_at,
-                "total_strips": self.total_strips,
-                "total_images": self.total_images,
-            }
+            # Snapshot под lock-ом — values здесь это str / int / простые dict,
+            # глубокая копия не требуется. Дальше можем спокойно сериализовать.
+            with self._lock:
+                snapshot = {
+                    "job_id": self.job_id,
+                    "phase": self.phase,
+                    "processed_strips": list(self.processed_strips),
+                    "processed_images": list(self.processed_images),
+                    "partial_results": dict(self.partial_results),
+                    "partial_parts": {
+                        k: {str(pi): pv for pi, pv in dict(v).items()}
+                        for k, v in self.partial_parts.items()
+                    },
+                    "manifest_path": self.manifest_path,
+                    "created_at": self.created_at,
+                    "updated_at": self.updated_at,
+                    "total_strips": self.total_strips,
+                    "total_images": self.total_images,
+                }
 
-            # Атомарная запись
+            # Атомарная запись (уже без lock-а, чтобы не блокировать воркеры)
             tmp_path = path.with_suffix(".tmp")
             with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+                json.dump(snapshot, f, ensure_ascii=False, indent=2)
 
             # Rename (атомарно на большинстве FS)
             os.replace(tmp_path, path)
@@ -151,8 +166,8 @@ class OCRCheckpoint:
                 extra={
                     "job_id": self.job_id,
                     "phase": self.phase,
-                    "processed_strips": len(self.processed_strips),
-                    "processed_images": len(self.processed_images),
+                    "processed_strips": len(snapshot["processed_strips"]),
+                    "processed_images": len(snapshot["processed_images"]),
                 },
             )
             return True

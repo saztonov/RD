@@ -172,6 +172,7 @@ class JobsControllerRefreshMixin:
                 and getattr(job, "node_id", None) == current_node_id
                 and not self._cache.is_downloaded(job.id)
                 and not self._cache.is_downloading(job.id)
+                and not self._cache.is_orphan(job.id)
             ):
                 latest_done = job
                 break

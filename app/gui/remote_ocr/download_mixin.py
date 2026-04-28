@@ -71,6 +71,7 @@ class DownloadOrchestrator(QObject):
             logger.warning(
                 f"Задача {job_id} удалена с сервера (404), помечаем orphan"
             )
+            self._cache.unmark_downloading(job_id)
             self._cache.mark_orphan(job_id)
             self.download_error.emit(job_id, "⚠ Удалена на сервере")
         except Exception as e:
@@ -93,6 +94,7 @@ class DownloadOrchestrator(QObject):
             logger.warning(
                 f"Задача {job_id} удалена с сервера (404), помечаем orphan"
             )
+            self._cache.unmark_downloading(job_id)
             self._cache.mark_orphan(job_id)
             self.download_error.emit(job_id, "⚠ Удалена на сервере")
         except Exception as e:

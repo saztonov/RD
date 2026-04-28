@@ -90,9 +90,17 @@ def fill_image_prompt_variables(
     return result
 
 
+_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+
 def inject_pdfplumber_to_ocr_text(ocr_result: str, pdfplumber_text: str) -> str:
     """
     Вставить pdfplumber текст в поле ocr_text результата OCR.
+
+    Принимает «голый» JSON, fenced JSON (```json ... ``` или ``` ... ```),
+    и не-JSON ответы — в последнем случае возвращает оригинал. Не-JSON и
+    мусорные ответы НЕ являются ошибкой (модель просто вернула HTML/текст),
+    логируем как debug, не warning.
     """
     if not pdfplumber_text or not pdfplumber_text.strip():
         return ocr_result
@@ -100,23 +108,31 @@ def inject_pdfplumber_to_ocr_text(ocr_result: str, pdfplumber_text: str) -> str:
     if not ocr_result:
         return ocr_result
 
+    raw = ocr_result.strip()
+    fenced = raw.startswith("```")
+    if fenced:
+        clean = _FENCE_RE.sub("", raw).strip()
+    else:
+        clean = raw
+
     try:
-        json_match = re.search(r"\{[\s\S]*\}", ocr_result)
-        if json_match:
-            json_str = json_match.group(0)
-            data = json.loads(json_str)
+        data = json.loads(clean)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.debug(
+            f"pdfplumber injection пропущена: ocr_result не является JSON "
+            f"({len(clean)} симв., {e})"
+        )
+        return ocr_result
 
-            if "ocr_text" in data:
-                data["ocr_text"] = pdfplumber_text.strip()
-                new_json = json.dumps(data, ensure_ascii=False, indent=2)
+    if not isinstance(data, dict) or "ocr_text" not in data:
+        return ocr_result
 
-                if ocr_result.strip().startswith("```"):
-                    return f"```json\n{new_json}\n```"
-                return new_json
-    except (json.JSONDecodeError, AttributeError) as e:
-        logger.warning(f"Не удалось вставить pdfplumber текст в JSON: {e}")
+    data["ocr_text"] = pdfplumber_text.strip()
+    new_json = json.dumps(data, ensure_ascii=False, indent=2)
 
-    return ocr_result
+    if fenced:
+        return f"```json\n{new_json}\n```"
+    return new_json
 
 
 def build_strip_prompt(blocks: list, block_ids: Optional[List[str]] = None) -> dict:

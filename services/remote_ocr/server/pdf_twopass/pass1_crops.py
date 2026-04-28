@@ -171,7 +171,12 @@ def pass1_prepare_crops(
 
             if should_stop and should_stop():
                 logger.info("PASS1 прерван: задача отменена/приостановлена")
-                return TwoPassManifest(strips=[], image_blocks=[])
+                # Возвращаем валидный пустой manifest с обязательными полями
+                # (pdf_path/crops_dir), иначе TwoPassManifest.__init__() кинет
+                # TypeError и задача упадёт в error вместо paused.
+                return TwoPassManifest(
+                    pdf_path=pdf_path, crops_dir=crops_dir, strips=[], image_blocks=[]
+                )
 
             gc.collect()
 
