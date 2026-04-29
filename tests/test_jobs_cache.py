@@ -85,6 +85,89 @@ class TestJobsCacheBasic:
         assert sorted_jobs[0].id == "j1"  # priority=0 first
 
 
+class TestJobsCacheCleared:
+    """cleared-set: задачи, которые пользователь явно очистил.
+
+    Должны фильтроваться во всех write-путях (delta/full/optimistic) и
+    переживать рестарт через persistence — иначе очистка списка не
+    устойчива при ошибках серверного DELETE или гонке polling.
+    """
+
+    def test_clear_marks_cleared(self):
+        cache = JobsCache()
+        cache.replace_all([_make_job("j1"), _make_job("j2")])
+        ids = cache.clear()
+        assert set(ids) == {"j1", "j2"}
+        assert cache.is_cleared("j1")
+        assert cache.is_cleared("j2")
+        assert cache.get_cleared_ids() == {"j1", "j2"}
+
+    def test_mark_cleared_removes_from_cache(self):
+        cache = JobsCache()
+        cache.replace_all([_make_job("j1"), _make_job("j2"), _make_job("j3")])
+        cache.mark_cleared(["j1", "j3"])
+        ids = {j.id for j in cache.get_all()}
+        assert ids == {"j2"}
+        assert cache.is_cleared("j1") and cache.is_cleared("j3")
+
+    def test_update_delta_filters_cleared(self):
+        cache = JobsCache()
+        cache.mark_cleared(["ghost"])
+        cache.update_delta([_make_job("ghost", status="done"), _make_job("alive")])
+        ids = {j.id for j in cache.get_all()}
+        assert ids == {"alive"}
+        assert cache.get("ghost") is None
+
+    def test_replace_all_filters_cleared(self):
+        cache = JobsCache()
+        cache.mark_cleared(["ghost"])
+        cache.replace_all([_make_job("ghost"), _make_job("alive")])
+        ids = {j.id for j in cache.get_all()}
+        assert ids == {"alive"}
+
+    def test_merge_optimistic_filters_cleared(self):
+        cache = JobsCache()
+        cache.mark_cleared(["ghost"])
+        cache.add_optimistic("ghost", _make_job("ghost", status="uploading"))
+        cache.add_optimistic("temp", _make_job("temp", status="uploading"))
+
+        merged = cache.merge_optimistic([_make_job("ghost"), _make_job("alive")])
+        ids = {j.id for j in merged}
+        assert "ghost" not in ids
+        assert "alive" in ids and "temp" in ids
+
+    def test_prune_cleared_drops_confirmed(self):
+        cache = JobsCache()
+        cache.mark_cleared(["a", "b", "c"])
+        # Сервер вернул только b — значит a и c уже удалены полностью.
+        cache.prune_cleared({"b"})
+        assert cache.get_cleared_ids() == {"b"}
+
+    def test_prune_cleared_empty_server(self):
+        cache = JobsCache()
+        cache.mark_cleared(["a", "b"])
+        cache.prune_cleared(set())
+        assert cache.get_cleared_ids() == set()
+
+    def test_load_cleared_ids(self):
+        cache = JobsCache()
+        cache.load_cleared_ids(["x", "y"])
+        assert cache.is_cleared("x") and cache.is_cleared("y")
+
+    def test_clear_purges_optimistic_and_downloads(self):
+        cache = JobsCache()
+        cache.replace_all([_make_job("j1")])
+        cache.add_optimistic("j1", _make_job("j1", status="uploading"))
+        cache.mark_downloaded("j1")
+        cache.mark_downloading("j1")
+        cache.clear()
+        assert not cache.is_downloaded("j1")
+        assert not cache.is_downloading("j1")
+        # optimistic тоже должен быть вычищен
+        merged = cache.merge_optimistic([])
+        assert merged == []
+
+
 class TestJobsCacheOptimistic:
     def test_add_and_merge(self):
         cache = JobsCache()

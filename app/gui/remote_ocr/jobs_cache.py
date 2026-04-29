@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Optional
+from typing import Iterable, Optional
 
 from rd_core.dto.jobs import JobInfoDTO
 
@@ -28,6 +28,7 @@ class JobsCache:
         self._downloaded: set[str] = set()
         self._downloading: set[str] = set()
         self._orphan: set[str] = set()  # задачи, исчезнувшие с сервера (404)
+        self._cleared: set[str] = set()  # id, явно очищенные пользователем
         self._last_server_time: Optional[str] = None
 
     # ── Read operations ──────────────────────────────────────────────
@@ -64,18 +65,32 @@ class JobsCache:
     # ── Write operations ─────────────────────────────────────────────
 
     def update_delta(self, jobs: list[JobInfo], server_time: Optional[str] = None) -> list[JobInfo]:
-        """Обновить кеш дельтой и вернуть полный список."""
+        """Обновить кеш дельтой и вернуть полный список.
+
+        Задачи из `_cleared` или `_orphan` игнорируются — пользователь явно
+        удалил их или сервер ответил 404, возвращать их в UI нельзя.
+        """
         with self._lock:
             for job in jobs:
+                if job.id in self._cleared or job.id in self._orphan:
+                    continue
                 self._jobs[job.id] = job
             if server_time:
                 self._last_server_time = server_time
             return list(self._jobs.values())
 
     def replace_all(self, jobs: list[JobInfo], server_time: Optional[str] = None) -> None:
-        """Полная замена кеша (первая загрузка или manual refresh)."""
+        """Полная замена кеша (первая загрузка или manual refresh).
+
+        cleared/orphan id отфильтровываются — иначе после очистки
+        список бы воскресал на ближайшем full-refresh.
+        """
         with self._lock:
-            self._jobs = {j.id: j for j in jobs}
+            self._jobs = {
+                j.id: j
+                for j in jobs
+                if j.id not in self._cleared and j.id not in self._orphan
+            }
             if server_time:
                 self._last_server_time = server_time
 
@@ -92,10 +107,21 @@ class JobsCache:
             self._jobs.pop(job_id, None)
 
     def clear(self) -> list[str]:
-        """Очистить кеш, вернуть ID всех задач."""
+        """Очистить кеш, вернуть ID всех задач.
+
+        Возвращённые id маркируются как cleared, чтобы delta/full refresh,
+        восстановление из snapshot и merge_optimistic не возвращали их в UI
+        даже если серверный DELETE упал или гонкой пришёл «свежий» ответ
+        со старыми задачами.
+        """
         with self._lock:
             job_ids = [j.id for j in self._jobs.values()]
             self._jobs.clear()
+            self._cleared.update(job_ids)
+            for jid in job_ids:
+                self._optimistic.pop(jid, None)
+            self._downloaded.difference_update(job_ids)
+            self._downloading.difference_update(job_ids)
             return job_ids
 
     def log_status_changes(self, incoming_jobs: list[JobInfo]) -> None:
@@ -127,12 +153,21 @@ class JobsCache:
             self._optimistic.pop(jid, None)
 
     def merge_optimistic(self, server_jobs: list[JobInfo]) -> list[JobInfo]:
-        """Объединить серверные задачи с оптимистичными. Возвращает merged list."""
-        server_ids = {j.id for j in server_jobs}
-        merged = list(server_jobs)
+        """Объединить серверные задачи с оптимистичными. Возвращает merged list.
+
+        Любые id из `_cleared`/`_orphan` отфильтровываются на обеих сторонах.
+        """
+        merged = [
+            j for j in server_jobs
+            if j.id not in self._cleared and j.id not in self._orphan
+        ]
+        server_ids = {j.id for j in merged}
         current_time = time.time()
 
         for job_id, (job_info, timestamp) in list(self._optimistic.items()):
+            if job_id in self._cleared or job_id in self._orphan:
+                self._optimistic.pop(job_id, None)
+                continue
             if job_id in server_ids:
                 logger.info(
                     f"Задача {job_id[:8]}... найдена в ответе сервера, "
@@ -224,3 +259,53 @@ class JobsCache:
         чтобы фильтрация работала корректно."""
         with self._lock:
             self._orphan.update(orphan_ids)
+
+    # ── Cleared tracking (user-initiated clear-all) ──────────────────
+
+    def is_cleared(self, job_id: str) -> bool:
+        return job_id in self._cleared
+
+    def mark_cleared(self, job_ids: Iterable[str]) -> None:
+        """Пометить задачи как очищенные пользователем.
+
+        Удаляет их из активного кеша, оптимистичных и downloaded/downloading
+        наборов. Cleared id переживает рестарт (через snapshot) и фильтруется
+        во всех write-операциях кеша.
+        """
+        ids = list(job_ids)
+        if not ids:
+            return
+        with self._lock:
+            self._cleared.update(ids)
+            for jid in ids:
+                self._jobs.pop(jid, None)
+                self._optimistic.pop(jid, None)
+            self._downloaded.difference_update(ids)
+            self._downloading.difference_update(ids)
+
+    def get_cleared_ids(self) -> set[str]:
+        """Копия cleared-set для сериализации в snapshot."""
+        with self._lock:
+            return set(self._cleared)
+
+    def load_cleared_ids(self, ids) -> None:
+        """Восстановить cleared-set из snapshot. Должно вызываться ДО replace_all,
+        чтобы фильтрация работала корректно."""
+        with self._lock:
+            self._cleared.update(ids)
+
+    def prune_cleared(self, present_server_ids: set[str]) -> None:
+        """Удалить из cleared id, которых уже нет в серверном списке.
+
+        Вызывать после успешного full-refresh: если id отсутствует в свежем
+        ответе сервера, значит DELETE прошёл и удерживать его в cleared
+        больше не нужно — set не разрастается.
+        """
+        with self._lock:
+            stale = self._cleared - present_server_ids
+            if stale:
+                self._cleared.difference_update(stale)
+                logger.debug(
+                    f"prune_cleared: удалено {len(stale)} подтверждённых id "
+                    f"(осталось {len(self._cleared)})"
+                )

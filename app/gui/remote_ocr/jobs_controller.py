@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Optional
 from PySide6.QtCore import QObject, Signal
 
 from app.gui.remote_ocr.download_mixin import DownloadOrchestrator
-from app.gui.remote_ocr.job_persistence import load_snapshot
+from app.gui.remote_ocr.job_persistence import load_snapshot, save_snapshot
 from app.gui.remote_ocr.jobs_cache import JobsCache
 from app.gui.remote_ocr.jobs_controller_create_mixin import JobsControllerCreateMixin
 from app.gui.remote_ocr.jobs_controller_refresh_mixin import JobsControllerRefreshMixin
@@ -228,6 +228,10 @@ class JobsController(
 
         job_ids = self._cache.clear()
         self._emit_jobs_list()
+        # Фиксируем cleared-set на диск немедленно — даже если приложение
+        # закроется до завершения серверных DELETE, snapshot уже отражает
+        # очищенное состояние.
+        save_snapshot(self._cache)
 
         self._executor.submit(self._clear_all_bg, client, job_ids)
 

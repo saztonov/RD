@@ -88,6 +88,10 @@ class JobsControllerRefreshMixin:
         self._cache.log_status_changes(jobs)
 
         if self._poller.is_manual_refresh or not self._cache.last_server_time:
+            # Полный fetch — id, которых сервер уже не отдаёт, можно убрать
+            # из cleared-set: DELETE прошёл, держать их в snapshot больше
+            # не нужно (set не разрастается).
+            self._cache.prune_cleared({j.id for j in jobs})
             self._cache.replace_all(jobs, server_time)
             logger.debug(
                 f"Jobs cache initialized with {len(self._cache)} jobs, "
