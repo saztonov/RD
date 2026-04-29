@@ -26,6 +26,9 @@ R2_SECRET_ACCESS_KEY=your_secret_key
 R2_BUCKET_NAME=rd1
 ```
 
+> В `SUPABASE_URL` можно указать адрес собственного reverse proxy перед Supabase
+> (например, `https://sb.example.com`) — см. [SUPABASE_PROXY_SETUP.md](SUPABASE_PROXY_SETUP.md).
+
 ### Запуск приложения
 
 ```bash

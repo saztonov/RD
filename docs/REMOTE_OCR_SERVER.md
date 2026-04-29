@@ -61,6 +61,10 @@ curl http://localhost:8000/health
 
 ### Environment Variables
 
+> `SUPABASE_URL` может указывать на собственный reverse proxy перед Supabase
+> (например, `https://sb.example.com`). Подробности и пример nginx-конфига —
+> [SUPABASE_PROXY_SETUP.md](SUPABASE_PROXY_SETUP.md).
+
 ```env
 # Обязательные
 SUPABASE_URL=https://project.supabase.co

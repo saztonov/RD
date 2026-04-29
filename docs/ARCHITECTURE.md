@@ -785,7 +785,8 @@ DELETE /jobs/{job_id}        → {"ok": true, "deleted_job_id": "..."}
 REMOTE_OCR_BASE_URL=http://localhost:8000
 REMOTE_OCR_API_KEY=optional_api_key
 
-# Supabase
+# Supabase (можно указать адрес reverse proxy перед Supabase —
+# см. docs/SUPABASE_PROXY_SETUP.md)
 SUPABASE_URL=https://project.supabase.co
 SUPABASE_KEY=your_anon_key
 

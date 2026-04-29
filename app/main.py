@@ -44,9 +44,12 @@ def main():
     log_manager.setup(log_level=logging.INFO)
 
     logger = logging.getLogger(__name__)
-    
-    # Включить мониторинг производительности через env переменную
+
     import os
+    # Endpoint Supabase (может быть reverse proxy — см. docs/SUPABASE_PROXY_SETUP.md)
+    logger.info(f"Supabase URL configured: {os.getenv('SUPABASE_URL', '<not set>')}")
+
+    # Включить мониторинг производительности через env переменную
     if os.getenv("ENABLE_PERFORMANCE_MONITOR", "").lower() in ("1", "true", "yes"):
         from app.gui.performance_monitor import enable_performance_monitoring
         enable_performance_monitoring()

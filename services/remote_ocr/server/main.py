@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
         extra={
             "event": "server_startup",
             "config": {
+                "supabase_url": settings.supabase_url,
                 "max_concurrent_jobs": settings.max_concurrent_jobs,
                 "ocr_threads_per_job": settings.ocr_threads_per_job,
                 "max_global_ocr_requests": settings.max_global_ocr_requests,

@@ -236,7 +236,7 @@ routes/
 ## Configuration
 
 Required `.env` variables:
-- `SUPABASE_URL`, `SUPABASE_KEY` - Database
+- `SUPABASE_URL`, `SUPABASE_KEY` - Database (`SUPABASE_URL` may point to a reverse proxy — see `docs/SUPABASE_PROXY_SETUP.md`)
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` - Storage
 - `OPENROUTER_API_KEY` and/or `DATALAB_API_KEY` - OCR engines (cloud)
 - `CHANDRA_BASE_URL` - LM Studio URL for Chandra (via ngrok)
@@ -297,3 +297,4 @@ From `.cursorrules`: Be maximally concise. Code only in code blocks. Changes as 
 - `docs/DEVELOPER_GUIDE.md` - Code examples and patterns
 - `docs/DATABASE.md` - Complete DB schema
 - `docs/REMOTE_OCR_SERVER.md` - Server API reference
+- `docs/SUPABASE_PROXY_SETUP.md` - nginx reverse proxy setup for Supabase
