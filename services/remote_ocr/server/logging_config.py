@@ -25,6 +25,50 @@ from datetime import datetime, timezone
 from typing import Any
 
 
+def _make_safe_console_handler(stream) -> logging.StreamHandler:
+    """Создать консольный handler, устойчивый к UnicodeEncodeError.
+
+    На Windows-консолях stdout может быть cp1251, и emoji вроде `✅` (U+2705)
+    роняют emit с charmap. Здесь:
+    1) пробуем переключить stream на UTF-8 + backslashreplace (Python 3.7+);
+    2) полностью заменяем emit, чтобы при UnicodeEncodeError сообщение
+       перекодировалось в backslash-escape вместо тихого пропуска через
+       стандартный logging.Handler.handleError → stderr.
+    """
+    if hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
+
+    handler = logging.StreamHandler(stream)
+
+    def safe_emit(record):
+        try:
+            msg = handler.format(record)
+        except Exception:
+            return
+        try:
+            stream.write(msg + handler.terminator)
+            stream.flush()
+            return
+        except UnicodeEncodeError:
+            pass
+        except Exception:
+            return
+        # Фолбэк: пересобрать сообщение через encode(errors="backslashreplace")
+        try:
+            enc = getattr(stream, "encoding", None) or "ascii"
+            safe = msg.encode(enc, "backslashreplace").decode(enc, "replace")
+            stream.write(safe + handler.terminator)
+            stream.flush()
+        except Exception:
+            pass
+
+    handler.emit = safe_emit
+    return handler
+
+
 class JSONFormatter(logging.Formatter):
     """JSON formatter для structured logging (ELK/CloudWatch compatible)."""
 
@@ -177,8 +221,9 @@ def setup_logging() -> None:
     # Очищаем существующие handlers (избегаем дублирования)
     root_logger.handlers.clear()
 
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
+    # Console handler — safe для cp1251-консоли (актуально при локальном запуске
+    # без Docker, где stdout может быть cp1251 и emoji в логах валят emit).
+    console_handler = _make_safe_console_handler(sys.stdout)
     console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)

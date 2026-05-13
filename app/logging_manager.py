@@ -22,6 +22,50 @@ LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
+def _make_safe_console_handler(stream) -> logging.StreamHandler:
+    """Создать консольный handler, устойчивый к UnicodeEncodeError.
+
+    На Windows-консолях stdout по умолчанию использует cp1251, и emoji вроде
+    `✅` (U+2705) роняют emit с charmap. Здесь:
+    1) пробуем переключить сам stream на UTF-8 + backslashreplace (Python 3.7+);
+    2) полностью заменяем emit, чтобы при UnicodeEncodeError сообщение
+       перекодировалось в backslash-escape вместо тихого пропуска через
+       стандартный logging.Handler.handleError → stderr.
+    """
+    if hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
+
+    handler = logging.StreamHandler(stream)
+
+    def safe_emit(record):
+        try:
+            msg = handler.format(record)
+        except Exception:
+            return
+        try:
+            stream.write(msg + handler.terminator)
+            stream.flush()
+            return
+        except UnicodeEncodeError:
+            pass
+        except Exception:
+            return
+        # Фолбэк: пересобрать сообщение через encode(errors="backslashreplace")
+        try:
+            enc = getattr(stream, "encoding", None) or "ascii"
+            safe = msg.encode(enc, "backslashreplace").decode(enc, "replace")
+            stream.write(safe + handler.terminator)
+            stream.flush()
+        except Exception:
+            pass
+
+    handler.emit = safe_emit
+    return handler
+
+
 class DynamicRotatingFileHandler(RotatingFileHandler):
     """
     RotatingFileHandler с поддержкой динамического переключения файла.
@@ -114,8 +158,8 @@ class LoggingManager:
         # Удаляем существующие handlers
         root_logger.handlers.clear()
 
-        # Console handler
-        self._console_handler = logging.StreamHandler(sys.stdout)
+        # Console handler (safe для cp1251-консоли Windows: emoji не валят emit)
+        self._console_handler = _make_safe_console_handler(sys.stdout)
         self._console_handler.setLevel(log_level)
         self._console_handler.setFormatter(formatter)
         root_logger.addHandler(self._console_handler)

@@ -7,6 +7,15 @@ import logging
 import sys
 from pathlib import Path
 
+# Переключаем stdout/stderr на UTF-8 c backslashreplace до настройки логирования.
+# На Windows-RU консоль по умолчанию cp1251 и emoji (✅/❌/⚠️) валят logger.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
+
 # Добавляем корневую директорию проекта в sys.path
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:

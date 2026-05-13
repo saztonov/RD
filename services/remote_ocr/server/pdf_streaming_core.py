@@ -30,6 +30,89 @@ MAX_IMAGE_PIXELS = 400_000_000
 Image.MAX_IMAGE_PIXELS = 500_000_000
 
 
+def _log_box_mismatch_if_any(block, rect, cropbox, mediabox, rotation: int) -> None:
+    """INFO-лог при расхождении MediaBox/CropBox/rect (CAD-чертежи, rotation)."""
+    if (
+        abs(cropbox.x0 - mediabox.x0) > 0.5
+        or abs(cropbox.y0 - mediabox.y0) > 0.5
+        or abs(cropbox.width - mediabox.width) > 0.5
+        or abs(cropbox.height - mediabox.height) > 0.5
+        or abs(cropbox.x0 - rect.x0) > 0.5
+        or abs(cropbox.y0 - rect.y0) > 0.5
+        or rotation != 0
+    ):
+        logger.info(
+            "PDF crop box mismatch block=%s page=%d: "
+            "rect=(%.1f,%.1f,%.1f,%.1f) "
+            "cropbox=(%.1f,%.1f,%.1f,%.1f) "
+            "mediabox=(%.1f,%.1f,%.1f,%.1f) rotation=%d",
+            block.id,
+            block.page_index,
+            rect.x0, rect.y0, rect.x1, rect.y1,
+            cropbox.x0, cropbox.y0, cropbox.x1, cropbox.y1,
+            mediabox.x0, mediabox.y0, mediabox.x1, mediabox.y1,
+            rotation,
+        )
+
+
+def _visual_clip_to_source_clip(
+    visual_clip: "fitz.Rect", page: "fitz.Page", cropbox: "fitz.Rect"
+) -> Optional["fitz.Rect"]:
+    """Перевести клип из визуального page.rect-пространства (anchored at 0,0)
+    в нативное PDF-пространство страницы-источника (cropbox-anchored).
+    Используется при создании PDF-кропа через show_pdf_page(clip=...).
+    """
+    rotation = page.rotation
+    if rotation == 0:
+        source = fitz.Rect(
+            cropbox.x0 + visual_clip.x0,
+            cropbox.y0 + visual_clip.y0,
+            cropbox.x0 + visual_clip.x1,
+            cropbox.y0 + visual_clip.y1,
+        )
+    else:
+        try:
+            source = visual_clip * page.derotation_matrix
+            source.normalize()
+        except Exception:
+            return None
+
+    coords = (source.x0, source.y0, source.x1, source.y1)
+    if not all(math.isfinite(v) for v in coords):
+        return None
+    if source.width <= 0 or source.height <= 0:
+        return None
+    return source
+
+
+def _polygon_to_crop_points(
+    polygon_points,
+    coords_px,
+    pad_left: float,
+    pad_top: float,
+    bbox_w_in_crop: float,
+    bbox_h_in_crop: float,
+):
+    """Преобразовать polygon_points (в клиентских пикселях) в координаты
+    crop-изображения с учётом padding слева/сверху.
+
+    polygon_points нормализуется по bbox блока (DPI-независимая доля 0..1),
+    затем размещается в crop так, чтобы (0,0) полигона соответствовал
+    (pad_left, pad_top), а (1,1) — (pad_left + bbox_w_in_crop, pad_top + bbox_h_in_crop).
+    """
+    orig_x1, orig_y1, orig_x2, orig_y2 = coords_px
+    bbox_w = orig_x2 - orig_x1
+    bbox_h = orig_y2 - orig_y1
+    points = []
+    for px, py in polygon_points:
+        norm_px = (px - orig_x1) / bbox_w if bbox_w else 0
+        norm_py = (py - orig_y1) / bbox_h if bbox_h else 0
+        points.append(
+            (pad_left + norm_px * bbox_w_in_crop, pad_top + norm_py * bbox_h_in_crop)
+        )
+    return points
+
+
 class StreamingPDFProcessor:
     """
     Streaming процессор PDF с оптимизацией памяти.
@@ -208,18 +291,39 @@ class StreamingPDFProcessor:
             if block.shape_type == ShapeType.RECTANGLE or not block.polygon_points:
                 return clipped
 
-            # Polygon: накладываем маску поверх clipped изображения.
+            # Polygon: накладываем маску поверх clipped изображения c учётом padding.
             crop_w, crop_h = clipped.width, clipped.height
             orig_x1, orig_y1, orig_x2, orig_y2 = block.coords_px
             bbox_w, bbox_h = orig_x2 - orig_x1, orig_y2 - orig_y1
 
             if crop_w > 0 and crop_h > 0 and bbox_w > 0 and bbox_h > 0:
                 try:
-                    adjusted_points = []
-                    for px, py in block.polygon_points:
-                        norm_px = (px - orig_x1) / bbox_w if bbox_w else 0
-                        norm_py = (py - orig_y1) / bbox_h if bbox_h else 0
-                        adjusted_points.append((norm_px * crop_w, norm_py * crop_h))
+                    # Перевычисляем visual_clip и зум, чтобы знать реальный padding
+                    # с каждой стороны (он может быть обрезан границей страницы).
+                    page = self._doc[block.page_index]
+                    rect = page.rect
+                    zoom = self._get_effective_zoom(page)
+                    pad_pt = padding / zoom if zoom > 0 else 0.0
+                    bbox_x1_pt = rect.x0 + nx1 * rect.width
+                    bbox_y1_pt = rect.y0 + ny1 * rect.height
+                    bbox_x2_pt = rect.x0 + nx2 * rect.width
+                    bbox_y2_pt = rect.y0 + ny2 * rect.height
+                    vx1 = max(rect.x0, bbox_x1_pt - pad_pt)
+                    vy1 = max(rect.y0, bbox_y1_pt - pad_pt)
+                    vx2 = min(rect.x1, bbox_x2_pt + pad_pt)
+                    vy2 = min(rect.y1, bbox_y2_pt + pad_pt)
+
+                    pad_left_px = (bbox_x1_pt - vx1) * zoom
+                    pad_top_px = (bbox_y1_pt - vy1) * zoom
+                    bbox_w_in_crop = (bbox_x2_pt - bbox_x1_pt) * zoom
+                    bbox_h_in_crop = (bbox_y2_pt - bbox_y1_pt) * zoom
+
+                    adjusted_points = _polygon_to_crop_points(
+                        block.polygon_points,
+                        block.coords_px,
+                        pad_left_px, pad_top_px,
+                        bbox_w_in_crop, bbox_h_in_crop,
+                    )
 
                     mask = Image.new("L", (crop_w, crop_h), 0)
                     ImageDraw.Draw(mask).polygon(adjusted_points, fill=255)
@@ -267,11 +371,22 @@ class StreamingPDFProcessor:
         if crop_w <= 0 or crop_h <= 0 or bbox_w <= 0 or bbox_h <= 0:
             return page_image.crop((x1, y1, x2, y2)).copy()
 
-        adjusted_points = []
-        for px, py in block.polygon_points:
-            norm_px = (px - orig_x1) / bbox_w if bbox_w else 0
-            norm_py = (py - orig_y1) / bbox_h if bbox_h else 0
-            adjusted_points.append((norm_px * crop_w, norm_py * crop_h))
+        # bbox без padding в пикселях полной страницы
+        bx1 = int(nx1 * img_w)
+        by1 = int(ny1 * img_h)
+        bx2 = int(nx2 * img_w)
+        by2 = int(ny2 * img_h)
+        pad_left_px = bx1 - x1
+        pad_top_px = by1 - y1
+        bbox_w_in_crop = bx2 - bx1
+        bbox_h_in_crop = by2 - by1
+
+        adjusted_points = _polygon_to_crop_points(
+            block.polygon_points,
+            block.coords_px,
+            pad_left_px, pad_top_px,
+            bbox_w_in_crop, bbox_h_in_crop,
+        )
 
         mask = Image.new("L", (crop_w, crop_h), 0)
         ImageDraw.Draw(mask).polygon(adjusted_points, fill=255)
@@ -286,7 +401,19 @@ class StreamingPDFProcessor:
     def crop_block_to_pdf(
         self, block, output_path: str, padding_pt: int = 2
     ) -> Optional[str]:
-        """Вырезать блок как PDF"""
+        """Вырезать блок как PDF.
+
+        Стратегия:
+        1. Считаем visual bbox в page.rect-пространстве (visual, anchored at 0,0).
+           coords_norm нормализованы клиентом относительно этой системы.
+        2. Переводим visual_clip → source_clip (cropbox-anchored, до ротации) через
+           helper, который для rotation=0 делает offset на cropbox.x0/y0, а для
+           rotation in (90,270) применяет page.derotation_matrix.
+        3. Создаём новую PDF-страницу размером visual_clip (визуальные W,H —
+           они уже корректные для повёрнутых страниц), и show_pdf_page копирует
+           source_clip с rotate=-rotation, чтобы контент встал «как видит пользователь».
+        4. Polygon-маска накладывается в координатах нового кропа c учётом padding.
+        """
         if not self._doc:
             return None
 
@@ -296,35 +423,11 @@ class StreamingPDFProcessor:
             page = self._doc[block.page_index]
             rect = page.rect
             rotation = page.rotation
-
-            # Используем cropbox — именно его рендерит get_pixmap(),
-            # и именно относительно него вычислены coords_norm.
-            # page.rect может отличаться от cropbox при ротации,
-            # а mediabox может отличаться при наличии CropBox в PDF (CAD-чертежи).
             cropbox = page.cropbox
-
-            # Диагностика расхождений MediaBox/CropBox/rect
             mediabox = page.mediabox
-            if (
-                abs(cropbox.x0 - mediabox.x0) > 0.5
-                or abs(cropbox.y0 - mediabox.y0) > 0.5
-                or abs(cropbox.width - mediabox.width) > 0.5
-                or abs(cropbox.height - mediabox.height) > 0.5
-                or abs(cropbox.x0 - rect.x0) > 0.5
-                or abs(cropbox.y0 - rect.y0) > 0.5
-            ):
-                logger.info(
-                    "PDF crop box mismatch block=%s page=%d: "
-                    "rect=(%.1f,%.1f,%.1f,%.1f) "
-                    "cropbox=(%.1f,%.1f,%.1f,%.1f) "
-                    "mediabox=(%.1f,%.1f,%.1f,%.1f) rotation=%d",
-                    block.id,
-                    block.page_index,
-                    rect.x0, rect.y0, rect.x1, rect.y1,
-                    cropbox.x0, cropbox.y0, cropbox.x1, cropbox.y1,
-                    mediabox.x0, mediabox.y0, mediabox.x1, mediabox.y1,
-                    rotation,
-                )
+
+            # Диагностика mismatch box-ов (CAD-чертежи / ротация)
+            _log_box_mismatch_if_any(block, rect, cropbox, mediabox, rotation)
 
             normalized_coords = normalize_coords_norm(block.coords_norm)
             if normalized_coords is None:
@@ -335,118 +438,91 @@ class StreamingPDFProcessor:
                     block.coords_norm,
                 )
                 return None
-
             nx1, ny1, nx2, ny2 = normalized_coords
 
-            # Пересчёт coords_norm из пространства page.rect в пространство cropbox
-            # Нужен когда cropbox != rect (CAD-чертежи с нестандартным origin).
-            # ВАЖНО: при rotation∈(90,270) page.rect — это повёрнутый view cropbox-а
-            # (W/H поменяны), и ширина/высота визуально не совпадает с cropbox даже
-            # если CAD-смещения нет. Делать rebase в таком случае нельзя — он
-            # порождает невалидные нормированные координаты, и после
-            # `clip_rect * derotation_matrix` получается non-finite/empty clip.
-            if rotation == 0 and (
-                abs(rect.x0 - cropbox.x0) > 0.5 or abs(rect.y0 - cropbox.y0) > 0.5
-                or abs(rect.width - cropbox.width) > 0.5 or abs(rect.height - cropbox.height) > 0.5
-            ):
-                if rect.width > 0 and rect.height > 0 and cropbox.width > 0 and cropbox.height > 0:
-                    abs_x1 = rect.x0 + nx1 * rect.width
-                    abs_y1 = rect.y0 + ny1 * rect.height
-                    abs_x2 = rect.x0 + nx2 * rect.width
-                    abs_y2 = rect.y0 + ny2 * rect.height
-                    nx1 = (abs_x1 - cropbox.x0) / cropbox.width
-                    ny1 = (abs_y1 - cropbox.y0) / cropbox.height
-                    nx2 = (abs_x2 - cropbox.x0) / cropbox.width
-                    ny2 = (abs_y2 - cropbox.y0) / cropbox.height
-                    nx1 = max(0.0, min(1.0, nx1))
-                    ny1 = max(0.0, min(1.0, ny1))
-                    nx2 = max(0.0, min(1.0, nx2))
-                    ny2 = max(0.0, min(1.0, ny2))
+            if rect.width <= 0 or rect.height <= 0:
+                return None
 
-            x1_pt = max(cropbox.x0, cropbox.x0 + nx1 * cropbox.width - padding_pt)
-            y1_pt = max(cropbox.y0, cropbox.y0 + ny1 * cropbox.height - padding_pt)
-            x2_pt = min(cropbox.x1, cropbox.x0 + nx2 * cropbox.width + padding_pt)
-            y2_pt = min(cropbox.y1, cropbox.y0 + ny2 * cropbox.height + padding_pt)
+            # 1) Визуальный bbox блока без padding (в page.rect-coordinates)
+            bbox_x1_pt = rect.x0 + nx1 * rect.width
+            bbox_y1_pt = rect.y0 + ny1 * rect.height
+            bbox_x2_pt = rect.x0 + nx2 * rect.width
+            bbox_y2_pt = rect.y0 + ny2 * rect.height
 
-            if x2_pt <= x1_pt or y2_pt <= y1_pt:
+            # 2) Визуальный clip = bbox + padding, прижатый к границам page.rect
+            vx1 = max(rect.x0, bbox_x1_pt - padding_pt)
+            vy1 = max(rect.y0, bbox_y1_pt - padding_pt)
+            vx2 = min(rect.x1, bbox_x2_pt + padding_pt)
+            vy2 = min(rect.y1, bbox_y2_pt + padding_pt)
+            if vx2 <= vx1 or vy2 <= vy1:
                 logger.warning(
-                    "Skipping PDF crop for block %s on page %s due to empty clip: %s",
-                    block.id,
-                    block.page_index,
-                    (x1_pt, y1_pt, x2_pt, y2_pt),
+                    "Skipping PDF crop for block %s on page %s due to empty visual clip",
+                    block.id, block.page_index,
+                )
+                return None
+            visual_clip = fitz.Rect(vx1, vy1, vx2, vy2)
+
+            # 3) Переводим в source-space (cropbox-anchored, до ротации)
+            source_clip = _visual_clip_to_source_clip(visual_clip, page, cropbox)
+            if source_clip is None:
+                logger.warning(
+                    "Skipping PDF crop for block %s on page %s due to invalid source clip",
+                    block.id, block.page_index,
                 )
                 return None
 
-            clip_rect = fitz.Rect(x1_pt, y1_pt, x2_pt, y2_pt)
-
-            if rotation != 0:
-                clip_rect = clip_rect * page.derotation_matrix
-                clip_rect.normalize()
-
-            rect_values = (
-                clip_rect.x0,
-                clip_rect.y0,
-                clip_rect.x1,
-                clip_rect.y1,
-            )
-            if (
-                not all(math.isfinite(v) for v in rect_values)
-                or clip_rect.width <= 0
-                or clip_rect.height <= 0
-            ):
-                logger.warning(
-                    "Skipping PDF crop for block %s on page %s due to invalid rotated clip: %s",
-                    block.id,
-                    block.page_index,
-                    rect_values,
-                )
-                return None
-
-            if rotation in (90, 270):
-                crop_width, crop_height = clip_rect.height, clip_rect.width
-            else:
-                crop_width, crop_height = clip_rect.width, clip_rect.height
-
+            crop_width = visual_clip.width
+            crop_height = visual_clip.height
             if crop_width <= 0 or crop_height <= 0:
                 return None
 
-            logger.debug(
-                "PDF crop block=%s: coords_norm=(%.4f,%.4f,%.4f,%.4f) "
-                "clip=(%.1f,%.1f,%.1f,%.1f) size=%.1fx%.1f",
-                block.id, nx1, ny1, nx2, ny2,
-                clip_rect.x0, clip_rect.y0, clip_rect.x1, clip_rect.y1,
+            logger.info(
+                "PDF crop block=%s page=%d rotation=%d "
+                "coords_norm=(%.4f,%.4f,%.4f,%.4f) "
+                "rect=(%.1f,%.1f,%.1f,%.1f) cropbox=(%.1f,%.1f,%.1f,%.1f) "
+                "visual_clip=(%.1f,%.1f,%.1f,%.1f) source_clip=(%.1f,%.1f,%.1f,%.1f) "
+                "crop_size=%.1fx%.1f",
+                block.id, block.page_index, rotation,
+                nx1, ny1, nx2, ny2,
+                rect.x0, rect.y0, rect.x1, rect.y1,
+                cropbox.x0, cropbox.y0, cropbox.x1, cropbox.y1,
+                visual_clip.x0, visual_clip.y0, visual_clip.x1, visual_clip.y1,
+                source_clip.x0, source_clip.y0, source_clip.x1, source_clip.y1,
                 crop_width, crop_height,
             )
 
+            # 4) Сборка нового PDF
             new_doc = fitz.open()
             new_page = new_doc.new_page(width=crop_width, height=crop_height)
             new_page.show_pdf_page(
                 new_page.rect,
                 self._doc,
                 block.page_index,
-                clip=clip_rect,
+                clip=source_clip,
                 rotate=-rotation,
             )
 
+            # 5) Polygon-маска (если форма — полигон) в координатах нового кропа
             if block.shape_type == ShapeType.POLYGON and block.polygon_points:
-                orig_x1, orig_y1, orig_x2, orig_y2 = block.coords_px
-                bbox_w, bbox_h = orig_x2 - orig_x1, orig_y2 - orig_y1
+                pad_left = bbox_x1_pt - visual_clip.x0
+                pad_top = bbox_y1_pt - visual_clip.y0
+                bbox_w_in_crop = bbox_x2_pt - bbox_x1_pt
+                bbox_h_in_crop = bbox_y2_pt - bbox_y1_pt
 
-                if bbox_w > 0 and bbox_h > 0:
-                    polygon_pts = []
-                    for px, py in block.polygon_points:
-                        norm_px = (px - orig_x1) / bbox_w if bbox_w else 0
-                        norm_py = (py - orig_y1) / bbox_h if bbox_h else 0
-                        polygon_pts.append(
-                            fitz.Point(norm_px * crop_width, norm_py * crop_height)
-                        )
-
-                    shape = new_page.new_shape()
-                    shape.draw_rect(new_page.rect)
+                if bbox_w_in_crop > 0 and bbox_h_in_crop > 0:
+                    points = _polygon_to_crop_points(
+                        block.polygon_points,
+                        block.coords_px,
+                        pad_left, pad_top,
+                        bbox_w_in_crop, bbox_h_in_crop,
+                    )
+                    polygon_pts = [fitz.Point(x, y) for x, y in points]
                     if polygon_pts:
+                        shape = new_page.new_shape()
+                        shape.draw_rect(new_page.rect)
                         shape.draw_polyline(polygon_pts + [polygon_pts[0]])
-                    shape.finish(color=None, fill=(1, 1, 1), even_odd=True)
-                    shape.commit()
+                        shape.finish(color=None, fill=(1, 1, 1), even_odd=True)
+                        shape.commit()
 
             new_doc.save(output_path, deflate=True, garbage=4)
             new_doc.close()
