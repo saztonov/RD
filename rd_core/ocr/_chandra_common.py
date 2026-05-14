@@ -54,6 +54,18 @@ CHANDRA_LOAD_CONFIG = {
 # Retry конфигурация
 TRANSIENT_CODES = {404, 429, 500, 502, 503, 504}
 
+# ── Speed Guard: Redis-ключи (см. services/remote_ocr/server/lmstudio_lifecycle.py) ──
+# Cross-worker счётчик последовательных медленных запросов.
+SPEEDGUARD_SLOW_COUNTER_KEY = "lmstudio:chandra:slow_counter"
+# Cross-worker счётчик in-flight POST'ов (для drain перед reload).
+SPEEDGUARD_INFLIGHT_KEY = "lmstudio:chandra:in_flight_requests"
+# Redis-лок reload (только один воркер делает reload).
+SPEEDGUARD_LOCK_KEY = "lmstudio:chandra:reload_lock"
+# Флаг: reload в процессе. ChandraBackend паузит новые POST'ы пока установлен.
+SPEEDGUARD_PAUSE_FLAG_KEY = "lmstudio:chandra:reload_in_progress"
+# Timestamp последнего reload — основа cooldown.
+SPEEDGUARD_LAST_RELOAD_KEY = "lmstudio:chandra:last_reload_at"
+
 
 def needs_model_reload(loaded_instances: list, required_context: int) -> Tuple[bool, str]:
     """Проверяет нужна ли перезагрузка модели из-за несовпадения context_length.

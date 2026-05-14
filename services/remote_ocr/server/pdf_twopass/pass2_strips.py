@@ -89,6 +89,7 @@ async def process_strip(
         return None
 
     async with semaphore:
+        strip_t0 = time.monotonic()
         try:
             strip_blocks = [
                 blocks_by_id[bp["block_id"]]
@@ -251,6 +252,7 @@ async def process_strip(
                         "block_count": len(strip.block_parts),
                         "strip_attempt": strip_attempt,
                         "backend_type": type(strip_backend).__name__,
+                        "duration_ms": int((time.monotonic() - strip_t0) * 1000),
                     },
                 )
 

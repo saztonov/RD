@@ -74,6 +74,21 @@ chandra_request_retry_delay: 5
 # Включить через per-job настройку job.settings.allow_text_fallback=true или глобально в этом файле.
 chandra_failover_to_fallback: false
 
+# ===== CHANDRA SPEED GUARD =====
+# Авто-перезагрузка модели при деградации скорости работы LM Studio.
+# Триггеры: 3 запроса подряд медленнее порога ИЛИ обнаружена чужая загруженная модель.
+chandra_speed_guard_enabled: true
+# Запрос >= N секунд считается медленным (slow-sample)
+chandra_slow_request_seconds: 90
+# Сколько slow-sample подряд (cross-worker) → reload модели
+chandra_slow_consecutive_requests: 3
+# Cooldown между reload'ами, секунды (защита от reload-storm)
+chandra_slow_reload_cooldown_seconds: 300
+# Drain in-flight перед reload, макс. ожидание, секунды
+chandra_speed_guard_drain_timeout: 30
+# TTL Redis-лока reload (страховка от зависания), секунды
+chandra_speed_guard_lock_ttl: 300
+
 # ===== ВЕРИФИКАЦИЯ БЛОКОВ =====
 # Максимум блоков для retry верификации (0 = без лимита)
 max_retry_blocks: 0

@@ -56,17 +56,26 @@ class TestArmorID:
         assert fixed == encoded
 
     def test_repair_single_error(self):
-        original = ArmorID.encode(str(uuid.uuid4()))
+        # Детерминированная фикстура: оригинальный символ в позиции должен входить
+        # в CONFUSION-список повреждающего символа, иначе repair при errors=1 не
+        # попробует подставить оригинал обратно (пространство 26^11 с 3-симв.
+        # checksum допускает несколько валидных кандидатов в Hamming-окрестности,
+        # поиск возвращает первый найденный — не обязательно оригинал).
+        # UUID подобран так, что encode даёт код с '4' в позиции 3, а '4' ∈
+        # CONFUSION['A'] = ['4', 'H', 'R'] — повреждение '4'→'A' обратимо.
+        uuid_fixture = "000006fa-0000-0000-0000-000000000000"
+        original = ArmorID.encode(uuid_fixture)
         clean = original.replace("-", "")
 
-        # Заменяем один символ на другой из алфавита
         pos = 3
-        replacement = "A" if clean[pos] != "A" else "C"
-        damaged = clean[:pos] + replacement + clean[pos + 1:]
+        assert clean[pos] in ArmorID.CONFUSION.get("A", []), (
+            "Фикстура повреждена: оригинальный символ должен быть в CONFUSION['A']"
+        )
+        damaged = clean[:pos] + "A" + clean[pos + 1:]
 
-        success, fixed, msg = ArmorID.repair(damaged)
-        if success:
-            assert fixed == original
+        success, fixed, _ = ArmorID.repair(damaged)
+        assert success, "repair должен восстановить single-char повреждение"
+        assert fixed == original, f"Ожидался {original}, получено {fixed}"
 
     def test_multiple_encode_different_uuids(self):
         codes = set()

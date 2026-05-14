@@ -27,6 +27,93 @@ from rd_core.ocr_result import is_error, make_error
 logger = logging.getLogger(__name__)
 
 
+# ── Speed Guard hooks (lazy lookup в server-слой) ───────────────────
+# rd_core не должен жёстко зависеть от services.remote_ocr.server. При наличии
+# server-модуля используем функции speed-guard (cross-worker Redis-coordination),
+# иначе все хуки — no-op (например, при автономном использовании ChandraBackend
+# из desktop client).
+
+class _NoopGuardHooks:
+    """Заглушки speed-guard функций для случаев без server-слоя."""
+
+    settings = None
+
+    @staticmethod
+    def record_slow():
+        return 0
+
+    @staticmethod
+    def reset_slow():
+        return None
+
+    @staticmethod
+    def incr_inflight():
+        return 0
+
+    @staticmethod
+    def decr_inflight():
+        return 0
+
+    @staticmethod
+    def is_paused():
+        return False
+
+    @staticmethod
+    def list_loaded(_base_url):
+        return []
+
+    @staticmethod
+    def has_foreign(_loaded):
+        return False
+
+    @staticmethod
+    def try_reload(_base_url, _reason):
+        return False
+
+
+_GUARD_HOOKS: Optional[object] = None
+
+
+def _get_guard_hooks():
+    """Lazy-импорт speed-guard функций из server-слоя.
+
+    При отсутствии server-модуля или ошибке импорта — все хуки no-op.
+    Результат кэшируется в module-level переменной.
+    """
+    global _GUARD_HOOKS
+    if _GUARD_HOOKS is not None:
+        return _GUARD_HOOKS
+    try:
+        from services.remote_ocr.server.lmstudio_lifecycle import (
+            decr_inflight,
+            has_foreign_loaded_model,
+            incr_inflight,
+            is_reload_in_progress,
+            list_loaded_lmstudio_models,
+            record_slow_sample,
+            reset_slow_counter,
+            try_speed_guard_reload,
+        )
+        from services.remote_ocr.server.settings import settings as _server_settings
+
+        class _RealGuardHooks:
+            settings = _server_settings
+            record_slow = staticmethod(record_slow_sample)
+            reset_slow = staticmethod(reset_slow_counter)
+            incr_inflight = staticmethod(incr_inflight)
+            decr_inflight = staticmethod(decr_inflight)
+            is_paused = staticmethod(is_reload_in_progress)
+            list_loaded = staticmethod(list_loaded_lmstudio_models)
+            has_foreign = staticmethod(has_foreign_loaded_model)
+            try_reload = staticmethod(try_speed_guard_reload)
+
+        _GUARD_HOOKS = _RealGuardHooks()
+    except Exception as exc:  # pragma: no cover (fallback ветка)
+        logger.debug(f"Speed-guard hooks недоступны: {exc}")
+        _GUARD_HOOKS = _NoopGuardHooks()
+    return _GUARD_HOOKS
+
+
 class ChandraBackend(BackendTimingMixin):
     """OCR через Chandra модель (LM Studio, OpenAI-compatible API)"""
 
@@ -247,6 +334,106 @@ class ChandraBackend(BackendTimingMixin):
     def supports_pdf_input(self) -> bool:
         return False
 
+    def force_reload_all_models(self, reason: str) -> bool:
+        """Запросить полную перезагрузку LM Studio через speed-guard orchestrator.
+
+        Выгружает ВСЕ загруженные модели LM Studio и грузит заново chandra-ocr-2
+        (под Redis-локом, с cooldown). При успехе сбрасывает локальный _model_id —
+        следующий recognize выполнит повторный discover.
+        """
+        hooks = _get_guard_hooks()
+        ok = bool(hooks.try_reload(self.base_url, reason))
+        if ok:
+            self._model_id = None
+        return ok
+
+    def _handle_slow_sample(
+        self,
+        *,
+        elapsed: float,
+        is_timeout: bool,
+        completion_tokens: int,
+        text_len: int,
+    ) -> None:
+        """Зарегистрировать медленный запрос и при достижении порога — триггер reload."""
+        hooks = _get_guard_hooks()
+        guard_settings = hooks.settings
+
+        if guard_settings is not None and not getattr(
+            guard_settings, "chandra_speed_guard_enabled", False
+        ):
+            return
+
+        count = int(hooks.record_slow() or 0)
+        threshold = int(
+            getattr(guard_settings, "chandra_slow_consecutive_requests", 3) or 3
+        )
+
+        tps = (completion_tokens / elapsed) if (elapsed > 0 and completion_tokens > 0) else 0.0
+        cps = (text_len / elapsed) if (elapsed > 0 and text_len > 0) else 0.0
+        logger.warning(
+            f"Chandra slow sample: elapsed={elapsed:.1f}s, "
+            f"is_timeout={is_timeout}, slow_counter={count}/{threshold}",
+            extra={
+                "event": "chandra_request_metrics",
+                "elapsed_sec": round(elapsed, 2),
+                "is_slow": True,
+                "is_timeout": is_timeout,
+                "completion_tokens": completion_tokens,
+                "tokens_per_sec": round(tps, 2),
+                "chars_per_sec": round(cps, 2),
+                "slow_counter": count,
+            },
+        )
+
+        # Триггер 1: счётчик достиг порога.
+        if count >= threshold:
+            reason = "timeout_streak" if is_timeout else "slow_streak"
+            self.force_reload_all_models(reason)
+            return
+
+        # Триггер 2: загружена чужая модель (мгновенно, без ожидания окна).
+        try:
+            loaded = hooks.list_loaded(self.base_url)
+            if hooks.has_foreign(loaded):
+                self.force_reload_all_models("foreign_loaded")
+        except Exception as exc:
+            logger.debug(f"speed_guard foreign-check failed: {exc}")
+
+    def _handle_fast_success(
+        self,
+        *,
+        elapsed: float,
+        completion_tokens: int,
+        text_len: int,
+    ) -> None:
+        """Зарегистрировать быстрый успешный запрос и сбросить slow-counter."""
+        hooks = _get_guard_hooks()
+        guard_settings = hooks.settings
+
+        tps = (completion_tokens / elapsed) if (elapsed > 0 and completion_tokens > 0) else 0.0
+        cps = (text_len / elapsed) if (elapsed > 0 and text_len > 0) else 0.0
+        logger.info(
+            f"Chandra metrics: elapsed={elapsed:.1f}s, "
+            f"completion_tokens={completion_tokens}, tps={tps:.1f}",
+            extra={
+                "event": "chandra_request_metrics",
+                "elapsed_sec": round(elapsed, 2),
+                "is_slow": False,
+                "is_timeout": False,
+                "completion_tokens": completion_tokens,
+                "tokens_per_sec": round(tps, 2),
+                "chars_per_sec": round(cps, 2),
+            },
+        )
+
+        if guard_settings is not None and not getattr(
+            guard_settings, "chandra_speed_guard_enabled", False
+        ):
+            return
+
+        hooks.reset_slow()
+
     def recognize(
         self,
         image: Optional[Image.Image],
@@ -262,7 +449,14 @@ class ChandraBackend(BackendTimingMixin):
             img_b64 = image_to_base64(image, max_size=CHANDRA_MAX_IMAGE_SIZE)
             payload = build_payload(model_id, prompt, img_b64)
 
+            hooks = _get_guard_hooks()
+            guard_settings = hooks.settings
+            slow_threshold = float(
+                getattr(guard_settings, "chandra_slow_request_seconds", 90) or 90
+            )
+
             last_error = None
+            response_json = None
             for attempt in range(self._MAX_APP_RETRIES + 1):
                 if attempt > 0:
                     delay = self._APP_RETRY_DELAYS[min(attempt - 1, len(self._APP_RETRY_DELAYS) - 1)]
@@ -293,29 +487,76 @@ class ChandraBackend(BackendTimingMixin):
                         f"Chandra: time budget exhausted перед запросом (attempt {attempt})"
                     )
 
+                # Pause-цикл: если идёт speed-guard reload, ждём его завершения.
+                # Защитный таймаут (drain + load + запас) предотвращает вечную блокировку.
+                pause_deadline = time.monotonic() + (self._http_timeout + 5)
+                while hooks.is_paused() and time.monotonic() < pause_deadline:
+                    if self._interruptible_sleep(0.5):
+                        return make_error("Chandra: операция отменена")
+
+                # ─── Один запрос с замером времени и in-flight трекингом ───
+                response = None
+                t0 = time.monotonic()
+                elapsed = 0.0
+                hooks.incr_inflight()
                 try:
-                    response = self.session.post(
-                        f"{self.base_url}/v1/chat/completions",
-                        headers={"Content-Type": "application/json", "ngrok-skip-browser-warning": "true"},
-                        json=payload, timeout=self._http_timeout,
-                    )
-                except requests.exceptions.ConnectionError as e:
-                    last_error = f"ConnectionError: {e}"
-                    logger.warning(f"Chandra connection error (attempt {attempt}): {e}")
-                    if attempt < self._MAX_APP_RETRIES:
-                        continue
-                    return make_error(f"Chandra: {last_error} после {self._MAX_APP_RETRIES} попыток")
-                except requests.exceptions.Timeout:
-                    last_error = "Timeout"
-                    logger.warning(f"Chandra timeout (attempt {attempt})")
-                    if attempt < self._MAX_APP_RETRIES:
-                        continue
-                    return make_error("превышен таймаут запроса к Chandra")
+                    try:
+                        response = self.session.post(
+                            f"{self.base_url}/v1/chat/completions",
+                            headers={
+                                "Content-Type": "application/json",
+                                "ngrok-skip-browser-warning": "true",
+                            },
+                            json=payload,
+                            timeout=self._http_timeout,
+                        )
+                        elapsed = time.monotonic() - t0
+                    except requests.exceptions.ConnectionError as e:
+                        elapsed = time.monotonic() - t0
+                        last_error = f"ConnectionError: {e}"
+                        logger.warning(
+                            f"Chandra connection error (attempt {attempt}): {e}"
+                        )
+                        # Read timeout приходит как ConnectionError(ReadTimeoutError)
+                        # — считаем как slow-sample.
+                        self._handle_slow_sample(
+                            elapsed=elapsed,
+                            is_timeout=True,
+                            completion_tokens=0,
+                            text_len=0,
+                        )
+                        if attempt < self._MAX_APP_RETRIES:
+                            continue
+                        return make_error(
+                            f"Chandra: {last_error} после {self._MAX_APP_RETRIES} попыток"
+                        )
+                    except requests.exceptions.Timeout:
+                        elapsed = time.monotonic() - t0
+                        last_error = "Timeout"
+                        logger.warning(f"Chandra timeout (attempt {attempt})")
+                        self._handle_slow_sample(
+                            elapsed=elapsed,
+                            is_timeout=True,
+                            completion_tokens=0,
+                            text_len=0,
+                        )
+                        if attempt < self._MAX_APP_RETRIES:
+                            continue
+                        return make_error("превышен таймаут запроса к Chandra")
+                finally:
+                    hooks.decr_inflight()
+
+                if response is None:
+                    # Не должно случаться — все ветви выше делают continue/return.
+                    continue
 
                 if response.status_code == 200:
+                    response_json = response.json()
                     break
 
-                non_retriable = check_non_retriable_error(response.status_code, response.text)
+                non_retriable = check_non_retriable_error(
+                    response.status_code, response.text
+                )
                 if non_retriable:
                     return non_retriable
 
@@ -336,24 +577,57 @@ class ChandraBackend(BackendTimingMixin):
                         try:
                             self._discover_model()  # перезагрузить модель
                         except Exception as reload_exc:
-                            logger.warning(f"Chandra reload после unload не удался: {reload_exc}")
+                            logger.warning(
+                                f"Chandra reload после unload не удался: {reload_exc}"
+                            )
                         continue
-                    return make_error(f"Chandra API: model unloaded после {self._MAX_APP_RETRIES} попыток")
+                    return make_error(
+                        f"Chandra API: model unloaded после {self._MAX_APP_RETRIES} попыток"
+                    )
 
                 if response.status_code in TRANSIENT_CODES:
                     last_error = f"HTTP {response.status_code}"
                     if attempt < self._MAX_APP_RETRIES:
-                        logger.warning(f"Chandra transient error {response.status_code} (attempt {attempt}), will retry")
+                        logger.warning(
+                            f"Chandra transient error {response.status_code} "
+                            f"(attempt {attempt}), will retry"
+                        )
                         continue
-                    return make_error(f"Chandra API: {response.status_code} после {self._MAX_APP_RETRIES} попыток")
+                    return make_error(
+                        f"Chandra API: {response.status_code} после {self._MAX_APP_RETRIES} попыток"
+                    )
 
                 error_detail = response.text[:500] if response.text else "No details"
-                logger.error(f"Chandra API error: {response.status_code} - {error_detail}")
+                logger.error(
+                    f"Chandra API error: {response.status_code} - {error_detail}"
+                )
                 return make_error(f"Chandra API: {response.status_code}")
 
-            text = parse_response(response.json())
+            text = parse_response(response_json) if response_json is not None else make_error(
+                "Chandra: empty response"
+            )
             if not is_error(text):
                 logger.debug(f"Chandra OCR: распознано {len(text)} символов")
+
+                # Speed-guard: успешный запрос → fast/slow ветка.
+                usage = (response_json or {}).get("usage") or {}
+                try:
+                    completion_tokens = int(usage.get("completion_tokens") or 0)
+                except (TypeError, ValueError):
+                    completion_tokens = 0
+                if elapsed >= slow_threshold:
+                    self._handle_slow_sample(
+                        elapsed=elapsed,
+                        is_timeout=False,
+                        completion_tokens=completion_tokens,
+                        text_len=len(text),
+                    )
+                else:
+                    self._handle_fast_success(
+                        elapsed=elapsed,
+                        completion_tokens=completion_tokens,
+                        text_len=len(text),
+                    )
             return text
 
         except Exception as e:

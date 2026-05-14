@@ -136,6 +136,26 @@ class Settings:
         lambda v: str(v).lower() in ("1", "true", "yes", "on"),
     )
 
+    # ===== CHANDRA SPEED GUARD =====
+    chandra_speed_guard_enabled: bool = _cfg(
+        "chandra_speed_guard_enabled",
+        "CHANDRA_SPEED_GUARD_ENABLED",
+        lambda v: str(v).lower() in ("1", "true", "yes", "on"),
+    )
+    chandra_slow_request_seconds: int = _cfg("chandra_slow_request_seconds", "CHANDRA_SLOW_REQUEST_SECONDS", int)
+    chandra_slow_consecutive_requests: int = _cfg(
+        "chandra_slow_consecutive_requests", "CHANDRA_SLOW_CONSECUTIVE_REQUESTS", int
+    )
+    chandra_slow_reload_cooldown_seconds: int = _cfg(
+        "chandra_slow_reload_cooldown_seconds", "CHANDRA_SLOW_RELOAD_COOLDOWN_SECONDS", int
+    )
+    chandra_speed_guard_drain_timeout: int = _cfg(
+        "chandra_speed_guard_drain_timeout", "CHANDRA_SPEED_GUARD_DRAIN_TIMEOUT", int
+    )
+    chandra_speed_guard_lock_ttl: int = _cfg(
+        "chandra_speed_guard_lock_ttl", "CHANDRA_SPEED_GUARD_LOCK_TTL", int
+    )
+
     # ===== ВЕРИФИКАЦИЯ БЛОКОВ =====
     max_retry_blocks: int = _cfg("max_retry_blocks", "MAX_RETRY_BLOCKS", int)
     verification_timeout_minutes: int = _cfg("verification_timeout_minutes", "VERIFICATION_TIMEOUT_MINUTES", int)
