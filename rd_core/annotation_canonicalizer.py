@@ -96,9 +96,12 @@ def canonicalize_annotation_document(
             changed = True
             continue
 
+        old_page_width = int(existing_page.width) if existing_page.width else int(page_width)
+        old_page_height = int(existing_page.height) if existing_page.height else int(page_height)
+
         changed = changed or (
-            int(existing_page.width) != int(page_width)
-            or int(existing_page.height) != int(page_height)
+            old_page_width != int(page_width)
+            or old_page_height != int(page_height)
         )
         existing_page.width = int(page_width)
         existing_page.height = int(page_height)
@@ -110,6 +113,8 @@ def canonicalize_annotation_document(
                     page_width=int(page_width),
                     page_height=int(page_height),
                     prefer_coords_px=prefer_coords_px,
+                    old_page_width=old_page_width,
+                    old_page_height=old_page_height,
                 )
                 or changed
             )
@@ -132,30 +137,54 @@ def sync_block_to_page(
     page_width: int,
     page_height: int,
     prefer_coords_px: bool,
+    old_page_width: int | None = None,
+    old_page_height: int | None = None,
 ) -> bool:
     """Synchronize coords_px and coords_norm for the target page size."""
     old_coords_px = tuple(block.coords_px)
     old_coords_norm = tuple(block.coords_norm)
     old_polygon = list(block.polygon_points) if block.polygon_points else None
+    old_polygon_norm = (
+        list(block.polygon_points_norm) if block.polygon_points_norm else None
+    )
+
+    ow = int(old_page_width) if old_page_width else int(page_width)
+    oh = int(old_page_height) if old_page_height else int(page_height)
 
     if prefer_coords_px:
-        _sync_block_from_px(block, page_width=page_width, page_height=page_height)
+        _sync_block_from_px(
+            block,
+            page_width=page_width,
+            page_height=page_height,
+            old_page_width=ow,
+            old_page_height=oh,
+        )
     else:
         normalized_coords = normalize_coords_norm(block.coords_norm)
         if normalized_coords is None:
-            _sync_block_from_px(block, page_width=page_width, page_height=page_height)
+            _sync_block_from_px(
+                block,
+                page_width=page_width,
+                page_height=page_height,
+                old_page_width=ow,
+                old_page_height=oh,
+            )
         else:
             _sync_block_from_norm(
                 block,
                 page_width=page_width,
                 page_height=page_height,
                 normalized_coords=normalized_coords,
+                old_page_width=ow,
+                old_page_height=oh,
             )
 
     return (
         tuple(block.coords_px) != old_coords_px
         or tuple(block.coords_norm) != old_coords_norm
         or (list(block.polygon_points) if block.polygon_points else None) != old_polygon
+        or (list(block.polygon_points_norm) if block.polygon_points_norm else None)
+        != old_polygon_norm
     )
 
 
@@ -166,29 +195,29 @@ def source_pdf_looks_related(document: Document, target_pdf_path: str) -> bool:
     return bool(source_name and target_name and source_name == target_name)
 
 
-def _sync_block_from_px(block: Block, *, page_width: int, page_height: int) -> None:
+def _sync_block_from_px(
+    block: Block,
+    *,
+    page_width: int,
+    page_height: int,
+    old_page_width: int,
+    old_page_height: int,
+) -> None:
+    if block.shape_type == ShapeType.POLYGON and block.polygon_points:
+        _resolve_polygon_for_page(
+            block,
+            page_width=page_width,
+            page_height=page_height,
+            old_page_width=old_page_width,
+            old_page_height=old_page_height,
+        )
+        return
+
     coords_px = _sanitize_bbox(
         block.coords_px,
         page_width=page_width,
         page_height=page_height,
     )
-
-    if block.shape_type == ShapeType.POLYGON and block.polygon_points:
-        polygon_points = _clamp_polygon_points(
-            block.polygon_points,
-            page_width=page_width,
-            page_height=page_height,
-        )
-        if polygon_points:
-            block.polygon_points = polygon_points
-            coords_px = _bbox_from_polygon_points(
-                polygon_points,
-                page_width=page_width,
-                page_height=page_height,
-            )
-        else:
-            block.polygon_points = None
-
     block.coords_px = coords_px
     block.coords_norm = Block.px_to_norm(coords_px, page_width, page_height)
 
@@ -199,13 +228,20 @@ def _sync_block_from_norm(
     page_width: int,
     page_height: int,
     normalized_coords: tuple[float, float, float, float],
+    old_page_width: int,
+    old_page_height: int,
 ) -> None:
-    old_coords_px = _sanitize_bbox(
-        block.coords_px,
-        page_width=page_width,
-        page_height=page_height,
-    )
-    old_polygon_points = list(block.polygon_points) if block.polygon_points else None
+    if block.shape_type == ShapeType.POLYGON and (
+        block.polygon_points or block.polygon_points_norm
+    ):
+        _resolve_polygon_for_page(
+            block,
+            page_width=page_width,
+            page_height=page_height,
+            old_page_width=old_page_width,
+            old_page_height=old_page_height,
+        )
+        return
 
     new_coords_px = Block.norm_to_px(normalized_coords, page_width, page_height)
     new_coords_px = _sanitize_bbox(
@@ -213,18 +249,50 @@ def _sync_block_from_norm(
         page_width=page_width,
         page_height=page_height,
     )
-
     block.coords_px = new_coords_px
     block.coords_norm = Block.px_to_norm(new_coords_px, page_width, page_height)
 
-    if block.shape_type == ShapeType.POLYGON and old_polygon_points:
-        block.polygon_points = _rescale_polygon_points(
-            old_polygon_points,
-            old_bbox=old_coords_px,
-            new_bbox=new_coords_px,
-            page_width=page_width,
-            page_height=page_height,
+
+def _resolve_polygon_for_page(
+    block: Block,
+    *,
+    page_width: int,
+    page_height: int,
+    old_page_width: int,
+    old_page_height: int,
+) -> None:
+    """Восстановить polygon_points для новой страницы и пересчитать bbox из вершин."""
+    if block.polygon_points_norm:
+        polygon_norm = list(block.polygon_points_norm)
+    elif block.polygon_points:
+        polygon_norm = Block.polygon_px_to_norm(
+            block.polygon_points, old_page_width, old_page_height
         )
+    else:
+        return
+
+    new_points = Block.polygon_norm_to_px(polygon_norm, page_width, page_height)
+    new_points = _clamp_polygon_points(
+        new_points, page_width=page_width, page_height=page_height
+    )
+
+    if not new_points:
+        block.polygon_points = None
+        block.polygon_points_norm = None
+        coords_px = _sanitize_bbox(
+            block.coords_px, page_width=page_width, page_height=page_height
+        )
+        block.coords_px = coords_px
+        block.coords_norm = Block.px_to_norm(coords_px, page_width, page_height)
+        return
+
+    block.polygon_points = new_points
+    block.polygon_points_norm = polygon_norm
+    coords_px = _bbox_from_polygon_points(
+        new_points, page_width=page_width, page_height=page_height
+    )
+    block.coords_px = coords_px
+    block.coords_norm = Block.px_to_norm(coords_px, page_width, page_height)
 
 
 def _sanitize_bbox(
@@ -293,30 +361,3 @@ def _bbox_from_polygon_points(
     )
 
 
-def _rescale_polygon_points(
-    polygon_points: list[tuple[int, int]],
-    *,
-    old_bbox: tuple[int, int, int, int],
-    new_bbox: tuple[int, int, int, int],
-    page_width: int,
-    page_height: int,
-) -> list[tuple[int, int]]:
-    old_x1, old_y1, old_x2, old_y2 = old_bbox
-    new_x1, new_y1, new_x2, new_y2 = new_bbox
-    old_width = max(old_x2 - old_x1, 1)
-    old_height = max(old_y2 - old_y1, 1)
-    new_width = max(new_x2 - new_x1, 1)
-    new_height = max(new_y2 - new_y1, 1)
-
-    scaled_points = [
-        (
-            int(new_x1 + (px - old_x1) / old_width * new_width),
-            int(new_y1 + (py - old_y1) / old_height * new_height),
-        )
-        for px, py in polygon_points
-    ]
-    return _clamp_polygon_points(
-        scaled_points,
-        page_width=page_width,
-        page_height=page_height,
-    )

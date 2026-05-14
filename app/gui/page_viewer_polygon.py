@@ -154,11 +154,7 @@ class PolygonMixin:
 
         new_points = list(block.polygon_points)
         new_points[vertex_idx] = (int(new_pos.x()), int(new_pos.y()))
-        block.polygon_points = new_points
-
-        xs = [p[0] for p in new_points]
-        ys = [p[1] for p in new_points]
-        block.coords_px = (min(xs), min(ys), max(xs), max(ys))
+        self._apply_polygon_points(block, new_points)
 
         # Оптимизация: обновляем только один блок
         self._update_single_block_visual(block_idx)
@@ -179,11 +175,7 @@ class PolygonMixin:
             new_pos = self._clamp_to_page(QPointF(new_x, new_y))
             new_points.append((int(new_pos.x()), int(new_pos.y())))
 
-        block.polygon_points = new_points
-
-        xs = [p[0] for p in new_points]
-        ys = [p[1] for p in new_points]
-        block.coords_px = (min(xs), min(ys), max(xs), max(ys))
+        self._apply_polygon_points(block, new_points)
 
         # Оптимизация: обновляем только один блок
         self._update_single_block_visual(block_idx)
@@ -210,11 +202,20 @@ class PolygonMixin:
             new_pos = self._clamp_to_page(QPointF(new_x, new_y))
             new_points[idx] = (int(new_pos.x()), int(new_pos.y()))
 
-        block.polygon_points = new_points
-
-        xs = [p[0] for p in new_points]
-        ys = [p[1] for p in new_points]
-        block.coords_px = (min(xs), min(ys), max(xs), max(ys))
+        self._apply_polygon_points(block, new_points)
 
         # Оптимизация: обновляем только один блок
         self._update_single_block_visual(block_idx)
+
+    def _apply_polygon_points(self, block, new_points):
+        """Сохранить новые вершины полигона, обновив также normalized-копию и bbox."""
+        page_w = self.page_image.width() if self.page_image else 0
+        page_h = self.page_image.height() if self.page_image else 0
+        if page_w > 0 and page_h > 0:
+            block.set_polygon_points(new_points, page_w, page_h)
+            return
+
+        block.polygon_points = [(int(px), int(py)) for px, py in new_points]
+        xs = [p[0] for p in block.polygon_points]
+        ys = [p[1] for p in block.polygon_points]
+        block.coords_px = (min(xs), min(ys), max(xs), max(ys))

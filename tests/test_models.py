@@ -192,3 +192,76 @@ class TestBlock:
         assert block is not None
         assert block.page_index == 0
         assert block.id == "ACDE-FGHJ-KLM"
+
+    def test_polygon_create_fills_norm(self):
+        """Block.create для POLYGON автоматически заполняет polygon_points_norm."""
+        points = [(100, 100), (400, 150), (350, 400), (200, 380)]
+        block = Block.create(
+            page_index=0,
+            coords_px=(100, 100, 400, 400),
+            page_width=1000,
+            page_height=1500,
+            block_type=BlockType.TEXT,
+            source=BlockSource.USER,
+            shape_type=ShapeType.POLYGON,
+            polygon_points=points,
+        )
+        assert block.polygon_points == points
+        assert block.polygon_points_norm is not None
+        assert len(block.polygon_points_norm) == len(points)
+        for (px, py), (nx, ny) in zip(points, block.polygon_points_norm):
+            assert nx == px / 1000
+            assert ny == py / 1500
+
+    def test_polygon_norm_roundtrip(self):
+        """to_dict/from_dict сохраняют и восстанавливают polygon_points_norm."""
+        points = [(100, 100), (400, 150), (350, 400), (200, 380)]
+        block = Block.create(
+            page_index=0,
+            coords_px=(100, 100, 400, 400),
+            page_width=1000,
+            page_height=1500,
+            block_type=BlockType.TEXT,
+            source=BlockSource.USER,
+            shape_type=ShapeType.POLYGON,
+            polygon_points=points,
+        )
+        restored, _ = Block.from_dict(block.to_dict(), migrate_ids=False)
+        assert restored.polygon_points == block.polygon_points
+        assert restored.polygon_points_norm == block.polygon_points_norm
+
+    def test_polygon_from_dict_without_norm(self):
+        """Старый JSON без polygon_points_norm загружается, поле остаётся None."""
+        data = {
+            "id": "ACDE-FGHJ-KLM",
+            "page_index": 0,
+            "coords_px": [100, 100, 400, 400],
+            "coords_norm": [0.1, 0.067, 0.4, 0.267],
+            "block_type": "text",
+            "source": "user",
+            "shape_type": "polygon",
+            "polygon_points": [[100, 100], [400, 150], [350, 400]],
+        }
+        block, _ = Block.from_dict(data, migrate_ids=False)
+        assert block.shape_type == ShapeType.POLYGON
+        assert block.polygon_points == [(100, 100), (400, 150), (350, 400)]
+        assert block.polygon_points_norm is None
+
+    def test_set_polygon_points_updates_everything(self):
+        """set_polygon_points обновляет polygon_points, polygon_points_norm, bbox."""
+        block = Block.create(
+            page_index=0,
+            coords_px=(100, 100, 400, 400),
+            page_width=1000,
+            page_height=1500,
+            block_type=BlockType.TEXT,
+            source=BlockSource.USER,
+            shape_type=ShapeType.POLYGON,
+            polygon_points=[(100, 100), (400, 150), (350, 400)],
+        )
+        new_points = [(150, 200), (500, 250), (450, 500), (200, 450)]
+        block.set_polygon_points(new_points, 1000, 1500)
+        assert block.polygon_points == new_points
+        assert block.polygon_points_norm == [(p[0] / 1000, p[1] / 1500) for p in new_points]
+        assert block.coords_px == (150, 200, 500, 500)
+        assert block.coords_norm == (150 / 1000, 200 / 1500, 500 / 1000, 500 / 1500)

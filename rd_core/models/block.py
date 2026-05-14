@@ -45,6 +45,7 @@ class Block:
     source: BlockSource
     shape_type: ShapeType = ShapeType.RECTANGLE
     polygon_points: Optional[List[Tuple[int, int]]] = None  # Для полигонов
+    polygon_points_norm: Optional[List[Tuple[float, float]]] = None  # Нормализованные вершины 0..1
     image_file: Optional[str] = None
     ocr_text: Optional[str] = None
     prompt: Optional[dict] = None  # {"system": "...", "user": "..."}
@@ -104,6 +105,28 @@ class Block:
             int(y2 * page_height),
         )
 
+    @staticmethod
+    def polygon_px_to_norm(
+        points: List[Tuple[int, int]], page_width: int, page_height: int
+    ) -> List[Tuple[float, float]]:
+        """Нормализовать вершины полигона в диапазон 0..1 относительно всей страницы."""
+        w = max(int(page_width), 1)
+        h = max(int(page_height), 1)
+        return [(px / w, py / h) for px, py in points]
+
+    @staticmethod
+    def polygon_norm_to_px(
+        points: List[Tuple[float, float]], page_width: int, page_height: int
+    ) -> List[Tuple[int, int]]:
+        """Перевести нормализованные вершины полигона в пиксели текущей страницы."""
+        return [
+            (
+                int(round(nx * page_width)),
+                int(round(ny * page_height)),
+            )
+            for nx, ny in points
+        ]
+
     @classmethod
     def create(
         cls,
@@ -148,6 +171,12 @@ class Block:
         """
         coords_norm = cls.px_to_norm(coords_px, page_width, page_height)
 
+        polygon_points_norm: Optional[List[Tuple[float, float]]] = None
+        if shape_type == ShapeType.POLYGON and polygon_points:
+            polygon_points_norm = cls.polygon_px_to_norm(
+                polygon_points, page_width, page_height
+            )
+
         return cls(
             id=block_id or cls.generate_id(),
             page_index=page_index,
@@ -157,6 +186,7 @@ class Block:
             source=source,
             shape_type=shape_type,
             polygon_points=polygon_points,
+            polygon_points_norm=polygon_points_norm,
             image_file=image_file,
             ocr_text=ocr_text,
             prompt=prompt,
@@ -193,6 +223,23 @@ class Block:
         self.coords_px = new_coords_px
         self.coords_norm = self.px_to_norm(new_coords_px, page_width, page_height)
 
+    def set_polygon_points(
+        self,
+        points: List[Tuple[int, int]],
+        page_width: int,
+        page_height: int,
+    ) -> None:
+        """Атомарно обновить polygon_points, polygon_points_norm, coords_px, coords_norm."""
+        self.polygon_points = [(int(px), int(py)) for px, py in points]
+        self.polygon_points_norm = self.polygon_px_to_norm(
+            self.polygon_points, page_width, page_height
+        )
+        xs = [p[0] for p in self.polygon_points]
+        ys = [p[1] for p in self.polygon_points]
+        bbox = (min(xs), min(ys), max(xs), max(ys))
+        self.coords_px = bbox
+        self.coords_norm = self.px_to_norm(bbox, page_width, page_height)
+
     def to_dict(self) -> dict:
         """Сериализация в словарь для JSON"""
         result = {
@@ -208,6 +255,8 @@ class Block:
         }
         if self.polygon_points:
             result["polygon_points"] = [list(p) for p in self.polygon_points]
+        if self.polygon_points_norm:
+            result["polygon_points_norm"] = [list(p) for p in self.polygon_points_norm]
         if self.prompt:
             result["prompt"] = self.prompt
         if self.hint:
@@ -260,6 +309,12 @@ class Block:
         if "polygon_points" in data and data["polygon_points"]:
             polygon_points = [tuple(p) for p in data["polygon_points"]]
 
+        polygon_points_norm = None
+        if "polygon_points_norm" in data and data["polygon_points_norm"]:
+            polygon_points_norm = [
+                (float(p[0]), float(p[1])) for p in data["polygon_points_norm"]
+            ]
+
         # Миграция ID
         was_migrated = False
         block_id = data["id"]
@@ -282,6 +337,7 @@ class Block:
             source=BlockSource(data["source"]),
             shape_type=shape_type,
             polygon_points=polygon_points,
+            polygon_points_norm=polygon_points_norm,
             image_file=data.get("image_file"),
             ocr_text=data.get("ocr_text"),
             prompt=data.get("prompt"),
