@@ -9,6 +9,8 @@ from typing import Any
 
 import httpx
 
+from rd_core.supabase_ssl import supabase_ssl_verify
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +44,7 @@ class _SupabaseStatusClient:
             params=params,
             headers=self._headers,
             timeout=15.0,
+            verify=supabase_ssl_verify(),
         )
         response.raise_for_status()
         data = response.json()

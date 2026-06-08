@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 import httpx
 from httpx import Limits
 
+from rd_core.supabase_ssl import supabase_ssl_verify
+
 logger = logging.getLogger(__name__)
 
 # Глобальный пул соединений для Supabase
@@ -21,6 +23,7 @@ def _get_tree_client() -> httpx.Client:
         _tree_http_client = httpx.Client(
             limits=Limits(max_connections=10, max_keepalive_connections=5),
             timeout=10.0,  # Уменьшен с 30 до 10 сек для отзывчивости UI
+            verify=supabase_ssl_verify(),
         )
     return _tree_http_client
 
