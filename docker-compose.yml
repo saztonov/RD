@@ -11,8 +11,10 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+      - OCR_CA_CERT=/certs/proxy-ca.pem
     volumes:
       - ocr_data:/data
+      - ./certs/proxy-ca.pem:/certs/proxy-ca.pem:ro
     depends_on:
       - redis
     restart: always
@@ -40,8 +42,10 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - REMOTE_OCR_DATA_DIR=/data
+      - OCR_CA_CERT=/certs/proxy-ca.pem
     volumes:
       - ocr_data:/data
+      - ./certs/proxy-ca.pem:/certs/proxy-ca.pem:ro
     depends_on:
       - redis
     restart: always

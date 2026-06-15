@@ -186,7 +186,13 @@ def _do_unload_model(engine: str) -> None:
     try:
         import requests
 
-        resp = requests.get(f"{base_url}/api/v1/models", timeout=10)
+        resp = requests.get(
+            f"{base_url}/api/v1/models",
+            timeout=10,
+            auth=get_ngrok_auth(),
+            headers=_NGROK_HEADERS,
+            verify=ocr_ssl_verify(),
+        )
         if resp.status_code != 200:
             return
 
@@ -204,6 +210,9 @@ def _do_unload_model(engine: str) -> None:
                         f"{base_url}/api/v1/models/unload",
                         json={"instance_id": inst["id"]},
                         timeout=30,
+                        auth=get_ngrok_auth(),
+                        headers=_NGROK_HEADERS,
+                        verify=ocr_ssl_verify(),
                     )
                     logger.info(
                         f"{engine}: модель выгружена после grace period: {inst['id']}",
@@ -247,6 +256,10 @@ from rd_core.ocr._chandra_common import (
     SPEEDGUARD_SLOW_COUNTER_KEY,
     get_ngrok_auth,
 )
+from rd_core.ocr.ssl_policy import ocr_ssl_verify
+
+# Заголовок для обхода ngrok browser-warning (через reverse proxy тоже безвреден)
+_NGROK_HEADERS = {"ngrok-skip-browser-warning": "true"}
 
 # ── Slow-counter (cross-worker) ─────────────────────────────────────
 
@@ -401,7 +414,11 @@ def list_loaded_lmstudio_models(base_url: str) -> list[dict]:
         import requests
 
         resp = requests.get(
-            f"{base_url}/api/v1/models", timeout=10, auth=get_ngrok_auth()
+            f"{base_url}/api/v1/models",
+            timeout=10,
+            auth=get_ngrok_auth(),
+            headers=_NGROK_HEADERS,
+            verify=ocr_ssl_verify(),
         )
         if resp.status_code != 200:
             return []
@@ -467,6 +484,8 @@ def _post_unload_instance(base_url: str, instance_id: str, model_key: str) -> bo
             json={"instance_id": instance_id},
             timeout=30,
             auth=get_ngrok_auth(),
+            headers=_NGROK_HEADERS,
+            verify=ocr_ssl_verify(),
         )
         if resp.status_code == 200:
             logger.info(
@@ -501,7 +520,12 @@ def _post_load_chandra(base_url: str) -> bool:
     def _do_load(cfg: dict):
         payload = {"model": CHANDRA_MODEL_KEY, "echo_load_config": True, **cfg}
         return requests.post(
-            f"{base_url}/api/v1/models/load", json=payload, timeout=120, auth=auth
+            f"{base_url}/api/v1/models/load",
+            json=payload,
+            timeout=120,
+            auth=auth,
+            headers=_NGROK_HEADERS,
+            verify=ocr_ssl_verify(),
         )
 
     try:

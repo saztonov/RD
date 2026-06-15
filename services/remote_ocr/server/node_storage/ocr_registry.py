@@ -9,6 +9,7 @@ from typing import Dict, List
 
 import httpx
 
+from rd_core.supabase_ssl import supabase_ssl_verify
 from services.remote_ocr.server.logging_config import get_logger
 from services.remote_ocr.server.node_storage.file_manager import add_node_file
 from services.remote_ocr.server.r2_keys import resolve_r2_prefix_for_node
@@ -44,6 +45,7 @@ def _save_annotation_to_db(node_id: str, ann_data: dict) -> bool:
         "updated_at": datetime.utcnow().isoformat(),
     }
 
+    verify = supabase_ssl_verify()
     annotations_url = f"{supabase_url}/rest/v1/annotations"
     resp = httpx.post(
         annotations_url,
@@ -51,6 +53,7 @@ def _save_annotation_to_db(node_id: str, ann_data: dict) -> bool:
         json=payload,
         headers=headers,
         timeout=15.0,
+        verify=verify,
     )
 
     # Some PostgREST/Supabase setups still return 409 on unique(node_id) without applying
@@ -66,6 +69,7 @@ def _save_annotation_to_db(node_id: str, ann_data: dict) -> bool:
             },
             headers=headers,
             timeout=15.0,
+            verify=verify,
         )
 
     resp.raise_for_status()
@@ -263,6 +267,7 @@ def update_node_pdf_status(node_id: str):
             "Authorization": f"Bearer {supabase_key}",
             "Content-Type": "application/json",
         }
+        verify = supabase_ssl_verify()
 
         # Получаем узел
         response = httpx.get(
@@ -270,6 +275,7 @@ def update_node_pdf_status(node_id: str):
             params={"id": f"eq.{node_id}", "select": "id,attributes"},
             headers=headers,
             timeout=10.0,
+            verify=verify,
         )
         response.raise_for_status()
         nodes = response.json()
@@ -293,6 +299,7 @@ def update_node_pdf_status(node_id: str):
             json={"p_node_id": node_id, "p_status": status.value, "p_message": message},
             headers=headers,
             timeout=10.0,
+            verify=verify,
         )
         rpc_response.raise_for_status()
 

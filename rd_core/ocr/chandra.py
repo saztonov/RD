@@ -20,7 +20,7 @@ from rd_core.ocr._chandra_common import (
     needs_model_reload,
     parse_response,
 )
-from rd_core.ocr.http_utils import create_retry_session
+from rd_core.ocr.http_utils import create_retry_session, ocr_proxies
 from rd_core.ocr.utils import image_to_base64
 from rd_core.ocr_result import is_error, make_error
 
@@ -128,8 +128,11 @@ class ChandraBackend(BackendTimingMixin):
         self._model_id: Optional[str] = None
         self._model_lock = threading.Lock()
         self._auth = get_ngrok_auth()
-        self.session = create_retry_session(auth=self._auth, ngrok_mode=True)
-        self._preload_session = create_retry_session(auth=self._auth, preload_mode=True)
+        ngrok_proxies = ocr_proxies(ngrok_mode=True)
+        self.session = create_retry_session(auth=self._auth, ngrok_mode=True, proxies=ngrok_proxies)
+        self._preload_session = create_retry_session(
+            auth=self._auth, preload_mode=True, proxies=ngrok_proxies
+        )
         self._deadline: Optional[float] = None
         self._cancel_event: Optional[threading.Event] = None
         self._http_timeout = http_timeout

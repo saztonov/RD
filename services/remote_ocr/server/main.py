@@ -194,7 +194,17 @@ async def readiness() -> JSONResponse:
             try:
                 import httpx
 
-                resp = httpx.get(f"{url}/v1/models", timeout=5)
+                from rd_core.ocr._chandra_common import get_ngrok_auth
+                from rd_core.ocr.ssl_policy import ocr_ssl_verify
+
+                auth = get_ngrok_auth()
+                resp = httpx.get(
+                    f"{url}/v1/models",
+                    timeout=5,
+                    verify=ocr_ssl_verify(),
+                    headers={"ngrok-skip-browser-warning": "true"},
+                    auth=httpx.BasicAuth(*auth) if auth else None,
+                )
                 providers[engine_name] = {"configured": True, "reachable": resp.status_code == 200}
             except Exception:
                 providers[engine_name] = {"configured": True, "reachable": False}

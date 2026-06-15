@@ -1,9 +1,28 @@
 """Общие HTTP-утилиты для OCR бэкендов (sync и async)."""
-from typing import Optional, Tuple
+import os
+from typing import Optional, Tuple, Union
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from rd_core.ocr.ssl_policy import ocr_ssl_verify
+
+
+def ocr_proxies(ngrok_mode: bool = False) -> Optional[dict]:
+    """Прокси для OCR-сессий из env.
+
+    NGROK_PROXY_URL — прокси для запросов к ngrok-туннелю (приоритет при ngrok_mode).
+    OCR_PROXY_URL — общий прокси для остальных OCR-запросов / fallback.
+    """
+    url = None
+    if ngrok_mode:
+        url = os.getenv("NGROK_PROXY_URL")
+    if not url:
+        url = os.getenv("OCR_PROXY_URL")
+    if not url:
+        return None
+    return {"http": url, "https": url}
 
 
 def create_retry_session(
@@ -13,6 +32,8 @@ def create_retry_session(
     status_forcelist: tuple = (502, 503, 504),
     ngrok_mode: bool = False,
     preload_mode: bool = False,
+    verify: Optional[Union[bool, str]] = None,
+    proxies: Optional[dict] = None,
 ) -> requests.Session:
     """Создать requests.Session с retry и connection pooling.
 
@@ -21,6 +42,9 @@ def create_retry_session(
                     (6 попыток, backoff до ~2 мин, включая 404)
         preload_mode: умеренный retry для preload-операций
                       (2 попытки, backoff ~3с, без 404)
+        verify: TLS-проверка. None → политика из env (OCR_VERIFY_SSL / OCR_CA_CERT).
+        proxies: dict прокси для requests. None → политика из env
+                 (NGROK_PROXY_URL при ngrok_mode, иначе OCR_PROXY_URL).
     """
     if preload_mode:
         total_retries = 2
@@ -49,6 +73,17 @@ def create_retry_session(
     session.mount("http://", adapter)
     # Обход ngrok free tier browser interstitial
     session.headers.update({"ngrok-skip-browser-warning": "true"})
+    session.verify = ocr_ssl_verify() if verify is None else verify
+    if session.verify is False:
+        try:
+            from urllib3.exceptions import InsecureRequestWarning
+            from urllib3 import disable_warnings
+            disable_warnings(InsecureRequestWarning)
+        except Exception:
+            pass
+    resolved_proxies = ocr_proxies(ngrok_mode=ngrok_mode) if proxies is None else proxies
+    if resolved_proxies:
+        session.proxies.update(resolved_proxies)
     if auth:
         session.auth = auth
     return session

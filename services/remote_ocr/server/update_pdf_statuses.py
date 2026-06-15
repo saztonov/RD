@@ -22,6 +22,8 @@ def update_all_pdf_statuses():
     """Обновить статусы всех PDF документов"""
     import httpx
 
+    from rd_core.supabase_ssl import supabase_ssl_verify
+
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
 
@@ -29,6 +31,7 @@ def update_all_pdf_statuses():
         logger.error("SUPABASE_URL or SUPABASE_KEY not set")
         return
 
+    verify = supabase_ssl_verify()
     headers = {
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
@@ -44,6 +47,7 @@ def update_all_pdf_statuses():
             params={"node_type": "eq.document", "select": "id,attributes"},
             headers=headers,
             timeout=30.0,
+            verify=verify,
         )
         response.raise_for_status()
         documents = response.json()
@@ -76,6 +80,7 @@ def update_all_pdf_statuses():
                     },
                     headers=headers,
                     timeout=10.0,
+                    verify=verify,
                 )
                 rpc_response.raise_for_status()
 
