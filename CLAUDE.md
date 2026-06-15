@@ -62,7 +62,7 @@ Desktop Client (PySide6)
 | `app/ocr_client/` | Remote OCR HTTP client (6 modules) |
 | `app/tree_client/` | Supabase tree API (6 mixins) |
 | `rd_core/` | Core logic: models, PDF utils, R2 storage, OCR engines |
-| `rd_core/ocr/` | OCR backends (OpenRouter, Datalab, Chandra, Qwen). Protocol: `base.py` |
+| `rd_core/ocr/` | OCR backends (OpenRouter, Datalab, Chandra). Protocol: `base.py` |
 | `services/remote_ocr/server/` | FastAPI server + Celery tasks |
 | `services/remote_ocr/server/node_storage/` | OCR results registration in tree |
 | `services/remote_ocr/server/pdf_twopass/` | Two-pass PDF (pass1_crops, pass2_ocr) |
@@ -74,7 +74,7 @@ Desktop Client (PySide6)
 
 **Mixin Pattern (GUI)**: `MainWindow` composes multiple mixins - each handles specific responsibility (menus, file ops, block handlers).
 
-**Protocol Pattern (OCR)**: `OCRBackend` protocol in `rd_core/ocr/base.py`. Implementations: `OpenRouterBackend`, `DatalabOCRBackend`, `ChandraBackend`, `QwenBackend`. Factory: `create_ocr_engine()`.
+**Protocol Pattern (OCR)**: `OCRBackend` protocol in `rd_core/ocr/base.py`. Implementations: `OpenRouterBackend`, `DatalabOCRBackend`, `ChandraBackend`. Factory: `create_ocr_engine()` (engine keys: `openrouter`, `datalab`, `chandra`, `dummy`).
 
 **Context Manager (PDF)**: `PDFDocument` in `rd_core/pdf_utils.py` uses `__enter__`/`__exit__` for resource cleanup.
 
@@ -84,8 +84,7 @@ Desktop Client (PySide6)
 |---------|-----------|-----|-------|
 | `OpenRouterBackend` | `openrouter` | OpenRouter (VLM) | Cloud, default for IMAGE blocks |
 | `DatalabOCRBackend` | `datalab` | Datalab Marker | Cloud, segmentation + OCR |
-| `ChandraBackend` | `chandra` | LM Studio (ngrok) | Local, shared tunnel with Qwen |
-| `QwenBackend` | `qwen` | LM Studio (ngrok) | Local, mode="text" or "stamp" |
+| `ChandraBackend` | `chandra` | LM Studio (ngrok) | Local, strip (TEXT) OCR |
 | `DummyBackend` | `dummy` | — | Testing stub |
 
 Server uses `backend_factory.py` to create a trio: `strip_backend` (TEXT), `image_backend` (IMAGE), `stamp_backend` (stamps/titles).
@@ -240,7 +239,6 @@ Required `.env` variables:
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` - Storage
 - `OPENROUTER_API_KEY` and/or `DATALAB_API_KEY` - OCR engines (cloud)
 - `CHANDRA_BASE_URL` - LM Studio URL for Chandra (via ngrok)
-- `QWEN_BASE_URL` - LM Studio URL for Qwen (fallback: `CHANDRA_BASE_URL`)
 - `REMOTE_OCR_BASE_URL` - Server URL (default: http://localhost:8000)
 - `REDIS_URL` - For server (default: redis://redis:6379/0)
 
