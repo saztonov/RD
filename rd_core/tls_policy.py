@@ -13,11 +13,37 @@ from __future__ import annotations
 import functools
 import os
 import tempfile
+from pathlib import Path
 from typing import Optional, Union
 
 VerifyType = Union[bool, str]
 
 _FALSEY = ("0", "false", "no", "off")
+
+# Корень проекта (родитель пакета rd_core) — для поиска certs/ на десктопе.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _resolve_ca_path(ca_cert: str) -> Optional[str]:
+    """Найти существующий файл CA.
+
+    В контейнере путь ``/certs/proxy-ca.pem`` существует как есть. На десктопе
+    (Windows) тот же путь не существует — ищем относительно cwd и корня проекта,
+    чтобы один и тот же ``.env`` работал в обоих окружениях.
+    """
+    rel = ca_cert.lstrip("/\\")
+    base = os.path.basename(ca_cert)
+    candidates = [
+        ca_cert,
+        os.path.join(os.getcwd(), rel),
+        str(_PROJECT_ROOT / rel),
+        os.path.join(os.getcwd(), "certs", base),
+        str(_PROJECT_ROOT / "certs" / base),
+    ]
+    for path in candidates:
+        if path and os.path.exists(path):
+            return path
+    return None
 
 
 @functools.lru_cache(maxsize=8)
@@ -51,8 +77,9 @@ def resolve_verify(ca_cert: Optional[str], verify_flag: Optional[str]) -> Verify
     4. иначе → ``True`` (системная проверка).
     """
     if ca_cert:
-        if os.path.exists(ca_cert):
-            return combined_ca_bundle(os.path.abspath(ca_cert))
+        resolved = _resolve_ca_path(ca_cert)
+        if resolved:
+            return combined_ca_bundle(os.path.abspath(resolved))
         return ca_cert
     if verify_flag is not None and verify_flag.strip().lower() in _FALSEY:
         return False

@@ -55,9 +55,14 @@ curl -sI https://<ngrok-host>/v1/models -H "ngrok-skip-browser-warning: true" | 
 sudo mkdir -p /etc/nginx/certs && cd /etc/nginx/certs
 
 # 1. Корневой CA (срок 10 лет)
+# ВАЖНО: CA обязан содержать basicConstraints=CA:TRUE и keyUsage=keyCertSign,
+# иначе OpenSSL/Python отвергнет его ("CA cert does not include key usage extension").
 openssl genrsa -out proxy-ca.key 4096
 openssl req -x509 -new -nodes -key proxy-ca.key -sha256 -days 3650 \
-  -subj "/CN=RD OCR Proxy CA" -out proxy-ca.pem
+  -subj "/CN=RD OCR Proxy CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -out proxy-ca.pem
 
 # 2. Ключ + CSR серверного сертификата
 openssl genrsa -out proxy.key 2048
