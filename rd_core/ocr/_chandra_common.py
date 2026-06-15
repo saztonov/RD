@@ -247,7 +247,8 @@ def _normalize_chandra_response(message: dict) -> Tuple[str, str]:
     text = text.strip()
 
     if stripped_chars > 0:
-        logger.warning(
+        # Штатное поведение LM Studio (OCR в reasoning_content), не аномалия → INFO.
+        logger.info(
             f"Chandra: обрезан reasoning из reasoning_content "
             f"({stripped_chars} симв. удалено, {len(text)} симв. OCR осталось)",
         )
@@ -268,7 +269,8 @@ def _normalize_chandra_response(message: dict) -> Tuple[str, str]:
         )
         return "", "empty"
 
-    logger.warning(
+    # Штатное поведение LM Studio (OCR в reasoning_content), не аномалия → INFO.
+    logger.info(
         "Chandra: LM Studio вернул OCR в reasoning_content "
         "(возможная несовместимость версий LM Studio/SDK)",
     )

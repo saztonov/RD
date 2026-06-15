@@ -491,16 +491,28 @@ class StreamingPDFProcessor:
                 crop_width, crop_height,
             )
 
-            # 4) Сборка нового PDF
+            # 4) Сборка нового PDF.
+            # show_pdf_page пересекает clip с ВИЗУАЛЬНЫМ page.rect источника, тогда как
+            # source_clip посчитан в нативном (до-ротации) cropbox-пространстве. На
+            # повёрнутых страницах временно снимаем поворот источника (поворот учтён в
+            # source_clip через derotation_matrix + rotate=-rotation). Иначе clip уходит
+            # за визуальный rect → либо ValueError "clip must be finite and not empty",
+            # либо неверный регион кропа.
             new_doc = fitz.open()
             new_page = new_doc.new_page(width=crop_width, height=crop_height)
-            new_page.show_pdf_page(
-                new_page.rect,
-                self._doc,
-                block.page_index,
-                clip=source_clip,
-                rotate=-rotation,
-            )
+            if rotation:
+                page.set_rotation(0)
+            try:
+                new_page.show_pdf_page(
+                    new_page.rect,
+                    self._doc,
+                    block.page_index,
+                    clip=source_clip,
+                    rotate=-rotation,
+                )
+            finally:
+                if rotation:
+                    page.set_rotation(rotation)
 
             # 5) Polygon-маска (если форма — полигон) в координатах нового кропа
             if block.shape_type == ShapeType.POLYGON and block.polygon_points:

@@ -244,3 +244,75 @@ def test_polygon_block_writes_pdf_without_exceptions(tmp_path):
     out_doc = fitz.open(output_path)
     assert out_doc.page_count == 1
     out_doc.close()
+
+
+def _dark_centroid_fraction(pdf_path):
+    """Доля (fx, fy) центроида тёмных пикселей первой страницы PDF (0..1)."""
+    doc = fitz.open(pdf_path)
+    pix = doc[0].get_pixmap()
+    doc.close()
+    w, h, n, s = pix.width, pix.height, pix.n, pix.samples
+    sx = sy = cnt = 0
+    for y in range(h):
+        row = y * w
+        for x in range(w):
+            if s[(row + x) * n] < 80:
+                sx += x
+                sy += y
+                cnt += 1
+    if not cnt:
+        return None
+    return (sx / cnt / w, sy / cnt / h)
+
+
+def test_rotated_page_crop_content_correct_region(tmp_path):
+    """rotation=90, точная геометрия из лога (блок A9W9-JA7W-4AP).
+
+    Регресс на падение `clip must be finite and not empty` И на тихую порчу региона:
+    show_pdf_page пересекает clip с визуальным page.rect, тогда как source_clip
+    посчитан в до-ротационном пространстве. До фикса show_pdf_page падал (clip за
+    границами визуального rect) либо клал регион со смещением по Y.
+
+    Маркер ставится ВНЕ центра блока (по центру X, на 25% по Y). С фиксом центроид
+    тёмных пикселей в кропе ≈ (0.5, 0.25); багнутый код падает (result is None) или
+    даёт смещённый Y.
+    """
+    coords_norm = (0.0264, 0.2867, 0.1669, 0.4531)
+
+    doc = fitz.open()
+    page = doc.new_page(width=1684, height=2384)
+    page.set_rotation(90)
+    rect = page.rect  # визуально (0,0,2384,1684)
+    bx1 = rect.x0 + coords_norm[0] * rect.width
+    by1 = rect.y0 + coords_norm[1] * rect.height
+    bx2 = rect.x0 + coords_norm[2] * rect.width
+    by2 = rect.y0 + coords_norm[3] * rect.height
+    # Целевая ВИЗУАЛЬНАЯ точка маркера: по центру X, на 25% по высоте блока.
+    target = fitz.Point(bx1 + 0.5 * (bx2 - bx1), by1 + 0.25 * (by2 - by1))
+    # Перевод визуальной точки в нативные координаты страницы для рисования.
+    src_pt = target * page.derotation_matrix
+    page.set_rotation(0)
+    page.draw_rect(
+        fitz.Rect(src_pt.x - 18, src_pt.y - 18, src_pt.x + 18, src_pt.y + 18),
+        color=(0, 0, 0), fill=(0, 0, 0),
+    )
+    page.set_rotation(90)
+    pdf_path = str(tmp_path / "rotated_a9w9.pdf")
+    doc.save(pdf_path)
+    doc.close()
+
+    block = _block(coords_norm)
+    output_path = str(tmp_path / "out.pdf")
+
+    with StreamingPDFProcessor(pdf_path) as p:
+        result = p.crop_block_to_pdf(block, output_path, padding_pt=2)
+
+    # (a) кроп создан — нет ValueError "clip must be finite and not empty"
+    assert result == output_path
+
+    # (b) верный регион: центроид маркера ≈ (0.5, 0.25)
+    centroid = _dark_centroid_fraction(output_path)
+    assert centroid is not None, "маркер не найден в кропе"
+    fx, fy = centroid
+    assert abs(fx - 0.5) < 0.12, f"X центроид {fx:.3f} (ожидался ~0.5)"
+    assert abs(fy - 0.25) < 0.12, f"Y центроид {fy:.3f} (ожидался ~0.25; баг даёт ~0.5+)"

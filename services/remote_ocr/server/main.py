@@ -108,7 +108,12 @@ class RequestTimingMiddleware(BaseHTTPMiddleware):
                 "client_ip": client_ip,
             }
 
-            if response.status_code >= 400:
+            # 404 — сигнатура ботов-сканеров (/.env, /.git/config …) → INFO, чтобы не
+            # засорять логи. Реальные клиентские ошибки (401/403/422) и 5xx остаются
+            # видимыми на WARNING.
+            if response.status_code == 404:
+                _logger.info(f"{method} {path} -> 404", extra=log_data)
+            elif response.status_code >= 400:
                 _logger.warning(f"{method} {path} -> {response.status_code}", extra=log_data)
             else:
                 _logger.info(f"{method} {path} -> {response.status_code}", extra=log_data)
